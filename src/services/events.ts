@@ -1240,10 +1240,11 @@ export class EventService {
       return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, barRefundsOwed }
     }
 
-    // Track refund results per booking for SMS/email. 'bar_refund_due' is a ticket paid at the bar:
-    // a person returns it. partOfPayment is set when only the rest of a partly refunded payment
-    // went back, so the guest is told "the rest of your payment".
-    const refundResults = new Map<string, { status: CancellationRefundStatus; amount: number; partOfPayment: boolean }>()
+    // Track refund results per booking for SMS/email. amount and status are what PayPal returned;
+    // barAmount is money taken at the bar that a person hands back, kept apart so a guest who paid
+    // £80 online and £45 at the bar is not told to collect £125 at the bar (review finding on PR
+    // 277). partOfPayment is set when only the rest of a partly refunded payment went back.
+    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number; barAmount: number; partOfPayment: boolean }>()
 
     // 2. Cancel each booking, release its holds and tables, then refund it straight away, so a
     // failure part way through never leaves a cancelled booking that nobody will refund.
@@ -1313,15 +1314,14 @@ export class EventService {
         stillHeld = Math.round((stillHeld - fromUnattributed) * 100) / 100
         unattributed -= fromUnattributed
         const partOfPayment = stillHeld + 0.004 < paymentAmount
-        const existing = refundResults.get(booking.id) ?? { status: 'succeeded' as CancellationRefundStatus, amount: 0, partOfPayment: false }
+        const existing = refundResults.get(booking.id) ?? { status: 'succeeded' as EventRefundResult['status'], amount: 0, barAmount: 0, partOfPayment: false }
         existing.partOfPayment = existing.partOfPayment || partOfPayment
         refundResults.set(booking.id, existing)
         if (stillHeld <= 0) continue
 
         if (payment.payment_provider === 'manual') {
           barRefundsOwed.push({ bookingId: booking.id, paymentId: payment.id, amount: stillHeld, method: payment.payment_method ?? null })
-          existing.amount = Math.round((existing.amount + stillHeld) * 100) / 100
-          existing.status = 'bar_refund_due'
+          existing.barAmount = Math.round((existing.barAmount + stillHeld) * 100) / 100
           continue
         }
 
@@ -1349,7 +1349,7 @@ export class EventService {
             })
           }
           existing.amount = Math.round((existing.amount + refundResult.amount) * 100) / 100
-          if (refundResult.status !== 'succeeded' && existing.status !== 'bar_refund_due') {
+          if (refundResult.status !== 'succeeded') {
             existing.status = refundResult.status
           }
         } catch (err) {
@@ -1389,16 +1389,21 @@ export class EventService {
         sms_status: string | null
       }
       const refundResult = refundResults.get(booking.id)
+      const barAmount = refundResult?.barAmount ?? 0
+      // Paid only at the bar: the refund sentence is the bar one. Paid both ways: the PayPal
+      // sentence, then what is handed back at the bar.
+      const barOnly = barAmount > 0 && (refundResult?.amount ?? 0) <= 0
       // A booking with no payment row took no money, so it gets no refund sentence at all.
       // Passing 0 here is what told guests who had never paid "Refund amount: £0.00".
       await sendEventBookingCancelledEmail(db, {
         bookingId: booking.id,
-        refundStatus: refundResult?.status ?? null,
-        refundAmount: refundResult?.amount ?? null,
+        refundStatus: barOnly ? 'bar_refund_due' : (refundResult?.status ?? null),
+        refundAmount: barOnly ? barAmount : (refundResult?.amount ?? null),
         currency: 'GBP',
         reason: 'event_cancelled',
         paymentTaken: Boolean(refundResult),
-        refundIsRestOfPayment: refundResult?.partOfPayment === true
+        refundIsRestOfPayment: refundResult?.partOfPayment === true,
+        ...(barAmount > 0 && !barOnly ? { barRefundAmount: barAmount } : {})
       })
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
@@ -1408,9 +1413,10 @@ export class EventService {
         const refundNote = buildRefundNote({
           isPrepaid,
           refundSucceeded: refundResult?.status === 'succeeded' || refundResult?.status === 'pending',
-          refundAmount: refundResult?.amount ?? null,
+          refundAmount: barOnly ? barAmount : (refundResult?.amount ?? null),
           restOfPayment: refundResult?.partOfPayment === true,
-          returnedAtBar: refundResult?.status === 'bar_refund_due'
+          returnedAtBar: barOnly,
+          ...(barAmount > 0 && !barOnly ? { barRefundAmount: barAmount } : {})
         })
 
         const smsBody = buildEventCancelledSms({
@@ -1486,8 +1492,6 @@ export interface EventCancellationResult {
   /** Tickets paid at the bar that a person must hand back (BK-135). Ids and amounts only. */
   barRefundsOwed: Array<{ bookingId: string; paymentId: string; amount: number; method: string | null }>
 }
-
-type CancellationRefundStatus = EventRefundResult['status'] | 'bar_refund_due'
 
 /**
  * One manager alert per cancelled event listing the bar payments to hand back (BK-135). Ids,

@@ -742,11 +742,13 @@ export type EventManualRefundMethod = 'cash' | 'card_terminal'
  * so a cash or card ticket could be "refunded" from the dialog without any record: the booking
  * still read as paid and offered the same money back again.
  *
- * It writes one refund payments row per bar payment it draws on (payment_provider 'manual', the
- * method, the amount and who recorded it), moves each source payment to partially_refunded or
- * refunded, and replays an earlier call with the same idempotency key instead of recording twice.
- * No money moves here: the member of staff has handed it back. Never more than the bar payments
- * still hold.
+ * The whole record is one database transaction, record_manual_event_refund_v01 (review finding on
+ * PR 277): it locks the booking, replays an earlier call with the same idempotency key, writes one
+ * refund payments row per bar payment it draws on (payment_provider 'manual', the method, the
+ * amount and who recorded it) and moves each source payment to partially_refunded or refunded. It
+ * used to read the balance here and insert after, so two overlapping submissions could both see
+ * the same balance and record the money twice. No money moves here: the member of staff has
+ * handed it back. Never more than the bar payments still hold.
  */
 export async function recordManualEventRefund(
   supabase: SupabaseClient<any, 'public', any>,
@@ -766,90 +768,28 @@ export async function recordManualEventRefund(
     return { status: 'none', amount: 0, currency: 'GBP' }
   }
 
-  const { data: priorRefunds, error: priorRefundError } = await supabase.from('payments')
-    .select('id, amount, currency, status')
-    .eq('charge_type', 'refund')
-    .contains('metadata', { idempotency_key: input.idempotencyKey })
-    .in('status', ['refunded', 'pending', 'succeeded'])
-  if (priorRefundError) throw priorRefundError
-  if (Array.isArray(priorRefunds) && priorRefunds.length > 0) {
-    const total = priorRefunds.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
-    return { status: 'succeeded', amount: roundCurrencyAmount(total), currency: 'GBP', reason: 'idempotent_replay' }
-  }
+  const { data, error } = await supabase.rpc('record_manual_event_refund_v01', {
+    p_booking_id: input.bookingId,
+    p_amount: refundAmount,
+    p_method: input.method,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+    p_recorded_by: input.recordedBy,
+    p_note: input.note || null,
+    p_metadata: input.metadata || {}
+  })
+  if (error) throw error
 
-  const { data: payments, error: paymentLookupError } = await supabase.from('payments')
-    .select('id, amount, currency')
-    .eq('event_booking_id', input.bookingId)
-    .in('charge_type', ['prepaid_event', 'seat_increase'])
-    .in('status', ['succeeded', 'partially_refunded'])
-    .eq('payment_provider', 'manual')
-    .order('created_at', { ascending: true })
-  if (paymentLookupError) throw paymentLookupError
-
-  let remaining = refundAmount
-  let recorded = 0
-  for (const payment of payments ?? []) {
-    if (remaining <= 0.004) break
-    const { data: refundsForPayment, error: refundsError } = await supabase.from('payments')
-      .select('amount')
-      .eq('charge_type', 'refund')
-      .contains('metadata', { source_payment_id: payment.id })
-      .in('status', ['refunded', 'pending', 'succeeded'])
-    if (refundsError) throw refundsError
-    const alreadyRefunded = (refundsForPayment ?? []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
-    const paymentAmount = Math.max(0, Number(payment.amount || 0))
-    const available = roundCurrencyAmount(Math.max(0, paymentAmount - alreadyRefunded))
-    if (available <= 0) continue
-
-    const amountForPayment = roundCurrencyAmount(Math.min(remaining, available))
-    const { error: insertError } = await supabase.from('payments').insert({
-      event_booking_id: input.bookingId,
-      charge_type: 'refund',
-      payment_provider: 'manual',
-      payment_method: input.method,
-      amount: amountForPayment,
-      currency: (payment.currency || 'GBP').toUpperCase(),
-      status: 'refunded',
-      metadata: {
-        ...(input.metadata || {}),
-        source_payment_id: payment.id,
-        reason: input.reason,
-        refund_method: input.method,
-        recorded_by: input.recordedBy,
-        note: input.note || null,
-        idempotency_key: input.idempotencyKey,
-      },
-    })
-    if (insertError) throw insertError
-
-    recorded = roundCurrencyAmount(recorded + amountForPayment)
-    remaining = roundCurrencyAmount(Math.max(0, remaining - amountForPayment))
-    const totalRefunded = roundCurrencyAmount(alreadyRefunded + amountForPayment)
-    // Never thrown: the refund row is the record that the money went back.
-    await settleWrite(
-      supabase.from('payments')
-        .update({
-          status: totalRefunded + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', payment.id),
-      {
-        table: 'payments',
-        what: 'Recording the cash or card refund on the original payment',
-        ids: { paymentId: payment.id, bookingId: input.bookingId },
-        note: 'the refund itself is recorded'
-      }
-    )
-  }
-
-  if (recorded <= 0) {
-    return { status: 'manual_required', amount: refundAmount, currency: 'GBP', reason: 'no_bar_payment_to_refund' }
-  }
+  const result = (data ?? {}) as { status?: string; amount?: number | string; reason?: string }
+  const status: EventRefundResult['status'] =
+    result.status === 'succeeded' || result.status === 'manual_required' || result.status === 'none'
+      ? result.status
+      : 'failed'
   return {
-    status: recorded + 0.004 >= refundAmount ? 'succeeded' : 'manual_required',
-    amount: recorded,
+    status,
+    amount: roundCurrencyAmount(Number(result.amount ?? 0)),
     currency: 'GBP',
-    reason: recorded + 0.004 >= refundAmount ? undefined : 'partial_refund_only'
+    reason: result.reason ?? undefined
   }
 }
 

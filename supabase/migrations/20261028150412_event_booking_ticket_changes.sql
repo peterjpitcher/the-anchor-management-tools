@@ -15,8 +15,9 @@
 -- Money taken for added guests at the venue is recorded as a manual seat_increase payment at the
 -- full ticket price (owner decision D10: the online discount is for paying online in advance).
 --
--- Adds one table and six functions, all service_role only. No existing function, table, view or
--- row is changed. Apply before the code that calls them.
+-- Adds one table, one nullable column (booking_items.price_paid_groups), one unique index on
+-- payments (manual refund claims; no live row matches it) and eleven functions, all service_role
+-- only. No existing function, view or row is changed. Apply before the code that calls them.
 --
 -- Live functions these call, read on project tfcasgxopxegwrabvwat on 28 October 2026 and not
 -- changed here (md5(prosrc)):
@@ -105,6 +106,148 @@ AS $$
 $$;
 
 -- ---------------------------------------------------------------------------------------------
+-- What each ticket was actually paid (review finding on PR 277). A ticket line has one unit_price,
+-- but tickets added later at the venue (full price) or free join the same line. price_paid_groups
+-- keeps the line's tickets in groups of one price, [{"unit_price": 40, "quantity": 3}, ...], so
+-- a later removal or ticket-type change starts from what was paid for those tickets: a £45 cash
+-- guest added to a £40 line is valued at £45, and a free guest at £0. Null means every ticket on
+-- the line was paid unit_price. Groups that no longer add up to the line's quantity (another path
+-- changed it) are read as one group at unit_price.
+-- ---------------------------------------------------------------------------------------------
+ALTER TABLE public.booking_items ADD COLUMN price_paid_groups jsonb;
+COMMENT ON COLUMN public.booking_items.price_paid_groups IS
+  'The line''s tickets in groups of the price actually paid, [{unit_price, quantity}], when they differ (staff added a ticket at the venue or free). Null: all at unit_price. Written by the staff ticket-change functions of 20261028150412 only.';
+
+CREATE OR REPLACE FUNCTION public.event_booking_line_groups_v01(p_groups jsonb, p_quantity integer, p_unit numeric)
+RETURNS jsonb
+LANGUAGE sql
+IMMUTABLE
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN jsonb_typeof(p_groups) = 'array'
+     AND jsonb_array_length(p_groups) > 0
+     AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(p_groups) g
+                     WHERE jsonb_typeof(g->'quantity') <> 'number' OR (g->>'quantity')::integer < 1
+                        OR jsonb_typeof(g->'unit_price') <> 'number' OR (g->>'unit_price')::numeric < 0)
+     AND (SELECT sum((g->>'quantity')::integer) FROM jsonb_array_elements(p_groups) g) = p_quantity
+    THEN p_groups
+    ELSE jsonb_build_array(jsonb_build_object('unit_price', coalesce(p_unit, 0), 'quantity', p_quantity))
+  END;
+$$;
+
+-- Takes tickets off a booking's lines, one at a time, and returns what they were paid:
+-- {"total": n, "prices": [per ticket, in order], "tickets": [{ticket_type_id, unit_price}]}.
+-- Each take is {"ticket_type_id", "price" (the guest's own price paid, or null), "prefer"}: with a
+-- price it comes off a group at that price; without one, 'line' takes from a group at the line's
+-- own price (a guest booked with the line) and 'last' from the last group added. Raises
+-- ticket_line_mismatch when a line has too few tickets. Call with ams.skip_default_item on.
+CREATE OR REPLACE FUNCTION public.event_booking_take_tickets_v01(p_booking_id uuid, p_takes jsonb)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_take jsonb;
+  v_line record;
+  v_groups jsonb;
+  v_index integer;
+  v_price numeric;
+  v_wanted numeric;
+  v_total numeric := 0;
+  v_prices jsonb := '[]'::jsonb;
+  v_tickets jsonb := '[]'::jsonb;
+BEGIN
+  FOR v_take IN SELECT value FROM jsonb_array_elements(coalesce(p_takes, '[]'::jsonb)) LOOP
+    SELECT bi.id, bi.quantity, bi.unit_price, bi.price_paid_groups INTO v_line
+    FROM public.booking_items bi
+    WHERE bi.booking_id = p_booking_id AND bi.ticket_type_id = (v_take->>'ticket_type_id')::uuid
+    FOR UPDATE;
+    IF NOT FOUND OR v_line.quantity < 1 THEN
+      RAISE EXCEPTION 'ticket_line_mismatch';
+    END IF;
+    v_groups := public.event_booking_line_groups_v01(v_line.price_paid_groups, v_line.quantity, v_line.unit_price);
+    v_wanted := CASE WHEN jsonb_typeof(v_take->'price') = 'number' THEN (v_take->>'price')::numeric
+                     WHEN coalesce(v_take->>'prefer', 'line') = 'line' THEN v_line.unit_price END;
+    v_index := NULL;
+    IF v_wanted IS NOT NULL THEN
+      SELECT (ord - 1)::integer INTO v_index FROM jsonb_array_elements(v_groups) WITH ORDINALITY AS t(g, ord)
+      WHERE (g->>'unit_price')::numeric = v_wanted ORDER BY ord LIMIT 1;
+    END IF;
+    IF v_index IS NULL THEN
+      v_index := jsonb_array_length(v_groups) - 1;
+    END IF;
+    v_price := (v_groups->v_index->>'unit_price')::numeric;
+    IF (v_groups->v_index->>'quantity')::integer <= 1 THEN
+      v_groups := v_groups - v_index;
+    ELSE
+      v_groups := jsonb_set(v_groups, ARRAY[v_index::text, 'quantity'], to_jsonb((v_groups->v_index->>'quantity')::integer - 1));
+    END IF;
+    -- A line that empties is deleted: booking_items.quantity must stay above 0.
+    IF v_line.quantity = 1 THEN
+      DELETE FROM public.booking_items WHERE id = v_line.id;
+    ELSE
+      UPDATE public.booking_items
+      SET quantity = quantity - 1,
+          price_paid_groups = CASE
+            WHEN jsonb_array_length(v_groups) = 1 AND (v_groups->0->>'unit_price')::numeric = v_line.unit_price THEN NULL
+            ELSE v_groups END
+      WHERE id = v_line.id;
+    END IF;
+    v_total := v_total + v_price;
+    v_prices := v_prices || to_jsonb(v_price);
+    v_tickets := v_tickets || jsonb_build_array(jsonb_build_object('ticket_type_id', v_take->>'ticket_type_id', 'unit_price', v_price));
+  END LOOP;
+  RETURN jsonb_build_object('total', round(v_total, 2), 'prices', v_prices, 'tickets', v_tickets);
+END;
+$$;
+
+-- Puts tickets on a booking's line at the price paid for them, keeping the groups. A new line is
+-- priced p_line_price (what a ticket of this type sells at on this booking's terms).
+-- Call with ams.skip_default_item on.
+CREATE OR REPLACE FUNCTION public.event_booking_put_tickets_v01(
+  p_booking_id uuid, p_ticket_type_id uuid, p_quantity integer, p_price_paid numeric, p_line_price numeric
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_line record;
+  v_groups jsonb;
+  v_last integer;
+BEGIN
+  IF p_quantity IS NULL OR p_quantity < 1 THEN RETURN; END IF;
+  SELECT bi.id, bi.quantity, bi.unit_price, bi.price_paid_groups INTO v_line
+  FROM public.booking_items bi
+  WHERE bi.booking_id = p_booking_id AND bi.ticket_type_id = p_ticket_type_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    INSERT INTO public.booking_items (booking_id, ticket_type_id, quantity, unit_price, price_paid_groups)
+    VALUES (p_booking_id, p_ticket_type_id, p_quantity, p_line_price,
+            CASE WHEN p_price_paid = p_line_price THEN NULL
+                 ELSE jsonb_build_array(jsonb_build_object('unit_price', p_price_paid, 'quantity', p_quantity)) END);
+    RETURN;
+  END IF;
+  v_groups := public.event_booking_line_groups_v01(v_line.price_paid_groups, v_line.quantity, v_line.unit_price);
+  v_last := jsonb_array_length(v_groups) - 1;
+  IF (v_groups->v_last->>'unit_price')::numeric = p_price_paid THEN
+    v_groups := jsonb_set(v_groups, ARRAY[v_last::text, 'quantity'], to_jsonb((v_groups->v_last->>'quantity')::integer + p_quantity));
+  ELSE
+    v_groups := v_groups || jsonb_build_array(jsonb_build_object('unit_price', p_price_paid, 'quantity', p_quantity));
+  END IF;
+  UPDATE public.booking_items
+  SET quantity = quantity + p_quantity,
+      price_paid_groups = CASE
+        WHEN jsonb_array_length(v_groups) = 1 AND (v_groups->0->>'unit_price')::numeric = v_line.unit_price THEN NULL
+        ELSE v_groups END
+  WHERE id = v_line.id;
+END;
+$$;
+
+-- ---------------------------------------------------------------------------------------------
 -- Remove guests (BK-023 step 1). Named bookings remove the guests chosen; a booking without guest
 -- rows removes a number of tickets of one type. The seats, the ticket lines, the guest rows and
 -- the table or shared seats all change together. Nothing is refunded: what the removed tickets
@@ -135,6 +278,8 @@ DECLARE
   v_removal jsonb;
   v_line record;
   v_lines jsonb := '[]'::jsonb;
+  v_takes jsonb;
+  v_taken jsonb;
   v_price numeric := 0;
   v_owed numeric := 0;
   v_request_id uuid;
@@ -184,6 +329,12 @@ BEGIN
           FROM jsonb_array_elements(v_booking.attendees) a
           WHERE (a->>'id') = ANY (SELECT x::text FROM unnest(p_attendee_ids) x)
           GROUP BY 1) grouped;
+    -- Each guest comes off at their own price paid, when it was recorded.
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+             'ticket_type_id', coalesce(nullif(a->>'ticket_type_id', '')::uuid, v_default),
+             'price', a->'price_paid', 'prefer', 'line') ORDER BY ord), '[]'::jsonb) INTO v_takes
+    FROM jsonb_array_elements(v_booking.attendees) WITH ORDINALITY AS t(a, ord)
+    WHERE (a->>'id') = ANY (SELECT x::text FROM unnest(p_attendee_ids) x);
   ELSE
     IF p_attendee_ids IS NOT NULL AND cardinality(p_attendee_ids) > 0 THEN
       RETURN jsonb_build_object('state', 'blocked', 'reason', 'guest_not_on_booking');
@@ -194,6 +345,9 @@ BEGIN
     v_remove := p_quantity;
     v_kept := v_booking.attendees;
     v_removals := jsonb_build_array(jsonb_build_object('ticket_type_id', coalesce(p_ticket_type_id, v_default), 'quantity', p_quantity));
+    -- No guest rows: the tickets added last come off first.
+    SELECT jsonb_agg(jsonb_build_object('ticket_type_id', coalesce(p_ticket_type_id, v_default), 'price', NULL, 'prefer', 'last'))
+    INTO v_takes FROM generate_series(1, p_quantity);
   END IF;
 
   v_new_seats := coalesce(v_booking.seats, 0) - v_remove;
@@ -210,22 +364,12 @@ BEGIN
     IF NOT FOUND OR v_line.quantity < (v_removal->>'quantity')::integer THEN
       RETURN jsonb_build_object('state', 'blocked', 'reason', 'ticket_line_mismatch');
     END IF;
-    v_price := v_price + (v_removal->>'quantity')::integer * coalesce(v_line.unit_price, 0);
-    v_lines := v_lines || jsonb_build_array(jsonb_build_object(
-      'ticket_type_id', v_removal->>'ticket_type_id', 'quantity', (v_removal->>'quantity')::integer, 'unit_price', v_line.unit_price));
   END LOOP;
 
   PERFORM set_config('ams.skip_default_item', 'on', true);
-  FOR v_removal IN SELECT value FROM jsonb_array_elements(v_removals) LOOP
-    -- A line that empties is deleted: booking_items.quantity must stay above 0.
-    DELETE FROM public.booking_items
-    WHERE booking_id = v_booking.id AND ticket_type_id = (v_removal->>'ticket_type_id')::uuid
-      AND quantity = (v_removal->>'quantity')::integer;
-    IF NOT FOUND THEN
-      UPDATE public.booking_items SET quantity = quantity - (v_removal->>'quantity')::integer
-      WHERE booking_id = v_booking.id AND ticket_type_id = (v_removal->>'ticket_type_id')::uuid;
-    END IF;
-  END LOOP;
+  v_taken := public.event_booking_take_tickets_v01(v_booking.id, v_takes);
+  v_price := (v_taken->>'total')::numeric;
+  v_lines := v_taken->'tickets';
   UPDATE public.bookings
   SET seats = v_new_seats,
       attendees = v_kept,
@@ -374,6 +518,7 @@ DECLARE
   v_snapshot record;
   v_type_remaining integer;
   v_unit numeric(10,2);
+  v_paid_each numeric(10,2);
   v_amount numeric(10,2) := 0;
   v_rows jsonb := '[]'::jsonb;
   v_taken uuid[];
@@ -476,13 +621,14 @@ BEGIN
   END IF;
 
   v_new_seats := coalesce(v_booking.seats, 0) + p_quantity;
-  PERFORM set_config('ams.skip_default_item', 'on', true);
-  UPDATE public.booking_items SET quantity = quantity + p_quantity
-  WHERE booking_id = v_booking.id AND ticket_type_id = v_type.id;
-  IF NOT FOUND THEN
-    INSERT INTO public.booking_items (booking_id, ticket_type_id, quantity, unit_price)
-    VALUES (v_booking.id, v_type.id, p_quantity, CASE WHEN v_settlement = 'comp' THEN 0 ELSE v_unit END);
+  -- Each new ticket keeps what was paid for it: the full price in cash or by card, or £0 free.
+  v_paid_each := CASE WHEN v_settlement = 'comp' THEN 0 ELSE v_unit END;
+  IF v_settlement IN ('cash', 'card_terminal', 'comp') THEN
+    SELECT coalesce(jsonb_agg(r || jsonb_build_object('price_paid', v_paid_each)), '[]'::jsonb) INTO v_rows
+    FROM jsonb_array_elements(v_rows) r;
   END IF;
+  PERFORM set_config('ams.skip_default_item', 'on', true);
+  PERFORM public.event_booking_put_tickets_v01(v_booking.id, v_type.id, p_quantity, v_paid_each, v_paid_each);
   UPDATE public.bookings
   SET seats = v_new_seats,
       attendees = CASE WHEN v_named > 0 THEN v_booking.attendees || v_rows ELSE attendees END,
@@ -577,6 +723,11 @@ DECLARE
   v_owed numeric := 0;
   v_payment_id uuid;
   v_request_id uuid;
+  v_takes jsonb;
+  v_taken jsonb;
+  v_index integer;
+  v_new_prices jsonb;
+  v_block jsonb;
 BEGIN
   PERFORM 1 FROM public.events e
   WHERE e.id = (SELECT b.event_id FROM public.bookings b WHERE b.id = p_booking_id) FOR UPDATE;
@@ -638,7 +789,6 @@ BEGIN
       RETURN jsonb_build_object('state', 'blocked', 'reason', 'ticket_line_mismatch');
     END IF;
     v_count := v_count + (v_move->>'quantity')::integer;
-    v_paid_for_old := v_paid_for_old + (v_move->>'quantity')::integer * coalesce(v_line.unit_price, 0);
   END LOOP;
 
   IF v_to.capacity IS NOT NULL THEN
@@ -647,6 +797,22 @@ BEGIN
       RETURN jsonb_build_object('state', 'blocked', 'reason', 'ticket_type_sold_out', 'remaining', coalesce(v_type_remaining, 0));
     END IF;
   END IF;
+
+  -- Take the tickets off at what was paid for each (a guest added at £45 is £45, a free one £0).
+  -- A refusal below undoes this: it raises P2005 and the handler at the end answers blocked.
+  IF v_named > 0 THEN
+    SELECT coalesce(jsonb_agg(jsonb_build_object(
+             'ticket_type_id', coalesce(nullif(a->>'ticket_type_id', '')::uuid, v_default),
+             'price', a->'price_paid', 'prefer', 'line') ORDER BY ord), '[]'::jsonb) INTO v_takes
+    FROM jsonb_array_elements(v_booking.attendees) WITH ORDINALITY AS t(a, ord)
+    WHERE (a->>'id') = ANY (SELECT x::text FROM unnest(p_attendee_ids) x);
+  ELSE
+    SELECT jsonb_agg(jsonb_build_object('ticket_type_id', p_from_ticket_type_id, 'price', NULL, 'prefer', 'last'))
+    INTO v_takes FROM generate_series(1, p_quantity);
+  END IF;
+  PERFORM set_config('ams.skip_default_item', 'on', true);
+  v_taken := public.event_booking_take_tickets_v01(v_booking.id, v_takes);
+  v_paid_for_old := (v_taken->>'total')::numeric;
 
   -- The new type at the price the booking's own tickets were sold on.
   v_disc_type := v_event.online_discount_type;
@@ -659,42 +825,44 @@ BEGIN
 
   IF v_difference > 0 AND coalesce(v_event.payment_mode, 'free') = 'prepaid' THEN
     IF v_settlement NOT IN ('cash', 'card_terminal', 'comp') THEN
-      RETURN jsonb_build_object('state', 'blocked', 'reason', 'settlement_required', 'amount', v_difference);
+      v_block := jsonb_build_object('state', 'blocked', 'reason', 'settlement_required', 'amount', v_difference);
+      RAISE EXCEPTION USING ERRCODE = 'P2005', MESSAGE = 'settlement_required';
     END IF;
     IF v_settlement = 'comp' AND length(trim(coalesce(p_note, ''))) < 1 THEN
-      RETURN jsonb_build_object('state', 'blocked', 'reason', 'comp_reason_required');
+      v_block := jsonb_build_object('state', 'blocked', 'reason', 'comp_reason_required');
+      RAISE EXCEPTION USING ERRCODE = 'P2005', MESSAGE = 'comp_reason_required';
     END IF;
     IF v_settlement IN ('cash', 'card_terminal') THEN
       v_amount := v_difference;
       IF p_expected_amount IS NULL OR round(p_expected_amount, 2) <> v_amount THEN
-        RETURN jsonb_build_object('state', 'blocked', 'reason', 'amount_changed', 'amount', v_amount);
+        v_block := jsonb_build_object('state', 'blocked', 'reason', 'amount_changed', 'amount', v_amount);
+        RAISE EXCEPTION USING ERRCODE = 'P2005', MESSAGE = 'amount_changed';
       END IF;
     END IF;
   ELSIF v_settlement <> 'none' THEN
-    RETURN jsonb_build_object('state', 'blocked', 'reason', 'no_payment_taken_here', 'amount', greatest(v_difference, 0));
+    v_block := jsonb_build_object('state', 'blocked', 'reason', 'no_payment_taken_here', 'amount', greatest(v_difference, 0));
+    RAISE EXCEPTION USING ERRCODE = 'P2005', MESSAGE = 'no_payment_taken_here';
   END IF;
 
-  PERFORM set_config('ams.skip_default_item', 'on', true);
-  FOR v_move IN SELECT value FROM jsonb_array_elements(v_moves) LOOP
-    -- A line that empties is deleted: booking_items.quantity must stay above 0.
-    DELETE FROM public.booking_items
-    WHERE booking_id = v_booking.id AND ticket_type_id = (v_move->>'ticket_type_id')::uuid
-      AND quantity = (v_move->>'quantity')::integer;
-    IF NOT FOUND THEN
-      UPDATE public.booking_items SET quantity = quantity - (v_move->>'quantity')::integer
-      WHERE booking_id = v_booking.id AND ticket_type_id = (v_move->>'ticket_type_id')::uuid;
-    END IF;
-  END LOOP;
-  UPDATE public.booking_items SET quantity = quantity + v_count
-  WHERE booking_id = v_booking.id AND ticket_type_id = v_to.id;
-  IF NOT FOUND THEN
-    INSERT INTO public.booking_items (booking_id, ticket_type_id, quantity, unit_price)
-    VALUES (v_booking.id, v_to.id, v_count, v_to_unit);
+  -- The new tickets carry what was paid for them now: the new type's price, or, given free, what
+  -- the old tickets were paid.
+  IF v_settlement = 'comp' THEN
+    FOR v_index IN 0 .. jsonb_array_length(v_taken->'prices') - 1 LOOP
+      PERFORM public.event_booking_put_tickets_v01(v_booking.id, v_to.id, 1, (v_taken->'prices'->>v_index)::numeric, v_to_unit);
+    END LOOP;
+  ELSE
+    PERFORM public.event_booking_put_tickets_v01(v_booking.id, v_to.id, v_count, v_to_unit, v_to_unit);
   END IF;
   IF v_named > 0 THEN
+    SELECT jsonb_object_agg(x.id, CASE WHEN v_settlement = 'comp' THEN v_taken->'prices'->((x.rn - 1)::integer) ELSE to_jsonb(v_to_unit) END)
+    INTO v_new_prices
+    FROM (SELECT a->>'id' AS id, row_number() OVER (ORDER BY ord) AS rn
+          FROM jsonb_array_elements(v_booking.attendees) WITH ORDINALITY AS t(a, ord)
+          WHERE (a->>'id') = ANY (SELECT x::text FROM unnest(p_attendee_ids) x)) x;
     UPDATE public.bookings
-    SET attendees = (SELECT jsonb_agg(CASE WHEN (a->>'id') = ANY (SELECT x::text FROM unnest(p_attendee_ids) x)
-                                          THEN a || jsonb_build_object('ticket_type_id', v_to.id) ELSE a END ORDER BY ord)
+    SET attendees = (SELECT jsonb_agg(CASE WHEN v_new_prices ? (a->>'id')
+                                          THEN a || jsonb_build_object('ticket_type_id', v_to.id, 'price_paid', v_new_prices->(a->>'id'))
+                                          ELSE a END ORDER BY ord)
                      FROM jsonb_array_elements(v_booking.attendees) WITH ORDINALITY AS t(a, ord)),
         updated_at = now()
     WHERE id = v_booking.id;
@@ -743,6 +911,9 @@ BEGIN
     'payment_id', v_payment_id,
     'refund_owed', v_owed,
     'refund_request_id', v_request_id);
+EXCEPTION WHEN SQLSTATE 'P2005' THEN
+  -- A refusal found after the tickets were taken off: everything above is undone.
+  RETURN v_block;
 END;
 $$;
 
@@ -801,7 +972,7 @@ BEGIN
   ORDER BY e.id FOR UPDATE;
 
   SELECT b.id, b.event_id, b.customer_id, b.seats, b.status, b.is_reminder_only, b.event_seating_type,
-         b.contact_email, coalesce(b.attendees, '[]'::jsonb) AS attendees
+         b.contact_email, b.attendee_names, coalesce(b.attendees, '[]'::jsonb) AS attendees
   INTO v_booking FROM public.bookings b WHERE b.id = p_booking_id FOR UPDATE;
   IF NOT FOUND THEN RETURN jsonb_build_object('state', 'blocked', 'reason', 'booking_not_found'); END IF;
   IF v_booking.status <> 'confirmed' OR coalesce(v_booking.is_reminder_only, false) THEN
@@ -893,6 +1064,24 @@ BEGIN
     SET status = 'confirmed', hold_expires_at = NULL, confirmed_at = coalesce(confirmed_at, now()), updated_at = now()
     WHERE event_booking_id = v_new_id AND status = 'pending_payment';
 
+    -- A booking with names only in the older attendee_names list (no guest rows) keeps them, as
+    -- the move always did (review finding on PR 277): the booking's list, and each ticket line's
+    -- names on the line its tickets moved to.
+    IF jsonb_array_length(v_booking.attendees) = 0 THEN
+      IF v_booking.attendee_names IS NOT NULL AND cardinality(v_booking.attendee_names) > 0 THEN
+        UPDATE public.bookings SET attendee_names = v_booking.attendee_names WHERE id = v_new_id;
+      END IF;
+      UPDATE public.booking_items target
+      SET attendee_names = names.names
+      FROM (SELECT (v_map->>(bi.ticket_type_id::text))::uuid AS type_id,
+                   array_agg(n ORDER BY bi.ticket_type_id, ord) AS names
+            FROM public.booking_items bi
+            CROSS JOIN LATERAL unnest(bi.attendee_names) WITH ORDINALITY AS u(n, ord)
+            WHERE bi.booking_id = v_booking.id AND coalesce(trim(n), '') <> ''
+            GROUP BY 1) names
+      WHERE target.booking_id = v_new_id AND target.ticket_type_id = names.type_id;
+    END IF;
+
     SELECT coalesce(sum(bi.quantity * bi.unit_price), 0) INTO v_target_total FROM public.booking_items bi WHERE bi.booking_id = v_new_id;
     v_chargeable := CASE WHEN coalesce(v_target.payment_mode, 'free') = 'prepaid' THEN v_target_total ELSE 0 END;
     IF v_chargeable > v_paid + 0.004 THEN
@@ -952,6 +1141,115 @@ BEGIN
 END;
 $$;
 
+-- ---------------------------------------------------------------------------------------------
+-- Record a cash or card refund handed back at the bar (BK-135), in one transaction (review finding
+-- on PR 277). Read-then-insert from the app let two overlapping submissions, or two retries with
+-- one key, both see the same balance and record the money twice. Here the booking row is locked
+-- first, so calls on one booking run one after another; the request key is checked under that
+-- lock, and the unique index below refuses a second refund row for the same key and payment
+-- whatever path writes it. Never records more than the bar payments still hold.
+-- Returns {"status": "succeeded" | "manual_required" | "none", "amount", "reason"}.
+-- ---------------------------------------------------------------------------------------------
+CREATE UNIQUE INDEX payments_manual_refund_claim_unique
+  ON public.payments ((metadata->>'idempotency_key'), (metadata->>'source_payment_id'))
+  WHERE charge_type = 'refund' AND payment_provider = 'manual' AND (metadata->>'idempotency_key') IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION public.record_manual_event_refund_v01(
+  p_booking_id uuid,
+  p_amount numeric,
+  p_method text,
+  p_reason text,
+  p_idempotency_key text,
+  p_recorded_by uuid,
+  p_note text,
+  p_metadata jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_amount numeric := round(coalesce(p_amount, 0), 2);
+  v_prior numeric;
+  v_payment record;
+  v_refunded numeric;
+  v_available numeric;
+  v_take numeric;
+  v_remaining numeric;
+  v_recorded numeric := 0;
+BEGIN
+  IF v_amount <= 0 THEN
+    RETURN jsonb_build_object('status', 'none', 'amount', 0);
+  END IF;
+  IF p_method NOT IN ('cash', 'card_terminal') THEN
+    RAISE EXCEPTION 'invalid_refund_method';
+  END IF;
+  IF length(trim(coalesce(p_idempotency_key, ''))) < 1 THEN
+    RAISE EXCEPTION 'idempotency_key_required';
+  END IF;
+
+  -- One booking's refunds are recorded one at a time.
+  PERFORM 1 FROM public.bookings b WHERE b.id = p_booking_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'booking_not_found';
+  END IF;
+
+  SELECT sum(p.amount) INTO v_prior FROM public.payments p
+  WHERE p.charge_type = 'refund' AND p.metadata->>'idempotency_key' = p_idempotency_key
+    AND p.status IN ('refunded', 'pending', 'succeeded');
+  IF v_prior IS NOT NULL THEN
+    RETURN jsonb_build_object('status', 'succeeded', 'amount', round(v_prior, 2), 'reason', 'idempotent_replay');
+  END IF;
+
+  v_remaining := v_amount;
+  FOR v_payment IN
+    SELECT p.id, p.amount, p.currency FROM public.payments p
+    WHERE p.event_booking_id = p_booking_id
+      AND p.charge_type IN ('prepaid_event', 'seat_increase')
+      AND p.status IN ('succeeded', 'partially_refunded')
+      AND p.payment_provider = 'manual'
+      AND p.amount > 0
+    ORDER BY p.created_at, p.id
+    FOR UPDATE
+  LOOP
+    EXIT WHEN v_remaining <= 0.004;
+    SELECT coalesce(sum(r.amount), 0) INTO v_refunded FROM public.payments r
+    WHERE r.charge_type = 'refund' AND r.metadata->>'source_payment_id' = v_payment.id::text
+      AND r.status IN ('refunded', 'pending', 'succeeded');
+    v_available := round(greatest(0, v_payment.amount - v_refunded), 2);
+    CONTINUE WHEN v_available <= 0;
+    v_take := least(v_remaining, v_available);
+
+    INSERT INTO public.payments (event_booking_id, charge_type, payment_provider, payment_method, amount, currency, status, metadata)
+    VALUES (p_booking_id, 'refund', 'manual', p_method, v_take, upper(coalesce(v_payment.currency, 'GBP')), 'refunded',
+      coalesce(p_metadata, '{}'::jsonb) || jsonb_build_object(
+        'source_payment_id', v_payment.id,
+        'reason', p_reason,
+        'refund_method', p_method,
+        'recorded_by', p_recorded_by,
+        'note', nullif(trim(coalesce(p_note, '')), ''),
+        'idempotency_key', p_idempotency_key));
+
+    UPDATE public.payments
+    SET status = CASE WHEN v_refunded + v_take + 0.004 >= v_payment.amount THEN 'refunded' ELSE 'partially_refunded' END,
+        updated_at = now()
+    WHERE id = v_payment.id;
+
+    v_recorded := v_recorded + v_take;
+    v_remaining := round(v_remaining - v_take, 2);
+  END LOOP;
+
+  IF v_recorded <= 0 THEN
+    RETURN jsonb_build_object('status', 'manual_required', 'amount', v_amount, 'reason', 'no_bar_payment_to_refund');
+  END IF;
+  IF v_recorded + 0.004 < v_amount THEN
+    RETURN jsonb_build_object('status', 'manual_required', 'amount', round(v_recorded, 2), 'reason', 'partial_refund_only');
+  END IF;
+  RETURN jsonb_build_object('status', 'succeeded', 'amount', round(v_recorded, 2));
+END;
+$$;
+
 -- Server-only, like every booking function since 20261026212313.
 REVOKE ALL ON FUNCTION public.event_booking_net_paid_v01(uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.event_booking_refundable_v01(uuid) FROM PUBLIC, anon, authenticated;
@@ -960,6 +1258,10 @@ REVOKE ALL ON FUNCTION public.event_booking_staff_guest_rows_v01(uuid, uuid, jso
 REVOKE ALL ON FUNCTION public.add_event_booking_guests_v01(uuid, uuid, integer, jsonb, text, text, numeric, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.change_event_booking_ticket_type_v01(uuid, uuid[], uuid, integer, uuid, text, text, numeric, uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.transfer_event_booking_v01(uuid, uuid, jsonb, uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.event_booking_line_groups_v01(jsonb, integer, numeric) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.event_booking_take_tickets_v01(uuid, jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.event_booking_put_tickets_v01(uuid, uuid, integer, numeric, numeric) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.record_manual_event_refund_v01(uuid, numeric, text, text, text, uuid, text, jsonb) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.event_booking_net_paid_v01(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.event_booking_refundable_v01(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.remove_event_booking_guests_v01(uuid, uuid[], uuid, integer, uuid) TO service_role;
@@ -967,6 +1269,10 @@ GRANT EXECUTE ON FUNCTION public.event_booking_staff_guest_rows_v01(uuid, uuid, 
 GRANT EXECUTE ON FUNCTION public.add_event_booking_guests_v01(uuid, uuid, integer, jsonb, text, text, numeric, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.change_event_booking_ticket_type_v01(uuid, uuid[], uuid, integer, uuid, text, text, numeric, uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.transfer_event_booking_v01(uuid, uuid, jsonb, uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.event_booking_line_groups_v01(jsonb, integer, numeric) TO service_role;
+GRANT EXECUTE ON FUNCTION public.event_booking_take_tickets_v01(uuid, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.event_booking_put_tickets_v01(uuid, uuid, integer, numeric, numeric) TO service_role;
+GRANT EXECUTE ON FUNCTION public.record_manual_event_refund_v01(uuid, numeric, text, text, text, uuid, text, jsonb) TO service_role;
 
 -- Prove it: none of the new functions or the new table is reachable with the browser keys.
 DO $$
@@ -980,7 +1286,11 @@ BEGIN
     'public.event_booking_staff_guest_rows_v01(uuid,uuid,jsonb,uuid[])',
     'public.add_event_booking_guests_v01(uuid,uuid,integer,jsonb,text,text,numeric,uuid)',
     'public.change_event_booking_ticket_type_v01(uuid,uuid[],uuid,integer,uuid,text,text,numeric,uuid)',
-    'public.transfer_event_booking_v01(uuid,uuid,jsonb,uuid)'
+    'public.transfer_event_booking_v01(uuid,uuid,jsonb,uuid)',
+    'public.event_booking_line_groups_v01(jsonb,integer,numeric)',
+    'public.event_booking_take_tickets_v01(uuid,jsonb)',
+    'public.event_booking_put_tickets_v01(uuid,uuid,integer,numeric,numeric)',
+    'public.record_manual_event_refund_v01(uuid,numeric,text,text,text,uuid,text,jsonb)'
   ] LOOP
     IF has_function_privilege('anon', v_signature, 'EXECUTE') OR has_function_privilege('authenticated', v_signature, 'EXECUTE') THEN
       RAISE EXCEPTION '% is executable by anon or authenticated', v_signature;

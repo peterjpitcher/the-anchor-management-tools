@@ -764,6 +764,16 @@ describe('event guest emails', () => {
       expect(sent.text).not.toContain('needs staff follow-up')
     })
 
+    it('splits a refund paid partly online and partly at the bar, never the whole sum at the bar', async () => {
+      await sendEventBookingCancelledEmail(buildSupabase() as any, {
+        bookingId, refundStatus: 'succeeded', refundAmount: 80, barRefundAmount: 45, reason: 'event_cancelled', paymentTaken: true,
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain("We've refunded the £80.00 you paid online. We'll hand back the £45.00 you paid at the bar.")
+      expect(sent.text).not.toContain('£125.00')
+    })
+
     it('tells a guest who paid at the bar that we will be in touch to give it back', async () => {
       await sendEventBookingCancelledEmail(buildSupabase() as any, {
         bookingId, refundStatus: 'bar_refund_due', refundAmount: 45, reason: 'event_cancelled', paymentTaken: true,

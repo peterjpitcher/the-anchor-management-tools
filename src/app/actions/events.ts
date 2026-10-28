@@ -1332,6 +1332,14 @@ function buildStaffCancellationRefundNote(input: {
   }
   if (input.refundAmount <= 0) return 'No refund is due under the event cancellation policy.'
   const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.refundAmount)
+  // Paid both online and at the bar: say which money goes back which way (review finding on PR 277).
+  if ((input.barRefundAmount ?? 0) > 0) {
+    const bar = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.barRefundAmount ?? 0)
+    if (input.refundStatus === 'succeeded' || input.refundStatus === 'pending') {
+      return `The ${formatted} you paid online is being refunded, and we'll hand back the ${bar} you paid at the bar.`
+    }
+    return `Please contact us about the refund of the ${formatted} you paid online, and we'll hand back the ${bar} you paid at the bar.`
+  }
   if (input.refundStatus === 'succeeded') return `Refund issued: ${formatted}.`
   if (input.refundStatus === 'pending') return `Refund pending: ${formatted}.`
   if (input.refundStatus === 'manual_required' || input.refundStatus === 'failed') {
@@ -2086,6 +2094,7 @@ export async function cancelEventManualBooking(input: {
       // Zero is "no refund", not "a refund of £0.00". maxRefundable is what this booking actually
       // paid, so it decides whether a refund sentence has anything to say at all.
       refundAmount: barRefundOnly ? barRefundAmount : refundAmount > 0 ? refundAmount : null,
+      ...(barRefundAmount > 0 && !barRefundOnly ? { barRefundAmount } : {}),
       currency: 'GBP',
       reason: 'staff_cancel',
       paymentTaken: maxRefundable > 0

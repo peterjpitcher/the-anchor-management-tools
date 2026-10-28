@@ -926,8 +926,20 @@ function buildRefundEmailLine(input: {
   paymentTaken?: boolean
   /** Only the rest of a partly refunded payment goes back now (BK-136). */
   refundIsRestOfPayment?: boolean
+  /** Paid partly at the bar: what a person hands back there (review finding on PR 277). */
+  barRefundAmount?: number | null
 }): string | null {
   const amountText = formatPositiveCurrency(input.refundAmount ?? null, input.currency || 'GBP')
+  const barText = formatPositiveCurrency(input.barRefundAmount ?? null, input.currency || 'GBP')
+
+  // Paid both online and at the bar: say which money goes back which way, never the whole sum
+  // as if it were all to collect at the bar.
+  if (amountText && barText && input.refundStatus !== 'bar_refund_due') {
+    const bar = `We'll hand back the ${barText} you paid at the bar.`
+    if (input.refundStatus === 'succeeded') return `We've refunded the ${amountText} you paid online. ${bar}`
+    if (input.refundStatus === 'pending') return `We're refunding the ${amountText} you paid online. ${bar}`
+    return `The refund of the ${amountText} you paid online needs staff follow-up, and we will contact you. ${bar}`
+  }
 
   if (amountText) {
     // Paid at the bar in cash or by card: PayPal cannot return it, a person does (BK-135).
@@ -970,6 +982,8 @@ export async function sendEventBookingCancelledEmail(
     paymentTaken?: boolean
     /** Part of the payment was refunded before, so this refund is the rest of it (BK-136). */
     refundIsRestOfPayment?: boolean
+    /** Paid partly at the bar: what a person hands back, beside the PayPal refund. */
+    barRefundAmount?: number | null
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)

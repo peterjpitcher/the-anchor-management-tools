@@ -155,4 +155,27 @@ describe('whole-event cancellation lists tickets paid at the bar', () => {
     const smsBodies = vi.mocked(sendSMS).mock.calls.map((call) => call[1] as string)
     expect(smsBodies.some((body) => body.includes('You paid £45.00 at the bar, so we will be in touch to give it back.'))).toBe(true)
   })
+
+  it('tells a guest who paid both ways what goes back online and what at the bar (review finding on PR 277)', async () => {
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'succeeded', amount: 80, currency: 'GBP' })
+    const { client } = db({
+      bookings: [booking('booking-mixed')],
+      payments: [
+        { id: 'payment-paypal', event_booking_id: 'booking-mixed', amount: 80, status: 'succeeded', payment_provider: 'paypal', payment_method: 'paypal' },
+        { id: 'payment-cash', event_booking_id: 'booking-mixed', amount: 45, status: 'succeeded', payment_provider: 'manual', payment_method: 'cash' },
+      ],
+      refunds: [],
+    })
+
+    await EventService.cancelEventBookings({ ...params, supabase: client })
+
+    expect(sendEventBookingCancelledEmail).toHaveBeenCalledWith(client, expect.objectContaining({
+      bookingId: 'booking-mixed', refundStatus: 'succeeded', refundAmount: 80, barRefundAmount: 45,
+    }))
+    const sms = String(vi.mocked(sendSMS).mock.calls[0]?.[1])
+    expect(sms).toContain("The £80.00 you paid online will be refunded within 5-10 business days, and we'll hand back the £45.00 you paid at the bar.")
+    expect(sms).not.toContain('£125.00')
+    // GSM-7 only: straight apostrophes, the pound sign, nothing that forces a Unicode text.
+    expect(sms).toMatch(/^[A-Za-z0-9 £.,:;'!?()\-+/@&%\n]*$/)
+  })
 })
