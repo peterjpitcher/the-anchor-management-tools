@@ -53,8 +53,39 @@ const EnquirySchema = z.object({
       .max(300, 'Please call 01753 682707 so we can plan a party this size with you'))
     .optional(),
   notes: z.string().max(2000).optional(),
+  // BK-188: what the guest chose on the form, as fields, so staff do not re-key them from the notes.
+  // The room the guest would like, by id (the estimator) or by name (the short form). It does not
+  // hold the room: staff add it to the booking. Never a reason to refuse an enquiry, so anything
+  // this app cannot match is simply left out.
+  space_id: z.string().max(100).optional(),
+  room_name: z.string().max(80).optional(),
+  // How many hours of hire the estimator was priced on. With a start time it sets the end time.
+  hire_hours: z
+    .preprocess((value) => {
+      if (typeof value === 'number') return value
+      if (typeof value === 'string' && value.length > 0) return Number(value)
+      return undefined
+    }, z.number({ invalid_type_error: 'Please enter the number of hours' })
+      .int('Please enter the hours as a whole number')
+      .min(1, 'Please enter at least one hour')
+      .max(24, 'Please call 01753 682707 so we can plan a hire this long with you'))
+    .optional(),
+  // How the guest would like us to reply. "No preference" is the same as not saying.
+  reply_preference: z
+    .preprocess((value) => (typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, '_') : value),
+      z.enum(['phone', 'email', 'text', 'no_preference'], { message: 'Please choose how you would like us to reply' }))
+    .optional(),
   communication_consent: OptionalCommunicationConsentSchema
 })
+
+/** "19:00" plus 5 hours is "00:00"; the booking function marks a time at or before the start as next day. */
+function endTimeAfter(startTime: string | undefined, hours: number | undefined): string | undefined {
+  if (!startTime || !hours) return undefined
+  const match = /^(\d{2}):(\d{2})$/.exec(startTime)
+  if (!match) return undefined
+  const minutes = (Number(match[1]) * 60 + Number(match[2]) + hours * 60) % (24 * 60)
+  return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`
+}
 
 // Flood limits (BK-108). This used to be one per-IP bucket of 20 every 5 minutes, checked before
 // the key. The website forwards no client IP, so every website enquiry shared that one bucket and
@@ -117,6 +148,52 @@ function resolveDateAndTime(input: z.infer<typeof EnquirySchema>): { eventDate?:
     eventDate: input.date,
     startTime: input.time
   }
+}
+
+/**
+ * Keep the room asked for and the reply choice on the booking (BK-188). The booking function does
+ * not take these, so they are written after it. A room id this app does not know is left out
+ * rather than refused. Never fails the enquiry, which is saved by now; a failure is logged at error
+ * and the manager email still names them.
+ */
+async function saveEnquiryChoices(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  input: z.infer<typeof EnquirySchema>
+): Promise<{ roomName: string | null }> {
+  let roomName: string | null = null
+  const patch: Record<string, string> = {}
+  try {
+    const spaceId = input.space_id && z.string().uuid().safeParse(input.space_id).success ? input.space_id : null
+    const typedRoom = input.room_name?.trim() || null
+    if (spaceId || typedRoom) {
+      let query = supabase.from('venue_spaces').select('id, name')
+      query = spaceId ? query.eq('id', spaceId) : query.ilike('name', typedRoom as string)
+      const { data: spaces, error: spaceError } = await query.limit(1)
+      if (spaceError) throw new Error(spaceError.message)
+      const space = (spaces ?? [])[0] as { id: string; name: string | null } | undefined
+      if (space) {
+        roomName = space.name ?? null
+        patch.requested_space_id = space.id
+      } else {
+        // Named, but not a room this app has: the manager still sees what the guest asked for.
+        roomName = typedRoom
+      }
+    }
+    if (input.reply_preference && input.reply_preference !== 'no_preference') {
+      patch.communication_preference = input.reply_preference
+    }
+    if (Object.keys(patch).length > 0) {
+      const { error: updateError } = await supabase.from('private_bookings').update(patch).eq('id', bookingId)
+      if (updateError) throw new Error(updateError.message)
+    }
+  } catch (error) {
+    logger.error('Could not keep the room or reply choice on a website enquiry', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { privateBookingId: bookingId, fields: Object.keys(patch) },
+    })
+  }
+  return { roomName }
 }
 
 async function recordPrivateBookingEnquiryAnalyticsSafe(
@@ -227,7 +304,12 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
       email: parsed.data.email || null,
       event_type: parsed.data.event_type || null,
       notes: parsed.data.notes || null,
-      communication_consent: consentHashPayload(parsed.data.communication_consent)
+      communication_consent: consentHashPayload(parsed.data.communication_consent),
+      // Only when sent, so an enquiry from before these fields hashes as it always did.
+      ...(parsed.data.space_id ? { space_id: parsed.data.space_id } : {}),
+      ...(parsed.data.room_name ? { room_name: parsed.data.room_name } : {}),
+      ...(parsed.data.hire_hours ? { hire_hours: parsed.data.hire_hours } : {}),
+      ...(parsed.data.reply_preference ? { reply_preference: parsed.data.reply_preference } : {}),
     })
     const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
@@ -281,6 +363,7 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
         contact_email: parsed.data.email,
         event_date: eventDate,
         start_time: startTime,
+        end_time: endTimeAfter(startTime, parsed.data.hire_hours),
         guest_count: parsed.data.group_size,
         event_type: parsed.data.event_type,
         internal_notes: parsed.data.notes,
@@ -355,10 +438,19 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
         })
       }
 
+      const extras = await saveEnquiryChoices(supabase, booking.id, parsed.data)
+
       try {
         const managerEmailResult = await sendManagerPrivateBookingCreatedEmail({
           booking: booking as any,
-          createdVia: 'api_private_booking_enquiry'
+          createdVia: 'api_private_booking_enquiry',
+          enquiry: {
+            roomName: extras.roomName,
+            hireHours: parsed.data.hire_hours ?? null,
+            replyPreference: parsed.data.reply_preference && parsed.data.reply_preference !== 'no_preference'
+              ? parsed.data.reply_preference
+              : null,
+          },
         })
 
         if (!managerEmailResult.sent && managerEmailResult.error) {
