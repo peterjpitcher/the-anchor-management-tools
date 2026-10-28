@@ -376,6 +376,11 @@ interface Props {
   emailOption?: { enabled: boolean; usable: boolean }
   /** Shown when the guest gave a different email for this booking (BK-078). Null otherwise. */
   contactEmailNotice?: ReactNode
+  /**
+   * Set when this table is the table half of an event booking (BK-074). Its cancel, no-show and
+   * delete belong to the event booking, so they are not offered here.
+   */
+  eventLink?: { eventId: string | null; eventName: string | null } | null
 }
 
 type MoveTableOption = {
@@ -409,7 +414,7 @@ type BookingEditState = {
 
 type PreorderEditState = Record<string, { quantity: string; special_requests: string }>
 
-export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption, contactEmailNotice }: Props) {
+export default function BookingDetailClient({ booking, canEdit, canManage, canRefund, depositRefunds, seasonalPreorder, emailOption, contactEmailNotice, eventLink }: Props) {
   const router = useRouter()
   const [actionLoadingKey, setActionLoadingKey] = useState<string | null>(null)
   // What staff must read after a party-size change, kept until dismissed rather than a toast that
@@ -1023,7 +1028,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
-      {!bookingClosed && (
+      {!bookingClosed && !eventLink && (
         <Button
           size="sm"
           variant="secondary"
@@ -1033,7 +1038,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           Mark No-Show
         </Button>
       )}
-      {!bookingClosed && (
+      {!bookingClosed && !eventLink && (
         <Button
           size="sm"
           variant="danger"
@@ -1047,18 +1052,20 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
           Cancel Booking
         </Button>
       )}
-      <Button
-        size="sm"
-        variant="danger"
-        onClick={() => {
-          setCancelForm(initialStaffCancelForm(depositHeld))
-          setCancelFormProblem(null)
-          setDeleteConfirmOpen(true)
-        }}
-        disabled={Boolean(actionLoadingKey)}
-      >
-        Delete
-      </Button>
+      {(!eventLink || booking.status === 'cancelled') && (
+        <Button
+          size="sm"
+          variant="danger"
+          onClick={() => {
+            setCancelForm(initialStaffCancelForm(depositHeld))
+            setCancelFormProblem(null)
+            setDeleteConfirmOpen(true)
+          }}
+          disabled={Boolean(actionLoadingKey)}
+        >
+          Delete
+        </Button>
+      )}
     </div>
   ) : undefined
 
@@ -1106,6 +1113,18 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
             </p>
           </CardBody>
         </Card>
+
+        {eventLink && (
+          <Alert tone="info" title={`Linked to event booking for ${eventLink.eventName || 'an event'}`}>
+            This table is part of an event booking. Cancel it, mark a no-show or change its time from
+            the event, so the tickets and the table stay together.{' '}
+            {eventLink.eventId && (
+              <a className="font-medium underline" href={`/events/${eventLink.eventId}`}>
+                Open the event booking
+              </a>
+            )}
+          </Alert>
+        )}
 
         <StatGrid columns={4}>
           <Stat label="Covers" value={booking.party_size ?? '-'} />

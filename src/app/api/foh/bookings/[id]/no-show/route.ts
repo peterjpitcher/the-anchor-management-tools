@@ -3,6 +3,7 @@ import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
+import { eventLinkedTableBookingResponse, isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -23,6 +24,11 @@ export async function POST(
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // An event guest who did not come is marked from the event, ticket and table together (BK-074).
+  if (isEventLinkedTableBooking(booking)) {
+    return eventLinkedTableBookingResponse()
   }
 
   const nowIso = new Date().toISOString()

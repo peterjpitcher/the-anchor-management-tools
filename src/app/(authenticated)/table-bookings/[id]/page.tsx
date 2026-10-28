@@ -61,7 +61,7 @@ export default async function BookingDetailPage({ params }: Props) {
       sunday_preorder_completed_at, sunday_preorder_cutoff_at, cancellation_reason,
       payment_status, payment_method, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, card_capture_completed_at,
       deposit_review_needed_at, deposit_review_note,
-      contact_email, guest_confirmed_at,
+      contact_email, guest_confirmed_at, event_booking_id,
       customer:customers!table_bookings_customer_id_fkey(
         id, first_name, last_name, mobile_number, email
       ),
@@ -125,9 +125,10 @@ export default async function BookingDetailPage({ params }: Props) {
     audit_trail: auditTrail,
   } as unknown as Booking
 
-  const [seasonalPreorder, depositRefunds] = await Promise.all([
+  const [seasonalPreorder, depositRefunds, eventLink] = await Promise.all([
     loadSeasonalPreorder(rawBooking, canEdit, canManage),
     loadDepositRefunds(rawBooking.id),
+    loadEventLink(supabase, rawBooking.event_booking_id ?? null),
   ])
   // P7: the guest message card offers email when the option is on (and defaults to it for a
   // guest with a usable address). Read only for staff who can send, who are the only ones shown it.
@@ -143,6 +144,7 @@ export default async function BookingDetailPage({ params }: Props) {
       depositRefunds={depositRefunds}
       seasonalPreorder={seasonalPreorder}
       emailOption={emailOption}
+      eventLink={eventLink}
       contactEmailNotice={rawBooking.contact_email ? (
         <BookingContactEmailNotice
           bookingType="table"
@@ -154,6 +156,26 @@ export default async function BookingDetailPage({ params }: Props) {
       ) : null}
     />
   )
+}
+
+/**
+ * The event booking this table belongs to, for the "Linked to event booking" notice (BK-074).
+ * Null for an ordinary table booking. A failed read still marks the booking as linked, so the
+ * page never offers a cancel that the server would refuse.
+ */
+async function loadEventLink(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  eventBookingId: string | null,
+): Promise<{ eventId: string | null; eventName: string | null } | null> {
+  if (!eventBookingId) return null
+  const { data, error } = await supabase
+    .from('bookings')
+    .select('id, event_id, event:events(id, name)')
+    .eq('id', eventBookingId)
+    .maybeSingle()
+  if (error) console.error('Error loading the event booking for a table booking:', error)
+  const event = Array.isArray(data?.event) ? data?.event[0] : data?.event
+  return { eventId: (data?.event_id as string | null | undefined) ?? null, eventName: (event as { name?: string | null } | null)?.name ?? null }
 }
 
 /**
