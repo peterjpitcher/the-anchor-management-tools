@@ -31,6 +31,7 @@ import { POST } from '@/app/api/foh/bookings/route'
 import { hasUnpaidRequiredDeposit } from '@/lib/foh/bookings'
 import { FOH_BOOKING_CLIENT_CONTRACT, FOH_BOOKING_CLIENT_HEADER } from '@/lib/foh/booking-client-contract'
 import { argsOf, called, createRecordingSupabase } from '../mocks/recordingSupabase'
+import { walkInOverridePickerRpc } from '../mocks/walkInOverridePicker'
 
 const CUSTOMER_ID = '00000000-0000-4000-8000-000000000001'
 
@@ -46,6 +47,7 @@ function buildDb() {
           ? { data: { id: 'tb-override', booking_reference: 'TB-W1234567' }, error: null }
           : { data: null, error: null },
     },
+    rpc: (fn) => walkInOverridePickerRpc(fn, [{ id: 'table-1', name: 'Long table', capacity: 24 }]) ?? { data: null, error: null },
   })
 }
 

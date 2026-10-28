@@ -39,8 +39,6 @@ const KNOWN_UNCOVERED: Record<string, { migration: string; note: string }> = {
     migration: '20260708000000_guard_linked_event_table_capacity.sql',
     note: 'the live body (md5 checked against production 26 October 2026) is in tests/database/event-physical-capacity/setup.sql, which event-physical-capacity-postgres.py loads, but the migration file itself is not loaded',
   },
-  get_table_booking_settings: { migration: '20260803000100_seasonal_booking_periods.sql', note: 'no harness' },
-  set_table_booking_settings: { migration: '20260801000500_table_booking_settings_rpc.sql', note: 'no harness' },
   move_table_booking_assignments_v05: { migration: '20260728000000_highchair_outside.sql', note: 'no harness' },
   move_table_booking_time_v06: { migration: '20260901120000_move_table_booking_time_v06.sql', note: 'no harness' },
 }
