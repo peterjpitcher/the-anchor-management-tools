@@ -11,6 +11,10 @@ vi.mock('@/lib/events/guest-details-retention', () => ({
   resolveGuestDetailsRetentionMode: vi.fn(() => 'dry_run'),
   runEventGuestDetailsRetention: vi.fn(async () => ({ bookingsFailed: 0 })),
 }))
+vi.mock('@/lib/jobs/job-history-retention', () => ({
+  resolveJobHistoryRetentionMode: vi.fn(() => 'dry_run'),
+  runJobHistoryRetention: vi.fn(async () => ({ deleted: 0 })),
+}))
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { GET } from '@/app/api/cron/communications-retention/route'
