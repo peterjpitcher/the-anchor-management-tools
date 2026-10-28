@@ -41,6 +41,7 @@ vi.mock('@/lib/rate-limit', () => ({
 // Authentication is proved in privateBookingEnquiryAuth.test.ts. Here the guard
 // is passed straight through so the cases can look at what the handler does.
 vi.mock('@/lib/api/auth', () => ({
+  getApiKeyAuthState: vi.fn().mockResolvedValue('authenticated'),
   withApiAuth: vi.fn(
     async (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) =>
       handler(request)

@@ -3142,6 +3142,45 @@ export type Database = {
           },
         ]
       }
+      customer_contact_suppressions: {
+        Row: {
+          contact_hash: string
+          contact_kind: string
+          created_at: string
+          marketing_email_opted_out: boolean
+          marketing_sms_opted_out: boolean
+          marketing_whatsapp_opted_out: boolean
+          sms_opted_out: boolean
+          source: string
+          updated_at: string
+          whatsapp_opted_out: boolean
+        }
+        Insert: {
+          contact_hash: string
+          contact_kind: string
+          created_at?: string
+          marketing_email_opted_out?: boolean
+          marketing_sms_opted_out?: boolean
+          marketing_whatsapp_opted_out?: boolean
+          sms_opted_out?: boolean
+          source: string
+          updated_at?: string
+          whatsapp_opted_out?: boolean
+        }
+        Update: {
+          contact_hash?: string
+          contact_kind?: string
+          created_at?: string
+          marketing_email_opted_out?: boolean
+          marketing_sms_opted_out?: boolean
+          marketing_whatsapp_opted_out?: boolean
+          sms_opted_out?: boolean
+          source?: string
+          updated_at?: string
+          whatsapp_opted_out?: boolean
+        }
+        Relationships: []
+      }
       customer_label_assignments: {
         Row: {
           assigned_at: string | null
@@ -3316,7 +3355,6 @@ export type Database = {
           last_successful_email_at: string | null
           last_successful_sms_at: string | null
           last_successful_whatsapp_at: string | null
-          last_table_booking_date: string | null
           last_whatsapp_failure_reason: string | null
           last_whatsapp_inbound_at: string | null
           marketing_email_opt_in: boolean
@@ -3332,6 +3370,7 @@ export type Database = {
           marketing_whatsapp_opt_in: boolean
           marketing_whatsapp_opt_in_at: string | null
           marketing_whatsapp_opted_out_at: string | null
+          merged_into_customer_id: string | null
           messaging_status: string | null
           mobile_e164: string | null
           mobile_number: string | null
@@ -3346,7 +3385,6 @@ export type Database = {
           sms_opted_out_at: string | null
           sms_status: string
           stripe_customer_id: string | null
-          table_booking_count: number | null
           total_failures_30d: number | null
           whatsapp_deactivated_at: string | null
           whatsapp_deactivation_reason: string | null
@@ -3376,7 +3414,6 @@ export type Database = {
           last_successful_email_at?: string | null
           last_successful_sms_at?: string | null
           last_successful_whatsapp_at?: string | null
-          last_table_booking_date?: string | null
           last_whatsapp_failure_reason?: string | null
           last_whatsapp_inbound_at?: string | null
           marketing_email_opt_in?: boolean
@@ -3392,6 +3429,7 @@ export type Database = {
           marketing_whatsapp_opt_in?: boolean
           marketing_whatsapp_opt_in_at?: string | null
           marketing_whatsapp_opted_out_at?: string | null
+          merged_into_customer_id?: string | null
           messaging_status?: string | null
           mobile_e164?: string | null
           mobile_number?: string | null
@@ -3406,7 +3444,6 @@ export type Database = {
           sms_opted_out_at?: string | null
           sms_status?: string
           stripe_customer_id?: string | null
-          table_booking_count?: number | null
           total_failures_30d?: number | null
           whatsapp_deactivated_at?: string | null
           whatsapp_deactivation_reason?: string | null
@@ -3436,7 +3473,6 @@ export type Database = {
           last_successful_email_at?: string | null
           last_successful_sms_at?: string | null
           last_successful_whatsapp_at?: string | null
-          last_table_booking_date?: string | null
           last_whatsapp_failure_reason?: string | null
           last_whatsapp_inbound_at?: string | null
           marketing_email_opt_in?: boolean
@@ -3452,6 +3488,7 @@ export type Database = {
           marketing_whatsapp_opt_in?: boolean
           marketing_whatsapp_opt_in_at?: string | null
           marketing_whatsapp_opted_out_at?: string | null
+          merged_into_customer_id?: string | null
           messaging_status?: string | null
           mobile_e164?: string | null
           mobile_number?: string | null
@@ -3466,7 +3503,6 @@ export type Database = {
           sms_opted_out_at?: string | null
           sms_status?: string
           stripe_customer_id?: string | null
-          table_booking_count?: number | null
           total_failures_30d?: number | null
           whatsapp_deactivated_at?: string | null
           whatsapp_deactivation_reason?: string | null
@@ -3490,6 +3526,27 @@ export type Database = {
             columns: ["marketing_unsubscribe_campaign_id"]
             isOneToOne: false
             referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_consent_legacy_gaps"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_messaging_health"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customers_merged_into_customer_id_fkey"
+            columns: ["merged_into_customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
         ]
@@ -16261,6 +16318,96 @@ export type Database = {
           },
         ]
       }
+      retired_customer_booking_counters_20261027: {
+        Row: {
+          copied_at: string
+          customer_id: string
+          last_table_booking_date: string | null
+          table_booking_count: number | null
+        }
+        Insert: {
+          copied_at?: string
+          customer_id: string
+          last_table_booking_date?: string | null
+          table_booking_count?: number | null
+        }
+        Update: {
+          copied_at?: string
+          customer_id?: string
+          last_table_booking_date?: string | null
+          table_booking_count?: number | null
+        }
+        Relationships: []
+      }
+      retired_pending_bookings_20261027: {
+        Row: {
+          booking_id: string | null
+          confirmed_at: string | null
+          created_at: string | null
+          customer_id: string | null
+          event_id: string
+          expires_at: string
+          id: string
+          initiated_by_api_key: string | null
+          metadata: Json | null
+          mobile_number: string
+          seats: number | null
+          token: string
+          updated_at: string | null
+        }
+        Insert: {
+          booking_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          event_id: string
+          expires_at: string
+          id: string
+          initiated_by_api_key?: string | null
+          metadata?: Json | null
+          mobile_number: string
+          seats?: number | null
+          token: string
+          updated_at?: string | null
+        }
+        Update: {
+          booking_id?: string | null
+          confirmed_at?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          event_id?: string
+          expires_at?: string
+          id?: string
+          initiated_by_api_key?: string | null
+          metadata?: Json | null
+          mobile_number?: string
+          seats?: number | null
+          token?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      retired_row_values_20261027: {
+        Row: {
+          copied_at: string
+          old_values: Json
+          row_id: string
+          source_table: string
+        }
+        Insert: {
+          copied_at?: string
+          old_values: Json
+          row_id: string
+          source_table: string
+        }
+        Update: {
+          copied_at?: string
+          old_values?: Json
+          row_id?: string
+          source_table?: string
+        }
+        Relationships: []
+      }
       review_feedback: {
         Row: {
           comments: string | null
@@ -21779,7 +21926,37 @@ export type Database = {
         }
         Returns: Json
       }
+      create_event_booking_v09: {
+        Args: {
+          p_attendees: Json
+          p_customer_id: string
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes: number
+          p_seating_preference: string
+          p_seats: number
+          p_source: string
+          p_ticket_selections: Json
+        }
+        Returns: Json
+      }
       create_event_booking_with_attendees_and_requests_v01: {
+        Args: {
+          p_attendees?: Json
+          p_customer_id: string
+          p_dining_request?: string
+          p_early_arrival_request?: boolean
+          p_event_id: string
+          p_expected_total?: number
+          p_payment_hold_minutes?: number
+          p_seating_preference?: string
+          p_seats: number
+          p_source?: string
+          p_ticket_selections?: Json
+        }
+        Returns: Json
+      }
+      create_event_booking_with_attendees_and_requests_v02: {
         Args: {
           p_attendees?: Json
           p_customer_id: string
@@ -22075,6 +22252,10 @@ export type Database = {
         Returns: Json
       }
       current_user_employee_ids: { Args: never; Returns: string[] }
+      customer_contact_hash: {
+        Args: { p_kind: string; p_value: string }
+        Returns: string
+      }
       debug_booking_hours: {
         Args: { p_date: string; p_time?: string }
         Returns: {
@@ -23094,6 +23275,14 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      merge_customers: {
+        Args: { p_dry_run: boolean; p_keep_id: string; p_merge_id: string }
+        Returns: Json
+      }
+      merge_customers_apply: {
+        Args: { p_keep_id: string; p_merge_id: string }
+        Returns: Json
+      }
       merge_receipt_vendor: {
         Args: { p_from: string; p_into: string; p_performed_by?: string }
         Returns: Json
@@ -23386,6 +23575,10 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: string
+      }
+      record_customer_contact_suppression: {
+        Args: { p_customer_ids: string[]; p_source: string }
+        Returns: number
       }
       record_invoice_payment_transaction: {
         Args: { p_payment_data: Json }

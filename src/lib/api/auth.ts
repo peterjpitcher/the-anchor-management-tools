@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { NextResponse } from 'next/server';
 import type { ApiKeyScope } from '@/lib/api/scopes';
+import { logger } from '@/lib/logger';
 
 export interface ApiKey {
   id: string;
@@ -517,6 +518,20 @@ export async function withApiAuth(
     return response;
   } catch (error) {
     const responseTime = Date.now() - startTime;
+    const crashedEndpoint = safePathname(request?.url || headersList.get('x-url'));
+    const crashedMethod = normalizeRequestMethod(request?.method || headersList.get('x-method'));
+
+    // Say what went wrong before answering 500 (BK-115). This used to answer "Internal server
+    // error" with nothing recorded, so a crash after PayPal had taken a guest's money left no
+    // trace of its cause.
+    logger.error('API route crashed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: {
+        endpoint: crashedEndpoint,
+        method: crashedMethod,
+        apiKeyId: validatedKey.id,
+      },
+    });
 
     // Fire-and-forget — don't block the error response for observational logging
     safeLogApiUsage(

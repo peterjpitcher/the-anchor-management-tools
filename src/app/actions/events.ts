@@ -1,5 +1,6 @@
 'use server'
 
+import { isSundayLunchOnlyEvent, SUNDAY_LUNCH_ONLY_EVENT_MESSAGE } from '@/lib/events/sunday-lunch-only-policy'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
@@ -64,6 +65,8 @@ import {
   decideTicketSelectionHandling,
 } from '@/lib/events/ticket-type-queries'
 import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
+import { staffEventAttendeesInputSchema, type StaffEventAttendeeInput } from '@/lib/events/booking-questions'
+import { carryGuestsToTransfer, prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 import { jobQueue } from '@/lib/unified-job-queue'
 
@@ -906,6 +909,11 @@ const createEventManualBookingSchema = z.object({
     ticketTypeId: z.string().uuid(),
     quantity: z.number().int().min(1).max(20)
   })).min(1).max(20).optional(),
+  // One row per ticket: name, own mobile and answers, any of which may follow later
+  // (BK-011, BK-013, owner decision D5).
+  attendees: staffEventAttendeesInputSchema.optional(),
+  // The booker's email, so the confirmation and payment link can go by email (BK-142).
+  email: z.string().trim().email('Please enter a valid email address.').max(255).optional(),
   // Staff read the guest the marketing notice and they said yes (owner decision D32).
   marketingTextsYes: z.boolean().optional()
 })
@@ -925,6 +933,10 @@ type EventManualBookingResult =
       table_booking_id: string | null
       table_name: string | null
       event_seating_type: 'seated' | 'standing' | null
+      /** Places left when the event is full for this request (BK-033). */
+      seats_remaining?: number | null
+      /** The event needs guest details and some are still to follow (BK-011). */
+      details_to_follow?: boolean
     }
     meta?: {
       sms: SmsSafetyMeta
@@ -941,6 +953,8 @@ export async function createEventManualBooking(input: {
   lastName?: string
   attendeeNames?: string[]
   ticketSelections?: Array<{ ticketTypeId: string; quantity: number }>
+  attendees?: StaffEventAttendeeInput[]
+  email?: string
   /** Staff read the guest the marketing notice and they said yes (owner decision D32). */
   marketingTextsYes?: boolean
 }): Promise<EventManualBookingResult> {
@@ -968,7 +982,8 @@ export async function createEventManualBooking(input: {
     const supabase = createAdminClient()
     const customerResolution = await ensureCustomerForPhone(supabase, normalizedPhone, {
       firstName: parsed.data.firstName,
-      lastName: parsed.data.lastName
+      lastName: parsed.data.lastName,
+      email: parsed.data.email
     }, { trustedEntry: true })
 
     if (!customerResolution.customerId) {
@@ -979,12 +994,24 @@ export async function createEventManualBooking(input: {
 
     const { data: eventRow, error: eventError } = await supabase
       .from('events')
-      .select('id, name, booking_mode')
+      .select('id, name, date, start_datetime, booking_mode')
       .eq('id', parsed.data.eventId)
       .maybeSingle()
 
     if (eventError || !eventRow) {
       return { error: 'Event not found.' }
+    }
+
+    // Mother's Day is sold as Sunday lunch tables, on every channel (BK-153, D35).
+    if (
+      isSundayLunchOnlyEvent({
+        id: eventRow.id || null,
+        name: eventRow.name || null,
+        date: eventRow.date || null,
+        start_datetime: eventRow.start_datetime || null
+      })
+    ) {
+      return { error: SUNDAY_LUNCH_ONLY_EVENT_MESSAGE }
     }
 
     const bookingMode = EventBookingService.normalizeBookingMode(eventRow.booking_mode)
@@ -1027,45 +1054,18 @@ export async function createEventManualBooking(input: {
       attendeeNames = namesResult.names.length > 0 ? namesResult.names : undefined
     }
 
-    let ticketSelections: TicketSelectionInput[] | undefined
-    if (parsed.data.ticketSelections && parsed.data.ticketSelections.length > 0) {
-      const selectionSeatTotal = parsed.data.ticketSelections.reduce((sum, line) => sum + line.quantity, 0)
-      if (selectionSeatTotal !== parsed.data.seats) {
-        return { error: `Ticket quantities (${selectionSeatTotal}) must match the total seats (${parsed.data.seats}).` }
-      }
-
-      let defaultTypeId: string | null = null
-      try {
-        defaultTypeId = await getDefaultTicketTypeId(supabase, parsed.data.eventId)
-      } catch {
-        return { error: 'Failed to load event ticket types.' }
-      }
-
-      // Distribute the flat per-seat names across the basket lines in order so
-      // the v07 RPC stores per-line names and the aggregate list stays intact.
-      let nameCursor = 0
-      const mappedSelections: TicketSelectionInput[] = parsed.data.ticketSelections.map((line) => {
-        const lineNames = attendeeNames ? attendeeNames.slice(nameCursor, nameCursor + line.quantity) : []
-        nameCursor += line.quantity
-        return {
-          ticket_type_id: line.ticketTypeId,
-          quantity: line.quantity,
-          ...(lineNames.length === line.quantity ? { attendee_names: lineNames } : {})
-        }
-      })
-
-      const decision = decideTicketSelectionHandling({
-        selections: mappedSelections,
-        flagEnabled: eventTicketTypesEnabled(),
-        defaultTypeId
-      })
-      if (decision.kind === 'reject') {
-        return { error: decision.error }
-      }
-      if (decision.kind === 'apply') {
-        ticketSelections = mappedSelections
-      }
+    // Ticket types and each ticket's guest details, shared with the FOH screen (BK-011, BK-141).
+    const prepared = await prepareStaffEventBooking(supabase, {
+      eventId: parsed.data.eventId,
+      seats: parsed.data.seats,
+      ticketSelections: parsed.data.ticketSelections,
+      attendees: parsed.data.attendees,
+      attendeeNames,
+    })
+    if (!prepared.ok) {
+      return { error: prepared.error }
     }
+    const { ticketSelections, attendees } = prepared
 
     // ── Delegate to shared service ───────────────────────────────────────────
     const result = await EventBookingService.createBooking({
@@ -1081,8 +1081,10 @@ export async function createEventManualBooking(input: {
       supabaseClient: supabase,
       logTag: 'admin event booking',
       firstName: customerResolution.resolvedFirstName || parsed.data.firstName,
-      attendeeNames,
-      ticketSelections
+      attendeeNames: attendees ? undefined : attendeeNames,
+      attendees,
+      ticketSelections,
+      contactEmail: customerResolution.bookingContactEmail ?? null
     })
 
     // ── Handle the result ────────────────────────────────────────────────────
@@ -1103,14 +1105,16 @@ export async function createEventManualBooking(input: {
 
     const { resolvedState, resolvedReason, bookingId, nextStepUrl, manageUrl, tableBookingId, tableName, eventSeatingType, smsMeta } = result
 
-    if (resolvedState === 'blocked') {
-      // Return as success with blocked state to match existing UI contract
+    // BK-033: a booking exists only when it is confirmed or waiting on payment. A full event
+    // used to fall through to a 'create' audit row and a "Booking created" toast.
+    if (resolvedState !== 'confirmed' && resolvedState !== 'pending_payment') {
       revalidatePath(`/events/${parsed.data.eventId}`)
       return {
         success: true,
         data: {
-          state: 'blocked',
+          state: resolvedState === 'full_with_waitlist_option' ? 'full_with_waitlist_option' : 'blocked',
           reason: resolvedReason,
+          seats_remaining: result.seatsRemaining ?? null,
           booking_id: null,
           manage_booking_url: null,
           next_step_url: null,
@@ -1138,7 +1142,8 @@ export async function createEventManualBooking(input: {
           event_seating_type: eventSeatingType,
           state: resolvedState,
           source: 'admin',
-          attendee_names_provided: (attendeeNames?.length ?? 0) > 0,
+          attendee_names_provided: (attendeeNames?.length ?? 0) > 0 || (attendees?.some((guest) => guest.name.trim()) ?? false),
+          guest_details_to_follow: prepared.detailsToFollow,
           ticket_selections: ticketSelections?.map((line) => ({
             ticket_type_id: line.ticket_type_id,
             quantity: line.quantity
@@ -1170,7 +1175,8 @@ export async function createEventManualBooking(input: {
         next_step_url: nextStepUrl,
         table_booking_id: tableBookingId,
         table_name: tableName,
-        event_seating_type: eventSeatingType
+        event_seating_type: eventSeatingType,
+        details_to_follow: prepared.detailsToFollow
       },
       meta: {
         sms: smsMeta,
@@ -2749,6 +2755,45 @@ async function copyTransferComposition(
   return { copied: true, reason: null }
 }
 
+/**
+ * After a multi-type composition is copied, give each carried guest the target event's ticket
+ * type that matches their old one by name. Best effort: the booking stands either way.
+ */
+async function remapCarriedGuestTicketTypes(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: { newBookingId: string; targetEventId: string; originalItems: BookingItemWithTypeRow[]; originalAttendees: unknown }
+): Promise<void> {
+  try {
+    const { data: targetTypes } = await supabase
+      .from('event_ticket_types')
+      .select('id, name')
+      .eq('event_id', input.targetEventId)
+      .eq('is_active', true)
+    const targetIdByName = new Map(((targetTypes ?? []) as Array<{ id: string; name: string | null }>)
+      .filter((row) => typeof row.name === 'string')
+      .map((row) => [String(row.name).trim().toLowerCase(), row.id]))
+    const targetIdByOriginalId = new Map(input.originalItems.map((item) => [item.ticket_type_id, targetIdByName.get(item.ticket_type_name.trim().toLowerCase()) ?? null]))
+    const originals = Array.isArray(input.originalAttendees) ? (input.originalAttendees as Array<{ ticket_type_id?: string | null }>) : []
+    const { data: created } = await supabase.from('bookings').select('attendees').eq('id', input.newBookingId).maybeSingle()
+    const guests = Array.isArray(created?.attendees) ? (created.attendees as Array<Record<string, unknown>>) : []
+    if (guests.length === 0 || guests.length !== originals.length) return
+    const remapped = guests.map((guest, index) => {
+      const target = targetIdByOriginalId.get(originals[index]?.ticket_type_id ?? '') ?? null
+      return target ? { ...guest, ticket_type_id: target } : guest
+    })
+    const { error: remapError } = await supabase.from('bookings').update({ attendees: remapped }).eq('id', input.newBookingId)
+    if (remapError) {
+      logger.warn('Transfer could not save guest ticket types on the new booking', {
+        metadata: { newBookingId: input.newBookingId, error: remapError.message },
+      })
+    }
+  } catch (error) {
+    logger.warn('Transfer could not match guest ticket types on the new booking', {
+      metadata: { newBookingId: input.newBookingId, error: error instanceof Error ? error.message : String(error) },
+    })
+  }
+}
+
 const transferEventBookingSchema = z.object({
   bookingId: z.string().uuid(),
   targetEventId: z.string().uuid(),
@@ -2883,9 +2928,10 @@ export async function transferEventBooking(input: {
     const customerRecord = Array.isArray(bookingRow.customer) ? bookingRow.customer[0] : bookingRow.customer
     const fromEvent = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seats = Math.max(1, Number(bookingRow.seats || 1))
-    if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0) {
-      return { error: 'This booking has guest answers for its current event. Create a new booking with the destination event questions before cancelling this one.' }
-    }
+    // BK-011: guest rows travel with the booking. Each guest keeps their name and own mobile; the
+    // answers belonged to the old event's questions, so the new booking asks the new event's
+    // questions afresh and they follow (owner decision D5).
+    const carriedGuests = carryGuestsToTransfer(bookingRow.attendees)
     const originalAttendeeNames = Array.isArray(bookingRow.attendee_names)
       ? (bookingRow.attendee_names as string[]).filter((name) => typeof name === 'string' && name.trim())
       : []
@@ -2953,7 +2999,8 @@ export async function transferEventBooking(input: {
       shouldSendSms: false,
       supabaseClient: supabase,
       logTag: 'admin event transfer',
-      firstName: customerRecord?.first_name || undefined
+      firstName: customerRecord?.first_name || undefined,
+      attendees: carriedGuests
     })
 
     if (createResult.rpcFailed || createResult.rollbackFailed || createResult.paymentLinkFailed) {
@@ -3017,6 +3064,14 @@ export async function transferEventBooking(input: {
       })
       compositionCopied = copyResult.copied
       compositionCopyReason = copyResult.reason
+      if (copyResult.copied && carriedGuests) {
+        await remapCarriedGuestTicketTypes(supabase, {
+          newBookingId: createResult.bookingId,
+          targetEventId: parsed.data.targetEventId,
+          originalItems,
+          originalAttendees: bookingRow.attendees,
+        })
+      }
       if (!copyResult.copied) {
         logger.warn('Transfer could not copy ticket-line composition to the new booking', {
           metadata: {

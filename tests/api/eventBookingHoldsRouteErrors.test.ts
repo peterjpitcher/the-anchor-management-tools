@@ -16,6 +16,11 @@ vi.mock('@/lib/google-calendar-events', () => ({
   }),
 }))
 
+vi.mock('@/lib/email/event-ticket-emails', () => ({ sendEventPaymentExpiredEmail: vi.fn(async () => ({ success: true })) }))
+vi.mock('@/lib/twilio', () => ({ sendSMS: vi.fn(async () => ({ success: true })) }))
+
+import { sendEventPaymentExpiredEmail } from '@/lib/email/event-ticket-emails'
+import { sendSMS } from '@/lib/twilio'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
@@ -59,6 +64,8 @@ describe('event booking holds route error payloads', () => {
 
     const responses = [
       { data: [{ id: 'booking-1', event_id: 'event-1' }], error: null },
+      // Nobody on the booking has checked in at the door (BK-032).
+      { data: [], error: null },
       // No payment PayPal is still deciding (BK-019) and no paid booking or open payment
       // exception (BK-018), so the lapsed hold is expired.
       { data: [], error: null },
@@ -103,6 +110,51 @@ describe('event booking holds route error payloads', () => {
       'event-1',
       { context: 'event_booking_hold_expired' },
     )
+  })
+
+  // BK-032, owner decision D12: a guest checked in at the door is in the room, so their unpaid
+  // hold is left for staff to settle at the bar; a walk-in is never sent a "seats released"
+  // message.
+  it('keeps a hold whose guest has checked in, and never messages a lapsed walk-in', async () => {
+    ;(authorizeCronRequest as unknown as Mock).mockReturnValue({ authorized: true })
+    const updates: Array<{ table: string; ids: unknown }> = []
+    const supabase = {
+      from: vi.fn((table: string) => {
+        const builder: Record<string, Mock> & { then?: Promise<{ data: unknown; error: unknown }>['then'] } = {} as any
+        let updating = false
+        let inIds: unknown = null
+        const result = () => {
+          if (table === 'bookings' && !updating) {
+            return { data: [
+              { id: 'checked-in', event_id: 'event-1', source: 'admin' },
+              { id: 'walk-in', event_id: 'event-1', source: 'walk-in' },
+            ], error: null }
+          }
+          if (table === 'event_check_ins') return { data: [{ booking_id: 'checked-in' }], error: null }
+          if (table === 'bookings' && updating) {
+            updates.push({ table, ids: inIds })
+            return { data: (inIds as string[]).map((id) => ({ id, event_id: 'event-1' })), error: null }
+          }
+          return { data: [], error: null }
+        }
+        for (const method of ['select', 'eq', 'not', 'lte', 'limit', 'neq']) builder[method] = vi.fn(() => builder)
+        builder.update = vi.fn(() => { updating = true; return builder })
+        builder.in = vi.fn((_column: string, ids: unknown) => { inIds = ids; return builder })
+        builder.maybeSingle = vi.fn(() => Promise.resolve(result()))
+        builder.then = (resolve, reject) => Promise.resolve(result()).then(resolve, reject)
+        return builder
+      }),
+    }
+    ;(createAdminClient as unknown as Mock).mockReturnValue(supabase)
+
+    const response = await GET(new Request('http://localhost/api/cron/event-booking-holds') as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.keptCheckedIn).toBe(1)
+    expect(updates[0]?.ids).toEqual(['walk-in'])
+    expect(sendEventPaymentExpiredEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
   })
 
   // BK-113: this cron used to cancel every lapsed plain table deposit hold too, silently: no

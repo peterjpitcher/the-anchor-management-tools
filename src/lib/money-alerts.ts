@@ -46,6 +46,11 @@ export type MoneyAlertInput = {
   onceKey?: string
   /** A page for the manager to open, when there is one that takes this record's id. */
   path?: string | null
+  /**
+   * The bracketed subject tag. Defaults to PAYPAL ACTION NEEDED; a booking problem with no money
+   * in it (a consent that did not save, a guest change that crashed) says BOOKING ACTION NEEDED.
+   */
+  subjectTag?: string
 }
 
 export type MoneyAlertOutcome = { sent: boolean; duplicate: boolean }
@@ -103,6 +108,7 @@ export async function alertMoneyNeedsAPerson(
     title: input.title,
     summary: input.summary,
     to: MANAGER_ALERT_RECIPIENT,
+    subjectTag: input.subjectTag,
     context: {
       Record: `${input.domain} ${input.bookingId}`,
       Link: linkFor(input),

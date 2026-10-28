@@ -3,6 +3,7 @@ import type { PermissionCheckResult } from '@/lib/api/permissions'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import type { UserPermission } from '@/types/rbac'
 import { NextResponse } from 'next/server'
+import { logger } from '@/lib/logger'
 
 type FohPermissionAction = 'view' | 'edit' | 'manage'
 
@@ -26,7 +27,19 @@ export async function requireBohTableBookingPermission(action: FohPermissionActi
     p_user_id: auth.userId,
   })
 
-  if (!error && isFohOnlyUser((permissions ?? []) as UserPermission[])) {
+  // Fail closed: if we cannot tell whether this is the FOH-only login, refuse (BK-205).
+  if (error) {
+    logger.error('BOH permission check could not read the user permissions', {
+      error: new Error(error.message),
+      metadata: { userId: auth.userId, action },
+    })
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Could not check permissions' }, { status: 503 }),
+    }
+  }
+
+  if (isFohOnlyUser((permissions ?? []) as UserPermission[])) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),

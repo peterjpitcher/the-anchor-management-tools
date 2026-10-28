@@ -500,6 +500,18 @@ describe('MessagesClient, header actions', () => {
   })
 
   it('shows Refresh as a header button, the primary action and a labelled More menu', async () => {
+    // A second unread conversation keeps Mark All Read on offer after the first is opened, and
+    // Mark All Read is now the More menu's only item: the Message Templates link went with the
+    // retired page (BK-178).
+    getMessages.mockResolvedValue(
+      inbox({
+        conversations: [
+          conversation(),
+          conversation({ customer: customer({ id: 'customer-2', first_name: 'Sam', last_name: 'Patel' }) }),
+        ],
+        totalUnread: 2,
+      }),
+    )
     render(<MessagesClient />)
     await screen.findByRole('option', { name: /Jane Smith/i })
 
@@ -507,8 +519,26 @@ describe('MessagesClient, header actions', () => {
     // document, carries the actions beside the title.
     const header = screen.getAllByRole('heading', { name: 'Messages' }).at(-1)?.closest('div')?.parentElement
     expect(within(header as HTMLElement).getByRole('button', { name: 'Bulk Messages' })).toBeInTheDocument()
-    expect(within(header as HTMLElement).getByRole('button', { name: 'More' })).toBeInTheDocument()
+    expect(await within(header as HTMLElement).findByRole('button', { name: 'More' })).toBeInTheDocument()
     expect(within(header as HTMLElement).getByRole('button', { name: 'Refresh' })).toBeInTheDocument()
+  })
+
+  it('no longer links to the retired Message Templates page', async () => {
+    getMessages.mockResolvedValue(
+      inbox({
+        conversations: [
+          conversation(),
+          conversation({ customer: customer({ id: 'customer-2', first_name: 'Sam', last_name: 'Patel' }) }),
+        ],
+        totalUnread: 2,
+      }),
+    )
+    render(<MessagesClient />)
+    await screen.findByRole('option', { name: /Jane Smith/i })
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'More' }))[0])
+    expect(await screen.findByText('Mark All Read')).toBeInTheDocument()
+    expect(screen.queryByText('Message Templates')).not.toBeInTheDocument()
   })
 
   it('confirms before marking every conversation read', async () => {
@@ -589,8 +619,19 @@ describe('MessagesClient, accessibility', () => {
   })
 
   it('names each row with who, unread state and the preview', async () => {
+    // The first conversation opens on load and is marked read, so the unread state is read off
+    // the second one, which stays unread.
+    getMessages.mockResolvedValue(
+      inbox({
+        conversations: [
+          conversation(),
+          conversation({ customer: customer({ id: 'customer-2', first_name: 'Sam', last_name: 'Patel' }) }),
+        ],
+        totalUnread: 2,
+      }),
+    )
     render(<MessagesClient />)
-    const option = await screen.findByRole('option', { name: /Jane Smith/i })
+    const option = await screen.findByRole('option', { name: /Sam Patel/i })
     expect(option.getAttribute('aria-label')).toContain('1 unread')
     expect(option.getAttribute('aria-label')).toContain('Hello')
   })

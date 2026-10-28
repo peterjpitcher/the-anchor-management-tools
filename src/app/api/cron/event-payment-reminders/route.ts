@@ -49,7 +49,8 @@ async function sendEventPaymentReminders(request: NextRequest) {
     .from('bookings')
     .select('id, customer_id, hold_expires_at, source')
     .eq('status', 'pending_payment')
-    .in('source', ['admin', 'walk-in', 'sms_reply'])
+    // BK-032: never a walk-in. They are standing at the bar, where staff take the money (D12).
+    .in('source', ['admin', 'sms_reply'])
     .not('hold_expires_at', 'is', null)
     .gt('hold_expires_at', nowIso)
     .lte('hold_expires_at', twelveHoursIso)

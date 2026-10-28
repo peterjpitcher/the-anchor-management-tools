@@ -3,6 +3,7 @@ import { ensureReplyInstruction } from '@/lib/sms/support';
 import { env } from '@/lib/env';
 import { sendSMS } from '@/lib/twilio';
 import { createHash } from 'crypto';
+import { attachSentBy } from '@/lib/messages/sent-by';
 
 export class MessageService {
   static async getUnreadCounts(customerIds?: string[]) {
@@ -100,7 +101,8 @@ export class MessageService {
     }
   }
 
-  static async sendReply(customerId: string, message: string) {
+  /** userId is the member of staff who typed the reply, recorded on the message (BK-182). */
+  static async sendReply(customerId: string, message: string, userId?: string | null) {
     const supabase = createAdminClient();
     
     // Get customer details
@@ -137,7 +139,8 @@ export class MessageService {
         trigger_type: 'message_thread_reply',
         stage: messageStage,
         type: 'reply',
-        source: 'message_thread'
+        source: 'message_thread',
+        ...(userId ? { sent_by_user_id: userId } : {})
       }
     });
 
@@ -261,7 +264,8 @@ export class MessageService {
       throw new Error(error.message);
     }
 
-    return { messages: messages || [] };
+    // Names the member of staff on texts they typed by hand (BK-182).
+    return { messages: await attachSentBy(supabase, messages || []) };
   }
 
   static async getDeliveryFailureReport() {

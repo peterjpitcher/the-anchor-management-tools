@@ -1489,3 +1489,77 @@ describe('Event manual booking phone normalization', () => {
     })
   })
 })
+
+describe('Event manual booking: full events, guest details and email (BK-033, BK-011, BK-142)', () => {
+  const eventId = '550e8400-e29b-41d4-a716-446655440350'
+  const bookingId = '550e8400-e29b-41d4-a716-446655440352'
+  const questionId = '550e8400-e29b-41d4-a716-446655440359'
+  const guestId = '550e8400-e29b-41d4-a716-446655440358'
+
+  function mockDb(eventRow: Record<string, unknown>): void {
+    const eventMaybeSingle = vi.fn().mockResolvedValue({ data: eventRow, error: null })
+    const eventEq = vi.fn().mockReturnValue({ maybeSingle: eventMaybeSingle })
+    const dupCheckMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
+    const dupCheckIn = vi.fn().mockReturnValue({ maybeSingle: dupCheckMaybeSingle })
+    const dupCheckEq2 = vi.fn().mockReturnValue({ in: dupCheckIn })
+    const dupCheckEq1 = vi.fn().mockReturnValue({ eq: dupCheckEq2 })
+    mockedCreateAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'events') return { select: vi.fn().mockReturnValue({ eq: eventEq }) }
+        if (table === 'bookings') return { select: vi.fn().mockReturnValue({ eq: dupCheckEq1 }) }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+    mockedEnsureCustomerForPhone.mockResolvedValue({ customerId: '550e8400-e29b-41d4-a716-446655440351', resolutionError: undefined })
+  })
+
+  it('reports a full event as full, writes no create audit row and returns the places left', async () => {
+    mockDb({ id: eventId, name: 'Quiz', booking_mode: 'general', payment_mode: 'cash_only', booking_questions: [] })
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'full_with_waitlist_option', resolvedReason: 'insufficient_capacity', bookingId: null, seatsRemaining: 1,
+      nextStepUrl: null, manageUrl: null, smsMeta: null, tableBookingId: null, tableName: null, rpcResult: { state: 'full_with_waitlist_option' },
+    })
+    const result = await createEventManualBooking({ eventId, phone: '+447700900350', seats: 3, firstName: 'Pat' })
+    expect(result).toMatchObject({ success: true, data: { state: 'full_with_waitlist_option', seats_remaining: 1, booking_id: null } })
+    expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+  })
+
+  it('passes guest rows with details to follow, and the email, and says details are to follow', async () => {
+    mockDb({ id: eventId, name: 'Tasting', booking_mode: 'general', payment_mode: 'prepaid', collect_guest_details: null,
+      booking_questions: [{ id: questionId, label: 'Any allergies?', type: 'text', required: true }] })
+    mockedCreateBooking.mockResolvedValue({
+      resolvedState: 'pending_payment', resolvedReason: null, bookingId, seatsRemaining: 10,
+      nextStepUrl: 'https://example.test/pay', manageUrl: 'https://example.test/manage', smsMeta: null,
+      tableBookingId: null, tableName: null, rpcResult: { state: 'pending_payment', booking_id: bookingId },
+    })
+    const result = await createEventManualBooking({
+      eventId, phone: '+447700900350', seats: 1, firstName: 'Pat', email: 'pat@example.test',
+      attendees: [{ id: guestId, name: '', phone: '07700 900351', answers: {} }],
+    })
+    expect(mockedEnsureCustomerForPhone).toHaveBeenCalledWith(expect.anything(), '+447700900350', expect.objectContaining({ email: 'pat@example.test' }), expect.anything())
+    expect(mockedCreateBooking).toHaveBeenCalledWith(expect.objectContaining({
+      attendees: [{ id: guestId, name: '', phone: '+447700900351', answers: {} }],
+      attendeeNames: undefined,
+    }))
+    expect(result).toMatchObject({ success: true, data: { state: 'pending_payment', next_step_url: 'https://example.test/pay', details_to_follow: true } })
+    const audit = mockedLogAuditEvent.mock.calls[0]?.[0]
+    expect(audit?.additional_info?.guest_details_to_follow).toBe(true)
+    expect(JSON.stringify(audit)).not.toContain('900351')
+  })
+
+  it('refuses an invalid guest answer before booking', async () => {
+    mockDb({ id: eventId, name: 'Tasting', booking_mode: 'general', payment_mode: 'prepaid',
+      booking_questions: [{ id: questionId, label: 'Vegetarian?', type: 'yes_no', required: true }] })
+    const result = await createEventManualBooking({
+      eventId, phone: '+447700900350', seats: 1, firstName: 'Pat',
+      attendees: [{ id: guestId, name: 'Sam', answers: { [questionId]: 'maybe' } }],
+    })
+    expect(result).toEqual({ error: 'Guest 1: please choose yes or no' })
+    expect(mockedCreateBooking).not.toHaveBeenCalled()
+  })
+})

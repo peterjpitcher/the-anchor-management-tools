@@ -7,6 +7,17 @@ import { ModalActions } from '@/ds/compat';
 import { clockIn, clockOut } from '@/app/actions/timeclock';
 import type { OpenSessionSummary } from '@/app/actions/timeclock';
 import { displayName } from '@/lib/employees/display-name';
+import { isStaleServerActionError, reloadStalePage } from '@/lib/foh/stale-page';
+
+// A throw from a clock action is a stale page (reload) or a dropped connection; either way the
+// spinner clears and staff are told (BK-096).
+function handleClockActionThrow(error: unknown, label: string): void {
+  if (isStaleServerActionError(error)) {
+    reloadStalePage();
+    return;
+  }
+  toast.error(`Could not ${label}: the connection dropped. Please try again.`);
+}
 
 type OpenSession = OpenSessionSummary & { employee_name: string };
 
@@ -52,12 +63,16 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
     if (!selectedId) { toast.error('Select an employee'); return; }
     startClockInTransition(async () => {
       const emp = employees.find(e => e.employee_id === selectedId)!;
-      const result = await clockIn(selectedId);
-      if (!result.success) { toast.error(result.error); return; }
-      setSessions(prev => [...prev, { ...result.data, employee_name: empName(emp) }]);
-      toast.success(`${empName(emp)} clocked in`);
-      setSelectedId('');
-      setShowClockInModal(false);
+      try {
+        const result = await clockIn(selectedId);
+        if (!result.success) { toast.error(result.error); return; }
+        setSessions(prev => [...prev, { ...result.data, employee_name: empName(emp) }]);
+        toast.success(`${empName(emp)} clocked in`);
+        setSelectedId('');
+        setShowClockInModal(false);
+      } catch (error) {
+        handleClockActionThrow(error, 'clock in');
+      }
     });
   };
 
@@ -65,11 +80,15 @@ export default function FohClockWidget({ employees, initialSessions }: FohClockW
     if (!confirmSession) return;
     const session = confirmSession;
     startClockOutTransition(async () => {
-      const result = await clockOut(session.employee_id);
-      if (!result.success) { toast.error(result.error); return; }
-      setSessions(prev => prev.filter(s => s.id !== session.id));
-      toast.success(`${session.employee_name} clocked out`);
-      setConfirmSession(null);
+      try {
+        const result = await clockOut(session.employee_id);
+        if (!result.success) { toast.error(result.error); return; }
+        setSessions(prev => prev.filter(s => s.id !== session.id));
+        toast.success(`${session.employee_name} clocked out`);
+        setConfirmSession(null);
+      } catch (error) {
+        handleClockActionThrow(error, 'clock out');
+      }
     });
   };
 

@@ -6,6 +6,7 @@ vi.mock('@/lib/rate-limit', () => ({
 
 // Authentication is proved in privateBookingEnquiryAuth.test.ts.
 vi.mock('@/lib/api/auth', () => ({
+  getApiKeyAuthState: vi.fn().mockResolvedValue('authenticated'),
   withApiAuth: vi.fn(
     async (handler: (request: Request) => Promise<Response>, _permissions: string[], request: Request) =>
       handler(request)

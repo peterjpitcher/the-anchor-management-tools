@@ -44,7 +44,7 @@ vi.mock('@/lib/sms/promo-context', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { UnifiedJobQueue } from '@/lib/unified-job-queue'
+import { UnifiedJobQueue, isNonRetryableJobError } from '@/lib/unified-job-queue'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -554,6 +554,70 @@ describe('UnifiedJobQueue SMS job state persistence fatal guards', () => {
     })
     expect(outcome.errorMessage).toContain('boom')
     expect(outcome.errorMessage).toContain('Failed to persist job failure state')
+  })
+})
+
+describe('UnifiedJobQueue failures a retry cannot fix (BK-214)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  async function failJobWith(message: string) {
+    const updatePayloads: any[] = []
+    const maybeSingle = vi
+      .fn()
+      .mockResolvedValueOnce({ data: { id: 'job-9' }, error: null }) // initial lease refresh ok
+      .mockResolvedValueOnce({ data: { id: 'job-9' }, error: null }) // failure persistence ok
+
+    const builder: any = {
+      eq: vi.fn(() => builder),
+      select: vi.fn(() => builder),
+      maybeSingle,
+    }
+    const from = vi.fn(() => ({
+      update: vi.fn((payload: any) => {
+        updatePayloads.push(payload)
+        return builder
+      }),
+    }))
+    mockedCreateAdminClient.mockResolvedValue({ from })
+
+    const queue = UnifiedJobQueue.getInstance()
+    ;(queue as any).executeJob = vi.fn().mockRejectedValue(new Error(message))
+
+    await (queue as any).processJob({
+      id: 'job-9',
+      type: 'send_sms',
+      payload: { to: '07', message: 'Hello', customer_id: 'customer-9' },
+      status: 'processing',
+      priority: 0,
+      attempts: 1,
+      max_attempts: 3,
+      scheduled_for: new Date().toISOString(),
+      processing_token: 'token-9',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+
+    return updatePayloads.find((payload) => 'error_message' in (payload ?? {}))
+  }
+
+  it('fails a text to an unusable number on the first attempt', async () => {
+    const failure = await failJobWith('Invalid phone number format')
+    expect(failure).toMatchObject({ status: 'failed', error_message: 'Invalid phone number format' })
+  })
+
+  it('still retries an ordinary failure', async () => {
+    const failure = await failJobWith('Provider timeout')
+    expect(failure).toMatchObject({ status: 'pending', error_message: 'Provider timeout' })
+  })
+
+  it('recognises the failures a retry cannot fix, and only those', () => {
+    expect(isNonRetryableJobError('Invalid phone number format')).toBe(true)
+    expect(isNonRetryableJobError('This number has opted out of messages')).toBe(true)
+    expect(isNonRetryableJobError('Unknown email template: table_booking_payment_request')).toBe(true)
+    expect(isNonRetryableJobError('Failed to send message')).toBe(false)
+    expect(isNonRetryableJobError('SMS sending paused by safety guard')).toBe(false)
   })
 })
 

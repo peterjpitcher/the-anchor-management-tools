@@ -23,7 +23,7 @@ describe('event check-in kiosk', () => {
       status: 'known',
       normalizedPhone: '+447700900123',
       data: {
-        customer: { id: 'c-1', first_name: 'Sam', last_name: 'Lee', mobile_number: '07700900123', email: null },
+        customer: { id: 'c-1', displayName: 'Sam L.' },
         alreadyCheckedIn: true,
         attendance: {
           categoryId: 'cat-1',
@@ -54,7 +54,7 @@ describe('event check-in kiosk', () => {
       status: 'known',
       normalizedPhone: '+447700900123',
       data: {
-        customer: { id: 'c-1', first_name: 'Sam', last_name: 'Lee', mobile_number: '07700900123', email: null },
+        customer: { id: 'c-1', displayName: 'Sam L.' },
         booking: { id: 'b-1', seats: 2, status: 'confirmed', answersOnFile: true },
         alreadyCheckedIn: false,
       },
@@ -74,7 +74,7 @@ describe('event check-in kiosk', () => {
       status: 'known',
       normalizedPhone: '+447700900123',
       data: {
-        customer: { id: 'c-1', first_name: 'Sam', last_name: 'Lee', mobile_number: '07700900123', email: null },
+        customer: { id: 'c-1', displayName: 'Sam L.' },
         booking: { id: 'b-1', seats: 2, status: 'confirmed', answersOnFile: false },
         alreadyCheckedIn: false,
       },
@@ -86,5 +86,35 @@ describe('event check-in kiosk', () => {
 
     expect(await screen.findByText('We have you down for 2 tickets.')).toBeInTheDocument()
     expect(screen.queryByText(/answers you gave/)).not.toBeInTheDocument()
+  })
+
+  // BK-202: the screen greets by first name and initial only.
+  it('greets the guest as "Sam L.", never by full name', async () => {
+    lookupEventGuest.mockResolvedValue({
+      success: true, status: 'known', normalizedPhone: '+447700900123',
+      data: { customer: { id: 'c-1', displayName: 'Sam L.' }, booking: { id: 'b-1', seats: 1, status: 'confirmed' }, alreadyCheckedIn: false },
+    })
+    render(<EventCheckInClient event={EVENT} />)
+    fireEvent.change(screen.getByLabelText(/Guest mobile number/i), { target: { value: '07700 900123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Check In' }))
+    expect(await screen.findByText('Hello Sam L.')).toBeInTheDocument()
+    expect(screen.queryByText(/Lee/)).not.toBeInTheDocument()
+  })
+
+  // BK-032, owner decision D12: an unpaid guest on a night paid in advance is sent to the bar.
+  it('sends an unpaid guest to the bar and offers no check-in', async () => {
+    lookupEventGuest.mockResolvedValue({
+      success: true, status: 'known', normalizedPhone: '+447700900123',
+      data: {
+        customer: { id: 'c-1', displayName: 'Sam L.' },
+        booking: { id: 'b-1', seats: 2, status: 'pending_payment', paymentDue: { message: "Payment due: £80.00. Please see the bar and we'll check you in." } },
+        alreadyCheckedIn: false,
+      },
+    })
+    render(<EventCheckInClient event={EVENT} />)
+    fireEvent.change(screen.getByLabelText(/Guest mobile number/i), { target: { value: '07700 900123' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Check In' }))
+    expect(await screen.findByText("Payment due: £80.00. Please see the bar and we'll check you in.")).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Yes, Check Me In' })).not.toBeInTheDocument()
   })
 })

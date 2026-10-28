@@ -1,5 +1,7 @@
 # Discovery 05 — Customer Name Clickability Inventory
 
+**Status (27 October 2026): closed by BK-181.** The table booking page, the BOH list (cards and table), the private booking page and the customer profile's booking rows now link through the shared `CustomerLink` (src/ds/composites/CustomerLink.tsx); the profile's rows open their booking.
+
 **Scope:** Every place a CUSTOMER's name is displayed in the staff-facing UI, classified by whether it is already a clickable link to the customer profile (`/customers/[id]`).
 
 **Date:** 2026-06-21

@@ -14,6 +14,9 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
+import { logAuditEvent } from '@/app/actions/audit'
+import { staffEventAttendeesInputSchema } from '@/lib/events/booking-questions'
+import { prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
 import {
   FOH_BOOKING_CLIENT_HEADER,
   FOH_CLIENT_OUTDATED_CODE,
@@ -48,6 +51,13 @@ const CreateFohEventBookingSchema = z.object({
     z.number().int().min(1).max(20)
   ),
   seating_preference: z.enum(['seated', 'standing']).optional(),
+  // BK-141: a ticket type per seat, as on the event page.
+  ticket_selections: z.array(z.object({
+    ticket_type_id: z.string().uuid(),
+    quantity: z.number().int().min(1).max(20)
+  })).min(1).max(20).optional(),
+  // BK-011, BK-013, owner decision D5: one row per ticket, any of it may follow later.
+  attendees: staffEventAttendeesInputSchema.optional(),
   // Staff read the guest the marketing notice and they said yes (owner decision D32).
   marketing_texts_yes: z.boolean().optional()
 }).superRefine((value, context) => {
@@ -114,6 +124,8 @@ type FohEventBookingResponseData = {
   table_name: string | null
   /** False when a confirmation was due and none reached the guest (BK-162). */
   notification_sent: boolean | null
+  /** The event needs guest details and some are still to follow (BK-011). */
+  details_to_follow: boolean
 }
 
 // ─── FOH-specific helpers ─────────────────────────────────────────────────────
@@ -391,6 +403,17 @@ async function createFohEventBooking(
     return NextResponse.json({ error: 'Failed to resolve customer' }, { status: 500 })
   }
 
+  // ── Ticket types and guest details (BK-141, BK-011) ─────────────────────────
+  const prepared = await prepareStaffEventBooking(auth.supabase, {
+    eventId: payload.event_id,
+    seats: payload.seats,
+    ticketSelections: payload.ticket_selections?.map((line) => ({ ticketTypeId: line.ticket_type_id, quantity: line.quantity })),
+    attendees: payload.attendees,
+  })
+  if (!prepared.ok) {
+    return NextResponse.json({ error: prepared.error }, { status: 400 })
+  }
+
   // ── Delegate booking creation to shared service ─────────────────────────────
   const appBaseUrl = getAppUrl()
   const source = payload.walk_in === true ? 'walk-in' : 'admin'
@@ -408,7 +431,9 @@ async function createFohEventBooking(
     supabaseClient: auth.supabase,
     logTag: 'FOH event booking',  // lowercase; capitalised automatically in service log messages
     firstName: fallbackFirstName || undefined,
-    contactEmail: bookingContactEmail
+    contactEmail: bookingContactEmail,
+    attendees: prepared.attendees,
+    ticketSelections: prepared.ticketSelections
   })
 
   if (result.rpcFailed) {
@@ -461,6 +486,26 @@ async function createFohEventBooking(
   // tidy-up then keeps any customer a cancelled event booking still refers to.
   if (resolvedState === 'confirmed' || resolvedState === 'pending_payment') {
     walkInTrail.bookingPersisted = true
+    // BK-141: who at the bar made this booking. Counts only: no guest names, phones or answers.
+    await logAuditEvent({
+      user_id: auth.userId,
+      operation_type: 'create',
+      resource_type: 'event_booking',
+      resource_id: bookingId ?? undefined,
+      operation_status: 'success',
+      additional_info: {
+        event_id: payload.event_id,
+        customer_id: customerId,
+        seats: payload.seats,
+        state: resolvedState,
+        source,
+        channel: 'foh',
+        table_booking_id: tableBookingId,
+        ticket_selections: prepared.ticketSelections?.map((line) => ({ ticket_type_id: line.ticket_type_id, quantity: line.quantity })) ?? null,
+        guest_details_given: prepared.attendees?.length ?? 0,
+        guest_details_to_follow: prepared.detailsToFollow,
+      },
+    })
     // A made-up walk-in customer has no number to text, so there is nothing to consent to.
     await recordStaffReadOutConsent({
       saidYes: payload.marketing_texts_yes === true && !walkInTrail.customer,
@@ -598,7 +643,8 @@ async function createFohEventBooking(
         total_remaining: rpcResult.total_remaining ?? null,
         table_booking_id: tableBookingId,
         table_name: tableName,
-        notification_sent: notificationSent
+        notification_sent: notificationSent,
+        details_to_follow: (resolvedState === 'confirmed' || resolvedState === 'pending_payment') && prepared.detailsToFollow
       } satisfies FohEventBookingResponseData,
       meta: {
         status_code: responseStatus,

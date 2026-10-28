@@ -1,6 +1,7 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { attachSentBy } from '@/lib/messages/sent-by'
 import { ConsentService } from '@/services/consent'
 import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
@@ -497,7 +498,8 @@ export class CommunicationsService {
       customer: (customerResult.data as CustomerSummary | null) ?? fallbackCustomer(customerId),
       // The thread renders oldest at the top, so undo the descending order the
       // limit needed.
-      communications: page.map(rawCommunication).reverse(),
+      // Names the member of staff on texts they typed by hand (BK-182).
+      communications: (await attachSentBy(adminClient, page.map(rawCommunication))).reverse(),
       hasOlder,
     }
   }

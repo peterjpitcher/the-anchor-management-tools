@@ -19,7 +19,7 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
-import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
+import { buildGuestShortLink, generateGuestShortCode, GUEST_SHORT_CODE_LENGTH } from '@/lib/guest/guest-short-link'
 
 const BASE = 'https://management.orangejelly.co.uk'
 const SHORT = 'https://l.the-anchor.pub/abc123'
@@ -209,5 +209,31 @@ describe('buildGuestShortLink: already short, and failures', () => {
 
     expect(result).toEqual({ url: longUrl, shortened: false })
     expect(loggerWarnMock.mock.calls[0][1].metadata.reason_code).toBe('short_link_returned_no_url')
+  })
+})
+
+// BK-203: guest links carry a booking token, so their short code must be too long to guess.
+describe('buildGuestShortLink: guessable codes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ok()
+  })
+
+  it('asks for a code made by the secure generator instead of the database 6-character one', async () => {
+    await buildGuestShortLink({ longUrl: `${BASE}/g/tok/table-manage`, linkKind: 'table_manage', customerId: 'c1' })
+
+    const [payload] = createShortLinkInternalMock.mock.calls[0]
+    expect(payload.generate_code).toBe(generateGuestShortCode)
+  })
+
+  it('makes 12-character lower-case codes that fit the 20-character column and do not repeat', () => {
+    const codes = Array.from({ length: 500 }, () => generateGuestShortCode())
+
+    for (const code of codes) {
+      expect(code).toMatch(/^[a-z0-9]{12}$/)
+      expect(code.length).toBeLessThanOrEqual(20)
+    }
+    expect(new Set(codes).size).toBe(codes.length)
+    expect(GUEST_SHORT_CODE_LENGTH).toBe(12)
   })
 })

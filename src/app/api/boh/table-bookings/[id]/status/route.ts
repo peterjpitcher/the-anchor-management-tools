@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { logger } from '@/lib/logger'
 import { z } from 'zod'
 import { requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
@@ -12,6 +13,7 @@ import {
 } from '@/lib/foh/bookings'
 import {
   buildStaffStatusTransitionPlan,
+  shortenAssignmentsOnLeave,
   type StaffStatusAction
 } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -106,13 +108,14 @@ export async function POST(
   }
 
   if (action === 'left') {
-    const { error: assignmentError } = await auth.supabase.from('booking_table_assignments')
-      .update({ end_datetime: nowIso })
-      .eq('table_booking_id', id)
-      .lt('start_datetime', nowIso)
-
+    // Only ever shortens, and never blocks the left mark: a party must not stay 'seated' because
+    // its table times could not be tidied (BK-093).
+    const { error: assignmentError } = await shortenAssignmentsOnLeave(auth.supabase, id, nowIso)
     if (assignmentError) {
-      return NextResponse.json({ error: 'Failed to update booking table assignment end time' }, { status: 500 })
+      logger.error('Could not shorten table assignments when marking a booking as left', {
+        error: new Error(String((assignmentError as { message?: unknown })?.message ?? assignmentError)),
+        metadata: { bookingId: id },
+      })
     }
   }
 
