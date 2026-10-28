@@ -901,7 +901,9 @@ export async function createBooking(
   if (booking && isCalendarConfigured()) {
     const bookingForCalendar = { ...bookingPayload, ...booking, hold_expiry: holdExpiryIso } as PrivateBookingWithDetails
     const isDateTbdBooking = Boolean(bookingForCalendar.internal_notes?.includes(DATE_TBD_NOTE))
-    if (!isDateTbdBooking && booking.status !== 'cancelled') {
+    // D28, BK-156: a website enquiry stays off the Pub Ops calendar until staff have spoken to
+    // the guest and saved the date and times; it used to show at a made-up 12:00.
+    if (!isDateTbdBooking && booking.status !== 'cancelled' && input.is_web_enquiry !== true) {
       try {
         const eventId = await syncCalendarEvent(bookingForCalendar);
         if (eventId) {
@@ -1871,7 +1873,14 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         return updatedBooking
       }
 
-      const eventId = await syncCalendarEvent(updatedBooking);
+      // D28, BK-156: a website enquiry not yet on the calendar joins it when staff save its date
+      // or times, or move it on, and not on an edit to anything else.
+      const awaitingAgreedTimes =
+        !updatedBooking.calendar_event_id &&
+        updatedBooking.source === 'website' &&
+        updatedBooking.status === 'draft' &&
+        !(['event_date', 'start_time', 'end_time', 'status'] as const).some((key) => input[key] !== undefined)
+      const eventId = awaitingAgreedTimes ? null : await syncCalendarEvent(updatedBooking);
       if (eventId && eventId !== updatedBooking.calendar_event_id) {
         const { data: updatedCalendarRow, error: calendarUpdateError } = await supabase
           .from('private_bookings')
