@@ -201,6 +201,15 @@ describe('day-before reminder: email first (BK-086, D14)', () => {
     expect(textsFor('event_reminder_1d')).toHaveLength(1)
   })
 
+  it('sends no text either when the email log cannot be read, so the next run tries again', async () => {
+    emails.sendEventReminderEmail.mockResolvedValue({ success: false, skipped: true, deferred: true })
+
+    const { payload } = await runCronAt('2026-09-15T18:30:00Z', [booking()])
+
+    expect(textsFor('event_reminder_1d')).toEqual([])
+    expect(payload.reminders).toEqual(expect.objectContaining({ sent1d: 0, emailed1d: 0 }))
+  })
+
   it('emails a guest with no active mobile, who used to get nothing', async () => {
     emails.sendEventReminderEmail.mockResolvedValue({ success: true })
 
