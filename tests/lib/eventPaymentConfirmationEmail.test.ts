@@ -53,6 +53,7 @@ import {
   sendEventBookingCancelledEmail,
   sendEventBookingConfirmedEmail,
   sendEventPaymentConfirmationEmail,
+  sendEventGuestDetailsReminderEmail,
   sendEventPaymentExpiredEmail,
   sendEventPaymentLinkEmail,
   sendEventPaymentManualReviewEmail,
@@ -158,6 +159,8 @@ function buildSupabase(options?: {
   event?: EventFixture
   customer?: Record<string, unknown>
   existingConfirmation?: Record<string, unknown> | null
+  /** The email log read fails, so the duplicate check cannot run (BK-167: fail closed). */
+  emailLogError?: boolean
 }) {
   const defaultBooking = {
     id: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
@@ -187,8 +190,8 @@ function buildSupabase(options?: {
   const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
   const emailMaybeSingle = vi.fn().mockResolvedValue({
-    data: options?.existingConfirmation ?? null,
-    error: null,
+    data: options?.emailLogError ? null : options?.existingConfirmation ?? null,
+    error: options?.emailLogError ? { message: 'statement timeout' } : null,
   })
   const emailLimit = vi.fn().mockReturnValue({ maybeSingle: emailMaybeSingle })
   const emailContains = vi.fn().mockReturnValue({ limit: emailLimit })
@@ -544,7 +547,7 @@ describe('event guest emails', () => {
     expect(result).toEqual({ success: true, messageId: 'email-1' })
     const sent = lastSend()
     assertCleanRender(sent)
-    expect(sent.text).toContain('Rebook here: https://www.the-anchor.pub/events/quiz-night')
+    expect(sent.text).toContain('Book again here: https://www.the-anchor.pub/events/quiz-night')
   })
 
   describe('cancellations', () => {
@@ -840,6 +843,67 @@ describe('event guest emails', () => {
       const sent = lastSend()
       assertCleanRender(sent)
       expect(sent.text).toContain('or refund you')
+    })
+  })
+
+  describe('release 25: email first, guest details, a way to book again', () => {
+    const BOOKING_ID = '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70'
+
+    it('links the released-places email to the event page when the event has no booking link (BK-173)', async () => {
+      const result = await sendEventPaymentExpiredEmail(buildSupabase({ event: { ...TASTING_EVENT, booking_url: null, slug: 'tasting-night-21-november' } }) as any, { bookingId: BOOKING_ID })
+
+      expect(result).toEqual({ success: true, messageId: 'email-1' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toMatch(/^Held places released: Tinsel and Tipples Christmas Tasting Night/)
+      expect(sent.text).toContain("We've released the 2 places we were holding for Tinsel and Tipples Christmas Tasting Night")
+      expect(sent.text).toContain('Book again here: https://www.the-anchor.pub/events/tasting-night-21-november')
+      expect(sent.html).toContain('>Book again</a>')
+    })
+
+    it('gives the pub number when there is no link at all', async () => {
+      await sendEventPaymentExpiredEmail(buildSupabase({ event: { ...TASTING_EVENT, booking_url: null, slug: null } }) as any, { bookingId: BOOKING_ID })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain("call us on 01753 682707 and we'll check what's left")
+    })
+
+    it('defers, sending nothing, when the email log cannot be read', async () => {
+      for (const send of [
+        () => sendEventPaymentConfirmationEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' }),
+        () => sendEventPaymentManualReviewEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' }),
+        () => sendEventPaymentExpiredEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID }),
+        () => sendEventBookingConfirmedEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID }),
+        () => sendEventBookingCancelledEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, reason: 'staff_cancel', paymentTaken: false }),
+      ]) {
+        vi.mocked(sendEmail).mockClear()
+        await expect(send()).resolves.toEqual({ success: false, skipped: true, deferred: true })
+        expect(sendEmail).not.toHaveBeenCalled()
+      }
+    })
+
+    it('points a prepaid booker at their guest details from the confirmation (BK-133)', async () => {
+      await sendEventPaymentConfirmationEmail(buildSupabase({ event: { ...TASTING_EVENT, collect_guest_details: true } }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain('Check or update your guest details from your booking page.')
+    })
+
+    it('leaves the guest details line out where the event asks for none', async () => {
+      await sendEventBookingConfirmedEmail(buildSupabase({ event: { ...QUIZ_EVENT, collect_guest_details: false } }) as any, { bookingId: BOOKING_ID })
+      expect(lastSend().text).not.toContain('guest details')
+    })
+
+    it('renders the guest details reminder (BK-132)', async () => {
+      const result = await sendEventGuestDetailsReminderEmail(buildSupabase({ event: { ...TASTING_EVENT, collect_guest_details: true } }) as any, { bookingId: BOOKING_ID, missingCount: 2 })
+
+      expect(result).toEqual({ success: true, messageId: 'email-1' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toMatch(/^Guest details still needed: Tinsel and Tipples Christmas Tasting Night/)
+      expect(sent.text).toContain('2 of your tickets still need a guest name or answers for Tinsel and Tipples Christmas Tasting Night on ')
+      expect(sent.text).toMatch(/Add guest details here: https:\/\//)
+      expect(sent.commType).toBe('event_guest_details_reminder')
     })
   })
 })

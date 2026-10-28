@@ -203,8 +203,8 @@ describe('event booking route: website checkout hold and text', () => {
 
     expect(sendSMS).toHaveBeenCalledOnce()
     const [, body, options] = vi.mocked(sendSMS).mock.calls[0]
-    expect(body).toContain("We'll hold them until 7:42pm.")
-    expect(body).toContain('Pay here: https://example.com/pay')
+    expect(body).toContain('until 7:42pm.')
+    expect(body).toContain('Pay here to confirm: https://example.com/pay')
     expect(body).not.toMatch(/undefined|NaN|Invalid Date/)
     expect(options?.metadata).toEqual(expect.objectContaining({
       event_booking_id: 'booking-1',
