@@ -24,7 +24,14 @@ import {
   type EventManualRefundMethod,
   type EventRefundResult
 } from '@/lib/events/manage-booking'
-import { alertEventRefundRequest, resolveEventRefundRequestRow } from '@/lib/events/refund-requests'
+import {
+  alertEventRefundRequest,
+  describeEventRefundRequestKind,
+  loadOpenEventRefundRequests,
+  resolveEventRefundRequestRow,
+  type EventRefundRequest,
+  type EventRefundRequestKind
+} from '@/lib/events/refund-requests'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
 import {
   sendEventBookingSeatUpdateSms,
@@ -35,7 +42,9 @@ import {
   sendEventBookingCancelledEmail,
   sendEventPaymentConfirmationEmail,
   sendEventPaymentManualReviewEmail,
+  sendEventBookingTicketsChangedEmail,
   sendEventTicketTransferredEmail,
+  type EventTicketsChange,
 } from '@/lib/email/event-ticket-emails'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
@@ -68,7 +77,13 @@ import {
   decideTicketSelectionHandling,
 } from '@/lib/events/ticket-type-queries'
 import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
-import { staffEventAttendeesInputSchema, type StaffEventAttendeeInput } from '@/lib/events/booking-questions'
+import {
+  INVALID_GUEST_PHONE_MESSAGE,
+  normaliseAttendeePhones,
+  staffEventAttendeesInputSchema,
+  type BookingQuestion,
+  type StaffEventAttendeeInput
+} from '@/lib/events/booking-questions'
 import { prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 import { jobQueue } from '@/lib/unified-job-queue'
@@ -98,6 +113,8 @@ export type EventBookingRow = {
   check_in?: { id: string; check_in_method: string | null } | null
   /** The email typed for this booking when the customer record holds a different one (BK-078). */
   contact_email?: string | null
+  /** Refunds waiting for a manager after staff changed the booking (owner decision D7). */
+  refund_requests?: Array<{ id: string; kind: EventRefundRequestKind; amount: number; label: string }>
   customer?: {
     id: string
     first_name: string | null
@@ -827,6 +844,18 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
       })
     }
 
+    // Refunds waiting for a manager (D7). A failed read shows none rather than blocking the list;
+    // the manager inbox was told about each one when it was raised.
+    let refundRequestsByBooking = new Map<string, EventRefundRequest[]>()
+    try {
+      refundRequestsByBooking = await loadOpenEventRefundRequests(supabase, bookingIds)
+    } catch (refundRequestsError) {
+      logger.error('Failed to load open refund requests for event bookings', {
+        error: refundRequestsError instanceof Error ? refundRequestsError : new Error(String(refundRequestsError)),
+        metadata: { eventId },
+      })
+    }
+
     const paidStatuses = new Set(['succeeded', 'paid', 'partially_refunded', 'refunded'])
     const refundStatuses = new Set(['refunded', 'succeeded', 'pending'])
     const withPayments = bookings.map((booking) => {
@@ -882,6 +911,12 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         ticket_breakdown: breakdownByBooking.get(booking.id) ?? null,
         charge_total: chargeTotalByBooking.get(booking.id) ?? null,
         check_in: checkInByBooking.get(booking.id) ?? checkInByCustomer.get(booking.customer_id) ?? null,
+        refund_requests: (refundRequestsByBooking.get(booking.id) ?? []).map((request) => ({
+          id: request.id,
+          kind: request.kind,
+          amount: request.amount,
+          label: describeEventRefundRequestKind(request.kind),
+        })),
       }
     })
 
@@ -1343,12 +1378,13 @@ export async function updateEventManualBookingSeats(input: {
     if (isPrepaidConfirmedBooking) {
       return {
         error:
-          'This booking has already been paid, so the seat count cannot be changed here. Cancel it with a refund to reduce seats, or take a payment for the extra seats instead.'
+          // BK-023: these used to send staff to flows that did not exist.
+          'This booking has already been paid, so the seat count cannot be changed here. Use Change tickets to add or remove guests.'
       }
     }
 
     if (Array.isArray(bookingRow.attendees) && bookingRow.attendees.length > 0 && parsed.data.seats !== bookingRow.seats) {
-      return { error: 'This booking has named guests. Cancel and rebook the affected tickets so guest details and payment stay together.' }
+      return { error: 'This booking has named guests. Use Change tickets to add or remove a guest, so guest details and payment stay together.' }
     }
 
     // Multi-type bookings: the overall seat count is derived from the ticket
@@ -1361,7 +1397,7 @@ export async function updateEventManualBookingSeats(input: {
         if (bookingItemsAreMultiType(bookingItems, defaultTypeId)) {
           return {
             error:
-              'This booking has multiple ticket options, so the overall seat count cannot be edited. Edit the ticket lines instead.'
+              'This booking has more than one ticket type, so the overall seat count cannot be edited. Use Change tickets instead.'
           }
         }
       }
@@ -3074,5 +3110,607 @@ export async function getEventTransferPreview(bookingId: string, targetEventId: 
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to load the questions for the new night.') }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Change tickets on a booking (BK-023, customer bookings review of 24 October 2026; D7, D10)
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Why a ticket change was refused, in words for staff. The codes come from the database
+ * functions remove_event_booking_guests_v01, add_event_booking_guests_v01 and
+ * change_event_booking_ticket_type_v01.
+ */
+const TICKET_CHANGE_REASON_TEXT: Record<string, string> = {
+  booking_not_found: 'This booking could not be found.',
+  status_not_changeable: 'Only a confirmed booking can have its tickets changed.',
+  event_started: 'This event has already started, so its tickets can no longer be changed.',
+  choose_guests: 'Choose which guests this applies to.',
+  guest_not_on_booking: 'One of the guests chosen is no longer on this booking. Refresh and try again.',
+  invalid_quantity: 'Choose how many tickets.',
+  would_remove_every_guest: 'That would take every guest off. Cancel the booking instead.',
+  ticket_line_mismatch: 'The tickets on this booking have changed. Refresh and try again.',
+  invalid_ticket_type: 'That ticket type is not on sale for this event.',
+  same_ticket_type: 'Those tickets are already that type.',
+  settlement_required: 'Say how the extra is paid: cash, card, or free with a reason.',
+  comp_reason_required: 'Say why the tickets are free.',
+  no_payment_taken_here: 'This event is not paid in advance, so no payment is taken here.',
+  amount_changed: 'The price has changed. Check the amount and try again.',
+  guest_details_needed: 'Add a guest row for each new ticket. A name can follow later.',
+  booking_has_no_guest_rows: 'This booking has no guest rows, so add the tickets without names.',
+  insufficient_capacity: 'The event does not have enough places left.',
+  insufficient_seated_capacity: 'No seated places are left for this event.',
+  insufficient_standing_capacity: 'No standing places are left for this event.',
+  table_capacity_insufficient: 'The table for this booking is not big enough. Move it to a larger table first.',
+  ticket_type_sold_out: 'That ticket type is sold out.',
+  invalid_attendee_phone: 'Please check the guest mobile numbers.',
+  invalid_attendee_answer: 'One of the answers does not fit its question.',
+  unknown_attendee_question: 'One of the answers is for a question this event does not ask.',
+  attendee_name_required: 'A guest name is too long.',
+  invalid_attendee_id: 'Please reload the page and try again.',
+}
+
+function ticketChangeReasonText(reason: string | null | undefined): string {
+  if (!reason) return 'The tickets could not be changed.'
+  return TICKET_CHANGE_REASON_TEXT[reason] ?? `The tickets could not be changed (${reason.replace(/_/g, ' ')}).`
+}
+
+/** A raised database exception (for example invalid_attendee_phone) as its reason code, or null. */
+function ticketChangeErrorReason(error: { message?: string | null } | null): string | null {
+  const message = String(error?.message ?? '')
+  const known = Object.keys(TICKET_CHANGE_REASON_TEXT).find((code) => message.includes(code))
+  return known ?? null
+}
+
+type TicketChangeResult =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        state: 'updated'
+        old_seats?: number
+        new_seats?: number
+        /** Up to this much may be owed back, waiting for a manager (D7). */
+        refund_owed: number
+        refund_request_id: string | null
+        /** Money taken at the venue for added or dearer tickets. */
+        amount_taken: number
+      }
+    }
+
+type TicketChangeRpcResult = {
+  state?: string
+  reason?: string
+  amount?: number
+  event_id?: string
+  event_name?: string
+  old_seats?: number
+  new_seats?: number
+  removed?: number
+  added?: number
+  changed?: number
+  price_paid?: number
+  refund_owed?: number
+  refund_request_id?: string | null
+  payment_id?: string | null
+}
+
+async function requireTicketChangeUser(): Promise<{ error: string } | { userId: string; email: string | null }> {
+  // D7: any member of staff who manages events may change the tickets; only the refund waits.
+  const canManageEvents = await checkUserPermission('events', 'manage')
+  if (!canManageEvents) {
+    return { error: 'You do not have permission to change event bookings.' }
+  }
+  const authSupabase = await createClient()
+  const { data: { user }, error: authError } = await authSupabase.auth.getUser()
+  if (authError || !user) {
+    return { error: 'Unauthorized' }
+  }
+  return { userId: user.id, email: user.email ?? null }
+}
+
+/** After a ticket change: audit row, manager alert for a refund to decide, booker email, refresh. */
+async function finishTicketChange(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: {
+    bookingId: string
+    userId: string
+    userEmail: string | null
+    operation: 'remove_event_booking_guests' | 'add_event_booking_guests' | 'change_event_booking_ticket_type'
+    rpc: TicketChangeRpcResult
+    change: EventTicketsChange
+    extra: Record<string, unknown>
+  }
+): Promise<void> {
+  const refundOwed = toMoney(Math.max(0, Number(input.rpc.refund_owed ?? 0)))
+  if (input.rpc.refund_request_id && refundOwed > 0) {
+    await alertEventRefundRequest(supabase, {
+      requestId: input.rpc.refund_request_id,
+      bookingId: input.bookingId,
+      eventId: input.rpc.event_id ?? null,
+      eventName: input.rpc.event_name ?? null,
+      kind: input.operation === 'remove_event_booking_guests' ? 'guest_removed' : 'ticket_type_changed',
+      amount: refundOwed,
+      pricePaid: typeof input.rpc.price_paid === 'number' ? input.rpc.price_paid : null,
+    })
+  }
+
+  await logAuditEvent({
+    user_id: input.userId,
+    user_email: input.userEmail ?? undefined,
+    operation_type: input.operation,
+    resource_type: 'event_booking',
+    resource_id: input.bookingId,
+    operation_status: 'success',
+    additional_info: {
+      event_id: input.rpc.event_id ?? null,
+      old_seats: input.rpc.old_seats ?? null,
+      new_seats: input.rpc.new_seats ?? null,
+      price_paid: input.rpc.price_paid ?? null,
+      refund_owed: refundOwed,
+      refund_request_id: input.rpc.refund_request_id ?? null,
+      amount_taken: input.rpc.amount ?? 0,
+      payment_id: input.rpc.payment_id ?? null,
+      ...input.extra,
+    },
+  })
+
+  await sendEventBookingTicketsChangedEmail(supabase, {
+    bookingId: input.bookingId,
+    change: input.change,
+    appBaseUrl: getAppUrl(),
+  })
+
+  if (input.rpc.event_id) {
+    await syncPubOpsEventCalendarByEventId(supabase, input.rpc.event_id, {
+      bookingId: input.bookingId,
+      context: 'admin_event_booking_tickets_changed',
+    })
+    revalidatePath(`/events/${input.rpc.event_id}`)
+  }
+  revalidatePath('/events')
+  revalidatePath('/table-bookings/foh')
+  revalidateTag('dashboard')
+}
+
+const removeEventBookingGuestsSchema = z.object({
+  bookingId: z.string().uuid(),
+  attendeeIds: z.array(z.string().uuid()).max(20).optional(),
+  ticketTypeId: z.string().uuid().optional(),
+  quantity: z.number().int().min(1).max(20).optional(),
+})
+
+/**
+ * Takes guests off a booking (BK-023 step 1): the chosen named guests, or a number of tickets of
+ * one type on a booking without guest rows. Seats, ticket lines, guest rows and the table or
+ * shared seats change in one transaction. Nothing is refunded here: what the tickets were sold at
+ * becomes a refund request for a manager to decide (owner decision D7).
+ */
+export async function removeEventBookingGuests(input: {
+  bookingId: string
+  attendeeIds?: string[]
+  ticketTypeId?: string
+  quantity?: number
+}): Promise<TicketChangeResult> {
+  try {
+    const actor = await requireTicketChangeUser()
+    if ('error' in actor) return actor
+    const parsed = removeEventBookingGuestsSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid change.' }
+    }
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase.rpc('remove_event_booking_guests_v01', {
+      p_booking_id: parsed.data.bookingId,
+      p_attendee_ids: (parsed.data.attendeeIds && parsed.data.attendeeIds.length > 0 ? parsed.data.attendeeIds : null) as unknown as string[],
+      p_ticket_type_id: (parsed.data.ticketTypeId ?? null) as unknown as string,
+      p_quantity: (parsed.data.quantity ?? null) as unknown as number,
+      p_performed_by: actor.userId,
+    })
+    if (error) {
+      const reason = ticketChangeErrorReason(error)
+      logger.error('remove_event_booking_guests_v01 failed', {
+        error: new Error(error.message),
+        metadata: { bookingId: parsed.data.bookingId, code: error.code ?? null },
+      })
+      return { error: reason ? ticketChangeReasonText(reason) : 'The guests could not be removed. Nothing has changed; please try again.' }
+    }
+    const result = (data ?? {}) as TicketChangeRpcResult
+    if (result.state !== 'updated') {
+      return { error: ticketChangeReasonText(result.reason) }
+    }
+
+    const refundOwed = toMoney(Math.max(0, Number(result.refund_owed ?? 0)))
+    await finishTicketChange(supabase, {
+      bookingId: parsed.data.bookingId,
+      userId: actor.userId,
+      userEmail: actor.email,
+      operation: 'remove_event_booking_guests',
+      rpc: result,
+      change: { kind: 'guests_removed', count: Number(result.removed ?? 1), refundToDecide: refundOwed > 0 },
+      extra: { removed: result.removed ?? null, attendee_ids: parsed.data.attendeeIds ?? null },
+    })
+
+    return {
+      success: true,
+      data: {
+        state: 'updated',
+        old_seats: result.old_seats,
+        new_seats: result.new_seats,
+        refund_owed: refundOwed,
+        refund_request_id: result.refund_request_id ?? null,
+        amount_taken: 0,
+      },
+    }
+  } catch (error) {
+    logger.error('Unexpected removeEventBookingGuests error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to remove the guests.') }
+  }
+}
+
+const ticketSettlementSchema = z.enum(['cash', 'card_terminal', 'comp', 'none'])
+
+const addEventBookingGuestsSchema = z.object({
+  bookingId: z.string().uuid(),
+  ticketTypeId: z.string().uuid().optional(),
+  quantity: z.number().int().min(1).max(20),
+  attendees: staffEventAttendeesInputSchema.optional(),
+  settlement: ticketSettlementSchema,
+  note: z.string().trim().max(500).optional(),
+  expectedAmount: z.number().nonnegative().optional(),
+})
+
+/**
+ * Adds guests to a booking (BK-023 step 2). Checks capacity, adds the seats, the ticket line and
+ * a guest row for each new ticket (a name or answer may follow), and moves the table or shared
+ * seats. On a paid-in-advance event the new tickets are paid now at the venue, at the full price
+ * (owner decision D10), or given free with a reason; the amount must match what staff were shown.
+ */
+export async function addEventBookingGuests(input: {
+  bookingId: string
+  ticketTypeId?: string
+  quantity: number
+  attendees?: StaffEventAttendeeInput[]
+  settlement: 'cash' | 'card_terminal' | 'comp' | 'none'
+  note?: string
+  expectedAmount?: number
+}): Promise<TicketChangeResult> {
+  try {
+    const actor = await requireTicketChangeUser()
+    if ('error' in actor) return actor
+    const parsed = addEventBookingGuestsSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid change.' }
+    }
+    const attendees = normaliseAttendeePhones(parsed.data.attendees ?? [])
+    if (attendees === null) {
+      return { error: INVALID_GUEST_PHONE_MESSAGE }
+    }
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase.rpc('add_event_booking_guests_v01', {
+      p_booking_id: parsed.data.bookingId,
+      p_ticket_type_id: (parsed.data.ticketTypeId ?? null) as unknown as string,
+      p_quantity: parsed.data.quantity,
+      p_attendees: attendees ?? [],
+      p_settlement: parsed.data.settlement,
+      p_note: (parsed.data.note ?? null) as unknown as string,
+      p_expected_amount: (parsed.data.expectedAmount ?? null) as unknown as number,
+      p_performed_by: actor.userId,
+    })
+    if (error) {
+      const reason = ticketChangeErrorReason(error)
+      logger.error('add_event_booking_guests_v01 failed', {
+        error: new Error(error.message),
+        metadata: { bookingId: parsed.data.bookingId, code: error.code ?? null },
+      })
+      return { error: reason ? ticketChangeReasonText(reason) : 'The guests could not be added. Nothing has changed; please try again.' }
+    }
+    const result = (data ?? {}) as TicketChangeRpcResult
+    if (result.state !== 'updated') {
+      if (result.reason === 'amount_changed' && typeof result.amount === 'number') {
+        return { error: `The amount to take is now £${result.amount.toFixed(2)}. Check it and try again.` }
+      }
+      return { error: ticketChangeReasonText(result.reason) }
+    }
+
+    const amountTaken = toMoney(Math.max(0, Number(result.amount ?? 0)))
+    await finishTicketChange(supabase, {
+      bookingId: parsed.data.bookingId,
+      userId: actor.userId,
+      userEmail: actor.email,
+      operation: 'add_event_booking_guests',
+      rpc: result,
+      change: { kind: 'guests_added', count: Number(result.added ?? parsed.data.quantity), amountTaken },
+      extra: { added: result.added ?? parsed.data.quantity, settlement: parsed.data.settlement, note: parsed.data.note ?? null },
+    })
+
+    return {
+      success: true,
+      data: {
+        state: 'updated',
+        old_seats: result.old_seats,
+        new_seats: result.new_seats,
+        refund_owed: 0,
+        refund_request_id: null,
+        amount_taken: amountTaken,
+      },
+    }
+  } catch (error) {
+    logger.error('Unexpected addEventBookingGuests error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to add the guests.') }
+  }
+}
+
+const changeEventBookingTicketTypeSchema = z.object({
+  bookingId: z.string().uuid(),
+  attendeeIds: z.array(z.string().uuid()).max(20).optional(),
+  fromTicketTypeId: z.string().uuid().optional(),
+  quantity: z.number().int().min(1).max(20).optional(),
+  toTicketTypeId: z.string().uuid(),
+  settlement: ticketSettlementSchema,
+  note: z.string().trim().max(500).optional(),
+  expectedAmount: z.number().nonnegative().optional(),
+})
+
+/**
+ * Moves tickets to another ticket type (BK-023 step 3). A dearer type is paid now at the venue or
+ * given free with a reason; a cheaper one leaves the difference as a refund request for a manager
+ * (owner decision D7).
+ */
+export async function changeEventBookingTicketType(input: {
+  bookingId: string
+  attendeeIds?: string[]
+  fromTicketTypeId?: string
+  quantity?: number
+  toTicketTypeId: string
+  settlement: 'cash' | 'card_terminal' | 'comp' | 'none'
+  note?: string
+  expectedAmount?: number
+}): Promise<TicketChangeResult> {
+  try {
+    const actor = await requireTicketChangeUser()
+    if ('error' in actor) return actor
+    const parsed = changeEventBookingTicketTypeSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid change.' }
+    }
+
+    const supabase = createAdminClient()
+    const { data, error } = await supabase.rpc('change_event_booking_ticket_type_v01', {
+      p_booking_id: parsed.data.bookingId,
+      p_attendee_ids: (parsed.data.attendeeIds && parsed.data.attendeeIds.length > 0 ? parsed.data.attendeeIds : null) as unknown as string[],
+      p_from_ticket_type_id: (parsed.data.fromTicketTypeId ?? null) as unknown as string,
+      p_quantity: (parsed.data.quantity ?? null) as unknown as number,
+      p_to_ticket_type_id: parsed.data.toTicketTypeId,
+      p_settlement: parsed.data.settlement,
+      p_note: (parsed.data.note ?? null) as unknown as string,
+      p_expected_amount: (parsed.data.expectedAmount ?? null) as unknown as number,
+      p_performed_by: actor.userId,
+    })
+    if (error) {
+      const reason = ticketChangeErrorReason(error)
+      logger.error('change_event_booking_ticket_type_v01 failed', {
+        error: new Error(error.message),
+        metadata: { bookingId: parsed.data.bookingId, code: error.code ?? null },
+      })
+      return { error: reason ? ticketChangeReasonText(reason) : 'The tickets could not be changed. Nothing has changed; please try again.' }
+    }
+    const result = (data ?? {}) as TicketChangeRpcResult & { difference?: number }
+    if (result.state !== 'updated') {
+      if ((result.reason === 'amount_changed' || result.reason === 'settlement_required') && typeof result.amount === 'number') {
+        return { error: `${ticketChangeReasonText(result.reason)} The difference is £${result.amount.toFixed(2)}.` }
+      }
+      return { error: ticketChangeReasonText(result.reason) }
+    }
+
+    const { data: toType } = await supabase
+      .from('event_ticket_types')
+      .select('name')
+      .eq('id', parsed.data.toTicketTypeId)
+      .maybeSingle()
+    const refundOwed = toMoney(Math.max(0, Number(result.refund_owed ?? 0)))
+    const amountTaken = toMoney(Math.max(0, Number(result.amount ?? 0)))
+    await finishTicketChange(supabase, {
+      bookingId: parsed.data.bookingId,
+      userId: actor.userId,
+      userEmail: actor.email,
+      operation: 'change_event_booking_ticket_type',
+      rpc: result,
+      change: {
+        kind: 'ticket_type_changed',
+        count: Number(result.changed ?? 1),
+        ticketTypeName: toType?.name ?? null,
+        amountTaken,
+        refundToDecide: refundOwed > 0,
+      },
+      extra: {
+        changed: result.changed ?? null,
+        to_ticket_type_id: parsed.data.toTicketTypeId,
+        difference: result.difference ?? null,
+        settlement: parsed.data.settlement,
+        note: parsed.data.note ?? null,
+      },
+    })
+
+    return {
+      success: true,
+      data: {
+        state: 'updated',
+        refund_owed: refundOwed,
+        refund_request_id: result.refund_request_id ?? null,
+        amount_taken: amountTaken,
+      },
+    }
+  } catch (error) {
+    logger.error('Unexpected changeEventBookingTicketType error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to change the tickets.') }
+  }
+}
+
+type TicketChangeOptions =
+  | { error: string }
+  | {
+      success: true
+      data: {
+        paymentMode: string
+        /** Every ticket type on sale, with what it costs at the venue (full price, D10) and online. */
+        /**
+         * Every ticket type on sale: fullPrice is what the venue charges (D10), bookedPrice what a
+         * ticket costs on this booking's terms, pricePaid what this booking's own line was sold at.
+         */
+        ticketTypes: Array<{ id: string; name: string; fullPrice: number; bookedPrice: number; pricePaid: number | null; onBooking: number }>
+        guests: Array<{ id: string; name: string; ticketTypeId: string | null }>
+        seats: number
+        questions: BookingQuestion[]
+      }
+    }
+
+/** What the Change tickets dialog offers for a booking (BK-023). */
+export async function getEventBookingTicketChangeOptions(bookingId: string): Promise<TicketChangeOptions> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to change event bookings.' }
+    }
+    if (!z.string().uuid().safeParse(bookingId).success) {
+      return { error: 'Booking not found.' }
+    }
+    const supabase = createAdminClient()
+    const { data: bookingRow, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, event_id, seats, attendees, event:events(id, payment_mode, online_discount_type, online_discount_value, online_discount_ends_at, booking_questions)')
+      .eq('id', bookingId)
+      .maybeSingle()
+    if (bookingError || !bookingRow?.event_id) return { error: 'Booking not found.' }
+    const eventRecord = (Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event) as {
+      payment_mode?: string | null
+      online_discount_type?: string | null
+      online_discount_value?: number | string | null
+      online_discount_ends_at?: string | null
+      booking_questions?: unknown
+    } | null
+
+    const [{ data: types, error: typesError }, items] = await Promise.all([
+      supabase
+        .from('event_ticket_types')
+        .select('id, name, base_price, sort_order, created_at')
+        .eq('event_id', bookingRow.event_id)
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      loadBookingItems(supabase, bookingId),
+    ])
+    if (typesError) throw typesError
+
+    const prepaid = eventRecord?.payment_mode === 'prepaid'
+    const discountEnds = eventRecord?.online_discount_ends_at ? Date.parse(eventRecord.online_discount_ends_at) : Number.NaN
+    const discountLive = prepaid && !(Number.isFinite(discountEnds) && discountEnds <= Date.now())
+    const discountValue = Number(eventRecord?.online_discount_value ?? 0)
+    const onlinePrice = (base: number): number => {
+      if (!discountLive || !discountValue) return toMoney(base)
+      if (eventRecord?.online_discount_type === 'percent') return toMoney(Math.max(0, base - base * (discountValue / 100)))
+      if (eventRecord?.online_discount_type === 'fixed') return toMoney(Math.max(0, base - discountValue))
+      return toMoney(base)
+    }
+    const quantityByType = new Map(items.map((item) => [item.ticket_type_id, Number(item.quantity) || 0]))
+    const pricePaidByType = new Map(items.map((item) => [item.ticket_type_id, toMoney(Number(item.unit_price) || 0)]))
+
+    const attendees = Array.isArray(bookingRow.attendees) ? (bookingRow.attendees as Array<Record<string, unknown>>) : []
+    return {
+      success: true,
+      data: {
+        paymentMode: eventRecord?.payment_mode ?? 'free',
+        ticketTypes: (types ?? []).map((type) => ({
+          id: type.id,
+          name: type.name || 'Ticket',
+          fullPrice: toMoney(Number(type.base_price ?? 0)),
+          bookedPrice: onlinePrice(Number(type.base_price ?? 0)),
+          pricePaid: pricePaidByType.get(type.id) ?? null,
+          onBooking: quantityByType.get(type.id) ?? 0,
+        })),
+        guests: attendees
+          .filter((attendee) => typeof attendee.id === 'string')
+          .map((attendee) => ({
+            id: String(attendee.id),
+            name: typeof attendee.name === 'string' ? attendee.name : '',
+            ticketTypeId: typeof attendee.ticket_type_id === 'string' ? attendee.ticket_type_id : null,
+          })),
+        seats: Math.max(0, Number(bookingRow.seats ?? 0)),
+        questions: (Array.isArray(eventRecord?.booking_questions) ? eventRecord?.booking_questions : []) as BookingQuestion[],
+      },
+    }
+  } catch (error) {
+    logger.error('Failed to load ticket change options', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to load the tickets on this booking.') }
+  }
+}
+
+const decideNoEventRefundSchema = z.object({
+  bookingId: z.string().uuid(),
+  requestId: z.string().uuid(),
+  note: z.string().trim().min(1, 'Say why no refund is due.').max(500),
+})
+
+/**
+ * A manager decides that a waiting refund request is not refunded (owner decision D7), with a
+ * reason. Refunding it goes through refundEventBookingManual with the request's id instead.
+ */
+export async function decideNoEventRefund(input: {
+  bookingId: string
+  requestId: string
+  note: string
+}): Promise<{ error: string } | { success: true }> {
+  try {
+    const canManageEvents = await checkUserPermission('events', 'manage')
+    if (!canManageEvents) {
+      return { error: 'You do not have permission to decide refunds.' }
+    }
+    const parsed = decideNoEventRefundSchema.safeParse(input)
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message || 'Invalid decision.' }
+    }
+    const supabase = createAdminClient()
+    const { userId, email, mayRefund } = await resolveEventRefundActor(supabase)
+    if (!mayRefund) {
+      return { error: 'Only a manager can decide a refund.' }
+    }
+    const closed = await resolveEventRefundRequestRow(supabase, {
+      requestId: parsed.data.requestId,
+      bookingId: parsed.data.bookingId,
+      status: 'no_refund',
+      amount: 0,
+      resolvedBy: userId,
+      note: parsed.data.note,
+    })
+    if (!closed) {
+      return { error: 'This refund has already been decided. Refresh the page.' }
+    }
+    await logAuditEvent({
+      user_id: userId ?? undefined,
+      user_email: email ?? undefined,
+      operation_type: 'decide_no_event_refund',
+      resource_type: 'event_booking',
+      resource_id: parsed.data.bookingId,
+      operation_status: 'success',
+      additional_info: { refund_request_id: parsed.data.requestId, note: parsed.data.note },
+    })
+    revalidatePath('/events')
+    return { success: true }
+  } catch (error) {
+    logger.error('Unexpected decideNoEventRefund error', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to record the decision.') }
   }
 }

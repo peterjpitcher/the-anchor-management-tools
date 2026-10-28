@@ -37,6 +37,13 @@ vi.mock('@/lib/events/manage-booking', () => ({
   recordManualEventRefund: vi.fn(),
   updateEventBookingSeatsById: vi.fn(),
 }))
+const resolveEventRefundRequestRow = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/events/refund-requests', () => ({
+  alertEventRefundRequest: vi.fn(),
+  describeEventRefundRequestKind: vi.fn(() => 'Guests taken off the booking'),
+  loadOpenEventRefundRequests: vi.fn(async () => new Map()),
+  resolveEventRefundRequestRow,
+}))
 vi.mock('@/lib/events/event-payments', () => ({
   sendEventBookingSeatUpdateSms: vi.fn(),
   sendEventPaymentConfirmationSms: vi.fn(),
@@ -425,5 +432,55 @@ describe('refundEventBookingManual', () => {
 
     expect(result).toEqual({ error: expect.stringContaining('Nothing on this booking was paid at the bar') })
     expect(recordManualEventRefund).not.toHaveBeenCalled()
+  })
+
+  // D7: a refund opened from a waiting refund request settles that request with what went back.
+  it('settles the refund request it was opened from', async () => {
+    mockAuthUser({ id: 'user-1', email: 'boss@the-anchor.pub' })
+    vi.mocked(createAdminClient).mockReturnValue(createAdminMock({
+      tables: {
+        bookings: [{ data: CONFIRMED_BOOKING, error: null }],
+        payments: [
+          { data: [{ amount: 120, payment_provider: 'paypal' }], error: null },
+          { data: [], error: null },
+        ],
+      },
+      rpc: { get_user_roles: MANAGER_ROLES },
+    }) as never)
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'succeeded', amount: 30, currency: 'GBP' })
+
+    const { refundEventBookingManual } = await import('../events')
+    const result = await refundEventBookingManual({
+      bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID, amount: 30,
+      refundRequestId: 'be6eb145-df8d-4c2b-af9c-6d6f8e8b2c67',
+    })
+
+    expect(result).toMatchObject({ success: true, data: { refund_amount: 30 } })
+    expect(resolveEventRefundRequestRow).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      requestId: 'be6eb145-df8d-4c2b-af9c-6d6f8e8b2c67', bookingId: 'booking-1', status: 'refunded', amount: 30, resolvedBy: 'user-1',
+    }))
+  })
+
+  it('leaves the refund request open when the refund did not go through', async () => {
+    mockAuthUser({ id: 'user-1', email: 'boss@the-anchor.pub' })
+    vi.mocked(createAdminClient).mockReturnValue(createAdminMock({
+      tables: {
+        bookings: [{ data: CONFIRMED_BOOKING, error: null }],
+        payments: [
+          { data: [{ amount: 120, payment_provider: 'paypal' }], error: null },
+          { data: [], error: null },
+        ],
+      },
+      rpc: { get_user_roles: MANAGER_ROLES },
+    }) as never)
+    vi.mocked(processEventRefund).mockResolvedValue({ status: 'failed', amount: 30, currency: 'GBP' })
+
+    const { refundEventBookingManual } = await import('../events')
+    await refundEventBookingManual({
+      bookingId: '5e0e5be9-7f27-4c6b-8f36-0d0f2e2b6c01', requestId: REQUEST_ID, amount: 30,
+      refundRequestId: 'be6eb145-df8d-4c2b-af9c-6d6f8e8b2c67',
+    })
+
+    expect(resolveEventRefundRequestRow).not.toHaveBeenCalled()
   })
 })
