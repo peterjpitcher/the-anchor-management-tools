@@ -6,7 +6,7 @@ import { GUEST_CONTACT } from '@/lib/guest-contact'
  * The table booking party limit (owner decision D30, BK-146): one limit for every channel, the
  * website, staff screens and guests changing their own booking alike. It lives in the setting
  * `table_booking_max_party_online`, which the booking functions read (create_table_booking_public_v06
- * and, since 20261027193656, create_table_booking_staff_v06), so the app reads the same setting
+ * and, since 20261028125055, create_table_booking_staff_v06), so the app reads the same setting
  * rather than a number of its own. Bigger groups are private bookings.
  */
 
