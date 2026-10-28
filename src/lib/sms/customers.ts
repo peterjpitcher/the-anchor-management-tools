@@ -631,18 +631,55 @@ export async function resolveCustomerIdForSms(
         return { customerId: null, resolutionError: 'booking_customer_mismatch' }
       }
 
-      if (!privateBooking.contact_phone) {
-        const validation = await validateCustomerIdMatchesPhone(supabase, {
-          customerId: privateBooking.customer_id,
-          standardizedTo,
-          toNumbersToMatch
-        })
-        if (!validation.ok) {
-          return { customerId: null, resolutionError: validation.reason }
-        }
+      const validation = await validateCustomerIdMatchesPhone(supabase, {
+        customerId: privateBooking.customer_id,
+        standardizedTo,
+        toNumbersToMatch
+      })
+      if (validation.ok) {
+        return { customerId: privateBooking.customer_id }
+      }
+      if (!privateBooking.contact_phone || validation.reason !== 'customer_phone_mismatch') {
+        return { customerId: null, resolutionError: validation.reason }
       }
 
-      return { customerId: privateBooking.customer_id }
+      // BK-163: the booking's contact phone (checked equal to `to` above) is not the linked
+      // customer's mobile: staff changed one of them, or the enquiry came from a new number with
+      // a known email. Every text used to be refused for that, silently. The contact phone is
+      // the number the booking asked us to use, so it is treated as checked, and the consent
+      // that counts is that number's own: the customer who holds it, found or recorded now.
+      // Their opt-out is honoured by the send as usual. The booking keeps its customer.
+      logger.warn('Private booking contact phone differs from the linked customer; texting the number on the booking', {
+        metadata: { bookingId: privateBooking.id, to: maskPhone(standardizedTo) }
+      })
+      try {
+        const lookup = await findCustomerByPhone(supabase, standardizedTo, toNumbersToMatch)
+        if (lookup.lookupError) {
+          return { customerId: null, resolutionError: 'customer_lookup_failed' }
+        }
+        if (lookup.customer) {
+          return { customerId: lookup.customer.id }
+        }
+        const contactName = privateBooking.customer_first_name
+          ? { firstName: privateBooking.customer_first_name, lastName: privateBooking.customer_last_name || undefined }
+          : deriveNameParts(privateBooking.customer_name)
+        const ensured = await ensureCustomerForPhone(supabase, standardizedTo, {
+          firstName: contactName?.firstName,
+          lastName: contactName?.lastName,
+          // The email belongs to the booker, who may not be the person on this number.
+          email: null
+        })
+        if (ensured.resolutionError || !ensured.customerId) {
+          return { customerId: null, resolutionError: ensured.resolutionError ?? 'customer_not_found' }
+        }
+        return { customerId: ensured.customerId }
+      } catch (error) {
+        logger.error('Failed to resolve the customer for a private booking contact phone', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { bookingId: privateBooking.id }
+        })
+        return { customerId: null, resolutionError: 'customer_lookup_failed' }
+      }
     }
 
     bookingContext = { type: 'private', record: privateBooking }

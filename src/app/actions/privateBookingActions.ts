@@ -58,6 +58,7 @@ import {
   type ConfirmDepositOutcome,
 } from '@/services/private-bookings/deposit-confirmation'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { contactPhoneDiffersNote } from '@/services/private-bookings/contact-sync'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -182,6 +183,11 @@ async function requirePrivateBookingsPermission(
   return { user, admin };
 }
 
+
+/** Two staff notes as one, either of which may be absent. */
+function joinWarnings(first: string | null | undefined, second: string | null | undefined): string | null {
+  return [first, second].filter((part): part is string => Boolean(part)).join(' ') || null
+}
 
 // Get all private bookings with optional filtering (this should use PrivateBookingService.getBookings)
 export async function getPrivateBookings(filters?: {
@@ -406,7 +412,8 @@ export async function createPrivateBooking(formData: FormData) {
     revalidatePath('/events')
     revalidateTag('dashboard')
     // D24: diners, event seats or events already in the rooms that night are warned about, not refused.
-    const warning = await hireNightWarning(booking.id)
+    // BK-163: a contact phone that is not the customer's mobile is noted, so a typo is caught.
+    const warning = joinWarnings(await hireNightWarning(booking.id), await contactPhoneDiffersNote(booking.id).catch(() => null))
     return warning ? { success: true, data: booking, warning } : { success: true, data: booking }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error creating private booking:', error)
@@ -575,7 +582,8 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     revalidatePath('/events')
     revalidateTag('dashboard')
     // D24: diners, event seats or events already in the rooms that night are warned about, not refused.
-    const warning = await hireNightWarning(id)
+    // BK-163: a contact phone that is not the customer's mobile is noted, so a typo is caught.
+    const warning = joinWarnings(await hireNightWarning(id), await contactPhoneDiffersNote(id).catch(() => null))
     return warning ? { success: true, data: booking, warning } : { success: true, data: booking }
   } catch (error: unknown) {
     logPrivateBookingActionError('Error updating private booking:', error)
