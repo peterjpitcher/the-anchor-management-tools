@@ -26,6 +26,7 @@ type BookingRow = {
   deposit_amount: number | null
   deposit_paid_date: string | null
   event_date?: string | null
+  date_tbd?: boolean | null
   has_open_dispute?: boolean | null
 }
 
@@ -86,6 +87,7 @@ describe('getPrivateBookingPaidTotals', () => {
       total_paid: 0,
       has_open_dispute: false,
       event_date: null,
+      date_tbd: false,
     })
   })
 
@@ -295,5 +297,26 @@ describe('getPrivateBookingCancellationOutcome', () => {
     expect(outcome.retained_amount).toBe(7.5)
     expect(outcome.refund_amount).toBe(142.5)
     expect(outcome.max_retainable).toBe(0)
+  })
+  it('treats a date-to-be-confirmed booking as cancelled 30+ days out, not by its placeholder date (BK-157)', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-28T10:00:00.000Z'))
+    mockSupabase({
+      booking: {
+        deposit_amount: 150,
+        deposit_paid_date: '2026-10-20',
+        // The placeholder createBooking writes for a TBD booking: the day the enquiry came in.
+        event_date: '2026-10-20',
+        date_tbd: true,
+      },
+      payments: [],
+    })
+
+    const outcome = await getPrivateBookingCancellationOutcome('booking-tbd')
+
+    expect(outcome.outcome).toBe('deposit_partial_refund')
+    expect(outcome.deposit_deduction).toBe(7.5)
+    expect(outcome.refund_amount).toBe(142.5)
+    vi.useRealTimers()
   })
 })
