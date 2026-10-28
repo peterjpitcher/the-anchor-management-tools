@@ -780,7 +780,7 @@ describe('event guest emails', () => {
       })
       const sent = lastSend()
       assertCleanRender(sent)
-      expect(sent.text).toContain('You paid £45.00 at the bar, so we will be in touch to give it back.')
+      expect(sent.text).toContain("You paid £45.00 at the bar, so we'll be in touch to give it back.")
     })
   })
 

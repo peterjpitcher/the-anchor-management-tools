@@ -153,7 +153,7 @@ describe('whole-event cancellation lists tickets paid at the bar', () => {
     const emailFor = (id: string) => vi.mocked(sendEventBookingCancelledEmail).mock.calls.find((call) => call[1].bookingId === id)?.[1]
     expect(emailFor('booking-cash')).toMatchObject({ refundStatus: 'bar_refund_due', refundAmount: 45 })
     const smsBodies = vi.mocked(sendSMS).mock.calls.map((call) => call[1] as string)
-    expect(smsBodies.some((body) => body.includes('You paid £45.00 at the bar, so we will be in touch to give it back.'))).toBe(true)
+    expect(smsBodies.some((body) => body.includes("You paid £45.00 at the bar, so we'll be in touch to give it back."))).toBe(true)
   })
 
   it('tells a guest who paid both ways what goes back online and what at the bar (review finding on PR 277)', async () => {

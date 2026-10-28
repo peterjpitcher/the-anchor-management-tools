@@ -46,7 +46,7 @@ export function buildRefundNote(params: {
 }): string | null {
   if (!params.isPrepaid) return null
   if (params.returnedAtBar && params.refundAmount) {
-    return `You paid £${params.refundAmount.toFixed(2)} at the bar, so we will be in touch to give it back.`
+    return `You paid £${params.refundAmount.toFixed(2)} at the bar, so we'll be in touch to give it back.`
   }
   // Paid both online and at the bar: say which money goes back which way (review finding on PR 277).
   if (params.barRefundAmount && params.barRefundAmount > 0) {
@@ -54,7 +54,7 @@ export function buildRefundNote(params: {
     if (params.refundSucceeded && params.refundAmount) {
       return `The £${params.refundAmount.toFixed(2)} you paid online will be refunded within 5-10 business days, and ${bar}.`
     }
-    return `Please contact us about the refund of what you paid online, and ${bar}.`
+    return `We'll be in touch about the refund of what you paid online, and ${bar}.`
   }
   if (params.refundSucceeded && params.refundAmount && params.restOfPayment) {
     return `The rest of your payment, £${params.refundAmount.toFixed(2)}, will be refunded within 5-10 business days.`
