@@ -446,6 +446,8 @@ export async function processEventRefund(
   let sawFailure = false
   let sawManualRequired = false
   let paymentRecordNotUpdated = false
+  // Stays true while every capture looked at has nothing left on it.
+  let everyCaptureFullyRefunded = true
   const paypalRefundIds: string[] = []
   const currency = (paymentRows[0]?.currency || 'GBP').toUpperCase()
 
@@ -474,6 +476,7 @@ export async function processEventRefund(
     const paymentAmount = Math.max(0, Number(payment.amount || 0))
     const available = roundCurrencyAmount(Math.max(0, paymentAmount - alreadyRefunded))
     if (available <= 0) continue
+    everyCaptureFullyRefunded = false
 
     const amountForPayment = roundCurrencyAmount(Math.min(remaining, available))
     let paypalRefundMeta: { id: string; status: string; currency: string | null } | null = null
@@ -696,6 +699,12 @@ export async function processEventRefund(
 
   const amount = roundCurrencyAmount(processedAmount)
   if (amount <= 0) {
+    // Every capture was already refunded in full, so nothing is owed and nothing failed (BK-136):
+    // a whole-event cancellation after a partial refund used to report this as a refund that
+    // needed staff follow-up, and the guest was told so.
+    if (!sawFailure && everyCaptureFullyRefunded) {
+      return { status: 'succeeded', amount: 0, currency, reason: 'nothing_left_to_refund' }
+    }
     return {
       status: sawFailure ? 'failed' : 'manual_required',
       amount: refundAmount,
@@ -722,6 +731,125 @@ export async function processEventRefund(
     paypalRefundIds,
     reason: fullAmountProcessed ? undefined : 'partial_refund_only',
     ...(paymentRecordNotUpdated ? { staffWarning: EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING } : {})
+  }
+}
+
+export type EventManualRefundMethod = 'cash' | 'card_terminal'
+
+/**
+ * Records a refund handed back at the bar, in cash or on the card terminal, against tickets paid
+ * there (BK-135, customer bookings review of 24 October 2026). The refund code only knew PayPal,
+ * so a cash or card ticket could be "refunded" from the dialog without any record: the booking
+ * still read as paid and offered the same money back again.
+ *
+ * It writes one refund payments row per bar payment it draws on (payment_provider 'manual', the
+ * method, the amount and who recorded it), moves each source payment to partially_refunded or
+ * refunded, and replays an earlier call with the same idempotency key instead of recording twice.
+ * No money moves here: the member of staff has handed it back. Never more than the bar payments
+ * still hold.
+ */
+export async function recordManualEventRefund(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    amount: number
+    method: EventManualRefundMethod
+    reason: string
+    idempotencyKey: string
+    recordedBy: string | null
+    note?: string | null
+    metadata?: Record<string, unknown>
+  }
+): Promise<EventRefundResult> {
+  const refundAmount = roundCurrencyAmount(input.amount)
+  if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+    return { status: 'none', amount: 0, currency: 'GBP' }
+  }
+
+  const { data: priorRefunds, error: priorRefundError } = await supabase.from('payments')
+    .select('id, amount, currency, status')
+    .eq('charge_type', 'refund')
+    .contains('metadata', { idempotency_key: input.idempotencyKey })
+    .in('status', ['refunded', 'pending', 'succeeded'])
+  if (priorRefundError) throw priorRefundError
+  if (Array.isArray(priorRefunds) && priorRefunds.length > 0) {
+    const total = priorRefunds.reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+    return { status: 'succeeded', amount: roundCurrencyAmount(total), currency: 'GBP', reason: 'idempotent_replay' }
+  }
+
+  const { data: payments, error: paymentLookupError } = await supabase.from('payments')
+    .select('id, amount, currency')
+    .eq('event_booking_id', input.bookingId)
+    .in('charge_type', ['prepaid_event', 'seat_increase'])
+    .in('status', ['succeeded', 'partially_refunded'])
+    .eq('payment_provider', 'manual')
+    .order('created_at', { ascending: true })
+  if (paymentLookupError) throw paymentLookupError
+
+  let remaining = refundAmount
+  let recorded = 0
+  for (const payment of payments ?? []) {
+    if (remaining <= 0.004) break
+    const { data: refundsForPayment, error: refundsError } = await supabase.from('payments')
+      .select('amount')
+      .eq('charge_type', 'refund')
+      .contains('metadata', { source_payment_id: payment.id })
+      .in('status', ['refunded', 'pending', 'succeeded'])
+    if (refundsError) throw refundsError
+    const alreadyRefunded = (refundsForPayment ?? []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+    const paymentAmount = Math.max(0, Number(payment.amount || 0))
+    const available = roundCurrencyAmount(Math.max(0, paymentAmount - alreadyRefunded))
+    if (available <= 0) continue
+
+    const amountForPayment = roundCurrencyAmount(Math.min(remaining, available))
+    const { error: insertError } = await supabase.from('payments').insert({
+      event_booking_id: input.bookingId,
+      charge_type: 'refund',
+      payment_provider: 'manual',
+      payment_method: input.method,
+      amount: amountForPayment,
+      currency: (payment.currency || 'GBP').toUpperCase(),
+      status: 'refunded',
+      metadata: {
+        ...(input.metadata || {}),
+        source_payment_id: payment.id,
+        reason: input.reason,
+        refund_method: input.method,
+        recorded_by: input.recordedBy,
+        note: input.note || null,
+        idempotency_key: input.idempotencyKey,
+      },
+    })
+    if (insertError) throw insertError
+
+    recorded = roundCurrencyAmount(recorded + amountForPayment)
+    remaining = roundCurrencyAmount(Math.max(0, remaining - amountForPayment))
+    const totalRefunded = roundCurrencyAmount(alreadyRefunded + amountForPayment)
+    // Never thrown: the refund row is the record that the money went back.
+    await settleWrite(
+      supabase.from('payments')
+        .update({
+          status: totalRefunded + 0.004 >= paymentAmount ? 'refunded' : 'partially_refunded',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', payment.id),
+      {
+        table: 'payments',
+        what: 'Recording the cash or card refund on the original payment',
+        ids: { paymentId: payment.id, bookingId: input.bookingId },
+        note: 'the refund itself is recorded'
+      }
+    )
+  }
+
+  if (recorded <= 0) {
+    return { status: 'manual_required', amount: refundAmount, currency: 'GBP', reason: 'no_bar_payment_to_refund' }
+  }
+  return {
+    status: recorded + 0.004 >= refundAmount ? 'succeeded' : 'manual_required',
+    amount: recorded,
+    currency: 'GBP',
+    reason: recorded + 0.004 >= refundAmount ? undefined : 'partial_refund_only'
   }
 }
 

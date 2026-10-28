@@ -37,8 +37,18 @@ export function buildRefundNote(params: {
   isPrepaid: boolean
   refundSucceeded: boolean
   refundAmount?: number | null
+  /** Part of the payment was refunded before, so only the rest goes back now (BK-136). */
+  restOfPayment?: boolean
+  /** Paid at the bar in cash or by card: a person hands it back (BK-135). */
+  returnedAtBar?: boolean
 }): string | null {
   if (!params.isPrepaid) return null
+  if (params.returnedAtBar && params.refundAmount) {
+    return `You paid £${params.refundAmount.toFixed(2)} at the bar, so we will be in touch to give it back.`
+  }
+  if (params.refundSucceeded && params.refundAmount && params.restOfPayment) {
+    return `The rest of your payment, £${params.refundAmount.toFixed(2)}, will be refunded within 5-10 business days.`
+  }
   if (params.refundSucceeded && params.refundAmount) {
     return `Your payment of £${params.refundAmount.toFixed(2)} will be refunded within 5-10 business days.`
   }

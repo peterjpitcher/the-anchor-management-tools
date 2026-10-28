@@ -924,10 +924,19 @@ function buildRefundEmailLine(input: {
   reason?: string | null
   /** True when money was actually taken for this booking. */
   paymentTaken?: boolean
+  /** Only the rest of a partly refunded payment goes back now (BK-136). */
+  refundIsRestOfPayment?: boolean
 }): string | null {
   const amountText = formatPositiveCurrency(input.refundAmount ?? null, input.currency || 'GBP')
 
   if (amountText) {
+    // Paid at the bar in cash or by card: PayPal cannot return it, a person does (BK-135).
+    if (input.refundStatus === 'bar_refund_due') {
+      return `You paid ${amountText} at the bar, so we will be in touch to give it back.`
+    }
+    if (input.refundIsRestOfPayment && (input.refundStatus === 'succeeded' || input.refundStatus === 'pending')) {
+      return `The rest of your payment, ${amountText}, ${input.refundStatus === 'succeeded' ? 'has been refunded' : 'is being refunded'} to your original payment method.`
+    }
     if (input.refundStatus === 'succeeded') {
       return `A refund of ${amountText} has been issued to your original payment method.`
     }
@@ -959,6 +968,8 @@ export async function sendEventBookingCancelledEmail(
     reason?: 'guest_cancel' | 'staff_cancel' | 'event_cancelled' | string | null
     /** True when money was taken for this booking, so a refund sentence has something to say. */
     paymentTaken?: boolean
+    /** Part of the payment was refunded before, so this refund is the rest of it (BK-136). */
+    refundIsRestOfPayment?: boolean
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
