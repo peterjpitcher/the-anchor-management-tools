@@ -33,8 +33,16 @@ import {
   loadBookingItemsWithTypes,
 } from '@/lib/events/ticket-type-queries'
 import { logger } from '@/lib/logger'
+import { buildEventReminderEmailLines, type EventReminderDayWord } from '@/lib/events/event-reminder-message'
 
-type EventEmailResult = { success: boolean; error?: string; messageId?: string; skipped?: boolean }
+type EventEmailResult = {
+  success: boolean
+  error?: string
+  messageId?: string
+  skipped?: boolean
+  /** The send was not attempted because the duplicate check could not run; try again later. */
+  deferred?: boolean
+}
 
 const DELIVERABLE_EMAIL_STATUSES = ['queued', 'sent', 'delivered', 'delivery_delayed', 'opened', 'clicked']
 
@@ -462,6 +470,8 @@ async function hasSuccessfulEventEmail(
     bookingId: string
     commType: string
     metadataContains?: Record<string, unknown>
+    /** Throw when the check cannot run, instead of answering "not sent". */
+    failClosed?: boolean
   }
 ): Promise<boolean> {
   try {
@@ -483,11 +493,13 @@ async function hasSuccessfulEventEmail(
       logger.warn('Failed to check existing event email', {
         metadata: { bookingId: input.bookingId, commType: input.commType, error: error.message },
       })
+      if (input.failClosed) throw new Error(`Event email duplicate check failed: ${error.message}`)
       return false
     }
 
     return Boolean(data)
   } catch (error) {
+    if (input.failClosed) throw error
     logger.warn('Event email duplicate check unavailable', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId: input.bookingId, commType: input.commType },
@@ -653,6 +665,106 @@ export async function sendEventBookingConfirmedEmail(
       payment_mode: context.paymentMode,
       booking_mode: context.bookingMode,
       seats: context.seats,
+      manage_link_included: Boolean(manageLink),
+      short_link_fallback: manageResult?.shortened === false,
+    },
+  })
+}
+
+export const EVENT_REMINDER_EMAIL_COMM_TYPE = 'event_reminder_1d'
+
+/**
+ * The day-before reminder by email (BK-086, owner decision D14: event messages go by email first,
+ * with a text only when there is no usable email). Returns `skipped` with success false when the
+ * guest has no usable address, so the caller texts instead, and success true when one already went.
+ */
+export async function sendEventReminderEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    reminderDay: EventReminderDayWord
+    appBaseUrl?: string
+  }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+  if (context.bookingStatus && context.bookingStatus !== 'confirmed') return { success: false, skipped: true }
+  if (!context.eventWhen) return { success: false, skipped: true }
+
+  // Fail closed: the cron comes back every 15 minutes, so an unreadable email log means "not
+  // now", never "not sent yet", or one outage could email the guest every run until the event.
+  let alreadySent: boolean
+  try {
+    alreadySent = await hasSuccessfulEventEmail(supabase, {
+      bookingId: input.bookingId,
+      commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
+      failClosed: true,
+    })
+  } catch (error) {
+    logger.warn('Event reminder email deferred: duplicate check unavailable', {
+      metadata: {
+        bookingId: input.bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+    return { success: false, skipped: true, deferred: true }
+  }
+  if (alreadySent) return { success: true, skipped: true }
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
+  const dayWord = input.reminderDay === 'today' ? 'Today' : 'Tomorrow'
+  const heading = `See you ${input.reminderDay}`
+  const subject = `${dayWord}: ${context.eventName}`
+
+  const body = [
+    `Hi ${context.firstName},`,
+    ...buildEventReminderEmailLines({
+      firstName: context.firstName,
+      eventName: context.eventName,
+      eventDateText: context.eventWhen,
+      reminderDay: input.reminderDay,
+      seats: context.seats,
+      bookingMode: context.bookingMode,
+      seatingType: context.seatingType,
+      paymentMode: context.paymentMode,
+      doorPricePerSeat: context.doorPricePerSeat,
+      doorsTime: context.doorsTime,
+      eventStartIso: context.eventStartIso,
+    }),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+    `Need to change or cancel? Call ${GUEST_CONTACT.phoneDisplay}.`,
+  ]
+
+  const text = buildGuestEmailText([
+    ...body,
+    manageLink ? `View your booking here: ${manageLink}` : null,
+  ])
+
+  const html = buildGuestEmailHtml({
+    title: heading,
+    preheader: `${context.eventName} is ${input.reminderDay}, ${context.eventWhen}.`,
+    heading,
+    body,
+    cta: manageLink ? { href: manageLink, label: 'View your booking' } : null,
+    footNote: 'This is a service message about your booking.',
+  })
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject,
+    text,
+    html,
+    commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_reminder_1d_email',
+      payment_mode: context.paymentMode,
+      booking_mode: context.bookingMode,
+      seats: context.seats,
+      reminder_day: input.reminderDay,
       manage_link_included: Boolean(manageLink),
       short_link_fallback: manageResult?.shortened === false,
     },
@@ -938,13 +1050,13 @@ function buildRefundEmailLine(input: {
     const bar = `We'll hand back the ${barText} you paid at the bar.`
     if (input.refundStatus === 'succeeded') return `We've refunded the ${amountText} you paid online. ${bar}`
     if (input.refundStatus === 'pending') return `We're refunding the ${amountText} you paid online. ${bar}`
-    return `The refund of the ${amountText} you paid online needs staff follow-up, and we will contact you. ${bar}`
+    return `We'll be in touch about your refund of the ${amountText} you paid online. ${bar}`
   }
 
   if (amountText) {
     // Paid at the bar in cash or by card: PayPal cannot return it, a person does (BK-135).
     if (input.refundStatus === 'bar_refund_due') {
-      return `You paid ${amountText} at the bar, so we will be in touch to give it back.`
+      return `You paid ${amountText} at the bar, so we'll be in touch to give it back.`
     }
     if (input.refundIsRestOfPayment && (input.refundStatus === 'succeeded' || input.refundStatus === 'pending')) {
       return `The rest of your payment, ${amountText}, ${input.refundStatus === 'succeeded' ? 'has been refunded' : 'is being refunded'} to your original payment method.`

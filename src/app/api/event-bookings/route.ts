@@ -31,6 +31,7 @@ import {
   isSundayLunchOnlyEvent,
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
+import { getEventAmountDueForBooking } from '@/lib/events/event-payments'
 import { EventBookingService } from '@/services/event-bookings'
 import { eventAttendeesInputSchema, bookingQuestionsSchema, INVALID_GUEST_PHONE_MESSAGE, normaliseAttendeePhones, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
@@ -75,6 +76,9 @@ const CreateEventBookingSchema = z.object({
   dining_request: z.enum(['before_event', 'during_event', 'not_sure']).optional(),
   early_arrival_request: z.boolean().optional(),
   communication_consent: OptionalCommunicationConsentSchema,
+  // The website sends true when it shows PayPal on the page, so the guest is not also texted a
+  // pay link mid-checkout (BK-084). Honoured only when the booking comes back pending_payment.
+  skip_customer_sms: z.boolean().optional(),
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
   attendees: eventAttendeesInputSchema.optional(),
@@ -480,6 +484,7 @@ export async function POST(request: NextRequest) {
         seatingPreference: parsed.data.seating_preference,
         appBaseUrl,
         shouldSendSms: true,
+        skipPendingPaymentSms: parsed.data.skip_customer_sms === true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
         attendees,
         expectedTotal: parsed.data.expected_total,
@@ -638,6 +643,26 @@ export async function POST(request: NextRequest) {
         rpcResult
       } = result
 
+      // BK-100: a guest waiting to pay is told how long the seats are held and what they owe.
+      // Best effort: a failed read leaves the amount out, never the booking.
+      let amountDue: { amount: number; currency: string; holdExpiresAt: string } | null = null
+      if (resolvedState === 'pending_payment' && bookingId) {
+        try {
+          amountDue = await getEventAmountDueForBooking(supabase, bookingId)
+        } catch (amountError) {
+          logger.warn('Could not read the amount due for a new event booking', {
+            metadata: {
+              bookingId,
+              error: amountError instanceof Error ? amountError.message : String(amountError),
+            },
+          })
+        }
+      }
+      const holdExpiresAt =
+        resolvedState === 'pending_payment'
+          ? amountDue?.holdExpiresAt ?? rpcResult.hold_expires_at ?? null
+          : null
+
       const responseStatus = resolvedState === 'confirmed' || resolvedState === 'pending_payment' ? 201 : 200
       const responsePayload = {
         success: true,
@@ -652,6 +677,10 @@ export async function POST(request: NextRequest) {
           event_seating_type: eventSeatingType,
           next_step_url: nextStepUrl,
           manage_booking_url: manageUrl,
+          // New fields (BK-100); older website builds ignore them.
+          hold_expires_at: holdExpiresAt,
+          amount_due: amountDue ? amountDue.amount : null,
+          currency: amountDue ? amountDue.currency : null,
           requests_recorded: (resolvedState === 'confirmed' || resolvedState === 'pending_payment') && rpcResult.requests_recorded === true,
           // Whether a confirmation is known to have gone, and by which channel.
           // The website's confirmation screen says "we have sent you a message"

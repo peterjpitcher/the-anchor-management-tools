@@ -1,5 +1,6 @@
 'use server'
 
+import { buildStaffCancellationRefundNote } from '@/lib/events/staff-cancellation-refund-note'
 import { isSundayLunchOnlyEvent, SUNDAY_LUNCH_ONLY_EVENT_MESSAGE } from '@/lib/events/sunday-lunch-only-policy'
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
@@ -1320,34 +1321,6 @@ function buildEventBookingCancelledSms(input: {
   return `The Anchor: ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}).${refundPart} Reply if you need help rebooking.`
 }
 
-function buildStaffCancellationRefundNote(input: {
-  refundStatus: EventRefundResult['status']
-  refundAmount: number
-  /** Part of the refund paid at the bar, handed back there (BK-135). */
-  barRefundAmount?: number
-}): string | null {
-  if ((input.barRefundAmount ?? 0) > 0 && input.refundAmount <= 0) {
-    const bar = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.barRefundAmount ?? 0)
-    return `You paid ${bar} at the bar, so we will be in touch to give it back.`
-  }
-  if (input.refundAmount <= 0) return 'No refund is due under the event cancellation policy.'
-  const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.refundAmount)
-  // Paid both online and at the bar: say which money goes back which way (review finding on PR 277).
-  if ((input.barRefundAmount ?? 0) > 0) {
-    const bar = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.barRefundAmount ?? 0)
-    if (input.refundStatus === 'succeeded' || input.refundStatus === 'pending') {
-      return `The ${formatted} you paid online is being refunded, and we'll hand back the ${bar} you paid at the bar.`
-    }
-    return `Please contact us about the refund of the ${formatted} you paid online, and we'll hand back the ${bar} you paid at the bar.`
-  }
-  if (input.refundStatus === 'succeeded') return `Refund issued: ${formatted}.`
-  if (input.refundStatus === 'pending') return `Refund pending: ${formatted}.`
-  if (input.refundStatus === 'manual_required' || input.refundStatus === 'failed') {
-    return `Refund needs staff follow-up: ${formatted}.`
-  }
-  return null
-}
-
 export async function updateEventManualBookingSeats(input: {
   bookingId: string
   seats: number
@@ -2044,7 +2017,7 @@ export async function cancelEventManualBooking(input: {
           }),
           seats: Math.max(0, Number(bookingRow.seats || 0)),
           isReminderOnly: bookingRow.is_reminder_only === true,
-          refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount, barRefundAmount })
+          refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount, paymentTaken: maxRefundable > 0, barRefundAmount })
         }),
         process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
       )

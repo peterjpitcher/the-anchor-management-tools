@@ -371,6 +371,20 @@ export async function getEventPaymentPreviewByRawToken(
   }
 }
 
+/**
+ * What a booking waiting for payment owes, the same figure the PayPal order will charge, for the
+ * website to show beside the hold deadline (BK-100). Null when the booking cannot be paid now
+ * (already paid, hold gone), so the caller shows no amount rather than a wrong one.
+ */
+export async function getEventAmountDueForBooking(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string
+): Promise<{ amount: number; currency: string; holdExpiresAt: string } | null> {
+  const preview = await getEventPaymentPreviewByBookingId(supabase, { bookingId })
+  if (preview.state !== 'ready') return null
+  return { amount: preview.totalAmount, currency: preview.currency, holdExpiresAt: preview.holdExpiresAt }
+}
+
 async function getEventPaymentPreviewByBookingId(
   supabase: SupabaseClient<any, 'public', any>,
   input: { bookingId: string; allowGraceExpired?: boolean }
