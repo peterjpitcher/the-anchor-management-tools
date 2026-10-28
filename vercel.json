@@ -130,10 +130,6 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/cron/event-waitlist-offers",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/event-guest-engagement",
       "schedule": "*/15 * * * *"
     },

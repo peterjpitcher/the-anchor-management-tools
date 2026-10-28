@@ -44,14 +44,6 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     label: 'Event and table booking hold expiry',
   },
   {
-    jobName: 'event-waitlist-offers',
-    path: '/api/cron/event-waitlist-offers',
-    intervalMinutes: 5,
-    maxDurationSeconds: 60,
-    recording: 'hourly',
-    label: 'Event waitlist offers',
-  },
-  {
     jobName: 'event-paypal-reconciliation',
     path: '/api/cron/event-paypal-reconciliation',
     intervalMinutes: 15,
