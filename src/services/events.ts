@@ -1482,6 +1482,9 @@ export class EventService {
         paymentTaken: Boolean(refundResult)
       })
       if (emailResult?.success === true) reachedBookingIds.add(booking.id)
+      // An email held back because its send log could not be read may already have gone, so no
+      // text follows it either (the email sender fails closed with deferred: true).
+      if ((emailResult as { deferred?: boolean } | null | undefined)?.deferred === true) continue
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
 
