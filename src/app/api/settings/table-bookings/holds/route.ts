@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { requireSettingsManagePermission } from '@/lib/settings/api-auth'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
+import { holdCoversStart, holdSearchBounds } from '@/lib/table-bookings/hold-window'
 
 /**
  * Table holds and blocks.
@@ -83,14 +84,22 @@ export async function POST(request: NextRequest) {
     let status: 'pending' | 'active' = 'active'
 
     if (hold.hold_type === 'maintenance' && hold.scope === 'table') {
-      const { data: overlapping } = await auth.supabase
+      // London bounds (BK-211): the hold's dates and times are London wall clock, and a null
+      // ends_on is open ended, not one day. The window and weekday are applied per booking below.
+      const bounds = holdSearchBounds(hold)
+      if (!bounds.fromIso) {
+        return NextResponse.json({ error: 'Invalid hold dates' }, { status: 400 })
+      }
+      let overlapQuery = auth.supabase
         .from('booking_table_assignments')
-        .select('table_booking:table_bookings!inner(id, booking_reference, booking_time, booking_date, status, left_at)')
+        .select('start_datetime, table_booking:table_bookings!inner(id, booking_reference, booking_time, booking_date, status, left_at)')
         .eq('table_id', hold.table_id!)
-        .gte('start_datetime', `${hold.starts_on}T00:00:00Z`)
-        .lte('start_datetime', `${hold.ends_on ?? hold.starts_on}T23:59:59Z`)
+        .gte('start_datetime', bounds.fromIso)
+      if (bounds.beforeIso) overlapQuery = overlapQuery.lt('start_datetime', bounds.beforeIso)
+      const { data: overlapping } = await overlapQuery
 
       conflicts = (overlapping ?? [])
+        .filter((row: any) => holdCoversStart(hold, row.start_datetime))
         .map((row: any) => row.table_booking)
         .filter((b: any) => b && !['cancelled', 'no_show'].includes(b.status) && !b.left_at)
         .map((b: any) => ({ id: b.id, booking_reference: b.booking_reference, booking_time: b.booking_time }))

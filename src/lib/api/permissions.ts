@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
 
 export type PermissionCheckResult =
   | { ok: true; userId: string; supabase: ReturnType<typeof createAdminClient> }
@@ -26,7 +27,20 @@ export async function requireModulePermission(moduleName: string, action: string
     p_action: action
   })
 
-  if (error || !allowed) {
+  if (error) {
+    // The lookup failed, so we do not know. Still refused, but as 503 so a screen can say
+    // "connection problem" rather than Access Denied (BK-095).
+    logger.error('Permission check failed', {
+      error: new Error(error.message),
+      metadata: { userId: user.id, moduleName, action },
+    })
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Could not check permissions' }, { status: 503 })
+    }
+  }
+
+  if (!allowed) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Forbidden' }, { status: 403 })

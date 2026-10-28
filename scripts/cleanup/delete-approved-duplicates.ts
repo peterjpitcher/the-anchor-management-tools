@@ -4,8 +4,9 @@
  * delete-approved-duplicates (safe by default)
  *
  * Deletes a curated list of approved duplicate customer records.
- * NOTE: This script is for a fixed historical ID list. For current duplicate
- * cleanup runs, prefer `scripts/cleanup/merge-duplicate-customers.ts`.
+ * NOTE: This script is for a fixed historical ID list. For a current duplicate,
+ * use "Merge into..." on the customer page, which moves every booking, message
+ * and consent record and keeps the opt-outs (BK-164).
  *
  * Dry-run (default):
  *   tsx scripts/cleanup/delete-approved-duplicates.ts

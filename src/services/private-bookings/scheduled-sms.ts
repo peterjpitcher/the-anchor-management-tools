@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
 import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
-import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
+import { formatDateInLondon, londonVisitAtIso, toLocalIsoDate } from '@/lib/dateUtils'
 import {
   depositReminder7DayMessage,
   depositReminder3DayMessage,
@@ -439,7 +439,7 @@ export async function getBookingScheduledSms(
               channel: 'private',
               bookingId,
               customerId: booking.customer_id,
-              visitAt: `${booking.event_date}T${booking.start_time || '00:00:00'}`,
+              visitAt: londonVisitAtIso(booking.event_date, booking.start_time),
             }],
             db,
           )
