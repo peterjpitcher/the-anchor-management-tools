@@ -55,6 +55,7 @@ function signingState(overrides: Partial<BookingSigningState> = {}): BookingSign
     // Off here so the tests in this file see the food agreement on its own; the tests for
     // recording an acceptance are in BookingSigningPanel.acceptance.test.tsx.
     canRecordAcceptance: false,
+    contractOutOfDate: null,
     ...overrides,
   }
 }
@@ -237,5 +238,22 @@ describe('loading the signing records of a booking', () => {
 
     await waitFor(() => expect(sendButton()).not.toBeInTheDocument())
     expect(mocks.getState).toHaveBeenCalledTimes(2)
+  })
+})
+
+// BK-154, D25.
+describe('a contract the booking has moved on from', () => {
+  it('says it is out of date and names the next version, instead of showing it accepted', async () => {
+    await renderLoaded(signingState({
+      contractAcceptedAt: '2026-10-02T10:00:00.000Z',
+      contractAcceptanceMethod: 'e_signature',
+      contractOutOfDate: { changes: ['date', 'price'], currentVersion: 2, nextVersion: 3, accepted: true },
+    }))
+
+    expect(screen.getByText('Contract out of date, send version 3')).toBeInTheDocument()
+    expect(screen.getByText(
+      'The customer accepted version 2, but the date and the price have changed since. Email Contract sends version 3 for them to sign.',
+    )).toBeInTheDocument()
+    expect(screen.queryByText('Contract Accepted')).not.toBeInTheDocument()
   })
 })

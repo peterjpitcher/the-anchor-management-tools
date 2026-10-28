@@ -125,6 +125,8 @@ export interface PrivateBooking {
   contract_sent_at?: string
   contract_sent_to?: string
   contract_accepted_at?: string
+  /** The terms the contract last sent named (contract-terms.ts, BK-154). */
+  contract_terms?: unknown
   contract_acceptance_method?: string
   // Enquiry intake (SOP pack §9)
   layout?: BookingLayout

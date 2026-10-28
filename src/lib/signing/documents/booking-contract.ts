@@ -1,6 +1,7 @@
 import { CONTRACT_SLOT_ANCHOR, CONTRACT_SLOT_HOST, WAIVER_SLOT_ORGANISER, bookingRequiresWaiverAnnex } from '@/lib/contract-template'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { renderContractPreview } from '@/lib/private-bookings/contract-lifecycle'
+import type { ContractTerms } from '@/lib/private-bookings/contract-terms'
 import {
   assertSlotsPresent,
   fillForSending,
@@ -177,6 +178,11 @@ export async function createBookingContractSigningRequests(input: {
   prepared: PreparedBookingContract
   userId: string
   sender: SigningSender
+  /**
+   * The date, times, guests, rooms and price this version names (contract-terms.ts). Kept with
+   * the request, so a signature on a booking that has changed since is not taken as accepting it.
+   */
+  contractTerms?: ContractTerms
 }): Promise<{ contract: BookingSigningLink; waiver: BookingSigningLink | null }> {
   const party = bookingSignerParty(input.booking)
   if (!party.name) throw new SigningError('party_name_missing', 'Add the customer\'s name before sending the contract.')
@@ -200,7 +206,10 @@ export async function createBookingContractSigningRequests(input: {
       createdBy: input.userId,
       createdByName: input.sender.name,
       createdByPosition: input.sender.position ?? null,
-      context: { contract_version: input.contractVersion },
+      context: {
+        contract_version: input.contractVersion,
+        ...(input.contractTerms ? { contract_terms: input.contractTerms } : {}),
+      },
       sendLinkEmails: false,
     })
   )
