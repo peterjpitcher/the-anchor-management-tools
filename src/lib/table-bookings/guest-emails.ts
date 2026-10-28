@@ -372,8 +372,8 @@ export function buildTableBookingConfirmedEmail(
 }
 
 /**
- * The deposit confirmation. The text says "Deposit sorted, your table for 16 people on
- * {moment} is locked in. See you then!" with any high chairs, outside seating, the manage link
+ * The deposit confirmation. The text says "we've received your deposit. Your table for 16 people
+ * on {moment} is confirmed." with any high chairs, outside seating, the manage link
  * and the Christmas course summary; the email says all of that and adds the reference, the date
  * with its weekday, the time and the amount the guest paid.
  */
@@ -397,11 +397,12 @@ export function buildTableBookingDepositConfirmedEmail(
     subject: isOutside
       ? 'Deposit received: your outside booking at The Anchor is confirmed'
       : 'Deposit received: your table at The Anchor is confirmed',
-    preheader: moment ? `${moment}${party ? `, ${party}` : ''}` : 'Your deposit is sorted',
-    heading: 'Your deposit is sorted',
+    preheader: moment ? `${moment}${party ? `, ${party}` : ''}` : 'Your deposit is received',
+    heading: 'Your deposit is received',
+    // Calm and exact, as SSOT section 1 asks of money messages (BK-171, owner decision D15).
     opening: [
-      `Hi ${input.firstName}, your deposit is sorted and your ${bookingNoun}` +
-        `${party ? ` for ${party}` : ''}${moment ? ` on ${moment}` : ''} is locked in. See you then!`,
+      `Hi ${input.firstName}, we've received your deposit. Your ${bookingNoun}` +
+        `${party ? ` for ${party}` : ''}${moment ? ` on ${moment}` : ''} is confirmed.`,
     ],
     details: [
       ...bookingDetailRows(input),

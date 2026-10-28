@@ -207,7 +207,7 @@ describe('deposit confirmation, email first', () => {
     expect(sendSMS).toHaveBeenCalledTimes(1)
     const [to, body, options] = vi.mocked(sendSMS).mock.calls[0]
     expect(to).toBe('+447700900999')
-    expect(body).toMatch(/^The Anchor: Pat! Deposit sorted, your table for 16 people on .+ is locked in\. See you then! High chair reserved x1\. https:\/\/l\.the-anchor\.pub\/token-1$/)
+    expect(body).toMatch(/^The Anchor: Pat, we've received your deposit\. Your table for 16 people on .+ is confirmed\. High chair reserved x1\. https:\/\/l\.the-anchor\.pub\/token-1$/)
     assertCleanText(body)
     expect(options?.metadata).toEqual({ table_booking_id: BOOKING.id, template_key: 'table_booking_deposit_confirmed' })
     const attempts = db.queries
@@ -280,7 +280,7 @@ describe('deposit confirmation email renders', () => {
     assertCleanRender(email)
     expect(expectedLongDate('2026-10-17')).toBe('Saturday 17 October 2026')
     expect(email.text).toContain(
-      'Hi Pat, your deposit is sorted and your table for 16 people on Saturday 17 October 2026 at 7pm is locked in. See you then!'
+      "Hi Pat, we've received your deposit. Your table for 16 people on Saturday 17 October 2026 at 7pm is confirmed."
     )
     expect(email.text).toContain('Reference: TB-DEP1')
     expect(email.text).toContain('Deposit paid: £160.00')
