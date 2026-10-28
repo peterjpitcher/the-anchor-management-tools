@@ -249,7 +249,11 @@ export default function CustomersClient({
         if ('error' in result && result.error) {
           toast.error(typeof result.error === 'string' ? result.error : 'Failed to update customer'); return
         }
-        toast.success('Customer updated successfully')
+        const stale = 'privateBookingsWithOldContact' in result ? (result.privateBookingsWithOldContact ?? []).length : 0
+        // BK-163: the customer page offers to update them; this list only says so.
+        toast.success(stale > 0
+          ? `Customer updated. ${stale === 1 ? '1 upcoming private booking still has' : `${stale} upcoming private bookings still have`} the old details: open the customer to update ${stale === 1 ? 'it' : 'them'}.`
+          : 'Customer updated successfully')
         setEditingCustomer(null); setShowForm(false); refreshCurrentPage()
       } catch { toast.error('Failed to update customer') }
     },
