@@ -70,6 +70,8 @@ export async function reportPaymentAlert(input: {
   context?: Record<string, unknown>
   /** Send to this inbox instead of CRON_ALERT_EMAIL (for alerts one person owns). */
   to?: string
+  /** The bracketed tag that starts the subject line. Defaults to PAYPAL ACTION NEEDED. */
+  subjectTag?: string
 }): Promise<{ sent: boolean; reason?: string }> {
   const alertEmail = input.to ?? process.env.CRON_ALERT_EMAIL
   if (!alertEmail) {
@@ -97,7 +99,7 @@ export async function reportPaymentAlert(input: {
   try {
     const result = await sendEmail({
       to: alertEmail,
-      subject: `[PAYPAL ACTION NEEDED] ${input.title} - ${environment}`,
+      subject: `[${input.subjectTag ?? 'PAYPAL ACTION NEEDED'}] ${input.title} - ${environment}`,
       html,
     })
     if (!result.success) {

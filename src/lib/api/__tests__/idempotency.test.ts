@@ -2,6 +2,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
+  deleteExpiredIdempotencyKeys,
+  lookupIdempotencyKey,
+  markIdempotencyClaimCommitted,
   releaseIdempotencyClaim,
   STALE_PROCESSING_MS,
 } from '../idempotency'
@@ -309,5 +312,82 @@ describe('releaseIdempotencyClaim', () => {
 
     expect(calls.filters[0]).toContain(`eq:key=${KEY}`)
     expect(calls.filters[0]).toContain(`eq:request_hash=${HASH}`)
+  })
+})
+
+// BK-127: a claim that carries the answer for a saved booking is replayed, never reclaimed.
+describe('a processing claim that carries a saved booking', () => {
+  const committed = { success: true, data: { state: 'confirmed', table_booking_id: 'tb-1' }, meta: { status_code: 201, recovered: true } }
+
+  it('still reports in_progress while the claim is fresh, because the first request may be running', async () => {
+    const { client } = createFakeSupabase({
+      inserts: [DUPLICATE_INSERT],
+      selects: [{
+        data: { request_hash: HASH, response: { state: 'processing', claimed_at: recentClaimIso(), committed_response: committed }, expires_at: futureIso() },
+        error: null,
+      }],
+    })
+
+    expect(await claimIdempotencyKey(client, KEY, HASH)).toEqual({ state: 'in_progress' })
+  })
+
+  it('replays the saved answer once the claim is stale instead of handing the key to a new attempt', async () => {
+    const { client, calls } = createFakeSupabase({
+      inserts: [DUPLICATE_INSERT],
+      selects: [{
+        data: { request_hash: HASH, response: { state: 'processing', claimed_at: staleClaimIso(), committed_response: committed }, expires_at: futureIso() },
+        error: null,
+      }],
+    })
+
+    expect(await claimIdempotencyKey(client, KEY, HASH)).toEqual({ state: 'replay', response: committed })
+    expect(calls.updates).toHaveLength(0)
+  })
+
+  it('replays the saved answer to a recovery lookup once the claim is stale', async () => {
+    const { client } = createFakeSupabase({
+      selects: [{
+        data: { request_hash: HASH, response: { state: 'processing', claimed_at: staleClaimIso(), committed_response: committed }, expires_at: futureIso() },
+        error: null,
+      }],
+    })
+
+    expect(await lookupIdempotencyKey(client, KEY, HASH)).toEqual({ state: 'replay', response: committed })
+  })
+
+  it('writes the answer onto the processing claim only, scoped to key and request hash', async () => {
+    const { client, calls } = createFakeSupabase({ updates: [{ error: null }] })
+
+    await markIdempotencyClaimCommitted(client, KEY, HASH, committed)
+
+    expect(calls.updates[0]).toMatchObject({ response: { state: 'processing', committed_response: committed } })
+    expect(calls.filters[0]).toEqual(expect.arrayContaining([
+      `eq:key=${KEY}`,
+      `eq:request_hash=${HASH}`,
+      'eq:response->>state=processing',
+    ]))
+  })
+
+  it('throws when the write fails, for the caller to log', async () => {
+    const { client } = createFakeSupabase({ updates: [{ error: { message: 'timeout' } }] })
+
+    await expect(markIdempotencyClaimCommitted(client, KEY, HASH, committed)).rejects.toMatchObject({ message: 'timeout' })
+  })
+})
+
+// BK-189: expired answers are cleared by the daily cleanup cron.
+describe('deleteExpiredIdempotencyKeys', () => {
+  it('deletes rows whose expiry has passed and reports how many', async () => {
+    const now = new Date('2026-10-27T03:00:00Z')
+    const { client, calls } = createFakeSupabase({ deletes: [{ data: [{ key: 'a' }, { key: 'b' }], error: null }] })
+
+    expect(await deleteExpiredIdempotencyKeys(client, now)).toBe(2)
+    expect(calls.filters[0]).toContain(`lt:expires_at=${now.toISOString()}`)
+  })
+
+  it('throws on a database error so the cron reports a failure', async () => {
+    const { client } = createFakeSupabase({ deletes: [{ error: { message: 'permission denied' } }] })
+
+    await expect(deleteExpiredIdempotencyKeys(client)).rejects.toMatchObject({ message: 'permission denied' })
   })
 })

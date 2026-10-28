@@ -301,7 +301,7 @@ function buildEventBookingSms(
     if (payload.paymentLink) {
       return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. Pay here: ${payload.paymentLink}.${managePart}`
     }
-    return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. We'll ping you a payment link shortly.${managePart}`
+    return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. We couldn't send your payment link just now, so we'll be in touch, or call us on 01753 682707.${managePart}`
   }
 
   return `The Anchor: Hi ${payload.firstName}, you're in. ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`

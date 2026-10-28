@@ -649,7 +649,13 @@ export class ShortLinkService {
     metadata?: Record<string, any>;
     expires_at?: string;
     name?: string;
-  }): Promise<{ short_code: string; full_url: string; already_exists: boolean }> {
+    /**
+     * Makes the code instead of the database's 6-character one (BK-203). Guest links carry a
+     * booking token, so they need a code too long to guess. Called again for a fresh code if the
+     * one it made is already taken.
+     */
+    generate_code?: () => string;
+  }, attempt = 1): Promise<{ short_code: string; full_url: string; already_exists: boolean }> {
     const supabase = await createAdminClient();
     const destinationUrl = assertAllowedShortLinkDestination(data.destination_url);
     const linkName = resolveShortLinkName(data.name, destinationUrl);
@@ -679,13 +685,13 @@ export class ShortLinkService {
         p_link_type: data.link_type,
         p_metadata: data.metadata || {},
         p_expires_at: data.expires_at || null,
-        p_custom_code: null,
+        p_custom_code: data.generate_code ? data.generate_code() : null,
       })
       .single();
 
     if (error) {
-      if (error.code === '23505') {
-        return this.createShortLinkInternal({ ...data, destination_url: destinationUrl });
+      if (error.code === '23505' && attempt < 5) {
+        return this.createShortLinkInternal({ ...data, destination_url: destinationUrl }, attempt + 1);
       }
       throw new Error(error.message || 'Failed to create short link');
     }

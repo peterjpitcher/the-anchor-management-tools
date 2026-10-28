@@ -20,7 +20,8 @@ vi.mock('@/lib/messaging/flags', () => ({ isMessagingFlagOn: vi.fn(async () => f
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn(() => Promise.resolve()) }))
 vi.mock('@/lib/analytics/events', () => ({ recordAnalyticsEvent: vi.fn(async () => undefined) }))
-vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined) }))
+const reportPaymentAlert = vi.hoisted(() => vi.fn(async () => ({ sent: true })))
+vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined), reportPaymentAlert }))
 vi.mock('@/lib/google-calendar', () => ({
   syncCalendarEvent: vi.fn(),
   deleteCalendarEvent: vi.fn(),
@@ -448,6 +449,11 @@ describe('the contract', () => {
     expect(result.confirmationBlockedReasons).toEqual([
       'Contract not sent. Send the contract, or record that the customer accepted it another way, then confirm the booking.',
     ])
+    // Paid but held at the gate reaches the manager inbox, not just a warning (BK-115).
+    expect(reportPaymentAlert).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'manager@the-anchor.pub',
+      title: expect.stringContaining('was paid but the booking is not confirmed'),
+    }))
   })
 
   it('keeps a waived hire with no contract a draft', async () => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 import { acceptWaitlistOfferByRawToken } from '@/lib/events/waitlist-offers'
 import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
@@ -144,11 +145,23 @@ async function sendAcceptanceSms(
         })
         paymentLink = tokenResult.url
       } catch (error) {
-        logger.warn('Failed to create payment token for waitlist acceptance', {
+        // An error, and the manager is told (BK-115): the guest holds seats with no way to pay,
+        // and nothing else will send them a link.
+        logger.error('Failed to create payment token for waitlist acceptance', {
+          error: error instanceof Error ? error : new Error(String(error)),
           metadata: {
-            bookingId: booking.id,
-            error: error instanceof Error ? error.message : String(error)
+            bookingId: booking.id
           }
+        })
+        await alertMoneyNeedsAPerson(supabase, {
+          domain: 'event_bookings',
+          bookingId: booking.id,
+          kind: 'waitlist_payment_link_failed',
+          subjectTag: 'BOOKING ACTION NEEDED',
+          path: `/events/${event.id}`,
+          title: `A waitlist guest took a place for ${eventName} but their payment link failed`,
+          summary: 'A guest accepted a waitlist place that needs paying for, but the payment link could not be made. Their seats are held. Open the booking on the event page and send them a payment link, or ring them.',
+          context: { Seats: seats, 'Hold expires': booking.hold_expires_at ?? null },
         })
       }
     }
@@ -156,7 +169,9 @@ async function sendAcceptanceSms(
     if (paymentLink) {
       message = `The Anchor: Hi ${firstName}, ${seats} ${seatWord} held for ${eventName}, nice one. Complete your payment here: ${paymentLink}.${manageLink ? ` ${manageLink}` : ''}`
     } else {
-      message = `The Anchor: Hi ${firstName}, ${seats} ${seatWord} held for ${eventName}, nice one. We'll ping you a payment link shortly.${manageLink ? ` ${manageLink}` : ''}`
+      // Honest about the link (BK-115): it used to promise one "shortly" that nothing would send.
+      // The manager has been told and will be in touch.
+      message = `The Anchor: Hi ${firstName}, ${seats} ${seatWord} held for ${eventName}, nice one. We couldn't send your payment link just now, so we'll be in touch, or call us on 01753 682707.${manageLink ? ` ${manageLink}` : ''}`
     }
   } else {
     const eventDateFormatted = event.start_datetime
