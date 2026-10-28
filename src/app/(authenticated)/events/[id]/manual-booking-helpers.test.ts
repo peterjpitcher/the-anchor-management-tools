@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  describeManualBookingOutcome,
   MAX_MANUAL_BOOKING_SEATS,
   parseQuantityInput,
   summariseTicketBasket,
@@ -132,5 +133,25 @@ describe('describeSeatUpdateBlock', () => {
     expect(describeSeatUpdateBlock('something_new')).toBe(fallback)
     expect(describeSeatUpdateBlock(null)).toBe(fallback)
     expect(describeSeatUpdateBlock(undefined)).toBe(fallback)
+  })
+})
+
+// BK-033: a full event is a failure, never "Booking created successfully".
+describe('describeManualBookingOutcome', () => {
+  it('reports a full event as nothing booked, with the places left', () => {
+    expect(describeManualBookingOutcome({ state: 'full_with_waitlist_option', seats_remaining: 2 })).toEqual({
+      tone: 'danger', message: 'This event is full for that request (2 left). Nothing was booked.', links: [],
+    })
+  })
+  it('gives the payment link for a held booking', () => {
+    const outcome = describeManualBookingOutcome({ state: 'pending_payment', next_step_url: 'https://example.test/pay' })
+    expect(outcome.tone).toBe('success')
+    expect(outcome.links).toEqual([{ label: 'Payment link', url: 'https://example.test/pay' }])
+  })
+  it('flags details to follow with the booking link (BK-011)', () => {
+    const outcome = describeManualBookingOutcome({ state: 'confirmed', details_to_follow: true, manage_booking_url: 'https://example.test/manage' })
+    expect(outcome.tone).toBe('warning')
+    expect(outcome.message).toContain('still to follow')
+    expect(outcome.links).toEqual([{ label: 'Guest details link', url: 'https://example.test/manage' }])
   })
 })

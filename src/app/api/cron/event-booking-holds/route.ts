@@ -51,6 +51,7 @@ async function expireEventBookingHolds(request: NextRequest) {
     const result = {
       expiredPendingBookings: 0,
       keptAwaitingPaymentDecision: 0,
+      keptCheckedIn: 0,
       expiredPaymentHolds: 0,
       cancelledEventTableBookings: 0,
       expiredWaitlistOffers: 0,
@@ -60,7 +61,7 @@ async function expireEventBookingHolds(request: NextRequest) {
 
     const { data: pendingRows, error: pendingError } = await supabase
       .from('bookings')
-      .select('id, event_id')
+      .select('id, event_id, source')
       .eq('status', 'pending_payment')
       .not('hold_expires_at', 'is', null)
       .lte('hold_expires_at', paymentRaceCutoffIso)
@@ -70,7 +71,28 @@ async function expireEventBookingHolds(request: NextRequest) {
       throw pendingError
     }
 
-    const lapsedIds = (pendingRows || []).map((row: any) => row.id)
+    // BK-032: a guest already checked in at the door is in the room. Their hold is not lapsed,
+    // whatever the clock says: staff settle the money at the bar (owner decision D12).
+    const candidateIds = (pendingRows || []).map((row: any) => row.id)
+    const checkedInIds = new Set<string>()
+    for (const ids of chunkIds(candidateIds)) {
+      const { data: checkIns, error: checkInsError } = await supabase
+        .from('event_check_ins')
+        .select('booking_id')
+        .in('booking_id', ids)
+      if (checkInsError) {
+        throw checkInsError
+      }
+      for (const row of checkIns || []) {
+        if ((row as any).booking_id) checkedInIds.add((row as any).booking_id)
+      }
+    }
+    result.keptCheckedIn = checkedInIds.size
+    // A walk-in's hold may lapse, but they are never sent a "seats released" message: they were
+    // never sent a payment link either (BK-032).
+    const walkInIds = new Set((pendingRows || []).filter((row: any) => row.source === 'walk-in').map((row: any) => row.id))
+
+    const lapsedIds = candidateIds.filter((id: string) => !checkedInIds.has(id))
     // A booking whose payment PayPal is still deciding is not "unpaid": leave it, and send the
     // guest no expiry message (BK-019).
     const awaitingDecision = await findEventBookingsAwaitingPaymentDecision(supabase, lapsedIds)
@@ -122,6 +144,7 @@ async function expireEventBookingHolds(request: NextRequest) {
 
       // Send SMS notifications to customers whose booking holds expired
       for (const expiredBookingId of expiredBookingIds) {
+        if (walkInIds.has(expiredBookingId)) continue
         try {
           await sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId })
 

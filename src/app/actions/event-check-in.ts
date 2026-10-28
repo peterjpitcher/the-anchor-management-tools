@@ -16,6 +16,13 @@ import { jobQueue } from '@/lib/unified-job-queue'
 import { logger } from '@/lib/logger'
 import { EventBookingService } from '@/services/event-bookings'
 import { hasGuestAnswers } from '@/lib/events/guest-answers'
+import {
+  kioskAmountDue,
+  kioskGreetingName,
+  kioskPaymentDue,
+  kioskPaymentDueMessage,
+  kioskWalkInBlock,
+} from '@/lib/events/kiosk-check-in'
 
 const LONDON_TZ = 'Europe/London'
 const ACTIVE_BOOKING_STATUSES = ['pending_payment', 'confirmed']
@@ -48,6 +55,9 @@ type EventForCheckIn = {
   time: string
   category_id: string | null
   event_type: string | null
+  payment_mode?: string | null
+  collect_guest_details?: boolean | null
+  booking_questions?: unknown
   category?: {
     id: string
     name: string
@@ -73,17 +83,20 @@ type EventCategoryForCheckIn = {
 }
 
 export type KnownEventGuest = {
+  /**
+   * Only what the screen shows (BK-202): the id it posts back and "Sam P.". The kiosk used to
+   * receive the guest's full name, email and mobile for any number typed.
+   */
   customer: {
     id: string
-    first_name: string | null
-    last_name: string | null
-    mobile_number: string | null
-    email: string | null
+    displayName: string
   }
   booking?: {
     id: string
     seats: number | null
     status: string | null
+    /** Set on a night paid in advance when the booking is not paid yet (BK-032, D12). */
+    paymentDue?: { message: string }
     /**
      * True when a guest on the booking answered the event's questions (BK-015). The kiosk only
      * says so; the answers themselves stay on the door list and the kitchen summary.
@@ -131,7 +144,7 @@ function cleanName(value: string): string {
 }
 
 function displayCustomerName(customer: Pick<CustomerForCheckIn, 'first_name' | 'last_name'>): string {
-  return [customer.first_name, customer.last_name].filter(Boolean).join(' ').trim() || 'there'
+  return kioskGreetingName(customer.first_name, customer.last_name)
 }
 
 function normalizeCategoryText(value: string | null | undefined): string {
@@ -193,7 +206,7 @@ async function requireEventManager(eventId: string): Promise<
   const admin = createAdminClient()
   const { data: event, error } = await admin
     .from('events')
-    .select('id, name, date, time, category_id, event_type, category:event_categories(id, name, slug, color)')
+    .select('id, name, date, time, category_id, event_type, payment_mode, collect_guest_details, booking_questions, category:event_categories(id, name, slug, color)')
     .eq('id', eventId)
     .maybeSingle()
 
@@ -362,17 +375,47 @@ function mapWalkInBlockedReason(reason: string | null): string {
   }
 }
 
-async function ensureBooking(eventId: string, customerId: string): Promise<
+/** What an unpaid booking owes, for the "please see the bar" message (BK-032). */
+async function bookingAmountDue(bookingId: string): Promise<number | null> {
+  const { data, error } = await createAdminClient()
+    .from('booking_items')
+    .select('quantity, unit_price')
+    .eq('booking_id', bookingId)
+  if (error) {
+    logger.warn('Failed to load booking items for the check-in payment message', {
+      metadata: { bookingId, error: error.message },
+    })
+    return null
+  }
+  return kioskAmountDue(data ?? [])
+}
+
+async function ensureBooking(event: EventForCheckIn, customerId: string): Promise<
   | { ok: true; bookingId: string }
   | { ok: false; error: string }
 > {
+  const eventId = event.id
   const active = await getActiveBooking(eventId, customerId)
   if (active.error) {
     return { ok: false, error: active.error }
   }
 
   if (active.booking?.id) {
+    // BK-032, owner decision D12: an unpaid guest on a night paid in advance pays at the bar
+    // before the kiosk checks them in.
+    if (kioskPaymentDue(event, active.booking)) {
+      return { ok: false, error: kioskPaymentDueMessage(await bookingAmountDue(active.booking.id)) }
+    }
     return { ok: true, bookingId: active.booking.id }
+  }
+
+  // BK-032 and BK-011: the kiosk books no walk-in on a night paid in advance or one that asks
+  // every guest required questions. Staff book them at the bar, where they can take the money
+  // and the answers. It used to make an unpaid hold that sent a payment link, then a "seats
+  // released" message to a guest standing in the room.
+  const walkInBlock = kioskWalkInBlock(event)
+  if (walkInBlock) {
+    return { ok: false, error: walkInBlock }
   }
 
   const admin = createAdminClient()
@@ -414,9 +457,16 @@ async function ensureBooking(eventId: string, customerId: string): Promise<
     (result.resolvedState === 'confirmed' || result.resolvedState === 'pending_payment') &&
     result.bookingId
   ) {
+    // BK-032: added to any notes the booking already has, never written over them.
+    const { data: existingNotes } = await admin
+      .from('bookings')
+      .select('notes')
+      .eq('id', result.bookingId)
+      .maybeSingle()
+    const previous = typeof existingNotes?.notes === 'string' ? existingNotes.notes.trim() : ''
     const { error: notesError } = await admin
       .from('bookings')
-      .update({ notes: 'Created via event check-in' })
+      .update({ notes: previous ? `${previous}\nCreated via event check-in` : 'Created via event check-in' })
       .eq('id', result.bookingId)
 
     if (notesError) {
@@ -844,7 +894,7 @@ async function completeCheckIn(input: {
     return { success: false, error: 'Guest is already checked in for this event.' }
   }
 
-  const ensuredBooking = await ensureBooking(input.event.id, input.customerId)
+  const ensuredBooking = await ensureBooking(input.event, input.customerId)
   if (!ensuredBooking.ok) {
     return { success: false, error: ensuredBooking.error }
   }
@@ -962,6 +1012,16 @@ export async function lookupEventGuest(input: z.infer<typeof lookupSchema>): Pro
     return { success: false, error: checkIn.error }
   }
 
+  // BK-202: only this event's bookers are greeted. Any other number is treated as a new guest,
+  // so the screen never says whether a number belongs to one of our customers.
+  if (!activeBooking.booking && !checkIn.checkedIn) {
+    return { success: true, status: 'unknown', normalizedPhone }
+  }
+
+  const paymentDue = activeBooking.booking && kioskPaymentDue(access.event, activeBooking.booking)
+    ? { message: kioskPaymentDueMessage(await bookingAmountDue(activeBooking.booking.id)) }
+    : undefined
+
   const attendance = checkIn.checkedIn
     ? await getEventCategoryAttendanceSummary({
         event: access.event,
@@ -977,16 +1037,14 @@ export async function lookupEventGuest(input: z.infer<typeof lookupSchema>): Pro
     data: {
       customer: {
         id: lookup.customer.id,
-        first_name: lookup.customer.first_name,
-        last_name: lookup.customer.last_name,
-        mobile_number: lookup.customer.mobile_e164 || lookup.customer.mobile_number,
-        email: lookup.customer.email,
+        displayName: displayCustomerName(lookup.customer),
       },
       booking: activeBooking.booking
         ? {
             id: activeBooking.booking.id,
             seats: activeBooking.booking.seats,
             status: activeBooking.booking.status,
+            ...(paymentDue ? { paymentDue } : {}),
             answersOnFile: hasGuestAnswers(activeBooking.booking.attendees),
           }
         : undefined,
@@ -1096,7 +1154,7 @@ export async function registerNewGuest(input: z.infer<typeof registerNewSchema>)
     userEmail: access.userEmail,
     customerId: customerResolution.customerId,
     normalizedPhone,
-    customerName: `${firstName} ${lastName}`.trim(),
+    customerName: kioskGreetingName(firstName, lastName),
   })
 
   if (result.success) {

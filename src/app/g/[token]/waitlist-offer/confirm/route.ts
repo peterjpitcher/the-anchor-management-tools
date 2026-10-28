@@ -3,6 +3,7 @@ import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { acceptWaitlistOfferByRawToken } from '@/lib/events/waitlist-offers'
+import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -272,6 +273,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
       }
 
       followUpTasks.push(sendAcceptanceSms(supabase, acceptance.booking_id, acceptance.state, appBaseUrl))
+      // BK-011, owner decision D5: a waitlist booking is made with no guest details, so on an
+      // event that needs them the booker is sent their link to add them (behind the
+      // event_guest_details_request flag, off until the owner switches it on).
+      followUpTasks.push(requestMissingGuestDetails(supabase, {
+        bookingId: acceptance.booking_id,
+        manageUrl: null,
+        appBaseUrl,
+        waitlistAcceptance: true,
+      }))
     }
 
     if (followUpTasks.length > 0) {

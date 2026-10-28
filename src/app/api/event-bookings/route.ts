@@ -26,7 +26,7 @@ import {
   SUNDAY_LUNCH_ONLY_EVENT_MESSAGE
 } from '@/lib/events/sunday-lunch-only-policy'
 import { EventBookingService } from '@/services/event-bookings'
-import { eventAttendeesInputSchema, bookingQuestionsSchema, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, INVALID_GUEST_PHONE_MESSAGE, normaliseAttendeePhones, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -72,7 +72,7 @@ const CreateEventBookingSchema = z.object({
   // Per-ticket attendee names (ordered; index 0 = lead booker). Basic shape
   // guard only — the count-vs-seats rule is enforced by normalizeAttendeeNames.
   attendees: eventAttendeesInputSchema.optional(),
-  // Rounded to pence before it is hashed or reaches create_event_booking_v08, which compares it
+  // Rounded to pence before it is hashed or reaches create_event_booking_v09, which compares it
   // exactly with the booked price. A total added up in floating point (12.95 x 3 is
   // 38.849999999999994 in JavaScript) was refused as "price changed" on every retry (BK-098).
   // Rounding here also covers a website build that still sends the unrounded figure.
@@ -176,6 +176,13 @@ export async function POST(request: NextRequest) {
     }
     const attendeeNames = attendeeNamesResult.names
 
+    // Each guest's own mobile is optional and kept on this booking only (BK-013, owner decision
+    // D5). Normalised to E.164 here; one that cannot be a phone number is the guest's to fix.
+    const attendees = normaliseAttendeePhones(parsed.data.attendees)
+    if (attendees === null) {
+      return createErrorResponse(INVALID_GUEST_PHONE_MESSAGE, 'VALIDATION_ERROR', 400)
+    }
+
     const requestHash = computeIdempotencyRequestHash({
       event_id: parsed.data.event_id,
       phone: normalizedPhone,
@@ -188,7 +195,7 @@ export async function POST(request: NextRequest) {
       ...(attendeeNames.length > 0 ? { attendee_names: attendeeNames } : {}),
       ...(parsed.data.dining_request ? { dining_request: parsed.data.dining_request } : {}),
       ...(parsed.data.early_arrival_request === true ? { early_arrival_request: true } : {}),
-      ...(parsed.data.attendees ? { attendees: parsed.data.attendees } : {}),
+      ...(attendees ? { attendees } : {}),
       ...(parsed.data.expected_total !== undefined ? { expected_total: parsed.data.expected_total } : {}),
       ...(parsed.data.ticket_selections ? { ticket_selections: parsed.data.ticket_selections } : {}),
       communication_consent: consentHashPayload(parsed.data.communication_consent),
@@ -241,12 +248,12 @@ export async function POST(request: NextRequest) {
       }
 
       // One rule, the event's own setting (BK-014, owner decision D4). The website reads the same
-      // answer from /api/events and create_event_booking_v08 applies it to the same column.
+      // answer from /api/events and create_event_booking_v09 applies it to the same column.
       const guestDetailsRequired = requiresGuestDetails(eventRow)
       const questions = bookingQuestionsSchema.safeParse(eventRow.booking_questions ?? [])
       if (!questions.success) return createErrorResponse('Event guest questions could not be loaded', 'DATABASE_ERROR', 500)
       const guestError = validateEventAttendees({
-        attendees: parsed.data.attendees,
+        attendees,
         questions: questions.data,
         seats: parsed.data.seats,
         required: guestDetailsRequired,
@@ -381,7 +388,7 @@ export async function POST(request: NextRequest) {
         appBaseUrl,
         shouldSendSms: true,
         firstName: parsed.data.first_name || customerResolution.resolvedFirstName,
-        attendees: parsed.data.attendees,
+        attendees,
         expectedTotal: parsed.data.expected_total,
         requireGuestDetails: guestDetailsRequired,
         attendeeNames: attendeeNames.length > 0 ? attendeeNames : undefined,
@@ -401,7 +408,7 @@ export async function POST(request: NextRequest) {
         if (result.rpcErrorCode === 'guest_details_invalid') {
           logger.error('Event booking refused guest details the website should have caught', {
             error: new Error('event_booking_guest_details_invalid'),
-            metadata: { eventId: parsed.data.event_id, seats: parsed.data.seats, attendees: parsed.data.attendees?.length ?? 0 },
+            metadata: { eventId: parsed.data.event_id, seats: parsed.data.seats, attendees: attendees?.length ?? 0 },
           })
           return createErrorResponse('Please check the details for each guest: a name for every ticket, and an answer to each required question.', 'VALIDATION_ERROR', 400)
         }

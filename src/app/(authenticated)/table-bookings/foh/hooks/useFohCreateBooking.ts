@@ -25,6 +25,7 @@ import type { FohCreateBookingResponse, FohCreateEventBookingResponse } from '..
 import { requiresDeposit as requiresDepositForParty } from '@/lib/table-bookings/deposit'
 import { isChristmasPurpose } from '@/lib/table-bookings/christmas'
 import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
+import { fohEventBookingExtras } from '../event-guest-details'
 import {
   FOH_CLIENT_OUTDATED_CODE,
   getFohBookingClientHeaders,
@@ -418,7 +419,9 @@ export function useFohCreateBooking(input: {
       sunday_deposit_method: 'payment_link',
       notes: '', allergies: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
       high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-      christmas_course_counts: []
+      christmas_course_counts: [],
+      event_guest_rows: [],
+      event_ticket_quantities: {}
     }))
     setCreateMode('booking'); setWalkInTargetTable(null); setCustomerQuery(''); setCustomerResults([])
     setSelectedCustomer(null); setEventOptions([]); setEventOptionsError(null)
@@ -479,7 +482,7 @@ export function useFohCreateBooking(input: {
         notes: walkInMode ? '' : current.notes, allergies: walkInMode ? '' : current.allergies,
         waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-        christmas_course_counts: [], marketing_texts_yes: false
+        christmas_course_counts: [], marketing_texts_yes: false, event_guest_rows: [], event_ticket_quantities: {}
       }
     })
     if (walkInMode) {
@@ -529,9 +532,16 @@ export function useFohCreateBooking(input: {
     }
 
     if (createForm.purpose === 'event') {
-      const seats = Number.parseInt(createForm.party_size, 10)
-      if (!Number.isFinite(seats) || seats < 1) { setErrorMessage('Please enter a valid number of seats'); return }
       if (!createForm.event_id) { setErrorMessage('Please select an event'); return }
+      // BK-141 and BK-011: ticket types per seat and each ticket's guest details.
+      const extras = fohEventBookingExtras({
+        option: selectedEventOption,
+        partySize: createForm.party_size,
+        quantities: createForm.event_ticket_quantities,
+        guestRows: createForm.event_guest_rows,
+      })
+      if (!extras.ok) { setErrorMessage(extras.error); return }
+      const seats = extras.seats
       setSubmittingBooking(true)
       try {
         const response = await fetch('/api/foh/event-bookings', {
@@ -547,6 +557,8 @@ export function useFohCreateBooking(input: {
               selectedEventOption?.booking_mode === 'communal'
                 ? createForm.seating_preference
                 : undefined,
+            ticket_selections: extras.ticket_selections,
+            attendees: extras.attendees,
             marketing_texts_yes: createForm.marketing_texts_yes === true || undefined
           })
         })
@@ -601,7 +613,12 @@ export function useFohCreateBooking(input: {
         const notificationText = payload.data.notification_sent === false
           ? ' No confirmation reached the guest, so give them the details now.'
           : ''
-        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${paymentLinkText}${manageLinkText}`)
+        // BK-011: say plainly when guest details are still to follow, so staff can ask now or
+        // point the guest at their booking link.
+        const detailsText = payload.data.details_to_follow
+          ? ' Some guest details are still to follow: the guest can add them from their booking link.'
+          : ''
+        setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${detailsText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : 'Failed to create event booking')

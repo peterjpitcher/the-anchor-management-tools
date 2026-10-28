@@ -3,6 +3,8 @@ import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireFohPermission } from '@/lib/foh/api-auth'
 import { isSundayLunchOnlyEvent } from '@/lib/events/sunday-lunch-only-policy'
 import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { bookingQuestionsSchema, requiresGuestDetails } from '@/lib/events/booking-questions'
+import { eventTicketTypesEnabled, resolveTicketTypeSellPrice } from '@/lib/events/ticket-types'
 
 type EventCapacityRow = {
   event_id: string
@@ -78,7 +80,7 @@ export async function GET(request: NextRequest) {
 
   const { data: events, error } = await auth.supabase.from('events')
     .select(
-      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, online_discount_type, online_discount_value, online_discount_ends_at, capacity, seated_capacity, standing_capacity, booking_open, event_status, booking_mode'
+      'id, name, date, time, end_time, start_datetime, duration_minutes, payment_mode, price_per_seat, price, online_discount_type, online_discount_value, online_discount_ends_at, capacity, seated_capacity, standing_capacity, booking_open, event_status, booking_mode, booking_questions, collect_guest_details'
     )
     .eq('date', bookingDate)
     .or('booking_open.is.null,booking_open.eq.true')
@@ -112,6 +114,29 @@ export async function GET(request: NextRequest) {
     if (!capacityError && Array.isArray(capacityRows)) {
       for (const row of capacityRows as EventCapacityRow[]) {
         capacityByEventId.set(row.event_id, row)
+      }
+    }
+  }
+
+  // BK-141: the bar can pick a ticket type, as the event page can, on events that offer more than
+  // one (standard events with the ticket types feature on).
+  const ticketTypesOn = eventTicketTypesEnabled()
+  const typesByEventId = new Map<string, Array<{ id: string; name: string; price: number }>>()
+  if (ticketTypesOn && eventIds.length > 0) {
+    const { data: typeRows, error: typeError } = await auth.supabase
+      .from('event_ticket_types')
+      .select('id, event_id, name, base_price, sort_order, is_active')
+      .in('event_id', eventIds)
+      .eq('is_active', true)
+    if (!typeError && Array.isArray(typeRows)) {
+      const eventById = new Map(rows.map((row) => [row.id, row]))
+      const sorted = [...typeRows].sort((a, b) => Number(a.sort_order ?? 0) - Number(b.sort_order ?? 0) || String(a.name ?? '').localeCompare(String(b.name ?? '')))
+      for (const type of sorted) {
+        const eventRow = eventById.get(type.event_id)
+        if (!eventRow) continue
+        const list = typesByEventId.get(type.event_id) ?? []
+        list.push({ id: type.id, name: type.name || 'Ticket', price: resolveTicketTypeSellPrice(Number(type.base_price), eventRow) })
+        typesByEventId.set(type.event_id, list)
       }
     }
   }
@@ -157,7 +182,18 @@ export async function GET(request: NextRequest) {
       seated_remaining: capacityRow?.seated_remaining ?? null,
       standing_remaining: capacityRow?.standing_remaining ?? null,
       total_remaining: capacityRow?.total_remaining ?? seatsRemaining,
-      is_full: isFull
+      is_full: isFull,
+      // BK-011: the event's questions and whether every ticket should carry guest details, so
+      // the bar can take them (any may follow later).
+      booking_questions: (() => {
+        const parsed = bookingQuestionsSchema.safeParse(row.booking_questions ?? [])
+        return parsed.success ? parsed.data : []
+      })(),
+      guest_details_required: paymentMode !== 'free' && requiresGuestDetails(row),
+      ticket_types:
+        row.booking_mode !== 'communal' && row.booking_mode !== 'mixed' && (typesByEventId.get(row.id)?.length ?? 0) > 1
+          ? typesByEventId.get(row.id) ?? []
+          : []
     }
   })
 
