@@ -40,6 +40,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { POST } from '@/app/api/foh/bookings/route'
 import { FOH_BOOKING_CLIENT_CONTRACT, FOH_BOOKING_CLIENT_HEADER } from '@/lib/foh/booking-client-contract'
 import { WALK_IN_TODAY_ONLY_MESSAGE } from '@/lib/foh/walk-in'
+import { walkInOverridePickerRpc } from '../mocks/walkInOverridePicker'
 
 function makeThenable(result: unknown) {
   const builder: Record<string, unknown> = {}
@@ -65,6 +66,8 @@ function buildSupabase(refusal: string) {
   const rpc = vi.fn((fn: string) => {
     if (fn === 'business_hours_for_date') return Promise.resolve({ data: [WEEKLY], error: null })
     if (fn === 'create_table_booking_staff_v06') return Promise.resolve({ data: { state: 'blocked', reason: refusal }, error: null })
+    const picked = walkInOverridePickerRpc(fn)
+    if (picked) return Promise.resolve(picked)
     return Promise.resolve({ data: null, error: null })
   })
   const tableBookingInsert = vi.fn(() => makeThenable({ data: { id: 'tb-walk-in-1', booking_reference: 'TB-W1' }, error: null }))
@@ -141,7 +144,8 @@ describe('a walk-in at 00:30 on 1 January', () => {
       booking_date: '2026-12-31',
       booking_time: '00:31:00',
       start_datetime: '2027-01-01T00:31:00.000Z',
-      end_datetime: '2027-01-01T02:01:00.000Z',
+      // The visit length now comes from table_booking_turn_minutes (BK-145): 120 minutes in the mock.
+      end_datetime: '2027-01-01T02:31:00.000Z',
       source: 'walk-in',
       seated_at: '2027-01-01T00:30:00.000Z',
     })

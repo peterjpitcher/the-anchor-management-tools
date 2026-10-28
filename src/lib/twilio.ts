@@ -294,6 +294,17 @@ function canUseTwilioScheduling(delayMs: number): boolean {
   return Boolean(messagingServiceSid) && delayMs >= TWILIO_SCHEDULE_MIN_DELAY_MS;
 }
 
+/**
+ * True when the text names an event booking and the status it was written for. Such a text is
+ * checked again before a held send goes out (see send_sms in src/lib/unified-job-queue.ts).
+ */
+function needsSendTimeBookingCheck(metadata: Record<string, unknown> | undefined): boolean {
+  return (
+    typeof metadata?.event_booking_id === 'string' &&
+    typeof metadata?.expected_booking_status === 'string'
+  )
+}
+
 function buildDeferredSmsUniqueKey(params: {
   to: string
   customerId?: string
@@ -467,7 +478,9 @@ export const sendSMS = async (to: string, body: string, options: SendSMSOptions 
         const scheduledFor = quietHoursState.nextAllowedSendAt;
         const delayMs = Math.max(1000, scheduledFor.getTime() - Date.now());
 
-        if (!canUseTwilioScheduling(delayMs)) {
+        // A booking text that may go stale by morning is held in our own queue, never handed to
+        // Twilio's scheduler, so the queue can read the booking again before it sends (BK-084).
+        if (!canUseTwilioScheduling(delayMs) || needsSendTimeBookingCheck(options.metadata)) {
           try {
             const customerId = resolvedCustomerId;
 
