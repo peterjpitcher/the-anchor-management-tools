@@ -33,6 +33,7 @@ import {
   loadBookingItemsWithTypes,
 } from '@/lib/events/ticket-type-queries'
 import { logger } from '@/lib/logger'
+import { buildEventReminderEmailLines, type EventReminderDayWord } from '@/lib/events/event-reminder-message'
 
 type EventEmailResult = { success: boolean; error?: string; messageId?: string; skipped?: boolean }
 
@@ -651,6 +652,92 @@ export async function sendEventBookingConfirmedEmail(
       payment_mode: context.paymentMode,
       booking_mode: context.bookingMode,
       seats: context.seats,
+      manage_link_included: Boolean(manageLink),
+      short_link_fallback: manageResult?.shortened === false,
+    },
+  })
+}
+
+export const EVENT_REMINDER_EMAIL_COMM_TYPE = 'event_reminder_1d'
+
+/**
+ * The day-before reminder by email (BK-086, owner decision D14: event messages go by email first,
+ * with a text only when there is no usable email). Returns `skipped` with success false when the
+ * guest has no usable address, so the caller texts instead, and success true when one already went.
+ */
+export async function sendEventReminderEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    reminderDay: EventReminderDayWord
+    appBaseUrl?: string
+  }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+  if (context.bookingStatus && context.bookingStatus !== 'confirmed') return { success: false, skipped: true }
+  if (!context.eventWhen) return { success: false, skipped: true }
+
+  const alreadySent = await hasSuccessfulEventEmail(supabase, {
+    bookingId: input.bookingId,
+    commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
+  })
+  if (alreadySent) return { success: true, skipped: true }
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
+  const dayWord = input.reminderDay === 'today' ? 'Today' : 'Tomorrow'
+  const heading = `See you ${input.reminderDay}`
+  const subject = `${dayWord}: ${context.eventName}`
+
+  const body = [
+    `Hi ${context.firstName},`,
+    ...buildEventReminderEmailLines({
+      firstName: context.firstName,
+      eventName: context.eventName,
+      eventDateText: context.eventWhen,
+      reminderDay: input.reminderDay,
+      seats: context.seats,
+      bookingMode: context.bookingMode,
+      seatingType: context.seatingType,
+      paymentMode: context.paymentMode,
+      doorPricePerSeat: context.doorPricePerSeat,
+      doorsTime: context.doorsTime,
+      eventStartIso: context.eventStartIso,
+    }),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+    `Need to change or cancel? Call ${GUEST_CONTACT.phoneDisplay}.`,
+  ]
+
+  const text = buildGuestEmailText([
+    ...body,
+    manageLink ? `View your booking here: ${manageLink}` : null,
+  ])
+
+  const html = buildGuestEmailHtml({
+    title: heading,
+    preheader: `${context.eventName} is ${input.reminderDay}, ${context.eventWhen}.`,
+    heading,
+    body,
+    cta: manageLink ? { href: manageLink, label: 'View your booking' } : null,
+    footNote: 'This is a service message about your booking.',
+  })
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject,
+    text,
+    html,
+    commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_reminder_1d_email',
+      payment_mode: context.paymentMode,
+      booking_mode: context.bookingMode,
+      seats: context.seats,
+      reminder_day: input.reminderDay,
       manage_link_included: Boolean(manageLink),
       short_link_fallback: manageResult?.shortened === false,
     },

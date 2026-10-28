@@ -27,7 +27,10 @@ import {
 } from '@/lib/sms/event-promo-policy'
 import type { MessagingFlagsReadFailure } from '@/lib/messaging/flags'
 import { getGoogleReviewLink } from '@/lib/events/review-link'
-import { formatTimeInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, formatTimeInLondon, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { sendEventReminderEmail } from '@/lib/email/event-ticket-emails'
+import { buildEventReminderSms, type EventReminderDayWord } from '@/lib/events/event-reminder-message'
+import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { hasBeenSeated, isWithinReviewSendWindow } from '@/lib/table-bookings/review-window'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
@@ -105,6 +108,8 @@ type BookingWithRelations = {
   review_sms_sent_at?: string | null
   review_window_closes_at?: string | null
   review_suppressed_at?: string | null
+  /** seated or standing: what this booking holds. */
+  event_seating_type?: string | null
   event: {
     id: string
     name: string
@@ -113,6 +118,12 @@ type BookingWithRelations = {
     time: string | null
     event_status?: string | null
     promo_sms_enabled?: boolean | null
+    booking_mode?: string | null
+    payment_mode?: string | null
+    price?: number | null
+    price_per_seat?: number | null
+    is_free?: boolean | null
+    doors_time?: string | null
   } | null
   customer: {
     id: string
@@ -748,6 +759,7 @@ async function loadEventBookingsForEngagement(
       review_sms_sent_at,
       review_window_closes_at,
       review_suppressed_at,
+      event_seating_type,
       event:events!inner(
         id,
         name,
@@ -755,7 +767,13 @@ async function loadEventBookingsForEngagement(
         date,
         time,
         event_status,
-        promo_sms_enabled
+        promo_sms_enabled,
+        booking_mode,
+        payment_mode,
+        price,
+        price_per_seat,
+        is_free,
+        doors_time
       ),
       customer:customers(
         id,
@@ -834,7 +852,7 @@ async function processReminders(
   bookings: BookingWithRelations[],
   appBaseUrl: string,
   safety: EventEngagementCronSafetyState
-): Promise<{ sent1d: number; skipped: number }> {
+): Promise<{ sent1d: number; emailed1d: number; skipped: number }> {
   const now = new Date()
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const bookingIds = bookings.map((b) => b.id)
@@ -864,6 +882,7 @@ async function processReminders(
 
   const result = {
     sent1d: 0,
+    emailed1d: 0,
     skipped: 0
   }
 
@@ -881,7 +900,9 @@ async function processReminders(
     const customer = booking.customer
     const event = booking.event
     const eventStartIso = resolveEventStartIso(event)
-    if (!customer || !event || !eventStartIso || !customer.mobile_number || customer.sms_status !== 'active') {
+    // A guest with no active mobile can still have the email (BK-086), so the mobile is checked
+    // only where the text is sent.
+    if (!customer || !event || !eventStartIso) {
       result.skipped += 1
       continue
     }
@@ -891,10 +912,8 @@ async function processReminders(
       continue
     }
 
-    if (event.promo_sms_enabled === false) {
-      result.skipped += 1
-      continue
-    }
+    // The reminder is a service message about a booking, not a promotion, so it goes out on
+    // nights where promotional texts are switched off (owner decision D14).
 
     const eventStart = new Date(eventStartIso)
     if (eventStart.getTime() <= now.getTime()) {
@@ -904,15 +923,6 @@ async function processReminders(
 
     const dueAt1d = eventStart.getTime() - 24 * 60 * 60 * 1000
     if (now.getTime() < dueAt1d) {
-      result.skipped += 1
-      continue
-    }
-
-    // Name the day the guest reads it on. Quiet hours hold a send from 21:00 until 09:00, which
-    // for an event starting after 20:45 is the event day itself, where "tomorrow" was wrong.
-    // Null means it could only land after the start, so it is not sent at all.
-    const reminderDay = resolveEventReminderDay({ eventStartAt: eventStartIso, now })
-    if (!reminderDay) {
       result.skipped += 1
       continue
     }
@@ -930,6 +940,47 @@ async function processReminders(
       continue
     }
 
+    // Email first, a text only when no email could go (owner decision D14). An email lands when it
+    // is sent, so it names the day by the London date now; quiet hours do not hold it.
+    const emailDay: EventReminderDayWord =
+      toLocalIsoDate(eventStart) === toLocalIsoDate(now) ? 'today' : 'tomorrow'
+    let emailed = false
+    try {
+      const emailResult = await sendEventReminderEmail(supabase, {
+        bookingId: booking.id,
+        reminderDay: emailDay,
+        appBaseUrl,
+      })
+      emailed = emailResult.success === true
+    } catch (emailError) {
+      logger.warn('Event reminder email failed; falling back to a text when possible', {
+        metadata: {
+          bookingId: booking.id,
+          error: emailError instanceof Error ? emailError.message : String(emailError),
+        },
+      })
+    }
+    if (emailed) {
+      sentSet.add(`${booking.id}:${TEMPLATE_REMINDER_1D}`)
+      result.sent1d += 1
+      result.emailed1d += 1
+      continue
+    }
+
+    if (!customer.mobile_number || customer.sms_status !== 'active') {
+      result.skipped += 1
+      continue
+    }
+
+    // Name the day the guest reads it on. Quiet hours hold a send from 21:00 until 09:00, which
+    // for an event starting after 20:45 is the event day itself, where "tomorrow" was wrong.
+    // Null means it could only land after the start, so it is not sent at all.
+    const reminderDay = resolveEventReminderDay({ eventStartAt: eventStartIso, now })
+    if (!reminderDay) {
+      result.skipped += 1
+      continue
+    }
+
     let manageLink: string | null = null
     try {
       const token = await createEventManageToken(supabase, {
@@ -943,15 +994,22 @@ async function processReminders(
       manageLink = null
     }
 
-    const firstName = getSmartFirstName(customer.first_name)
-    const eventDateText = formatEventDateTime(eventStartIso)
-    // This goes to people who have already booked, so it confirms and welcomes
-    // rather than selling. No seat ask: they have their seats.
-    const seatCount = Math.max(0, Number(booking.seats || 0))
-    const seatPhrase = seatCount === 1 ? 'Your seat is' : `Your ${seatCount} seats are`
-    const baseBody = reminderDay === 'tomorrow'
-      ? `The Anchor: ${firstName}, ${event.name} is tomorrow, ${eventDateText}. ${seatPhrase} ready. Come a bit early tomorrow if you fancy a drink.`
-      : `The Anchor: ${firstName}, ${event.name} is today, ${eventDateText}. ${seatPhrase} ready. Come a bit early if you fancy a drink.`
+    // This goes to people who have already booked, so it confirms and welcomes rather than
+    // selling. The wording follows the night: seats only when a table is held, places on shared
+    // seating, tickets for standing, and the cash price on pay-on-the-night events (BK-086).
+    const baseBody = buildEventReminderSms({
+      firstName: getSmartFirstName(customer.first_name),
+      eventName: event.name,
+      eventDateText: formatEventDateTime(eventStartIso),
+      reminderDay,
+      seats: Math.max(0, Number(booking.seats || 0)),
+      bookingMode: event.booking_mode ?? null,
+      seatingType: booking.event_seating_type ?? null,
+      paymentMode: resolveEventPaymentMode(event),
+      doorPricePerSeat: resolveEventTicketPriceAmount(event),
+      doorsTime: event.doors_time ?? null,
+      eventStartIso,
+    })
     const messageBody = ensureReplyInstruction(
       manageLink ? `${baseBody} Change: ${manageLink}` : baseBody,
       supportPhone
@@ -993,6 +1051,60 @@ async function processReminders(
   }
 
   return result
+}
+
+type CheckInSignal = {
+  isEligible: (booking: Pick<BookingWithRelations, 'id' | 'event_id' | 'customer_id'>) => boolean
+}
+
+/**
+ * Which events used check-in, and who checked in. A booking on an event with no check-ins is
+ * always eligible; on an event with any, only a booking (or customer) that checked in is.
+ */
+async function loadEventCheckInSignal(
+  supabase: ReturnType<typeof createAdminClient>,
+  eventIds: string[]
+): Promise<CheckInSignal> {
+  const eventsWithCheckIn = new Set<string>()
+  const checkedInBookings = new Set<string>()
+  const checkedInCustomers = new Set<string>()
+
+  for (const idChunk of chunkArray(eventIds)) {
+    const { data, error } = await supabase
+      .from('event_check_ins')
+      .select('event_id, booking_id, customer_id')
+      .in('event_id', idChunk)
+
+    if (error) throw error
+
+    for (const row of data || []) {
+      if (typeof row.event_id !== 'string') continue
+      eventsWithCheckIn.add(row.event_id)
+      if (typeof row.booking_id === 'string') checkedInBookings.add(row.booking_id)
+      if (typeof row.customer_id === 'string') checkedInCustomers.add(`${row.event_id}:${row.customer_id}`)
+    }
+  }
+
+  return {
+    isEligible: (booking) => {
+      if (!eventsWithCheckIn.has(booking.event_id)) return true
+      return checkedInBookings.has(booking.id) || checkedInCustomers.has(`${booking.event_id}:${booking.customer_id}`)
+    },
+  }
+}
+
+/**
+ * "last night", "yesterday" or "on Saturday": the event's own day, as seen from the London day
+ * the ask is read. "last night" used to go out after afternoon events too (BK-087).
+ */
+function describeEventDayForReview(eventStartIso: string, now: Date): string {
+  const eventStart = new Date(eventStartIso)
+  const yesterday = shiftIsoDate(toLocalIsoDate(now), -1)
+  if (toLocalIsoDate(eventStart) === yesterday) {
+    const startHour = Number(formatTimeInLondon(eventStart).slice(0, 2))
+    return startHour >= 17 ? 'last night' : 'yesterday'
+  }
+  return `on ${formatDateInLondon(eventStart, { weekday: 'long' })}`
 }
 
 async function processReviewFollowups(
@@ -1080,6 +1192,33 @@ async function processReviewFollowups(
     safety.throwSafetyAbort()
   }
 
+  // BK-087: on a night where staff used check-in, only the guests who checked in are asked how it
+  // went, so a no-show is not told we hope they had a good time. Nights without check-in are
+  // unchanged. A failed read stops the stage rather than asking everyone.
+  let checkIns: CheckInSignal
+  try {
+    checkIns = await loadEventCheckInSignal(
+      supabase,
+      [...new Set(boundedPastBookings.map((b) => b.event_id).filter(Boolean))]
+    )
+  } catch (error) {
+    logger.error('Failed loading event check-ins for review follow-ups', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingCount: boundedPastBookings.length },
+    })
+    safety.recordSafetyAbort({
+      stage: 'reviews:check_ins',
+      bookingId: null,
+      tableBookingId: null,
+      customerId: null,
+      eventId: null,
+      templateKey: TEMPLATE_REVIEW_FOLLOWUP,
+      code: 'check_in_lookup_failed',
+      logFailure: false,
+    })
+    safety.throwSafetyAbort()
+  }
+
   const result = { sent: 0, skipped: 0, suppressed: 0, shortLinkFallbacks: 0 }
 
   for (const booking of boundedPastBookings) {
@@ -1119,6 +1258,23 @@ async function processReviewFollowups(
         { table: 'bookings', what: 'Suppressing the event review (not first visit)', ids: { bookingId: booking.id } }
       )
       logger.info('Event review SMS suppressed: not customer first visit', {
+        metadata: { bookingId: booking.id, customerId: booking.customer_id }
+      })
+      continue
+    }
+
+    if (!checkIns.isEligible(booking)) {
+      result.suppressed += 1
+      const nowIso = new Date().toISOString()
+      await settleWrite(
+        supabase
+          .from('bookings')
+          .update({ review_suppressed_at: nowIso, updated_at: nowIso })
+          .eq('id', booking.id)
+          .is('review_suppressed_at', null),
+        { table: 'bookings', what: 'Suppressing the event review (did not check in)', ids: { bookingId: booking.id } }
+      )
+      logger.info('Event review SMS suppressed: night used check-in and this guest did not check in', {
         metadata: { bookingId: booking.id, customerId: booking.customer_id }
       })
       continue
@@ -1165,7 +1321,7 @@ async function processReviewFollowups(
     if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} last night. Got 30 seconds? We'd love to know how we did: ${redirectUrl}`,
+      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} ${describeEventDayForReview(eventStartIso, now)}. Got 30 seconds? We'd love to know how we did: ${redirectUrl}`,
       supportPhone
     )
 
@@ -2364,7 +2520,7 @@ export async function GET(request: NextRequest) {
 
     const reminders = EVENT_ENGAGEMENT_UPCOMING_SMS_ENABLED
       ? await processReminders(supabase, bookings, appBaseUrl, safetyState)
-      : { sent1d: 0, skipped: bookings.length }
+      : { sent1d: 0, emailed1d: 0, skipped: bookings.length }
     const reviews = await processReviewFollowups(supabase, bookings, appBaseUrl, safetyState)
     const completion = await processReviewWindowCompletion(supabase)
     const marketing = {

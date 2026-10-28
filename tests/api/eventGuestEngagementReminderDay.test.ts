@@ -30,6 +30,11 @@ vi.mock('@/lib/email/emailService', () => ({
   sendEmail: vi.fn().mockResolvedValue({ success: true }),
 }))
 
+// These guests have no email, so the reminder falls back to the text this file checks (BK-086).
+vi.mock('@/lib/email/event-ticket-emails', () => ({
+  sendEventReminderEmail: vi.fn().mockResolvedValue({ success: false, skipped: true }),
+}))
+
 vi.mock('@/lib/messaging/flags', () => ({
   readMessagingFlagState: vi.fn().mockResolvedValue({ state: 'off' }),
 }))
