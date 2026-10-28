@@ -23,6 +23,7 @@ import {
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
+import { PARTY_SIZE_INPUT_CEILING, readTableBookingPartyLimit, staffPartyLimitMessage } from '@/lib/table-bookings/party-limit'
 
 /**
  * A staff party-size change, for both staff screens (BK-129, customer bookings review of
@@ -47,7 +48,7 @@ const UpdatePartySizeSchema = z.object({
   expected_course_counts: z.array(z.number().int().min(1).max(3)).max(CHRISTMAS_MAX_PARTY_SIZE).nullable().optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
-    z.number().int().min(1).max(20)
+    z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)
   ),
   send_sms: z.boolean().optional().default(true),
   // Optional staff-picked larger table setup for the single-step grow+move:
@@ -92,6 +93,11 @@ export async function changeTableBookingPartySize(
   }
 
   const newPartySize = parsed.data.party_size
+  // One party limit everywhere (D30, BK-146), read from the setting the booking functions use.
+  const partyLimit = await readTableBookingPartyLimit(auth.supabase)
+  if (newPartySize > partyLimit) {
+    return NextResponse.json({ error: staffPartyLimitMessage(partyLimit) }, { status: 400 })
+  }
   const appBaseUrl = getAppUrl()
 
   // Read current booking state before the update so we can detect threshold crossings
