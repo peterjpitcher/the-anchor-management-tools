@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { onlineBookingClosedReason } from '@/lib/events/bookable'
+import { resolveMovedEventSlug } from '@/lib/events/slug-redirect'
 import { createAdminClient } from '@/lib/supabase/admin';
 import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/night-clashes';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
@@ -90,7 +91,10 @@ export async function GET(
     }
 
     if (!event) {
-      return createErrorResponse('Event not found', 'NOT_FOUND', 404);
+      // BK-192: an old address still finds its event, or the next night in its series. Still a
+      // 404, so the live website keeps showing 'not found' until it reads moved_to and redirects.
+      const movedTo = isUUID ? null : await resolveMovedEventSlug(supabase, params.id);
+      return createErrorResponse('Event not found', 'NOT_FOUND', 404, movedTo ? { moved_to: movedTo } : undefined);
     }
 
     let category: EventCategoryRow | null = null;

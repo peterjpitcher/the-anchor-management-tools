@@ -147,11 +147,40 @@ describe('event change guards', () => {
     expect((error as { confirmations: string[] }).confirmations[0]).toContain('7 seats are already sold, so a limit of 5 closes sales')
   })
 
-  it('refuses to move a seated night with bookings until its tables can move with it (BK-073)', async () => {
+  it('moves a seated night with its tables and seats before saving the rest of the edit (BK-073)', async () => {
     impact.value = booked({ seatedBookings: 2 })
     const { rpc } = clientFor({ ...current, booking_mode: 'table' })
-    await expect(EventService.updateEvent('event', { date: '2099-10-02' }, { confirmedChanges: true })).rejects.toThrow('This event has seated bookings')
-    expect(rpc).not.toHaveBeenCalled()
+    rpc.mockImplementation(async (name: string) => name === 'move_event_seated_bookings_v01'
+      ? { data: { state: 'moved', bookings_moved: 2 }, error: null }
+      : { data: null, error: { message: 'Fixture stops before mutation' } })
+    await expect(EventService.updateEvent('event', { date: '2099-10-02', time: '20:00', end_time: '23:00' }, { confirmedChanges: true })).rejects.toThrow('Failed to update event')
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['move_event_seated_bookings_v01', 'update_event_transaction'])
+    expect(rpc.mock.calls[0][1]).toEqual({ p_event_id: 'event', p_new_date: '2099-10-02', p_new_time: '20:00', p_new_end_time: '23:00' })
+  })
+
+  it('changes nothing and names the bookings when the seats do not fit on the new night (BK-073)', async () => {
+    impact.value = booked({ seatedBookings: 1 })
+    const { rpc } = clientFor({ ...current, booking_mode: 'communal' })
+    rpc.mockResolvedValue({ data: { state: 'blocked', reason: 'seated_bookings_do_not_fit', bookings: [{ booking_id: 'abcdef12-0000', reason: 'table_assignment_overlap' }] }, error: null })
+    await expect(EventService.updateEvent('event', { date: '2099-10-02' }, { confirmedChanges: true })).rejects.toThrow(
+      '1 booking does not fit on the new night, so nothing has changed: booking abcdef12 (its table is taken).',
+    )
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['move_event_seated_bookings_v01'])
+  })
+
+  it('fails closed when the move cannot run at all', async () => {
+    impact.value = booked({ seatedBookings: 1 })
+    const { rpc } = clientFor({ ...current, booking_mode: 'table' })
+    rpc.mockResolvedValue({ data: null, error: { message: 'function move_event_seated_bookings_v01 does not exist' } })
+    await expect(EventService.updateEvent('event', { date: '2099-10-02' }, { confirmedChanges: true })).rejects.toThrow('nothing has changed')
+    expect(rpc).toHaveBeenCalledTimes(1)
+  })
+
+  it('moves a general night without calling the seat move', async () => {
+    impact.value = booked()
+    const { rpc } = clientFor(current)
+    await expect(EventService.updateEvent('event', { date: '2099-10-02' }, { confirmedChanges: true })).rejects.toThrow('Failed to update event')
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['update_event_transaction'])
   })
 
   it('reopens bookings when a cancelled night is reinstated, after confirming refunds are not reversed (BK-035)', async () => {

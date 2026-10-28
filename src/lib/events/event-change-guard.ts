@@ -396,3 +396,30 @@ export async function countActiveEventBookings(
 export function describeTicketPriceChange(bookings: number): string {
   return `${plural(bookings, 'booking', 'bookings')} already made ${bookings === 1 ? 'keeps' : 'keep'} the price they booked at. The new price applies to new sales only.`
 }
+
+type MoveFailure = { booking_id?: unknown; reason?: unknown }
+
+function describeMoveReason(reason: string): string {
+  if (reason.includes('private_blocked')) return 'a private hire has its table'
+  if (reason.includes('communal_overlap') || reason.includes('communal_table_capacity')) return 'not enough shared seats are free'
+  if (reason.includes('overlap')) return 'its table is taken'
+  if (reason.includes('not_bookable')) return 'its table cannot be booked'
+  return 'it does not fit'
+}
+
+/**
+ * Staff wording for a move that move_event_seated_bookings_v01 refused (BK-073). Nothing was
+ * changed, and each booking that did not fit is named with why.
+ */
+export function describeSeatedMoveRefusal(result: { reason?: unknown; bookings?: unknown }): string {
+  if (result.reason === 'new_start_in_past') return 'The new start is in the past. Nothing has changed.'
+  if (result.reason === 'event_not_found') return 'This event could not be found. Nothing has changed.'
+  const failures = (Array.isArray(result.bookings) ? result.bookings : []) as MoveFailure[]
+  if (failures.length === 0) return 'The seated bookings could not be moved to the new time, so nothing has changed.'
+  const listed = failures
+    .slice(0, 10)
+    .map((failure) => `booking ${String(failure.booking_id ?? '').slice(0, 8)} (${describeMoveReason(String(failure.reason ?? ''))})`)
+    .join(', ')
+  const more = failures.length > 10 ? ` and ${failures.length - 10} more` : ''
+  return `${plural(failures.length, 'booking does', 'bookings do')} not fit on the new night, so nothing has changed: ${listed}${more}. Move or cancel ${failures.length === 1 ? 'it' : 'them'} first, or choose another time.`
+}

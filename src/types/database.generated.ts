@@ -5556,6 +5556,32 @@ export type Database = {
           },
         ]
       }
+      event_slug_history: {
+        Row: {
+          event_id: string | null
+          old_slug: string
+          replaced_at: string
+        }
+        Insert: {
+          event_id?: string | null
+          old_slug: string
+          replaced_at?: string
+        }
+        Update: {
+          event_id?: string | null
+          old_slug?: string
+          replaced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_slug_history_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_ticket_transfers: {
         Row: {
           approved_by: string | null
@@ -23321,6 +23347,16 @@ export type Database = {
           p_limit: number
           p_offset: number
           p_sort: string
+        }
+        Returns: Json
+      }
+      move_event_seated_bookings_v01: {
+        Args: {
+          p_event_id: string
+          p_new_date: string
+          p_new_duration_minutes?: number
+          p_new_end_time?: string
+          p_new_time: string
         }
         Returns: Json
       }
