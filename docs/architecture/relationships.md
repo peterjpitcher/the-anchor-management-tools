@@ -48,7 +48,7 @@ Most-referenced tables (from `.from('…')` usage in `'use server'` files; via-s
 | employee_invite_tokens / employee_* detail tables | employeeInvite.ts, employeeActions.ts |
 | menu_dishes (+ menu ingredients/recipes via lib) | menu-management.ts, `src/lib/menu/*` |
 | customer_labels / customer_label_assignments | customer-labels.ts, customer-labels-bulk.ts |
-| message_templates | messageTemplates.ts |
+| message_templates | none: the settings page and its actions were retired on 27 October 2026 (BK-178); the rows are kept |
 | calendar_notes / calendar_note_google_sync_queue | calendar-notes.ts, rota-day-info.ts, dashboard-data.ts, `src/lib/google-calendar-notes.ts` |
 | business_hours / special_hours | business-hours.ts, missing-cashups.ts |
 | api_keys | `settings/api-keys/actions.ts`; validated by external API routes |

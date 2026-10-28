@@ -35,7 +35,6 @@ project: the-anchor-management-tools
 | `src/app/actions/customerSmsActions.ts` | 5 | Y | Y | Y | — |
 | `src/app/actions/messagesActions.ts` | 7 | Y | N | Y | [[data-model#messages\|messages]], customers |
 | `src/app/actions/messageActions.ts` | 4 | Y | N | Y | — |
-| `src/app/actions/messageTemplates.ts` | 5 | Y | Y | Y | message_templates |
 | `src/app/actions/bulk-messages.ts` | 2 | Y | N | N | — |
 | `src/app/actions/sms.ts` | 3 | Y | N | N | — |
 | `src/app/actions/sms-bulk-direct.ts` | 1 | Y | N | N | — |

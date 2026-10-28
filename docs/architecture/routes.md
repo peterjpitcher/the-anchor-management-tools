@@ -40,7 +40,7 @@ All under `src/app/(authenticated)/`; auth enforced in `layout.tsx` (`auth.getUs
 | `/recruitment` | `recruitment/page.tsx` |
 | `/roles`, `/roles/new`, `/users` | `roles/**`, `users/page.tsx` |
 | `/rota`, `/rota/dashboard`, `/rota/hours`, `/rota/leave`, `/rota/payroll`, `/rota/print`, `/rota/templates`, `/rota/timeclock` | `rota/**/page.tsx` |
-| `/settings` + 18 sub-pages: `api-keys`, `audit-logs`, `background-jobs`, `budgets`, `business-hours`, `calendar-notes`, `categories`, `customer-labels`, `design-system`, `event-categories`, `gdpr`, `import-messages`, `menu-target`, `message-templates`, `pay-bands`, `rota`, `sms-failures`, `table-bookings` | `settings/**/page.tsx` |
+| `/settings` + 17 sub-pages: `api-keys`, `audit-logs`, `background-jobs`, `budgets`, `business-hours`, `calendar-notes`, `categories`, `customer-labels`, `design-system`, `event-categories`, `gdpr`, `import-messages`, `menu-target`, `pay-bands`, `rota`, `sms-failures`, `table-bookings` | `settings/**/page.tsx` |
 | `/short-links`, `/short-links/insights` | `short-links/**/page.tsx` |
 | `/table-bookings`, `/table-bookings/[id]`, `/table-bookings/boh`, `/table-bookings/foh`, `/table-bookings/reports` | `table-bookings/**/page.tsx` |
 

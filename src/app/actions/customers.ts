@@ -447,26 +447,31 @@ export async function deleteCustomer(id: string) {
     }
     const { user } = context
 
-    const customer = await CustomerService.deleteCustomer(id)
+    // Anonymises rather than wipes, and refuses while the customer has bookings coming up (BK-161).
+    const result = await CustomerService.deleteCustomer(id)
 
-    if (customer) {
-      await logAuditEvent({
-        user_id: user.id,
-        user_email: user.email,
-        operation_type: 'delete',
-        resource_type: 'customer',
-        resource_id: id,
-        operation_status: 'success',
-        // The record is gone, so the audit row must not become the last copy of the guest's
-        // name, phone and email (BK-081). The id says which record was deleted.
-        old_values: { id }
-      })
-    }
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email,
+      operation_type: 'delete',
+      resource_type: 'customer',
+      resource_id: id,
+      operation_status: 'success',
+      // The record is anonymised, so the audit row must not become the last copy of the guest's
+      // name, phone and email. The id says which record it was; the counts say what was cleared.
+      old_values: { id },
+      additional_info: {
+        anonymised: true,
+        rows_scrubbed: result.counts,
+        rows_left_unscrubbed: result.unscrubbedRows,
+        incomplete: result.incomplete
+      }
+    })
 
     revalidatePath('/customers')
     revalidatePath(`/customers/${id}`)
     revalidateTag('dashboard')
-    return { success: true }
+    return { success: true, message: result.message, incomplete: result.incomplete }
   } catch (error) {
     console.error('Unexpected error deleting customer:', error)
     const message = error instanceof Error ? error.message : 'An unexpected error occurred'

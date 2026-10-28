@@ -15,7 +15,6 @@ export default async function SettingsPage() {
     canViewNotes,
     canViewCustomers,
     canViewMessages,
-    canManageTemplates,
     canManageMenu,
     canManageMaintenanceAreas,
     settingsResult,
@@ -28,7 +27,6 @@ export default async function SettingsPage() {
     canViewCalendarNotes(),
     checkUserPermission('customers', 'view'),
     checkUserPermission('messages', 'view'),
-    checkUserPermission('messages', 'manage_templates'),
     checkUserPermission('menu_management', 'manage'),
     // Not a permission check: maintenance is super-admin only and has no RBAC
     // module, because user_has_permission can only raise a floor for a
@@ -46,7 +44,6 @@ export default async function SettingsPage() {
     calendarNotesView: canViewNotes,
     customersView: canViewCustomers,
     messagesView: canViewMessages,
-    messageTemplatesManage: canManageTemplates,
     menuManage: canManageMenu,
     maintenanceAreas: canManageMaintenanceAreas,
   })
