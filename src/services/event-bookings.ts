@@ -6,6 +6,7 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import { formatHoldUntilLondon } from '@/lib/events/event-when'
 import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
@@ -98,6 +99,13 @@ export type CreateBookingParams = {
    * Walk-in customers and customers with no real phone should pass false.
    */
   shouldSendSms?: boolean
+  /**
+   * Website bookings only: the guest has PayPal on screen, so the "seats held, pay here" text is
+   * left out (BK-084). Honoured only for a brand_site booking that comes back pending_payment;
+   * a confirmed booking, or any other channel, still gets its normal message. The website sends
+   * false when its inline PayPal could not be set up, so the guest still gets the link.
+   */
+  skipPendingPaymentSms?: boolean
   /**
    * Supabase admin client. Callers that already hold a client (e.g. from
    * requireFohPermission) should pass it in to avoid creating a second connection.
@@ -290,6 +298,8 @@ function buildEventBookingSms(
     seatingType?: EventBookingRpcResult['event_seating_type']
     paymentLink?: string | null
     manageLink?: string | null
+    /** "7:42pm", or "Wed 29 Oct at 7:42pm": when the seats stop being held (BK-100). */
+    holdUntil?: string | null
   }
 ): string {
   const seatWord = payload.seatingType === 'standing'
@@ -298,8 +308,10 @@ function buildEventBookingSms(
 
   if (state === 'pending_payment') {
     const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
+    // The guest is told how long the hold lasts, so it does not lapse without warning (BK-100).
+    const holdPart = payload.holdUntil ? ` We'll hold them until ${payload.holdUntil}.` : ''
     if (payload.paymentLink) {
-      return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. Pay here: ${payload.paymentLink}.${managePart}`
+      return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one.${holdPart} Pay here: ${payload.paymentLink}.${managePart}`
     }
     return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. We couldn't send your payment link just now, so we'll be in touch, or call us on 01753 682707.${managePart}`
   }
@@ -375,7 +387,8 @@ async function sendBookingSmsIfAllowed(
       paymentMode: bookingResult.payment_mode,
       seatingType: bookingResult.event_seating_type,
       paymentLink,
-      manageLink
+      manageLink,
+      holdUntil: bookingResult.state === 'pending_payment' ? formatHoldUntilLondon(bookingResult.hold_expires_at) : null
     }),
     supportPhone
   )
@@ -392,7 +405,13 @@ async function sendBookingSmsIfAllowed(
         template_key:
           bookingResult.state === 'pending_payment'
             ? 'event_booking_pending_payment'
-            : 'event_booking_confirmed'
+            : 'event_booking_confirmed',
+        // Read again if quiet hours hold this text until morning: by then the guest may have paid,
+        // or the hold may have lapsed, and a stale text is dropped (BK-084).
+        expected_booking_status: bookingResult.state === 'pending_payment' ? 'pending_payment' : 'confirmed',
+        ...(bookingResult.state === 'pending_payment' && bookingResult.hold_expires_at
+          ? { hold_expires_at: bookingResult.hold_expires_at }
+          : {})
       }
     })
   } catch (smsError) {
@@ -597,6 +616,7 @@ export class EventBookingService {
       seatingPreference,
       appBaseUrl,
       shouldSendSms = true,
+      skipPendingPaymentSms = false,
       supabaseClient,
       logTag = 'event booking',
       firstName,
@@ -1034,6 +1054,14 @@ export class EventBookingService {
             if (!emailed && canText) await runBookingSms()
           })()
         })
+      } else if (
+        resolvedState === 'pending_payment' &&
+        source === 'brand_site' &&
+        skipPendingPaymentSms
+      ) {
+        // BK-084: the guest is looking at the PayPal buttons. A text with a second pay link only
+        // confuses them, and one held by quiet hours arrives after they have paid or the hold has
+        // gone. A lapsed hold is still covered by the hold-released email and text.
       } else if (canText) {
         tasks.push({
           label: 'sms:booking_created',
