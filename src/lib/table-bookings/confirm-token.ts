@@ -117,11 +117,22 @@ export function hasBookingStarted(
   booking: Pick<ConfirmTokenBooking, 'startDateTime' | 'bookingDate' | 'bookingTime'>,
   now: Date = new Date()
 ): boolean {
+  const start = bookingStartInstant(booking)
+  return start !== null && now.getTime() >= start.getTime()
+}
+
+/**
+ * The instant a booking starts: the stored start_datetime, or the London clock reaching the
+ * booking time on the booking date when none is stored. Null when neither can be read.
+ *
+ * Never builds `${date}T${time}` without a zone: booking_time comes back as 'HH:MM:SS', and that
+ * string ('2026-10-25T19:00:00:00') parses as NaN (BK-207).
+ */
+export function bookingStartInstant(
+  booking: Pick<ConfirmTokenBooking, 'startDateTime' | 'bookingDate' | 'bookingTime'>
+): Date | null {
   const stored = booking.startDateTime ? Date.parse(booking.startDateTime) : Number.NaN
-  const startMs = Number.isFinite(stored)
-    ? stored
-    : booking.bookingDate && booking.bookingTime
-      ? whenLondonClockReaches(booking.bookingDate, booking.bookingTime.slice(0, 5))?.getTime() ?? Number.NaN
-      : Number.NaN
-  return Number.isFinite(startMs) && now.getTime() >= startMs
+  if (Number.isFinite(stored)) return new Date(stored)
+  if (!booking.bookingDate || !booking.bookingTime) return null
+  return whenLondonClockReaches(booking.bookingDate, booking.bookingTime.slice(0, 5))
 }

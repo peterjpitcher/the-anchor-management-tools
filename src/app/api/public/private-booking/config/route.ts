@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { PrivateBookingService } from '@/services/private-bookings';
+import { logger } from '@/lib/logger';
+import { errorLogFields } from '@/lib/errors';
 
 /**
  * Public endpoint to fetch configuration for the private booking calculator.
@@ -64,7 +66,13 @@ export async function GET() {
       }
     });
   } catch (error) {
-    console.error('Error fetching private booking config:', error);
+    // Field by field (BK-152): supabase-js errors are plain objects, which used to reach the log as
+    // '[object Object]'.
+    const fields = errorLogFields(error);
+    logger.error('Error fetching private booking config', {
+      error: error instanceof Error ? error : new Error(fields.message),
+      metadata: fields,
+    });
     return NextResponse.json(
       { success: false, error: 'Failed to fetch configuration' },
       { status: 500 }

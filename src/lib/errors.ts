@@ -67,3 +67,27 @@ export function getErrorDetails(error: unknown): unknown[] | undefined {
   }
   return undefined;
 }
+
+/**
+ * The fields of a provider error, one by one, for log metadata.
+ *
+ * supabase-js returns errors as plain objects, so `new Error(String(error))` logs
+ * '[object Object]' and the failure cannot be diagnosed (tasks/lessons.md: serialise provider
+ * errors field by field; BK-152).
+ */
+export function errorLogFields(error: unknown): {
+  message: string;
+  code: string | null;
+  details: string | null;
+  hint: string | null;
+} {
+  const record = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : {};
+  const text = (value: unknown): string | null =>
+    value === null || value === undefined ? null : typeof value === 'string' ? value : String(value);
+  return {
+    message: getErrorMessage(error),
+    code: text(record.code),
+    details: text(record.details),
+    hint: text(record.hint),
+  };
+}
