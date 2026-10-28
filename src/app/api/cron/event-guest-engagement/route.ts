@@ -1998,6 +1998,10 @@ async function loadLastPushEvents(
     .from('events')
     .select('id, name, date, time, start_datetime, price, payment_mode, category_id')
     .eq('booking_open', true)
+    // Accept bookings off, or online sales closed, means a reply cannot book, so nobody is
+    // invited to reply (BK-035, owner decision D11).
+    .eq('bookings_enabled', true)
+    .or(`booking_cutoff_at.is.null,booking_cutoff_at.gt.${new Date().toISOString()}`)
     .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
     .gte('date', window.from)
@@ -2041,6 +2045,10 @@ async function loadUpcomingEventsForPromo(
     .from('events')
     .select('id, name, date, time, price, payment_mode, category_id')
     .eq('booking_open', true)
+    // Accept bookings off, or online sales closed, means a reply cannot book, so nobody is
+    // invited to reply (BK-035, owner decision D11).
+    .eq('bookings_enabled', true)
+    .or(`booking_cutoff_at.is.null,booking_cutoff_at.gt.${new Date().toISOString()}`)
     .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
     .gte('date', introWindowStart)
@@ -2069,6 +2077,10 @@ async function loadFollowUpEvents(
     .from('events')
     .select('id, name, date, time, price, payment_mode, category_id')
     .eq('booking_open', true)
+    // Accept bookings off, or online sales closed, means a reply cannot book, so nobody is
+    // invited to reply (BK-035, owner decision D11).
+    .eq('bookings_enabled', true)
+    .or(`booking_cutoff_at.is.null,booking_cutoff_at.gt.${new Date().toISOString()}`)
     .eq('promo_sms_enabled', true)
     .eq('event_status', 'scheduled')
     .gte('date', windowStartIso)

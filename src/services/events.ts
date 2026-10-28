@@ -1425,8 +1425,9 @@ export class EventService {
 
     const uncancelledBookingIds = new Set(failedBookingIds)
 
-    // 4. Send cancellation SMS
+    // 4. Tell each guest, by email and text
     const formattedDate = formatEventDateForSms(eventDate, eventTime)
+    const reachedBookingIds = new Set<string>()
 
     for (const booking of bookings) {
       if (uncancelledBookingIds.has(booking.id)) continue
@@ -1439,7 +1440,9 @@ export class EventService {
       const refundResult = refundResults.get(booking.id)
       // A booking with no payment row took no money, so it gets no refund sentence at all.
       // Passing 0 here is what told guests who had never paid "Refund amount: £0.00".
-      await sendEventBookingCancelledEmail(db, {
+      // Only a send that went through counts as telling the guest (BK-089): emails were never
+      // counted and failed texts were.
+      const emailResult = await sendEventBookingCancelledEmail(db, {
         bookingId: booking.id,
         refundStatus: refundResult?.status ?? null,
         refundAmount: refundResult?.amount ?? null,
@@ -1447,6 +1450,7 @@ export class EventService {
         reason: 'event_cancelled',
         paymentTaken: Boolean(refundResult)
       })
+      if (emailResult?.success === true) reachedBookingIds.add(booking.id)
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
 
@@ -1465,7 +1469,7 @@ export class EventService {
           refundNote
         })
 
-        await sendSMS(customer.mobile_number, smsBody, {
+        const smsResult = await sendSMS(customer.mobile_number, smsBody, {
           customerId: customer.id,
           metadata: {
             template_key: 'event_cancelled',
@@ -1473,7 +1477,7 @@ export class EventService {
             event_booking_id: booking.id
           }
         })
-        customersNotified++
+        if (smsResult?.success === true) reachedBookingIds.add(booking.id)
       } catch (err) {
         logger.error('Failed to send cancellation SMS', {
           error: err instanceof Error ? err : new Error(String(err)),
@@ -1516,7 +1520,12 @@ export class EventService {
       })
     }
 
-    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
+    customersNotified = reachedBookingIds.size
+    const notReachedBookingIds = bookings
+      .map((booking) => booking.id)
+      .filter((id) => !uncancelledBookingIds.has(id) && !reachedBookingIds.has(id))
+
+    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, notReachedBookingIds }
   }
 }
 
@@ -1527,7 +1536,10 @@ export interface EventCancellationResult {
   failedBookingIds: string[]
   refundsProcessed: number
   refundsFailed: number
+  /** Bookings whose guest an email or text really reached (BK-089). */
   customersNotified: number
+  /** Cancelled bookings no email or text reached, so staff must ring them (BK-089). */
+  notReachedBookingIds?: string[]
 }
 
 /**

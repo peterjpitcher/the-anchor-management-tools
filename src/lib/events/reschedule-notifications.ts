@@ -6,7 +6,8 @@ import {
   sendEventPostponedEmail,
   sendEventRescheduledEmail,
 } from '@/lib/email/event-ticket-emails'
-import { buildEventRescheduledSms } from '@/lib/sms/templates'
+import { buildEventPostponedSms, buildEventRescheduledSms } from '@/lib/sms/templates'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -38,7 +39,7 @@ export async function dispatchEventRescheduleNotifications(params: {
   newDate: string
   newTime: string
   userId: string
-}): Promise<{ bookingsNotified: number; totalBookingsAffected: number }> {
+}): Promise<{ bookingsNotified: number; totalBookingsAffected: number; notReachedBookingIds?: string[] }> {
   const { eventId, eventName, oldDate, oldTime, newDate, newTime, userId } = params
   const db = createAdminClient()
 
@@ -110,12 +111,14 @@ export async function dispatchEventRescheduleNotifications(params: {
     return customer?.sms_status === 'active' && customer?.mobile_number
   })
 
-  let bookingsNotified = 0
+  // A booking counts as told only when a channel really sent (BK-089). Failed texts used to count
+  // and emails never did.
+  const reached = new Set<string>()
   const batchSize = 20
 
   for (let index = 0; index < bookings.length; index += batchSize) {
     const batch = bookings.slice(index, index + batchSize)
-    await Promise.allSettled(
+    const emailResults = await Promise.allSettled(
       batch.map((booking) =>
         sendEventRescheduledEmail(db, {
           bookingId: booking.id,
@@ -128,6 +131,9 @@ export async function dispatchEventRescheduleNotifications(params: {
         }),
       ),
     )
+    emailResults.forEach((result, position) => {
+      if (result.status === 'fulfilled' && result.value?.success === true) reached.add(batch[position].id)
+    })
   }
 
   for (let index = 0; index < smsTargets.length; index += batchSize) {
@@ -166,7 +172,7 @@ export async function dispatchEventRescheduleNotifications(params: {
           manageLink,
         })
 
-        await sendSMS(customer.mobile_number!, smsBody, {
+        const smsResult = await sendSMS(customer.mobile_number!, smsBody, {
           customerId: customer.id,
           metadata: {
             template_key: 'event_rescheduled',
@@ -176,22 +182,32 @@ export async function dispatchEventRescheduleNotifications(params: {
             new_date: newDate,
           },
         })
+        if (smsResult?.success === true) reached.add(booking.id)
       }),
     )
-
-    bookingsNotified += results.filter((result) => result.status === 'fulfilled').length
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        logger.warn('Reschedule text failed', { metadata: { eventId, error: String(result.reason) } })
+      }
+    })
 
     if (index + batchSize < smsTargets.length) {
       await new Promise((resolve) => setTimeout(resolve, 1000))
     }
   }
 
+  const bookingsNotified = reached.size
+  const notReachedBookingIds = bookings.map((booking) => booking.id).filter((id) => !reached.has(id))
+
   await logAuditEvent({
     user_id: userId,
     operation_type: 'reschedule',
     resource_type: 'event',
     resource_id: eventId,
-    operation_status: 'success',
+    operation_status: notReachedBookingIds.length > 0 ? 'failure' : 'success',
+    ...(notReachedBookingIds.length > 0
+      ? { error_message: `${notReachedBookingIds.length} of ${bookings.length} bookings could not be told the new date by email or text. Ring them from the event page.` }
+      : {}),
     additional_info: {
       old_date: oldDate,
       old_time: oldTime,
@@ -199,60 +215,107 @@ export async function dispatchEventRescheduleNotifications(params: {
       new_time: newTime,
       bookings_notified: bookingsNotified,
       total_bookings_affected: bookings.length,
+      not_reached_booking_ids: notReachedBookingIds,
     },
   })
 
-  return { bookingsNotified, totalBookingsAffected: bookings.length }
+  return { bookingsNotified, totalBookingsAffected: bookings.length, notReachedBookingIds }
 }
 
 export async function dispatchEventPostponedNotifications(params: {
   eventId: string
   eventName: string
   userId: string
-}): Promise<{ bookingsNotified: number; totalBookingsAffected: number }> {
+}): Promise<{ bookingsNotified: number; totalBookingsAffected: number; notReachedBookingIds: string[] }> {
   const { eventId, eventName, userId } = params
   const db = createAdminClient()
 
-  const { data: bookings, error } = await db
-    .from('bookings')
-    .select('id')
-    .eq('event_id', eventId)
-    .in('status', ['confirmed', 'pending_payment'])
+  const [{ data: bookings, error }, { data: eventRow, error: eventError }] = await Promise.all([
+    db
+      .from('bookings')
+      .select('id, status, customers!inner(id, first_name, mobile_number, sms_status)')
+      .eq('event_id', eventId)
+      .in('status', ['confirmed', 'pending_payment']),
+    db.from('events').select('date, time, start_datetime, payment_mode').eq('id', eventId).maybeSingle(),
+  ])
 
   if (error) {
     throw new Error(`Failed to load bookings for postponed notifications: ${error.message}`)
   }
-
-  if (!bookings || bookings.length === 0) {
-    return { bookingsNotified: 0, totalBookingsAffected: 0 }
+  if (eventError) {
+    throw new Error(`Failed to load the event for postponed notifications: ${eventError.message}`)
   }
 
-  let bookingsNotified = 0
+  if (!bookings || bookings.length === 0) {
+    return { bookingsNotified: 0, totalBookingsAffected: 0, notReachedBookingIds: [] }
+  }
+
+  // The postponed notice went by email only, so a guest with no usable email was never told yet was
+  // counted as notified (BK-089). Each guest now gets the email, or a text where the email cannot
+  // reach them, and only a send that went through counts.
+  const startIso = eventRow ? resolveEventStartIso({ date: eventRow.date, time: eventRow.time, start_datetime: eventRow.start_datetime }) : null
+  const formattedDate = startIso ? formatEventWhenCompactLondon(startIso) : null
+  const reached = new Set<string>()
   const batchSize = 20
+
   for (let index = 0; index < bookings.length; index += batchSize) {
     const batch = bookings.slice(index, index + batchSize)
     const results = await Promise.allSettled(
-      batch.map((booking) =>
-        sendEventPostponedEmail(db, {
-          bookingId: booking.id,
-          eventName,
-        }),
-      ),
+      batch.map(async (booking) => {
+        const email = await sendEventPostponedEmail(db, { bookingId: booking.id, eventName })
+        if (email.success === true) {
+          reached.add(booking.id)
+          return
+        }
+        const customer = booking.customers as unknown as {
+          id: string
+          first_name: string | null
+          mobile_number: string | null
+          sms_status: string | null
+        }
+        if (customer?.sms_status !== 'active' || !customer.mobile_number) return
+        const smsResult = await sendSMS(
+          customer.mobile_number,
+          buildEventPostponedSms({
+            firstName: customer.first_name,
+            eventName,
+            eventDate: formattedDate,
+            paidOnline: eventRow?.payment_mode === 'prepaid' && booking.status === 'confirmed',
+            phoneDisplay: GUEST_CONTACT.phoneDisplay,
+          }),
+          {
+            customerId: customer.id,
+            metadata: { template_key: 'event_postponed', event_id: eventId, event_booking_id: booking.id },
+          },
+        )
+        if (smsResult?.success === true) reached.add(booking.id)
+      }),
     )
-    bookingsNotified += results.filter((result) => result.status === 'fulfilled').length
+    results.forEach((result) => {
+      if (result.status === 'rejected') {
+        logger.warn('Postponed notice failed', { metadata: { eventId, error: String(result.reason) } })
+      }
+    })
   }
+
+  const bookingsNotified = reached.size
+  const notReachedBookingIds = bookings.map((booking) => booking.id).filter((id) => !reached.has(id))
 
   await logAuditEvent({
     user_id: userId,
     operation_type: 'postpone',
     resource_type: 'event',
     resource_id: eventId,
-    operation_status: 'success',
+    operation_status: notReachedBookingIds.length > 0 ? 'failure' : 'success',
+    ...(notReachedBookingIds.length > 0
+      ? { error_message: `${notReachedBookingIds.length} of ${bookings.length} bookings could not be told by email or text. Ring them from the event page.` }
+      : {}),
     additional_info: {
       bookings_notified: bookingsNotified,
       total_bookings_affected: bookings.length,
+      not_reached_booking_ids: notReachedBookingIds,
     },
   })
 
-  return { bookingsNotified, totalBookingsAffected: bookings.length }
+  return { bookingsNotified, totalBookingsAffected: bookings.length, notReachedBookingIds }
 }

@@ -146,4 +146,15 @@ describe('cancel_event_bookings job', () => {
     expect(mocks.logAuditEvent.mock.calls[0][0]).not.toHaveProperty('error_message')
     expect(mocks.reportCronFailure).not.toHaveBeenCalled()
   })
+
+  // BK-089: guests no email or text reached must be rung, so the job says so and the owner hears.
+  it('warns about guests nobody could tell', async () => {
+    mocks.cancelEventBookings.mockResolvedValue({
+      bookingsCancelled: 3, bookingsFailed: 0, failedBookingIds: [], refundsProcessed: 0, refundsFailed: 0,
+      customersNotified: 2, notReachedBookingIds: ['booking-c'],
+    })
+    const result = await run()
+    expect(result.warning).toBe('1 guest could not be told by email or text. Ring them from the event page.')
+    expect(mocks.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'cancel_event', operation_status: 'failure' }))
+  })
 })

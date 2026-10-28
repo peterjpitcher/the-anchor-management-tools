@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server'
+import { onlineBookingClosedReason } from '@/lib/events/bookable'
 import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import {
@@ -296,7 +297,7 @@ export async function POST(request: NextRequest) {
     try {
       const { data: eventRow, error: eventLookupError } = await supabase
         .from('events')
-        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, payment_mode, is_free, price, price_per_seat, booking_questions, collect_guest_details')
+        .select('id, name, date, start_datetime, booking_mode, bookings_enabled, booking_cutoff_at, event_status, payment_mode, is_free, price, price_per_seat, booking_questions, collect_guest_details')
         .eq('id', parsed.data.event_id)
         .maybeSingle()
 
@@ -334,6 +335,15 @@ export async function POST(request: NextRequest) {
       // (BK-134). Every other problem is the guest's details, said as it is.
       if (guestError) {
         return createErrorResponse(guestError, guestError === QUESTIONS_CHANGED_MESSAGE ? 'BOOKING_QUESTIONS_CHANGED' : 'VALIDATION_ERROR', 400)
+      }
+
+      // A postponed night has no date to book, and a cancelled or draft one none at all (BK-089).
+      if (onlineBookingClosedReason({ event_status: eventRow.event_status }) === 'not_bookable') {
+        return createErrorResponse(
+          'This event is not taking bookings at the moment',
+          'EVENT_NOT_BOOKABLE',
+          409
+        )
       }
 
       if (eventRow.bookings_enabled === false) {
