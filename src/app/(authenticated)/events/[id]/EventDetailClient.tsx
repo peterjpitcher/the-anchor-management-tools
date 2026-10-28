@@ -42,7 +42,6 @@ import {
   getEventBookingRefundInfo,
   markEventBookingPaidManually,
   getEventBookingDoorCharge,
-  transferEventBooking,
   deleteEvent,
 } from '@/app/actions/events'
 import {
@@ -60,6 +59,7 @@ import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
+import { TransferBookingDialog, type TransferTarget } from './TransferBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
 import { EventOutcomesCard } from './EventOutcomesCard'
 import { EventNightNotice } from '../_components/EventNightNotice'
@@ -253,6 +253,8 @@ export default function EventDetailClient({
   const [cancelRefundAmount, setCancelRefundAmount] = useState('')
   const [transferringBookingId, setTransferringBookingId] = useState<string | null>(null)
   const [transferTargetEventId, setTransferTargetEventId] = useState('')
+  // The move itself asks the new night's questions first (BK-028).
+  const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(null)
 
   /* ---- Derived data ---- */
 
@@ -478,25 +480,15 @@ export default function EventDetailClient({
 
   const handleTransferBooking = useCallback(() => {
     if (!transferringBookingId || !transferTargetEventId.trim()) return
-    startTransition(async () => {
-      const result = await transferEventBooking({
-        bookingId: transferringBookingId,
-        targetEventId: transferTargetEventId.trim()
-      })
-      if ('error' in result) {
-        toast.error(result.error)
-        return
-      }
-      if (result.data.state === 'blocked') {
-        toast.error(formatStatusLabel(result.data.reason || 'Transfer blocked'))
-        return
-      }
-      toast.success('Booking transferred')
-      setTransferringBookingId(null)
-      setTransferTargetEventId('')
-      await refreshBookings()
+    const targetEvent = transferEvents.find((candidate) => candidate.id === transferTargetEventId.trim())
+    setTransferTarget({
+      bookingId: transferringBookingId,
+      targetEventId: transferTargetEventId.trim(),
+      targetLabel: targetEvent
+        ? `${targetEvent.name} on ${formatDateInLondon(targetEvent.date)}${targetEvent.time ? ` ${formatTime12Hour(targetEvent.time)}` : ''}`
+        : 'the new night',
     })
-  }, [transferringBookingId, transferTargetEventId, refreshBookings])
+  }, [transferringBookingId, transferTargetEventId, transferEvents])
 
   /* ---- Marketing links ---- */
 
@@ -872,6 +864,18 @@ export default function EventDetailClient({
         }
         confirmLabel={doorPayment?.amount != null ? `Record ${formatCurrency(doorPayment.amount)}` : 'Record payment'}
         tone="primary"
+      />
+
+      {/* Move a booking to another night (BK-028) */}
+      <TransferBookingDialog
+        target={transferTarget}
+        onClose={() => setTransferTarget(null)}
+        onDone={async () => {
+          setTransferTarget(null)
+          setTransferringBookingId(null)
+          setTransferTargetEventId('')
+          await refreshBookings()
+        }}
       />
 
       {/* After-the-fact refund dialog */}
