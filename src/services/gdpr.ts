@@ -1023,6 +1023,9 @@ export class GdprService {
         .update({
           first_name: ERASED_FIRST_NAME,
           last_name: ERASED_LAST_NAME,
+          // No longer a real person: kept out of lists, counts and insights (BK-082). 'Delete
+          // customer' runs this path too since BK-161, so it carries the flag the old anonymiser set.
+          is_placeholder: true,
           email: null,
           mobile_number: ERASED_CUSTOMER_MOBILE,
           mobile_e164: null,
