@@ -46,6 +46,7 @@ import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
 } from '@/lib/foh/booking-client-contract'
+import { walkInOverridePickerRpc } from '../mocks/walkInOverridePicker'
 
 function makeThenable(result: any) {
   const builder: any = {
@@ -164,6 +165,8 @@ describe('FOH bookings walk-in override cleanup guards', () => {
           })
         }
 
+        const picked = walkInOverridePickerRpc(fn)
+        if (picked) return Promise.resolve(picked)
         if (fn === 'is_table_blocked_by_private_booking_v05') {
           return Promise.resolve({ data: false, error: null })
         }
@@ -272,6 +275,8 @@ describe('FOH bookings walk-in override cleanup guards', () => {
         if (fn === 'create_table_booking_staff_v06') {
           return Promise.resolve({ data: { state: 'blocked', reason: 'outside_hours' }, error: null })
         }
+        const picked = walkInOverridePickerRpc(fn)
+        if (picked) return Promise.resolve(picked)
         if (fn === 'is_table_blocked_by_private_booking_v05') {
           return Promise.resolve({ data: false, error: null })
         }
