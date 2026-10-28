@@ -247,7 +247,9 @@ export async function GET(_request: NextRequest) {
         event_status: event.event_status, // Expose raw status
         seats_remaining: seatsRemaining,
         is_full: isFull,
-        waitlist_enabled: typeof capacityRow?.capacity === 'number',
+        // The waiting list was removed (owner decision D11, BK-138). Still sent, as false, so the live
+        // website hides its join form until its own release ships.
+        waitlist_enabled: false,
         payment_mode: paymentMode,
         booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
           ? event.booking_mode
