@@ -334,6 +334,10 @@ export function assessEventChange(input: EventChangeInput): EventChangeAssessmen
     confirmations.push('Reinstating this event reopens bookings. Bookings already cancelled stay cancelled and refunds already made are not reversed.')
   }
 
+  if (dateMoved && nextStatus === 'postponed') {
+    warnings.push('This event is still marked Postponed, so nobody can book it. Change its status to Rescheduled or Scheduled to reopen bookings.')
+  }
+
   if (dateMoved && next.date && next.time) {
     const newStart = resolveEventStartIso({ date: next.date, time: next.time })
     if (newStart) {

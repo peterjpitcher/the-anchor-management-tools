@@ -46,6 +46,11 @@ describe('assessEventChange', () => {
     expect(result.warnings[1]).toContain('The online discount ends at')
   })
 
+  it('reminds staff that a postponed night given a new date is still closed to bookings', () => {
+    const result = assessEventChange({ ...input({ date: '2099-12-04', event_status: 'postponed' }), current: { ...current, event_status: 'postponed' } })
+    expect(result.warnings[0]).toContain('still marked Postponed')
+  })
+
   it('treats 19:00 and 19:00:00 as the same time', () => {
     expect(assessEventChange(input({ time: '19:00' }, 4)).confirmations).toEqual([])
   })
