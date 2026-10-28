@@ -11,7 +11,7 @@
  * Formatting is built from `Intl` parts rather than a locale pattern so the house date shape,
  * "Wednesday 16 September 2026", is identical in both test zones and never gains a comma.
  */
-import { formatTimeInLondon, whenLondonClockReaches } from '@/lib/dateUtils'
+import { formatTimeInLondon, toLocalIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 
 const LONDON_TIMEZONE = 'Europe/London'
 
@@ -154,4 +154,18 @@ export function buildEventArrivalLine(input: {
 function indefiniteArticle(timeText: string): string {
   const leadingHour = Number(/^\d+/.exec(timeText)?.[0] ?? '0')
   return leadingHour === 8 || leadingHour === 11 ? 'an' : 'a'
+}
+
+/**
+ * When a payment hold ends, as a guest reads it: "7:42pm" when it ends today in London, or
+ * "Wed 29 Oct at 7:42pm" when it ends on another day (a 24-hour staff link). Null when the
+ * instant is missing or unreadable, so a caller leaves the deadline out rather than inventing one.
+ */
+export function formatHoldUntilLondon(iso: string | null | undefined, now: Date = new Date()): string | null {
+  const date = toDate(iso)
+  if (!date) return null
+  const timeText = formatEventTimeLondon(iso)
+  if (!timeText) return null
+  if (toLocalIsoDate(date) === toLocalIsoDate(now)) return timeText
+  return formatEventWhenCompactLondon(iso)
 }

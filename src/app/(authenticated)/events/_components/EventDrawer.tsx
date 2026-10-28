@@ -874,6 +874,17 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
               onChange={setPromoSmsEnabled}
             />
           </div>
+          {/* BK-187: what the website tells guests while bookings are off. A paid night must not
+              read as "just turn up", so staff are pointed at Ticket sales close instead. */}
+          {!bookingsEnabled && (
+            (existingPaid || paymentMode !== 'free') ? (
+              <Alert tone="warning" role="status" title="Online booking is closed">
+                <p>On a paid night the website tells guests online booking is closed and to call to check availability. To stop online sales at a set time, use Ticket sales close below instead.</p>
+              </Alert>
+            ) : (
+              <p className="text-sm text-text-muted">The website tells guests no booking is needed for this event and to just turn up.</p>
+            )
+          )}
           <Input
             type="datetime-local"
             label="Ticket sales close"
