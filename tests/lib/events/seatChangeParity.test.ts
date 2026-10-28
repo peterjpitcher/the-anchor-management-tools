@@ -53,6 +53,9 @@ const SCENARIOS: Array<Scenario & { staff: string | null; guest: string | null }
   { name: 'a multi-type booking', paymentMode: 'cash_only', status: 'confirmed', items: [{ ticket_type_id: 'adult', quantity: 2 }, { ticket_type_id: 'child', quantity: 1 }], namedGuests: false, staff: 'multi_ticket_type_booking', guest: 'multi_ticket_type_booking' },
   { name: 'named guests on a pay-on-the-night booking', paymentMode: 'cash_only', status: 'confirmed', items: [{ ticket_type_id: 'adult', quantity: 3 }], namedGuests: true, staff: 'guest_details_locked', guest: 'guest_details_locked' },
   { name: 'an ordinary pay-on-the-night booking', paymentMode: 'cash_only', status: 'confirmed', items: [{ ticket_type_id: 'adult', quantity: 3 }], namedGuests: false, staff: null, guest: null },
+  // BK-143: the booking's only line is on 'early-bird', a type taken off sale so the event's
+  // default is now 'adult' (the fixture's default type). It still changes size.
+  { name: 'a one-line booking on a ticket type that is no longer the default', paymentMode: 'cash_only', status: 'confirmed', items: [{ ticket_type_id: 'early-bird', quantity: 3 }], namedGuests: false, staff: null, guest: null },
 ]
 
 describe('guest and staff seat changes follow the same rule', () => {

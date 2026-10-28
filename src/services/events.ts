@@ -15,6 +15,17 @@ import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/even
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
+import {
+  AUDITED_EVENT_FIELDS,
+  assessEventChange,
+  EMPTY_EVENT_BOOKING_IMPACT,
+  EVENT_PAYMENT_MODE_LOCKED_MESSAGE,
+  loadEventBookingImpact,
+  type EventBookingImpact,
+  type EventChangeSnapshot,
+  type EventPaymentModeValue,
+} from '@/lib/events/event-change-guard';
+import { resolveEventPaymentMode } from '@/lib/events/pricing';
 
 // Waitlist rows still open when an event is cancelled. These must be values the tables' status
 // checks allow (supabase/migrations/20260420000003_bookings_v05_foundations.sql): the cascade
@@ -43,6 +54,33 @@ function getSupabaseErrorMessage(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+/**
+ * An event edit that would change something for guests already booked. The action returns the
+ * lines to the drawer, which shows them in a confirm dialog and saves again once a manager agrees
+ * (BK-026, BK-036).
+ */
+export class EventChangeNeedsConfirmationError extends Error {
+  constructor(public readonly confirmations: string[], public readonly impact: EventBookingImpact) {
+    super('Confirm this change before it is saved.')
+    this.name = 'EventChangeNeedsConfirmationError'
+  }
+}
+
+/** An event edit that may not be made at all, with the reason staff are shown. */
+export class EventChangeBlockedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EventChangeBlockedError'
+  }
+}
+
+export type UpdateEventOptions = {
+  /** A manager has read and confirmed the summary of who the change affects. */
+  confirmedChanges?: boolean
+  /** Set only by the Cancel event and Postpone event actions, which confirm first (D8). */
+  lifecycleAction?: boolean
 }
 
 export type CreateEventInput = {
@@ -627,7 +665,7 @@ export class EventService {
     return { ...savedEvent, marketingLinksWarning };
   }
 
-  static async updateEvent(id: string, input: UpdateEventInput) {
+  static async updateEvent(id: string, input: UpdateEventInput, options: UpdateEventOptions = {}) {
     const supabase = await createClient();
 
     const { data: currentEvent, error: currentEventError } = await supabase
@@ -650,7 +688,12 @@ export class EventService {
         payment_mode,
         booking_mode,
         seated_capacity,
-        standing_capacity
+        standing_capacity,
+        capacity,
+        end_time,
+        bookings_enabled,
+        booking_cutoff_at,
+        online_discount_ends_at
       `)
       .eq('id', id)
       .maybeSingle()
@@ -782,8 +825,62 @@ export class EventService {
       payment_mode: nextPaymentMode,
     })
 
+    // Who this change affects, and whether it may go ahead, needs a manager to confirm, or is
+    // refused (BK-026, BK-027, BK-036, BK-073; owner decisions D8 and D9). The counts are read
+    // only when a field that matters to booked guests changes.
+    const currentPaymentMode = resolveEventPaymentMode(currentEvent) as EventPaymentModeValue
+    const currentPrice = Number(currentEvent.price ?? 0)
+    const nextCapacity = nextBookingMode === 'general' && input.capacity !== undefined ? (input.capacity ?? null) : null
+    const nextEndTime = input.end_time === undefined ? undefined : input.end_time
+    const touchesGuests =
+      nextDate !== currentEvent.date ||
+      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
+      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5)) ||
+      nextStatus !== currentEvent.event_status ||
+      pricing.payment_mode !== currentPaymentMode ||
+      Number(pricing.price ?? 0) !== currentPrice ||
+      (nextCapacity !== null && nextCapacity !== currentEvent.capacity)
+    const impact = touchesGuests ? await loadEventBookingImpact(createAdminClient(), id) : EMPTY_EVENT_BOOKING_IMPACT
+    const assessment = assessEventChange({
+      current: {
+        date: currentEvent.date,
+        time: currentEvent.time,
+        end_time: currentEvent.end_time,
+        event_status: currentEvent.event_status,
+        payment_mode: currentPaymentMode,
+        price: currentPrice,
+        capacity: currentEvent.capacity,
+        booking_mode: currentBookingMode,
+        booking_cutoff_at: currentEvent.booking_cutoff_at,
+        online_discount_ends_at: currentEvent.online_discount_ends_at,
+      },
+      next: {
+        date: nextDate,
+        time: nextTime,
+        end_time: nextEndTime,
+        event_status: nextStatus,
+        payment_mode: pricing.payment_mode as EventPaymentModeValue,
+        price: Number(pricing.price ?? 0),
+        capacity: nextCapacity,
+      },
+      impact,
+      seatedBookingsMoveWithEvent: false,
+      lifecycleAction: options.lifecycleAction === true,
+    })
+    if (assessment.blockers.length > 0) {
+      throw new EventChangeBlockedError(assessment.blockers.join(' '))
+    }
+    if (assessment.confirmations.length > 0 && options.confirmedChanges !== true) {
+      throw new EventChangeNeedsConfirmationError(assessment.confirmations, impact)
+    }
+
+    // A night moved back from cancelled reopens for bookings. The cancellation closed booking_open
+    // and nothing opened it again, so every channel kept refusing (BK-035).
+    const reopensBookings = currentEvent.event_status === 'cancelled' && nextStatus !== 'cancelled'
+
     const eventData = {
       ...input,
+      ...(reopensBookings ? { booking_open: true } : {}),
       ...(requestedBookingMode !== undefined ? { booking_mode: requestedBookingMode } : {}),
       price: pricing.price,
       online_discount_type: pricing.online_discount_type,
@@ -811,6 +908,9 @@ export class EventService {
       if (message.includes('event_mode_has_active_bookings')) {
         throw new Error('Cannot change booking mode while this event has active bookings.')
       }
+      if (message.includes('event_payment_mode_locked')) {
+        throw new EventChangeBlockedError(EVENT_PAYMENT_MODE_LOCKED_MESSAGE)
+      }
       throw new Error('Failed to update event');
     }
 
@@ -835,8 +935,16 @@ export class EventService {
       marketingLinksWarning = 'Event saved but marketing links failed to generate. You can retry from the event detail page.'
     }
 
+    const before: EventChangeSnapshot = {}
+    for (const field of AUDITED_EVENT_FIELDS) {
+      before[field] = (currentEvent as Record<string, unknown>)[field] ?? null
+    }
+
     return {
       ...savedEvent,
+      _before: before,
+      _impact: impact,
+      _warnings: assessment.warnings,
       _oldDate: currentEvent.date as string | null,
       _oldTime: currentEvent.time as string | null,
       _oldName: currentEvent.name as string | null,

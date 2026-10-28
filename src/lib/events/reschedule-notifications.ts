@@ -12,6 +12,24 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when'
 
+/** How long an unpaid hold is given after its event moves (BK-140). */
+export const RESCHEDULE_HOLD_GRACE_MS = 24 * 60 * 60 * 1000
+
+/**
+ * The new expiry for an unpaid hold when its event moves, or null to leave it alone. A hold that
+ * has already lapsed stays lapsed. A live hold gets at least the grace, never past the new start,
+ * so a night moved earlier also shortens a hold that would now outlast it (BK-140).
+ */
+export function resolveRescheduledHoldExpiry(currentExpiryIso: string | null, newStartIso: string, nowMs: number): string | null {
+  const newStartMs = Date.parse(newStartIso)
+  if (!Number.isFinite(newStartMs)) return null
+  const currentMs = currentExpiryIso ? Date.parse(currentExpiryIso) : NaN
+  if (!Number.isFinite(currentMs) || currentMs <= nowMs) return null
+  const nextMs = Math.min(newStartMs, Math.max(currentMs, nowMs + RESCHEDULE_HOLD_GRACE_MS))
+  if (nextMs <= nowMs || nextMs === currentMs) return null
+  return new Date(nextMs).toISOString()
+}
+
 export async function dispatchEventRescheduleNotifications(params: {
   eventId: string
   eventName: string
@@ -26,7 +44,7 @@ export async function dispatchEventRescheduleNotifications(params: {
 
   const { data: bookings, error } = await db
     .from('bookings')
-    .select('id, customer_id, seats, status, customers!inner(id, first_name, mobile_number, sms_status)')
+    .select('id, customer_id, seats, status, hold_expires_at, customers!inner(id, first_name, mobile_number, sms_status)')
     .eq('event_id', eventId)
     .in('status', ['confirmed', 'pending_payment'])
 
@@ -45,33 +63,39 @@ export async function dispatchEventRescheduleNotifications(params: {
   // The text pays by the character, so it takes the compact form; the email spells it out.
   const formattedNewDate = formatEventWhenCompactLondon(newStartIso) ?? 'the new date'
 
-  const pendingBookingIds = bookings
-    .filter((booking) => booking.status === 'pending_payment')
-    .map((booking) => booking.id)
+  // BK-140: an unpaid hold is given a fixed grace after the move, capped at the new start, and
+  // only while it is still live. It used to be stretched to the new start, so an abandoned
+  // 15-minute website checkout could hold seats unpaid until the night, and holds that had just
+  // lapsed came back. The booking, its hold row and any linked table booking get the same value.
+  const pendingBookings = bookings.filter((booking) => booking.status === 'pending_payment')
 
-  if (pendingBookingIds.length > 0) {
+  if (pendingBookings.length > 0) {
     if (newStartIso) {
-      await settleWrite(
-        db
-          .from('bookings')
-          .update({ hold_expires_at: newStartIso })
-          .in('id', pendingBookingIds)
-          .lt('hold_expires_at', newStartIso),
-        { table: 'bookings', what: 'Extending unpaid booking holds to the new start', ids: { eventId, pendingBookings: pendingBookingIds.length } }
-      )
-
-      await settleWrite(
-        db
-          .from('booking_holds')
-          .update({ expires_at: newStartIso })
-          .in('event_booking_id', pendingBookingIds)
-          .eq('status', 'active'),
-        { table: 'booking_holds', what: 'Extending active booking holds to the new start', ids: { eventId, pendingBookings: pendingBookingIds.length } }
-      )
+      const nowMs = Date.now()
+      for (const booking of pendingBookings) {
+        const nextExpiry = resolveRescheduledHoldExpiry(
+          (booking as { hold_expires_at?: string | null }).hold_expires_at ?? null,
+          newStartIso,
+          nowMs,
+        )
+        if (!nextExpiry) continue
+        await settleWrite(
+          db.from('bookings').update({ hold_expires_at: nextExpiry }).eq('id', booking.id).eq('status', 'pending_payment'),
+          { table: 'bookings', what: 'Moving an unpaid booking hold with the event', ids: { eventId, bookingId: booking.id } }
+        )
+        await settleWrite(
+          db.from('booking_holds').update({ expires_at: nextExpiry }).eq('event_booking_id', booking.id).eq('status', 'active'),
+          { table: 'booking_holds', what: 'Moving an active booking hold with the event', ids: { eventId, bookingId: booking.id } }
+        )
+        await settleWrite(
+          db.from('table_bookings').update({ hold_expires_at: nextExpiry }).eq('event_booking_id', booking.id).eq('status', 'pending_payment'),
+          { table: 'table_bookings', what: 'Moving the linked table hold with the event', ids: { eventId, bookingId: booking.id } }
+        )
+      }
     } else {
       // Leaving a hold on its old expiry is recoverable; writing an Invalid Date is not.
       logger.error('Event reschedule could not resolve the new start, so unpaid holds were left alone', {
-        metadata: { eventId, newDate, newTime, pendingBookings: pendingBookingIds.length },
+        metadata: { eventId, newDate, newTime, pendingBookings: pendingBookings.length },
       })
     }
   }

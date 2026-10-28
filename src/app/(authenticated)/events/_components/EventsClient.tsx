@@ -580,6 +580,7 @@ export default function EventsClient({
         event={activeEvent}
         categories={categories}
         onSave={handleSave}
+        seatsSold={activeEvent ? (activeEvent as Event & { booked_count?: number }).booked_count : undefined}
       />
     </PageLayout>
   )

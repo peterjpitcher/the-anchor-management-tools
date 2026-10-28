@@ -9,6 +9,8 @@ import { logAuditEvent } from './audit'
 import { bookingQuestionsSchema } from '@/lib/events/booking-questions'
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils'
 import { DOOR_LIST_EXCLUDED_STATUS_FILTER } from '@/lib/events/door-list'
+import { countActiveEventBookings, EVENT_PAYMENT_MODE_LOCKED_MESSAGE } from '@/lib/events/event-change-guard'
+import { isPaymentModeLockedError } from '@/lib/events/event-change-refusal'
 
 const settingsSchema = z.object({
   payment_mode: z.enum(['free', 'cash_only', 'prepaid']),
@@ -42,11 +44,24 @@ export async function saveEventTicketSettings(eventId: string, input: z.input<ty
     const parsed = settingsSchema.safeParse(input)
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check your ticket settings' }
     const db = createAdminClient()
-    const { data: event, error: eventError } = await db.from('events').select('id, start_datetime, date, time, booking_questions').eq('id', eventId).single()
+    const { data: event, error: eventError } = await db.from('events')
+      .select('id, start_datetime, date, time, booking_questions, payment_mode, is_free, online_discount_type, online_discount_value, online_discount_ends_at, collect_guest_details')
+      .eq('id', eventId).single()
     if (eventError || !event) return { error: 'Event could not be loaded. Your changes have not been saved.' }
     const { data: types, error: typesError } = await db.from('event_ticket_types').select('base_price').eq('event_id', eventId).eq('is_active', true)
     if (typesError) return { error: 'Ticket prices could not be checked. Your changes have not been saved.' }
     const values = parsed.data
+    // Owner decision D9: once anyone has booked, the payment method is locked so every guest keeps
+    // the terms they booked under. The database refuses it too (zz_guard_event_payment_mode_locked).
+    if (values.payment_mode !== (event.payment_mode ?? 'free')) {
+      let active: { bookings: number }
+      try {
+        active = await countActiveEventBookings(db, eventId)
+      } catch {
+        return { error: 'Existing bookings could not be checked. Your changes have not been saved.' }
+      }
+      if (active.bookings > 0) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
+    }
     const prices = (types ?? []).map(type => Number(type.base_price))
     if (values.payment_mode === 'free' && prices.some(price => price > 0)) return { error: 'Make each ticket type free before choosing free entry' }
     if (values.payment_mode !== 'free' && !prices.some(price => price > 0)) return { error: 'Set a paid ticket price before choosing a payment method' }
@@ -68,8 +83,38 @@ export async function saveEventTicketSettings(eventId: string, input: z.input<ty
       // Free entry asks for nothing; null puts the event back on the default if it is ever paid.
       collect_guest_details: values.payment_mode === 'free' ? null : values.collect_guest_details,
     }).eq('id', eventId)
-    if (error) return { error: 'Ticket settings could not be saved. Please try again.' }
-    await logAuditEvent({ user_id: user.id, user_email: user.email ?? undefined, operation_type: 'update', resource_type: 'event', resource_id: eventId, operation_status: 'success', additional_info: { changed: 'ticket_settings', questionCount: values.booking_questions.length, collectGuestDetails: values.payment_mode === 'free' ? null : values.collect_guest_details } })
+    if (error) {
+      if (isPaymentModeLockedError(error)) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
+      return { error: 'Ticket settings could not be saved. Please try again.' }
+    }
+    // Before and after values, so a dispute about what a guest was charged can be answered (BK-139).
+    const saved = {
+      payment_mode: values.payment_mode,
+      online_discount_type: discountActive ? values.online_discount_type : null,
+      online_discount_value: discountActive ? values.online_discount_value : null,
+      online_discount_ends_at: discountActive ? values.online_discount_ends_at : null,
+      collect_guest_details: values.payment_mode === 'free' ? null : values.collect_guest_details,
+    }
+    const previous: Record<string, unknown> = {
+      payment_mode: event.payment_mode ?? null,
+      online_discount_type: event.online_discount_type ?? null,
+      online_discount_value: event.online_discount_value ?? null,
+      online_discount_ends_at: event.online_discount_ends_at ?? null,
+      collect_guest_details: event.collect_guest_details ?? null,
+    }
+    const changedKeys = (Object.keys(saved) as Array<keyof typeof saved>).filter(key => String(previous[key] ?? '') !== String(saved[key] ?? ''))
+    let bookedBefore = 0
+    if (changedKeys.length > 0) {
+      try { bookedBefore = (await countActiveEventBookings(db, eventId)).bookings } catch { bookedBefore = 0 }
+    }
+    await logAuditEvent({
+      user_id: user.id, user_email: user.email ?? undefined, operation_type: 'update', resource_type: 'event', resource_id: eventId, operation_status: 'success',
+      ...(changedKeys.length > 0 ? {
+        old_values: Object.fromEntries(changedKeys.map(key => [key, previous[key] ?? null])),
+        new_values: Object.fromEntries(changedKeys.map(key => [key, saved[key] ?? null])),
+      } : {}),
+      additional_info: { changed: 'ticket_settings', questionCount: values.booking_questions.length, collectGuestDetails: values.payment_mode === 'free' ? null : values.collect_guest_details, changed_after_first_booking: changedKeys.length > 0 && bookedBefore > 0 },
+    })
     revalidatePath(`/events/${eventId}`)
     revalidatePath('/events')
     // BK-016: a question added now is not asked of anyone already booked. Say how many bookings
