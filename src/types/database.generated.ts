@@ -685,6 +685,7 @@ export type Database = {
           booking_id: string
           created_at: string
           id: string
+          price_paid_groups: Json | null
           quantity: number
           ticket_type_id: string
           unit_price: number
@@ -694,6 +695,7 @@ export type Database = {
           booking_id: string
           created_at?: string
           id?: string
+          price_paid_groups?: Json | null
           quantity: number
           ticket_type_id: string
           unit_price: number
@@ -703,6 +705,7 @@ export type Database = {
           booking_id?: string
           created_at?: string
           id?: string
+          price_paid_groups?: Json | null
           quantity?: number
           ticket_type_id?: string
           unit_price?: number
@@ -22416,9 +22419,23 @@ export type Database = {
         Args: { p_encryption_key: string }
         Returns: undefined
       }
+      event_booking_line_groups_v01: {
+        Args: { p_groups: Json; p_quantity: number; p_unit: number }
+        Returns: Json
+      }
       event_booking_net_paid_v01: {
         Args: { p_booking_id: string }
         Returns: number
+      }
+      event_booking_put_tickets_v01: {
+        Args: {
+          p_booking_id: string
+          p_line_price: number
+          p_price_paid: number
+          p_quantity: number
+          p_ticket_type_id: string
+        }
+        Returns: undefined
       }
       event_booking_refundable_v01: {
         Args: { p_booking_id: string }
@@ -22436,6 +22453,10 @@ export type Database = {
       event_booking_table_capacity_ok_v01: {
         Args: { p_event_booking_id: string; p_party_size: number }
         Returns: boolean
+      }
+      event_booking_take_tickets_v01: {
+        Args: { p_booking_id: string; p_takes: Json }
+        Returns: Json
       }
       event_communal_window_v01: {
         Args: { p_event_id: string }
@@ -23701,6 +23722,19 @@ export type Database = {
             }
             Returns: Json
           }
+      record_manual_event_refund_v01: {
+        Args: {
+          p_amount: number
+          p_booking_id: string
+          p_idempotency_key: string
+          p_metadata: Json
+          p_method: string
+          p_note: string
+          p_reason: string
+          p_recorded_by: string
+        }
+        Returns: Json
+      }
       record_onboarding_acknowledgement: {
         Args: { p_question: string; p_token: string }
         Returns: Json

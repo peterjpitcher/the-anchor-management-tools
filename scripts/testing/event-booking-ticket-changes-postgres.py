@@ -45,7 +45,13 @@ NEW_FUNCTIONS = [
     'public.add_event_booking_guests_v01(uuid,uuid,integer,jsonb,text,text,numeric,uuid)',
     'public.change_event_booking_ticket_type_v01(uuid,uuid[],uuid,integer,uuid,text,text,numeric,uuid)',
     'public.transfer_event_booking_v01(uuid,uuid,jsonb,uuid)',
+    'public.event_booking_line_groups_v01(jsonb,integer,numeric)',
+    'public.event_booking_take_tickets_v01(uuid,jsonb)',
+    'public.event_booking_put_tickets_v01(uuid,uuid,integer,numeric,numeric)',
+    'public.record_manual_event_refund_v01(uuid,numeric,text,text,text,uuid,text,jsonb)',
 ]
+# A pure SQL helper over its arguments: no table access, so it needs no SECURITY DEFINER.
+PLAIN_FUNCTIONS = {'public.event_booking_line_groups_v01(jsonb,integer,numeric)'}
 PRODUCTION_MD5 = {
     'public.create_event_booking_v09(uuid,uuid,integer,text,text,integer,jsonb,jsonb,numeric)': '79d436e4874cf6c6c261517a95b4f490',
     'public.check_booking_seat_sum(uuid)': 'ab223e5f7bbcc6c39810347440eb635a',
@@ -360,10 +366,12 @@ def main():
 
             run_file(MIGRATION, single=True)
             for signature in NEW_FUNCTIONS:
+                definer = 'NOT prosecdef' if signature in PLAIN_FUNCTIONS else 'prosecdef'
                 check(f"NOT has_function_privilege('anon','{signature}','EXECUTE') AND NOT has_function_privilege('authenticated','{signature}','EXECUTE') "
                       f"AND has_function_privilege('service_role','{signature}','EXECUTE') "
-                      f"AND (SELECT prosecdef AND proconfig = ARRAY['search_path=public'] FROM pg_proc WHERE oid = '{signature}'::regprocedure)",
-                      f"{signature.split('(')[0].replace('public.', '')} is service_role only, SECURITY DEFINER, search_path public")
+                      f"AND (SELECT {definer} AND proconfig = ARRAY['search_path=public'] FROM pg_proc WHERE oid = '{signature}'::regprocedure)",
+                      f"{signature.split('(')[0].replace('public.', '')} is service_role only, search_path public"
+                      + ('' if signature in PLAIN_FUNCTIONS else ', SECURITY DEFINER'))
             check("(SELECT relrowsecurity FROM pg_class WHERE oid = 'public.event_booking_refund_requests'::regclass) "
                   "AND NOT has_table_privilege('anon','public.event_booking_refund_requests','SELECT') "
                   "AND NOT has_table_privilege('authenticated','public.event_booking_refund_requests','SELECT') "
@@ -469,6 +477,93 @@ def main():
             expect(call(f"SELECT add_event_booking_guests_v01('{lim_booking}','{limited_types['VIP']}',1,'[]'::jsonb,'cash',NULL,60,'{STAFF}');"),
                    'blocked', 'add: a ticket type with its own limit is refused when sold out', reason='ticket_type_sold_out')
 
+            # ---- What each guest paid (review finding 1 on PR 277) ----
+            paid_night, paid_types = event(questions=[question])
+            p_adult = paid_types['Adult']
+            line_booking, _ = book(paid_night, [(p_adult, 2)], [guest(p_adult, 'Uma'), guest(p_adult, 'Vic')], paid=80)
+            cash_guest, free_guest = guest(None, 'Wyn'), guest(None, 'Xan')
+            expect(call(f"SELECT add_event_booking_guests_v01('{line_booking}','{p_adult}',1,{jsonb([cash_guest])},'cash',NULL,45,'{STAFF}');"),
+                   'updated', 'price paid: a £45 cash guest joins a line sold at £40', amount=45)
+            expect(call(f"SELECT add_event_booking_guests_v01('{line_booking}','{p_adult}',1,{jsonb([free_guest])},'comp','Birthday',NULL,'{STAFF}');"),
+                   'updated', 'price paid: a free guest joins the same line', amount=0)
+            check(f"(SELECT quantity = 4 AND unit_price = 40 AND price_paid_groups = {jsonb([{'unit_price': 40, 'quantity': 2}, {'unit_price': 45, 'quantity': 1}, {'unit_price': 0, 'quantity': 1}])} "
+                  f"FROM booking_items WHERE booking_id='{line_booking}')", 'price paid: the line keeps a group for each price paid')
+            check(f"(SELECT (attendees->2->>'price_paid')::numeric = 45 AND (attendees->3->>'price_paid')::numeric = 0 AND NOT (attendees->0 ? 'price_paid') FROM bookings WHERE id='{line_booking}')",
+                  'price paid: each added guest carries what they paid')
+            expect(call(f"SELECT remove_event_booking_guests_v01('{line_booking}',{uuids([free_guest['id']])},NULL,NULL,'{STAFF}');"),
+                   'updated', 'price paid: taking the free guest off owes £0', price_paid=0, refund_owed=0, refund_request_id=None)
+            check(f"NOT EXISTS (SELECT 1 FROM event_booking_refund_requests WHERE event_booking_id='{line_booking}')",
+                  "price paid: no refund request against the other guests' money")
+            expect(call(f"SELECT remove_event_booking_guests_v01('{line_booking}',{uuids([cash_guest['id']])},NULL,NULL,'{STAFF}');"),
+                   'updated', 'price paid: taking the £45 cash guest off raises £45, not the line price', price_paid=45, refund_owed=45)
+            check(f"(SELECT quantity = 2 AND price_paid_groups IS NULL FROM booking_items WHERE booking_id='{line_booking}')",
+                  'price paid: with only £40 tickets left the line is back to one price')
+            original_guest = sql(f"SELECT attendees->0->>'id' FROM bookings WHERE id='{line_booking}';")
+            expect(call(f"SELECT remove_event_booking_guests_v01('{line_booking}',{uuids([original_guest])},NULL,NULL,'{STAFF}');"),
+                   'updated', 'price paid: an original guest still comes off at £40', price_paid=40)
+
+            plain, _ = book(paid_night, [(p_adult, 2)], paid=80)
+            expect(call(f"SELECT add_event_booking_guests_v01('{plain}','{p_adult}',1,'[]'::jsonb,'cash',NULL,45,'{STAFF}');"),
+                   'updated', 'price paid: a £45 cash ticket added to a booking without guest rows')
+            expect(call(f"SELECT remove_event_booking_guests_v01('{plain}',NULL,'{p_adult}',1,'{STAFF}');"),
+                   'updated', 'price paid: without guest rows the ticket added last comes off first, at £45', price_paid=45, refund_owed=45)
+
+            typed, typed_types = event(types=(('Adult', 45, None), ('Child', 25, None)))
+            t_free = guest(None, 'Yas')
+            typed_booking, _ = book(typed, [(typed_types['Adult'], 1)], [guest(typed_types['Adult'], 'Zed')], paid=40)
+            expect(call(f"SELECT add_event_booking_guests_v01('{typed_booking}','{typed_types['Adult']}',1,{jsonb([t_free])},'comp','Staff family',NULL,'{STAFF}');"),
+                   'updated', 'price paid: a free adult guest added')
+            expect(call(f"SELECT change_event_booking_ticket_type_v01('{typed_booking}',{uuids([t_free['id']])},NULL,NULL,'{typed_types['Child']}','comp','Still free',NULL,'{STAFF}');"),
+                   'updated', 'price paid: the free guest changed to a child ticket starts from £0, so the child price is owed', price_paid=0, difference=20)
+            check(f"(SELECT (attendees->1->>'price_paid')::numeric = 0 FROM bookings WHERE id='{typed_booking}') "
+                  f"AND (SELECT price_paid_groups = {jsonb([{'unit_price': 0, 'quantity': 1}])} FROM booking_items WHERE booking_id='{typed_booking}' AND ticket_type_id='{typed_types['Child']}')",
+                  'price paid: given free, the guest and the new line still carry £0 paid')
+            expect(call(f"SELECT remove_event_booking_guests_v01('{typed_booking}',{uuids([t_free['id']])},NULL,NULL,'{STAFF}');"),
+                   'updated', 'price paid: and taking them off owes nothing', refund_owed=0)
+            expect(call(f"SELECT change_event_booking_ticket_type_v01('{typed_booking}',{uuids([t_free['id']])},NULL,NULL,'{typed_types['Child']}','none',NULL,NULL,'{STAFF}');"),
+                   'blocked', 'price paid: a refused change after taking tickets off is undone', reason='guest_not_on_booking')
+            typed_two, _ = book(typed, [(typed_types['Adult'], 2)], [guest(typed_types['Adult'], 'A1'), guest(typed_types['Adult'], 'A2')], paid=80)
+            first_adult = sql(f"SELECT attendees->0->>'id' FROM bookings WHERE id='{typed_two}';")
+            before_lines = lines(typed_two)
+            expect(call(f"SELECT change_event_booking_ticket_type_v01('{typed_two}',ARRAY['{first_adult}']::uuid[],NULL,NULL,'{typed_types['Child']}','cash',NULL,NULL,'{STAFF}');"),
+                   'blocked', 'price paid: cash on a cheaper type is refused', reason='no_payment_taken_here')
+            if lines(typed_two) != before_lines: raise RuntimeError('FAIL a refused change left the lines changed')
+            print('PASS price paid: and the refusal leaves the ticket lines exactly as they were')
+
+            # ---- Bar refunds in one transaction (review finding 2 on PR 277) ----
+            bar_night, bar_types = event()
+            bar_booking, _ = book(bar_night, [(bar_types['Adult'], 1)])
+            sql(f"INSERT INTO payments(event_booking_id,charge_type,payment_provider,payment_method,amount,status) VALUES('{bar_booking}','prepaid_event','manual','cash',45,'succeeded');")
+            refund_call = lambda key, amount=45: f"SELECT record_manual_event_refund_v01('{bar_booking}',{amount},'cash','staff_manual_refund','{key}','{STAFF}','Handed back','{{}}'::jsonb);"
+            def refund(key):
+                result = call(refund_call(key))
+                return {**result, 'state': result.get('status')}
+            expect(refund('key-1'), 'succeeded', 'bar refund: £45 cash handed back is recorded', amount=45)
+            expect(refund('key-1'), 'succeeded', 'bar refund: the same key again replays it', amount=45, reason='idempotent_replay')
+            check(f"(SELECT count(*) = 1 AND sum(amount) = 45 FROM payments WHERE event_booking_id='{bar_booking}' AND charge_type='refund')",
+                  'bar refund: one refund row for one key')
+            check(f"(SELECT status = 'refunded' FROM payments WHERE event_booking_id='{bar_booking}' AND charge_type='prepaid_event')",
+                  'bar refund: the bar payment reads refunded')
+            expect(refund('key-2'), 'manual_required', 'bar refund: nothing left, so a second key records nothing', reason='no_bar_payment_to_refund')
+            error = sql_error(f"INSERT INTO payments(event_booking_id,charge_type,payment_provider,payment_method,amount,status,metadata) "
+                              f"SELECT '{bar_booking}','refund','manual','cash',1,'refunded',metadata FROM payments WHERE event_booking_id='{bar_booking}' AND charge_type='refund';")
+            if 'payments_manual_refund_claim_unique' not in error: raise RuntimeError(f'FAIL the claim index let a second row through: {error!r}')
+            print('PASS bar refund: the unique claim index refuses a second row for the same key and payment, whatever writes it')
+
+            race_night, race_types = event()
+            race_booking, _ = book(race_night, [(race_types['Adult'], 1)])
+            sql(f"INSERT INTO payments(event_booking_id,charge_type,payment_provider,payment_method,amount,status) VALUES('{race_booking}','prepaid_event','manual','card_terminal',45,'succeeded');")
+            slow = subprocess.Popen(base, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+            slow.stdin.write(f"BEGIN; SELECT record_manual_event_refund_v01('{race_booking}',45,'card_terminal','staff_manual_refund','race-a','{STAFF}',NULL,'{{}}'::jsonb); SELECT pg_sleep(1.5); COMMIT;\n")
+            slow.stdin.close()
+            subprocess.run([str(PG / 'psql'), '-X', '-q', '-t', '-A', '-c', 'SELECT pg_sleep(0.4);'], env=env, check=True, capture_output=True)
+            racing = call(f"SELECT record_manual_event_refund_v01('{race_booking}',45,'card_terminal','staff_manual_refund','race-b','{STAFF}',NULL,'{{}}'::jsonb);")
+            slow.wait(timeout=30)
+            if slow.returncode: raise RuntimeError(f'FAIL the first racing refund failed: {slow.stderr.read()}')
+            if racing.get('status') != 'manual_required': raise RuntimeError(f'FAIL the second racing refund recorded money: {racing}')
+            check(f"(SELECT sum(amount) = 45 FROM payments WHERE event_booking_id='{race_booking}' AND charge_type='refund')",
+                  'bar refund: two refunds at the same moment never record more than the £45 paid')
+
             # ---- Change ticket type (BK-023) ----
             family, family_types = event(types=(('Adult', 45, None), ('Child', 25, None)))
             f_adult, f_child = family_types['Adult'], family_types['Child']
@@ -555,6 +650,17 @@ def main():
             expect(call(f"SELECT transfer_event_booking_v01('{moved['new_booking_id']}','{free_target}','{{}}'::jsonb,'{STAFF}');"),
                    'blocked', 'move: to the night it is already on is refused', reason='same_event')
 
+            # ---- Names only in attendee_names (review finding 3 on PR 277) ----
+            legacy, _ = book(source, [(source_types['Adult'], 2)], paid=80)
+            sql(f"UPDATE bookings SET attendee_names = ARRAY['Old One','Old Two'] WHERE id='{legacy}';"
+                f"UPDATE booking_items SET attendee_names = ARRAY['Old One','Old Two'] WHERE booking_id='{legacy}';")
+            legacy_target, legacy_types = event(types=(('Adult', 45, None),), days_ahead=80)
+            moved = expect(call(f"SELECT transfer_event_booking_v01('{legacy}','{legacy_target}','{{}}'::jsonb,'{STAFF}');"),
+                           'transferred', 'move: a booking with names only in attendee_names moves')
+            check(f"(SELECT attendee_names = ARRAY['Old One','Old Two'] AND attendees = '[]'::jsonb FROM bookings WHERE id='{moved['new_booking_id']}') "
+                  f"AND (SELECT attendee_names = ARRAY['Old One','Old Two'] FROM booking_items WHERE booking_id='{moved['new_booking_id']}')",
+                  'move: the names travel on the booking and on its ticket line')
+
             # ---- The migration's own assertion ----
             assertion = MIGRATION.read_text().split('-- Prove it:', 1)[1].split('\n', 1)[1]
             error = sql_error(f"BEGIN; GRANT EXECUTE ON FUNCTION public.transfer_event_booking_v01(uuid,uuid,jsonb,uuid) TO authenticated;\n" + assertion + '\nROLLBACK;')
@@ -569,9 +675,14 @@ def main():
             if 'holds refund decisions' not in error: raise RuntimeError(f'FAIL the rollback did not refuse: {error!r}')
             check("to_regclass('public.event_booking_refund_requests') IS NOT NULL", 'the rollback refuses while refund decisions are waiting, and drops nothing')
             sql('DELETE FROM public.event_booking_refund_requests;')
+            error = sql_error(ROLLBACK.read_text())
+            if 'price_paid_groups holds prices paid' not in error: raise RuntimeError(f'FAIL the rollback did not refuse over prices paid: {error!r}')
+            print('PASS the rollback also refuses while prices paid are recorded')
+            sql('UPDATE public.booking_items SET price_paid_groups = NULL;')
             run_file(ROLLBACK, single=True)
-            check("to_regclass('public.event_booking_refund_requests') IS NULL AND "
-                  + ' AND '.join(f"to_regprocedure('{s}') IS NULL" for s in NEW_FUNCTIONS), 'the rollback drops the table and every new function')
+            check("to_regclass('public.event_booking_refund_requests') IS NULL AND to_regclass('public.payments_manual_refund_claim_unique') IS NULL "
+                  "AND NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'booking_items' AND column_name = 'price_paid_groups') AND "
+                  + ' AND '.join(f"to_regprocedure('{s}') IS NULL" for s in NEW_FUNCTIONS), 'the rollback drops the table, the column, the index and every new function')
             check(f"'{md5(V09)}' = '{v09_before}'", 'after the rollback create_event_booking_v09 is exactly as before')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(cluster), '-m', 'immediate', '-w', 'stop'], check=True, capture_output=True)
