@@ -61,6 +61,10 @@ export const MESSAGING_FLAG_KEYS = [
   // on its own (BK-047, owner decision D19, 26 October 2026). It reuses the staff refund notice's
   // words, but no staff click sends it, so it stays off until the owner switches it on.
   'table_late_deposit_refund_notice',
+  // The booker's link to add guest names, answers and mobiles after a phone, bar, text or
+  // waitlist booking saved with details to follow (BK-011, owner decision D5, 27 October 2026).
+  // New guest wording, so it stays off until the owner has read it and switches it on.
+  'event_guest_details_request',
   'bounce_sms_fallback',
   'staff_message_email_option',
 ] as const

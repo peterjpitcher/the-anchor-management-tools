@@ -97,6 +97,22 @@ describe('public paid guest boundary', () => {
     expect(response.status).toBe(409)
     expect((await response.json()).code).toBe('PRICE_CHANGED')
   })
+  // BK-013: each guest's own mobile, optional, normalised and kept on the guest.
+  it('normalises a guest mobile to E.164 before booking', async () => {
+    await POST(request({ ...payload, attendees: [{ ...attendee, phone: '07700 900456' }], expected_total: 40 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ attendees: [{ ...attendee, phone: '+447700900456' }] }))
+  })
+  it('drops a blank guest mobile rather than storing it', async () => {
+    await POST(request({ ...payload, attendees: [{ ...attendee, phone: '  ' }], expected_total: 40 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ attendees: [attendee] }))
+  })
+  it('refuses a guest mobile that cannot be a phone number, before creating a customer', async () => {
+    const response = await POST(request({ ...payload, attendees: [{ ...attendee, phone: '12' }] }))
+    expect(response.status).toBe(400)
+    expect((await response.json()).error).toBe('Please check the guest mobile numbers')
+    expect(mocks.customer).not.toHaveBeenCalled()
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
   it('rejects missing required answers before creating a customer', async () => {
     mocks.question = true
     const response = await POST(request({ ...payload, attendees: [attendee] }))

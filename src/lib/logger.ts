@@ -71,8 +71,11 @@ class Logger {
   private log(level: LogLevel, message: string, context?: LogContext) {
     const formattedMessage = this.formatMessage(level, message, context);
     
-    // Console output with color coding in development
-    if (this.isDevelopment || level === 'error') {
+    // Console output with color coding in development. Warnings print in production too
+    // (BK-115, customer bookings review of 24 October 2026): they used to be thrown away, so 157
+    // warnings in booking code (a guest's crashed cancellation, a failed waitlist payment link)
+    // never reached the hosting logs. Debug and info stay development-only.
+    if (this.isDevelopment || level === 'error' || level === 'warn') {
       switch (level) {
         case 'debug':
           // eslint-disable-next-line no-console

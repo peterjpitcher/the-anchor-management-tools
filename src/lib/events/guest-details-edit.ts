@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { BookingQuestion, StoredEventAttendee } from '@/lib/events/booking-questions'
+import { normaliseAttendeePhone, type BookingQuestion, type StoredEventAttendee } from '@/lib/events/booking-questions'
 
 /**
  * Adding and correcting each ticket's guest details after the booking (BK-016, customer bookings
@@ -24,6 +24,9 @@ export const guestDetailsEditSchema = z.array(z.object({
   id: z.string().uuid(),
   name: z.string().trim().min(1, 'Each guest needs a name').max(120),
   answers: z.record(z.string().uuid(), z.string().trim().max(2000)),
+  // The guest's own mobile (BK-013): optional, E.164 once saved, blank removes it. Left out
+  // altogether (an older form), the stored phone is kept.
+  phone: z.string().trim().max(40).optional(),
 })).min(1).max(20)
 
 export type GuestDetailsEdit = z.infer<typeof guestDetailsEditSchema>
@@ -85,6 +88,21 @@ export function mergeGuestDetailsEdit(input: {
   if (new Set(edits.map((edit) => edit.id)).size !== edits.length) {
     return { ok: false, error: 'Each guest must be listed once. Refresh this booking before editing.' }
   }
+  const phones = new Map<string, string | null>()
+  for (const edit of edits) {
+    if (edit.phone === undefined) continue
+    try {
+      phones.set(edit.id, normaliseAttendeePhone(edit.phone))
+    } catch {
+      return { ok: false, error: 'Please check the guest mobile numbers' }
+    }
+  }
+  const withPhone = (guest: StoredEventAttendee): StoredEventAttendee => {
+    if (!phones.has(guest.id)) return guest
+    const phone = phones.get(guest.id)
+    const { phone: _old, ...rest } = guest
+    return phone ? { ...rest, phone } : rest
+  }
 
   let attendees: StoredEventAttendee[]
   let created = false
@@ -93,7 +111,7 @@ export function mergeGuestDetailsEdit(input: {
   if (current.length === 0) {
     if (edits.length !== seats) return { ok: false, error: `Please enter details for all ${seats} guests.` }
     created = true
-    attendees = edits.map((edit, index) => ({
+    attendees = edits.map((edit, index) => withPhone({
       id: edit.id,
       name: edit.name,
       ticket_type_id: input.ticketSlots[index] ?? null,
@@ -118,7 +136,7 @@ export function mergeGuestDetailsEdit(input: {
         .filter((question) => !asked.has(question.id))
         .map((question) => answerFromQuestion(question, edit.answers[question.id] ?? ''))
       questionsAdded += added.length
-      return { ...guest, name: edit.name, answers: [...kept, ...added] }
+      return withPhone({ ...guest, name: edit.name, answers: [...kept, ...added] })
     })
   }
 

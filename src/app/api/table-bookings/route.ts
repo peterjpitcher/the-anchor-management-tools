@@ -12,6 +12,7 @@ import {
   getIdempotencyKey,
   claimIdempotencyKey,
   lookupIdempotencyKey,
+  markIdempotencyClaimCommitted,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency'
@@ -46,32 +47,23 @@ import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
 import { oneCourseForEveryone, recordOneCourseInsideCutoff } from '@/lib/table-bookings/christmas-one-course'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
-import { createRateLimiter } from '@/lib/rate-limit'
+import {
+  ANONYMOUS_BOOKING_MAX_PER_HOUR,
+  GUEST_BOOKING_MAX_PER_HOUR,
+  limitBookingAttempt
+} from '@/lib/api/booking-rate-limits'
 import { OptionalCommunicationConsentSchema } from '@/lib/consent/validation'
-import { ConsentService } from '@/services/consent'
+import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 
-// Anonymous flood protection only. Every booking proxied by the brand site arrives from the
-// website's Vercel egress pool, so this bucket used to hold the WHOLE public site: after ten
-// bookings in an hour the eleventh guest was refused and could not book at all. Authenticated
-// callers are exempted below and limited per guest and per API key instead.
-const tableBookingIpLimiter = createRateLimiter({
-  name: 'table-booking-ip',
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10,
-  message: 'Too many booking requests from this address. Please try again later.'
-})
-
-// The per-guest limit that replaces the per-website one. Keyed on the normalised phone number,
-// which is the only guest identity AMS can see on a proxied booking: the website forwards no
-// client IP. Deliberately looser than the anonymous cap of 10, because a guest hunting for a
-// free slot can legitimately submit several times and have each one come back blocked, while
-// twenty attempts an hour from one number is nobody genuine.
-const TABLE_BOOKING_GUEST_MAX_PER_HOUR = 20
-const tableBookingGuestLimiter = createRateLimiter({
-  name: 'table-booking-guest',
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: TABLE_BOOKING_GUEST_MAX_PER_HOUR
-})
+// Flood limits (BK-108). Both count across every server copy through Upstash, falling back to a
+// per-copy count. The anonymous one is per IP and only for callers without a valid key: every
+// booking the brand site proxies arrives from the website's own servers, so an IP bucket used to
+// hold the WHOLE public site. The per-guest one is per phone number, for every caller, because the
+// phone is the only guest identity a proxied booking carries and the thing a flood would have to
+// vary to do damage.
+const TABLE_BOOKING_IP_PREFIX = 'table-booking-ip'
+const TABLE_BOOKING_GUEST_PREFIX = 'table-booking-guest'
 
 type SmsSafetyMeta = Awaited<ReturnType<typeof sendTableBookingCreatedSmsIfAllowed>>['sms']
 type NotificationChannelMeta = TableBookingNotificationChannel
@@ -271,6 +263,48 @@ type TableBookingResponseData = {
   } | null
 }
 
+/**
+ * The answer a retry gets for a booking that was saved but whose full answer was never stored
+ * (BK-127): the function died after saving, or the answer could not be written. It names the
+ * booking and says no message is known to have gone, so the website never tells the guest a
+ * confirmation is on its way that may not be. Written onto the idempotency claim the moment the
+ * booking exists; replayed only once the claim is stale, so a live request is never cut short.
+ */
+function buildCommittedTableBookingResponse(
+  bookingResult: TableBookingRpcResult,
+  depositAmount: number | null
+) {
+  const state: TableBookingResponseData['state'] =
+    bookingResult.state === 'pending_payment' ? 'pending_payment' : 'confirmed'
+  return {
+    success: true,
+    data: {
+      state,
+      table_booking_id: bookingResult.table_booking_id || null,
+      booking_reference: bookingResult.booking_reference || null,
+      reason: null,
+      blocked_reason: null,
+      next_step_url: null,
+      hold_expires_at: state === 'pending_payment' ? bookingResult.hold_expires_at || null : null,
+      table_name: bookingResult.table_name || null,
+      booking_id: state === 'pending_payment' ? bookingResult.table_booking_id || null : null,
+      deposit_amount: state === 'pending_payment' ? depositAmount : null,
+      fallback_payment_url: null,
+      notification_channel: null,
+      notification_sent: false,
+      high_chairs_granted:
+        typeof bookingResult.high_chairs_granted === 'number' ? bookingResult.high_chairs_granted : null,
+      is_outside_seating:
+        typeof bookingResult.is_outside_seating === 'boolean' ? bookingResult.is_outside_seating : null,
+      preorder: null,
+    } satisfies TableBookingResponseData,
+    meta: {
+      status_code: 201,
+      recovered: true,
+    },
+  }
+}
+
 type PreorderEntry = NonNullable<z.infer<typeof CreateTableBookingSchema>['preorder']>[number]
 
 type PreorderPersistResult = NonNullable<TableBookingResponseData['preorder']>
@@ -372,6 +406,74 @@ async function recordTableBookingAnalyticsSafe(
   }
 }
 
+/**
+ * Cancel a pending-payment booking whose payment link could not be made (BK-127). Mirrors the FOH
+ * create route. Returns 'held' when the booking could not be cancelled: it still holds a table
+ * with no way to pay. Either way the manager is told. Never throws.
+ */
+async function cancelPendingBookingAfterPaymentLinkFailure(
+  supabase: ReturnType<typeof createAdminClient>,
+  input: { tableBookingId: string; bookingReference: string | null; bookingDate: string }
+): Promise<'cancelled' | 'held'> {
+  const failureAt = new Date().toISOString()
+  let outcome: 'cancelled' | 'held' = 'held'
+  let cancelErrorMessage: string | null = null
+
+  try {
+    const { data, error } = await supabase
+      .from('table_bookings')
+      .update({
+        status: 'cancelled',
+        cancelled_at: failureAt,
+        cancelled_by: 'system',
+        cancellation_reason: 'payment_link_generation_failed',
+        hold_expires_at: null,
+        paypal_deposit_order_id: null,
+        updated_at: failureAt,
+      })
+      .eq('id', input.tableBookingId)
+      .eq('status', 'pending_payment')
+      .select('id')
+      .maybeSingle()
+    if (error) {
+      cancelErrorMessage = error.message
+    } else if (data) {
+      outcome = 'cancelled'
+    } else {
+      cancelErrorMessage = 'The booking was no longer awaiting payment.'
+    }
+  } catch (cancelError) {
+    cancelErrorMessage = cancelError instanceof Error ? cancelError.message : String(cancelError)
+  }
+
+  if (outcome === 'held') {
+    logger.error('Could not cancel a pending table booking after its payment link failed', {
+      error: new Error(cancelErrorMessage ?? 'unknown'),
+      metadata: { tableBookingId: input.tableBookingId },
+    })
+  }
+
+  await alertMoneyNeedsAPerson(supabase, {
+    domain: 'table_bookings',
+    bookingId: input.tableBookingId,
+    kind: outcome === 'cancelled' ? 'payment_link_failed_cancelled' : 'payment_link_failed_held',
+    subjectTag: 'BOOKING ACTION NEEDED',
+    title: outcome === 'cancelled'
+      ? 'An online table booking was cancelled because its deposit link failed'
+      : 'An online table booking is holding a table with no way to pay',
+    summary: outcome === 'cancelled'
+      ? 'A guest booked a table that needs a deposit, but the payment link could not be made, so the booking was cancelled and the guest was asked to try again. If they do not rebook, you may want to ring them.'
+      : 'A guest booked a table that needs a deposit, but the payment link could not be made and the booking could not be cancelled. It is holding a table. Open it, then either send the guest a payment link or cancel it, and ring them to explain.',
+    context: {
+      Reference: input.bookingReference ?? input.tableBookingId,
+      Date: input.bookingDate,
+      ...(cancelErrorMessage && outcome === 'held' ? { 'Cancel error': cancelErrorMessage } : {}),
+    },
+  })
+
+  return outcome
+}
+
 export async function OPTIONS(_request: NextRequest) {
   return createApiResponse({}, 200)
 }
@@ -390,7 +492,11 @@ export async function POST(request: NextRequest) {
   // 'unavailable' is limited alongside anonymous: we cannot prove the caller is trusted, and
   // the limiter only delays them.
   if (authState !== 'authenticated') {
-    const ipRateLimitResponse = await tableBookingIpLimiter(request)
+    const ipRateLimitResponse = await limitBookingAttempt(request, {
+      prefix: TABLE_BOOKING_IP_PREFIX,
+      max: ANONYMOUS_BOOKING_MAX_PER_HOUR,
+      message: 'Too many booking requests from this address. Please try again later.'
+    })
     if (ipRateLimitResponse) {
       return ipRateLimitResponse
     }
@@ -456,18 +562,14 @@ export async function POST(request: NextRequest) {
       return createErrorResponse(EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, 400)
     }
 
-    // Per-guest cap, applied to every caller including the website proxy. The normalised phone
-    // is the only guest identity available here, and it is a better one than an IP anyway: it
-    // survives a changed network and it is the thing a flood would have to vary to do damage.
-    // The key is namespaced because every limiter built by createRateLimiter shares one store.
-    // In-memory and per instance, so this is a ceiling, not an exact count.
-    const guestLimitResponse = await tableBookingGuestLimiter(request, `tb-phone:${normalizedPhone}`)
+    // Per-guest cap, applied to every caller including the website proxy (see the prefixes above).
+    const guestLimitResponse = await limitBookingAttempt(request, {
+      prefix: TABLE_BOOKING_GUEST_PREFIX,
+      subject: normalizedPhone,
+      max: GUEST_BOOKING_MAX_PER_HOUR
+    })
     if (guestLimitResponse) {
-      return createErrorResponse(
-        'Too many booking attempts for this phone number. Please try again later or call us on 01753 682707.',
-        'RATE_LIMIT_EXCEEDED',
-        429
-      )
+      return guestLimitResponse
     }
 
     const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time
@@ -550,6 +652,10 @@ export async function POST(request: NextRequest) {
         email: payload.email || null
       })
       if (!customerResolution.customerId) {
+        logger.error('Table booking could not find or create the customer', {
+          error: new Error('customer_resolution_failed'),
+          metadata: { bookingDate: payload.date },
+        })
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
@@ -639,6 +745,35 @@ export async function POST(request: NextRequest) {
       }
       mutationCommitted = Boolean(bookingResult.table_booking_id)
 
+      // The booking exists from here on. Note it on the claim, so a retry after this function
+      // dies (or after the answer fails to store) replays the booking instead of making a second
+      // one (BK-127). Best effort: the booking is already made, so a failure here is logged only.
+      if (
+        bookingResult.table_booking_id &&
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+      ) {
+        try {
+          await markIdempotencyClaimCommitted(
+            supabase,
+            idempotencyKey,
+            requestHash,
+            buildCommittedTableBookingResponse(
+              bookingResult,
+              bookingResult.state === 'pending_payment'
+                ? chargedDepositAmount(bookingResult, () =>
+                    computeDepositAmount(payload.party_size, { isChristmas: isChristmasPurpose(payload.purpose) }),
+                  )
+                : null,
+            ),
+          )
+        } catch (markError) {
+          logger.error('Could not note a saved table booking on its idempotency claim', {
+            error: markError instanceof Error ? markError : new Error(String(markError)),
+            metadata: { key: idempotencyKey, tableBookingId: bookingResult.table_booking_id },
+          })
+        }
+      }
+
       // The email typed for this booking when the customer record does not hold it, kept before
       // any message goes so the confirmation and payment link reach it (BK-078). Only on a booking
       // this request made, as the event path and the FOH route do: an id on a refused answer is
@@ -647,11 +782,18 @@ export async function POST(request: NextRequest) {
         await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, customerResolution.bookingContactEmail)
       }
 
-      if (customerResolution.customerId && bookingResult.table_booking_id) {
-        await ConsentService.applyBookingContactConsent(
-          customerResolution.customerId,
-          payload.communication_consent,
-          {
+      // Only on a booking this request made: an id on a refused answer is somebody's existing
+      // booking. A failure is logged and raised with the manager, and the booking carries on to
+      // its confirmation (BK-039): the guest must never be told a saved booking failed.
+      if (
+        customerResolution.customerId &&
+        bookingResult.table_booking_id &&
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+      ) {
+        await applyBookingContactConsentSafe({
+          customerId: customerResolution.customerId,
+          consent: payload.communication_consent,
+          context: {
             source: 'public_table_booking',
             captureMethod: 'checkbox',
             sourceUrl: req.headers.get('referer'),
@@ -659,8 +801,9 @@ export async function POST(request: NextRequest) {
             relatedEntityType: 'table_booking',
             relatedEntityId: bookingResult.table_booking_id,
             metadata: { idempotency_key: idempotencyKey }
-          }
-        )
+          },
+          alert: { domain: 'table_bookings', bookingId: bookingResult.table_booking_id },
+        })
       }
 
       // Persist structured dietary/allergy arrays directly on the booking row.
@@ -795,20 +938,53 @@ export async function POST(request: NextRequest) {
           })
           nextStepUrl = token.url
         } catch (tokenError) {
-          // Payment link is critical for pending_payment bookings — the customer
-          // cannot complete payment without it. Return an error so the caller
-          // knows the booking was created but is unusable.
-          logger.error('Failed to create table payment token — returning error to caller', {
+          // Without a payment link the guest cannot pay, and the unpaid booking would hold its
+          // table for up to 24 hours with no link sent (BK-127). Cancel it, as the event route and
+          // FOH already do, and let the guest try again with nothing left behind.
+          logger.error('Failed to create table payment token; cancelling the pending booking', {
             error: tokenError instanceof Error ? tokenError : new Error(String(tokenError)),
             metadata: {
               tableBookingId: bookingResult.table_booking_id,
             },
           })
-          return createErrorResponse(
-            'Booking created but payment link generation failed. Please contact us.',
-            'PAYMENT_LINK_FAILED',
-            500
-          )
+          const outcome = await cancelPendingBookingAfterPaymentLinkFailure(supabase, {
+            tableBookingId: bookingResult.table_booking_id,
+            bookingReference: bookingResult.booking_reference ?? null,
+            bookingDate: payload.date,
+          })
+
+          if (outcome === 'cancelled') {
+            // Nothing is left in the guest's name, so the claim is released (finally) and a retry
+            // makes a fresh attempt.
+            mutationCommitted = false
+            return createErrorResponse(
+              'We could not set up the deposit payment, so the booking was not made. Please try again.',
+              'PAYMENT_LINK_FAILED',
+              500
+            )
+          }
+
+          // The booking could not be cancelled, so it still holds a table. Keep the claim and
+          // store this answer, so a retry is told the same thing rather than booking twice. The
+          // manager has been told and will contact the guest.
+          const heldPayload = {
+            success: false,
+            error: {
+              code: 'PAYMENT_LINK_FAILED_BOOKING_HELD',
+              message: 'Your booking was received, but we could not set up the deposit payment. We will be in touch to take it.',
+            },
+            meta: { status_code: 500 },
+          }
+          try {
+            await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, heldPayload)
+            claimHeld = false
+          } catch (persistError) {
+            logger.error('Failed to store the held-booking answer for a failed payment link', {
+              error: persistError instanceof Error ? persistError : new Error(String(persistError)),
+              metadata: { key: idempotencyKey, tableBookingId: bookingResult.table_booking_id },
+            })
+          }
+          return createApiResponse(heldPayload, 500)
         }
       }
 
@@ -1046,6 +1222,18 @@ export async function POST(request: NextRequest) {
             state: responseState,
           },
         })
+        // Second try, on the claim itself: once the claim is stale a retry replays this answer
+        // instead of booking again (BK-127).
+        if (mutationCommitted) {
+          try {
+            await markIdempotencyClaimCommitted(supabase, idempotencyKey, requestHash, responsePayload)
+          } catch (markError) {
+            logger.error('Could not note the table booking answer on its idempotency claim either', {
+              error: markError instanceof Error ? markError : new Error(String(markError)),
+              metadata: { key: idempotencyKey, tableBookingId: bookingResult.table_booking_id || null },
+            })
+          }
+        }
       }
 
       return createApiResponse(responsePayload, responseStatus)

@@ -107,7 +107,7 @@ describe('booking functions are tested in CI in the version production runs', ()
 
   it('finds the booking functions the app calls', () => {
     // A sanity floor: the reader still sees the calls it was written for.
-    expect(calls.has('create_event_booking_v08')).toBe(true)
+    expect(calls.has('create_event_booking_v09')).toBe(true)
     expect(calls.has('confirm_event_paypal_payment_v01')).toBe(true)
     expect(calls.size).toBeGreaterThanOrEqual(20)
   })

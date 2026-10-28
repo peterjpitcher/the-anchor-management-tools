@@ -14,6 +14,13 @@ vi.mock('@/services/event-bookings', () => ({
   EventBookingService: { createBooking: vi.fn(), normalizeBookingMode: () => 'general' },
 }))
 
+// The per-guest flood limit (BK-108) counts every booking from one phone; these tests send many
+// from the same fixture number, so the limit itself is covered in tests/lib/publicBookingFloodLimits.test.ts.
+vi.mock('@/lib/api/booking-rate-limits', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/booking-rate-limits')>()),
+  limitBookingAttempt: vi.fn().mockResolvedValue(null),
+}))
+
 vi.mock('@/lib/api/auth', () => ({
   withApiAuth: vi.fn(
     async (

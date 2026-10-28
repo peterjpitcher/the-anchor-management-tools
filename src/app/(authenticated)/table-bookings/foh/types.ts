@@ -1,3 +1,4 @@
+import type { BookingQuestion } from '@/lib/events/booking-questions'
 import type { DayLoad } from '@/services/day-load'
 
 export type FohBooking = {
@@ -38,6 +39,8 @@ export type FohBooking = {
   christmas_course_counts?: number[] | null
   /** The latest party-size change the guest made through their manage link (BK-091). */
   guest_party_size_change?: { at: string; from: number | null; to: number | null } | null
+  /** When the guest tapped 'confirm' on the day-before text, or null (BK-094). */
+  guest_confirmed_at?: string | null
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]
@@ -87,6 +90,9 @@ export type FohScheduleResponse = {
     // True when private hires could not be read, so their tables are not drawn as blocked
     // (BK-159). Optional so existing fixtures keep compiling.
     private_hires_unavailable?: boolean
+    // Parts of the floor that could not be loaded and are drawn as empty (BK-179). Optional so
+    // existing fixtures keep compiling.
+    load_warnings?: Array<'private_hires' | 'event_names' | 'communal_event_seats' | 'standing_event_guests' | 'table_areas'>
     // Who is in that day, counted as every other screen counts it (BK-075); null when it could
     // not be read. Optional so existing fixtures keep compiling.
     day_load?: DayLoad | null
@@ -158,6 +164,7 @@ export type FohCreateEventBookingResponse = {
     table_name: string | null
     /** False when a confirmation was due and none reached the guest (BK-162). */
     notification_sent?: boolean | null
+    details_to_follow?: boolean
   }
   error?: string
   code?: string
@@ -182,6 +189,12 @@ export type FohEventOption = {
   total_remaining: number | null
   is_full: boolean
   booking_mode: 'table' | 'general' | 'mixed' | 'communal'
+  /** The event's guest questions (BK-011). Absent from an older server. */
+  booking_questions?: BookingQuestion[]
+  /** Every ticket should carry guest details; any may follow later (BK-014, D5). */
+  guest_details_required?: boolean
+  /** Ticket types to choose from, when the event offers more than one (BK-141). */
+  ticket_types?: Array<{ id: string; name: string; price: number }>
 }
 
 export type FohUpcomingEvent = {

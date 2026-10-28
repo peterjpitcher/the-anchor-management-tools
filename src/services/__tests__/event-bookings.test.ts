@@ -179,10 +179,11 @@ describe('EventBookingService.createBooking', () => {
     ['attendee_count_mismatch', 'guest_details_invalid'],
     ['invalid_attendee_id', 'guest_details_invalid'],
     ['attendee_ticket_quantity_mismatch', 'guest_details_invalid'],
+    ['invalid_attendee_phone', 'guest_details_invalid'],
     ['column "answer_text" of relation "bookings" does not exist', null],
     ['null value in column "attendees" violates not-null constraint', null],
   ])('classifies the booking function error %s as %s', async (message, expected) => {
-    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v08: { data: null, error: { message } } } })
+    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v09: { data: null, error: { message } } } })
     vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
     const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
     const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, expectedTotal: 80, shouldSendSms: true })
@@ -191,11 +192,11 @@ describe('EventBookingService.createBooking', () => {
   })
 
   it.each(['price_changed', 'attendee_answer_required'])('rolls a failed atomic guest booking up without sending messages: %s', async (message) => {
-    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v08: { data: null, error: { message } } } })
+    const supabase = makeSupabaseMock({ rpcResults: { create_event_booking_v09: { data: null, error: { message } } } })
     vi.mocked(createAdminClient).mockReturnValue(supabase as unknown as ReturnType<typeof createAdminClient>)
     const attendees = [{ id: '22222222-2222-4222-8222-222222222222', name: 'Guest', answers: {} }]
     const result = await EventBookingService.createBooking({ ...BASE_PARAMS, attendees, expectedTotal: 80, shouldSendSms: true })
-    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v08', expect.objectContaining({ p_attendees: attendees, p_expected_total: 80 }))
+    expect(supabase.rpc).toHaveBeenCalledWith('create_event_booking_v09', expect.objectContaining({ p_attendees: attendees, p_expected_total: 80 }))
     expect(result.rpcFailed).toBe(true)
     expect(result.rpcErrorCode).toBe(message === 'price_changed' ? 'price_changed' : 'questions_changed')
     expect(sendSMS).not.toHaveBeenCalled()
@@ -416,6 +417,13 @@ describe('EventBookingService.createBooking', () => {
       'Failed to create event payment token',
       expect.objectContaining({ error: expect.any(Error) })
     )
+
+    // The booking that cannot be paid for is cancelled, so its seats go back on sale (BK-128).
+    const bookingsCall = supabase.from.mock.calls.findIndex(([table]) => table === 'bookings')
+    expect(bookingsCall).toBeGreaterThanOrEqual(0)
+    const bookingsBuilder = supabase.from.mock.results[bookingsCall].value as { update: ReturnType<typeof vi.fn>; eq: ReturnType<typeof vi.fn> }
+    expect(bookingsBuilder.update).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', cancelled_by: 'system' }))
+    expect(bookingsBuilder.eq).toHaveBeenCalledWith('id', PENDING_PAYMENT_RPC_RESULT.booking_id)
   })
 
   // ── Table booking mode ──────────────────────────────────────────────────────

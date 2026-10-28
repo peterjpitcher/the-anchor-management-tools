@@ -25,7 +25,8 @@ vi.mock('@/lib/messaging/flags', () => ({
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn(() => Promise.resolve()) }))
 vi.mock('@/lib/analytics/events', () => ({ recordAnalyticsEvent: vi.fn(async () => undefined) }))
-vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined) }))
+const reportPaymentAlert = vi.hoisted(() => vi.fn(async () => ({ sent: true })))
+vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn(async () => undefined), reportPaymentAlert }))
 
 vi.mock('@/lib/google-calendar', () => ({
   syncCalendarEvent: vi.fn(),

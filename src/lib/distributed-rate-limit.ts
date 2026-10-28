@@ -2,6 +2,7 @@ import { Ratelimit } from '@upstash/ratelimit'
 import { Redis } from '@upstash/redis'
 import { NextRequest, NextResponse } from 'next/server'
 import { createRateLimiter } from '@/lib/rate-limit'
+import { logger } from '@/lib/logger'
 
 type RateLimitOptions = {
   prefix: string
@@ -22,6 +23,10 @@ type RateLimitOptions = {
    */
   identifier?: string
 }
+
+export type DistributedRateLimitDecision =
+  | { limited: false }
+  | { limited: true; retryAfterSeconds: number; limit: number; remaining: number; resetAt: Date }
 
 const limiterCache = new Map<string, Ratelimit>()
 
@@ -58,42 +63,192 @@ function getUpstashLimiter(options: RateLimitOptions): Ratelimit | null {
   return limiter
 }
 
+function windowToMs(window: RateLimitOptions['window']): number {
+  const [amountText, unit] = window.split(' ')
+  const amount = Number(amountText)
+  const unitMs = unit === 's' ? 1000 : unit === 'm' ? 60_000 : unit === 'h' ? 3_600_000 : 86_400_000
+  return Number.isFinite(amount) && amount > 0 ? amount * unitMs : 3_600_000
+}
+
+async function checkLocally(
+  request: NextRequest,
+  options: RateLimitOptions,
+  identifier: string
+): Promise<DistributedRateLimitDecision> {
+  const localLimiter = createRateLimiter({
+    name: 'distributed-fallback',
+    windowMs: options.localWindowMs ?? windowToMs(options.window),
+    max: options.max,
+    keyGenerator: () => `${options.prefix}:${identifier}`,
+  })
+  const refused = await localLimiter(request)
+  if (!refused) return { limited: false }
+  const retryAfterSeconds = Math.max(1, Number(refused.headers.get('Retry-After')) || 60)
+  return {
+    limited: true,
+    retryAfterSeconds,
+    limit: options.max,
+    remaining: 0,
+    resetAt: new Date(Date.now() + retryAfterSeconds * 1000),
+  }
+}
+
+/**
+ * Count one request and say whether it is over the limit, across every server copy when Upstash
+ * is configured, per copy otherwise.
+ *
+ * A Redis fault falls back to the per-copy count and logs an error, so our own outage never turns
+ * into a refused booking (BK-108). The caller words the refusal.
+ */
+export async function checkDistributedRateLimit(
+  request: NextRequest,
+  options: RateLimitOptions
+): Promise<DistributedRateLimitDecision> {
+  const identifier = options.identifier?.trim() || getClientIp(request)
+  const limiter = getUpstashLimiter(options)
+
+  if (!limiter) {
+    return checkLocally(request, options, identifier)
+  }
+
+  try {
+    const result = await limiter.limit(identifier)
+    if (result.success) return { limited: false }
+    return {
+      limited: true,
+      retryAfterSeconds: Math.max(1, Math.ceil((result.reset - Date.now()) / 1000)),
+      limit: options.max,
+      remaining: result.remaining,
+      resetAt: new Date(result.reset),
+    }
+  } catch (error) {
+    logger.error('Distributed rate limit check failed; counting on this server only', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { prefix: options.prefix },
+    })
+    return checkLocally(request, options, identifier)
+  }
+}
+
+/**
+ * Whether a subject has already used its whole allowance, WITHOUT counting this request.
+ *
+ * For limits that count only some outcomes, such as short link guesses that hit nothing (BK-203):
+ * the route asks first, refuses an exhausted subject before doing the work, and counts with
+ * checkDistributedRateLimit only when the outcome is one that should be counted. Answers "not
+ * exhausted" when it cannot tell: a fault here must not block a real guest's link.
+ */
+export async function isDistributedRateLimitExhausted(
+  request: NextRequest,
+  options: RateLimitOptions
+): Promise<boolean> {
+  const identifier = options.identifier?.trim() || getClientIp(request)
+  const limiter = getUpstashLimiter(options)
+
+  if (!limiter) {
+    return peekLocalCount(options, identifier) >= options.max
+  }
+
+  try {
+    const { remaining } = await limiter.getRemaining(identifier)
+    return remaining <= 0
+  } catch (error) {
+    logger.error('Distributed rate limit lookup failed; letting the request through', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { prefix: options.prefix },
+    })
+    return false
+  }
+}
+
+/**
+ * The per-copy fallback for isDistributedRateLimitExhausted. Kept here, not in the shared store,
+ * so peeking never counts: a counter of misses per subject, reset when its window ends.
+ */
+const localMissCounts = new Map<string, { count: number; resetAt: number }>()
+// Bounds the map under scanner traffic: expired subjects are swept once it grows, and the oldest
+// are dropped past the cap, so memory tracks the current window, not every address ever seen.
+const LOCAL_MISS_SWEEP_AT = 1_000
+const LOCAL_MISS_MAX = 10_000
+
+function makeRoomForLocalMiss(now: number): void {
+  if (localMissCounts.size < LOCAL_MISS_SWEEP_AT) return
+  for (const [key, entry] of localMissCounts) {
+    if (entry.resetAt < now) localMissCounts.delete(key)
+  }
+  while (localMissCounts.size >= LOCAL_MISS_MAX) {
+    const oldest = localMissCounts.keys().next().value
+    if (oldest === undefined) break
+    localMissCounts.delete(oldest)
+  }
+}
+
+/** Test hook: how many subjects the per-copy miss counter is holding. */
+export function localMissCountSizeForTests(): number {
+  return localMissCounts.size
+}
+
+function peekLocalCount(options: RateLimitOptions, identifier: string): number {
+  const key = `${options.prefix}:${identifier}`
+  const entry = localMissCounts.get(key)
+  if (!entry || entry.resetAt < Date.now()) return 0
+  return entry.count
+}
+
+/**
+ * Count one outcome against a peek-first limit (see isDistributedRateLimitExhausted). Never throws.
+ */
+export async function recordDistributedRateLimitHit(
+  request: NextRequest,
+  options: RateLimitOptions
+): Promise<void> {
+  const identifier = options.identifier?.trim() || getClientIp(request)
+  const limiter = getUpstashLimiter(options)
+
+  if (!limiter) {
+    const key = `${options.prefix}:${identifier}`
+    const now = Date.now()
+    const entry = localMissCounts.get(key)
+    if (!entry || entry.resetAt < now) {
+      localMissCounts.delete(key)
+      makeRoomForLocalMiss(now)
+      localMissCounts.set(key, { count: 1, resetAt: now + (options.localWindowMs ?? windowToMs(options.window)) })
+    } else {
+      entry.count += 1
+    }
+    return
+  }
+
+  try {
+    await limiter.limit(identifier)
+  } catch (error) {
+    logger.error('Could not count a rate-limited outcome', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { prefix: options.prefix },
+    })
+  }
+}
+
 export async function applyDistributedRateLimit(
   request: NextRequest,
   options: RateLimitOptions
 ): Promise<NextResponse | null> {
   const message = options.message ?? 'Too many requests. Please try again later.'
-  const identifier = options.identifier?.trim() || getClientIp(request)
-  const limiter = getUpstashLimiter(options)
+  const decision = await checkDistributedRateLimit(request, options)
 
-  if (!limiter) {
-    const localLimiter = createRateLimiter({
-      name: 'distributed-fallback',
-      windowMs: options.localWindowMs ?? 60 * 60 * 1000,
-      max: options.max,
-      message,
-      keyGenerator: () => `${options.prefix}:${identifier}`,
-    })
-    return localLimiter(request)
-  }
-
-  const result = await limiter.limit(identifier)
-
-  if (result.success) {
+  if (!decision.limited) {
     return null
   }
-
-  const retryAfter = Math.max(1, Math.ceil((result.reset - Date.now()) / 1000))
 
   return NextResponse.json(
     { success: false, error: { code: 'RATE_LIMITED', message } },
     {
       status: 429,
       headers: {
-        'Retry-After': String(retryAfter),
+        'Retry-After': String(decision.retryAfterSeconds),
         'X-RateLimit-Limit': String(options.max),
-        'X-RateLimit-Remaining': String(result.remaining),
-        'X-RateLimit-Reset': new Date(result.reset).toISOString(),
+        'X-RateLimit-Remaining': String(decision.remaining),
+        'X-RateLimit-Reset': decision.resetAt.toISOString(),
       },
     }
   )

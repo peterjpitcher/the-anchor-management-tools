@@ -29,6 +29,12 @@ import {
   formatGbp,
   getLondonDateIso,
 } from '../utils'
+import {
+  StaffGuestDetailsFields,
+  resizeStaffGuestRows,
+  type StaffGuestRow,
+} from '@/components/features/events/StaffGuestDetailsFields'
+import { MAX_FOH_EVENT_SEATS, fohEventOffersTicketTypes, fohEventSeatCount } from '../event-guest-details'
 
 export type CreateForm = {
   booking_date: string
@@ -57,6 +63,10 @@ export type CreateForm = {
   christmas_course_counts?: number[]
   /** Staff read the guest the marketing notice and they said yes (D32). Never assumed. */
   marketing_texts_yes?: boolean
+  /** Event bookings: each ticket's guest details, any of which may follow (BK-011). */
+  event_guest_rows?: StaffGuestRow[]
+  /** Event bookings on events with ticket types: quantity typed per type (BK-141). */
+  event_ticket_quantities?: Record<string, string>
 }
 
 type FohCreateBookingModalProps = {
@@ -85,6 +95,8 @@ type FohCreateBookingModalProps = {
   formRequiresDeposit: boolean
   /** Non-Christmas seasonal period covering the chosen date, if any. */
   seasonalPeriod: FohBookingPeriod | null
+  /** The Christmas period's pre-order cutoff in days (BK-150); null when not known. */
+  christmasPreorderCutoffDays?: number | null
   seasonalAnswer: boolean | null
   onSetSeasonalAnswer: (accepted: boolean) => void
   // Messages
@@ -122,13 +134,25 @@ const CHRISTMAS_COURSE_OPTIONS = [
  * kitchen could not tell who was paying for what. "Everyone" fills every guest at once, because a
  * table often all has the same.
  */
+/**
+ * When pre-orders close, from the period setting rather than a fixed 7 (BK-150).
+ * "noon 7 days before the date", or "the pre-order deadline" when the setting is not known.
+ */
+export function christmasPreorderDeadlineText(cutoffDays: number | null | undefined): string {
+  if (typeof cutoffDays !== 'number' || !Number.isFinite(cutoffDays)) return 'the pre-order deadline'
+  if (cutoffDays === 0) return 'noon on the date'
+  return `noon ${cutoffDays} day${cutoffDays === 1 ? '' : 's'} before the date`
+}
+
 function ChristmasCreateCourses({
   partySize,
   counts,
+  cutoffDays,
   onChange,
 }: {
   partySize: number
   counts: number[]
+  cutoffDays: number | null
   onChange: (counts: number[]) => void
 }) {
   const seats = Number.isFinite(partySize) ? Math.max(0, Math.min(CHRISTMAS_MAX_PARTY_SIZE, partySize)) : 0
@@ -141,7 +165,7 @@ function ChristmasCreateCourses({
       <legend className="text-sm font-medium text-text">Christmas courses for each guest</legend>
       <p className="text-xs text-text-muted">
         Guests on 1 course have nothing to pre-order. 2 courses is a main plus a starter or a dessert;
-        3 courses is all three. 2 and 3 courses need food choices by noon 7 days before the date.
+        3 courses is all three. 2 and 3 courses need food choices by {christmasPreorderDeadlineText(cutoffDays)}.
       </p>
       <Select
         label="Everyone"
@@ -198,6 +222,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     walkInPurposeAutoSelectionEnabled,
     formRequiresDeposit,
     seasonalPeriod,
+    christmasPreorderCutoffDays = null,
     seasonalAnswer,
     onSetSeasonalAnswer,
     errorMessage,
@@ -441,8 +466,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
                 at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
                 deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
-                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after noon
-                7 days before the date, it&apos;s the 1 course menu for everyone, with no pre-order.
+                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after{' '}
+                {christmasPreorderDeadlineText(christmasPreorderCutoffDays)}, it&apos;s the 1 course menu for
+                everyone, with no pre-order.
               </p>
             )}
           </div>
@@ -451,6 +477,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             <ChristmasCreateCourses
               partySize={Number.parseInt(createForm.party_size, 10)}
               counts={createForm.christmas_course_counts ?? []}
+              cutoffDays={christmasPreorderCutoffDays}
               onChange={(counts) => onSetCreateForm((current) => ({ ...current, christmas_course_counts: counts }))}
             />
           )}
@@ -466,7 +493,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                     if (createMode === 'walk_in') {
                       onSetWalkInPurposeAutoSelectionEnabled(false)
                     }
-                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated' }))
+                    onSetCreateForm((current) => ({ ...current, event_id: event.target.value, seating_preference: 'seated', event_ticket_quantities: {}, event_guest_rows: [] }))
                   }}
                   className={FIELD_CLASS}
                 >
@@ -532,6 +559,42 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                   </div>
                 </div>
               )}
+
+              {selectedEventOption && fohEventOffersTicketTypes(selectedEventOption) && (
+                <div className="space-y-2 rounded-default border border-border bg-surface px-3 py-2 md:col-span-2">
+                  <p className="text-xs font-medium text-text">Tickets</p>
+                  {(selectedEventOption.ticket_types ?? []).map((type) => (
+                    <Input
+                      key={type.id}
+                      label={`${type.name} (${formatGbp(type.price)})`}
+                      inputMode="numeric"
+                      value={createForm.event_ticket_quantities?.[type.id] ?? ''}
+                      placeholder="0"
+                      onChange={(event) => {
+                        const value = event.target.value.replace(/\D/g, '')
+                        onSetCreateForm((current) => ({ ...current, event_ticket_quantities: { ...(current.event_ticket_quantities ?? {}), [type.id]: value } }))
+                      }}
+                      className={FIELD_CLASS}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {selectedEventOption && (() => {
+                const seatCount = fohEventSeatCount({ option: selectedEventOption, partySize: createForm.party_size, quantities: createForm.event_ticket_quantities })
+                if (seatCount < 1 || seatCount > MAX_FOH_EVENT_SEATS) return null
+                return (
+                  <div className="md:col-span-2">
+                    <StaffGuestDetailsFields
+                      idPrefix="foh-event-guest"
+                      rows={resizeStaffGuestRows(createForm.event_guest_rows ?? [], seatCount)}
+                      questions={selectedEventOption.booking_questions ?? []}
+                      required={selectedEventOption.guest_details_required === true}
+                      onChange={(rows) => onSetCreateForm((current) => ({ ...current, event_guest_rows: rows }))}
+                    />
+                  </div>
+                )
+              })()}
 
               {eventOptionsError && (
                 <p className="text-xs text-danger md:col-span-2">{eventOptionsError}</p>

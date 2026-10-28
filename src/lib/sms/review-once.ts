@@ -1,4 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
+import { londonVisitAtIso } from '@/lib/dateUtils'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 
 export type ReviewVisitChannel = 'event' | 'table' | 'private'
@@ -282,19 +283,11 @@ function errorMessage(error: unknown): string {
   return String(error)
 }
 
+// London wall clock (BK-211): a naive `${date}T${time}` was read in the server's zone, UTC live.
 function parseDateTimeParts(date: string | null | undefined, time: string | null | undefined): number | null {
-  const datePart = date?.slice(0, 10)
-  if (!datePart) return null
-
-  const trimmedTime = time?.trim()
-  const timePart = trimmedTime
-    ? /^\d{1,2}:\d{2}$/.test(trimmedTime)
-      ? `${trimmedTime}:00`
-      : trimmedTime
-    : '00:00:00'
-
-  return parseTimestampMs(`${datePart}T${timePart}`)
+  return parseTimestampMs(londonVisitAtIso(date, time))
 }
+
 
 function firstRelation<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) {

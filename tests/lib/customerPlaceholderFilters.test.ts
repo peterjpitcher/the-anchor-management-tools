@@ -35,7 +35,10 @@ describe('placeholder customers are filtered out', () => {
     expect(source('src/lib/analytics/customer-insights.ts')).toContain("'is_placeholder.eq.true'")
   })
 
-  it('anonymising a deleted customer marks it a placeholder', () => {
-    expect(source('src/services/customers.ts')).toContain('is_placeholder: true')
+  it('anonymising a deleted, erased or merged customer marks it a placeholder', () => {
+    // 'Delete customer' runs the GDPR erasure path since BK-161, so the flag is set there.
+    expect(source('src/services/customers.ts')).toContain('eraseCustomers(')
+    expect(source('src/services/gdpr.ts')).toContain('is_placeholder: true')
+    expect(source('supabase/migrations/20261027232352_merge_customers.sql')).toContain('is_placeholder = true')
   })
 })

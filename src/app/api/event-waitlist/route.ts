@@ -22,7 +22,8 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
-import { ConsentService } from '@/services/consent'
+import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
+import { GUEST_BOOKING_MAX_PER_HOUR, limitBookingAttempt } from '@/lib/api/booking-rate-limits'
 
 const CreateEventWaitlistSchema = z.object({
   event_id: z.string().uuid(),
@@ -215,6 +216,16 @@ export async function POST(request: NextRequest) {
       communication_consent: consentHashPayload(parsed.data.communication_consent)
     })
 
+    // Per-guest cap (BK-108): the waitlist had no limit of its own. Counted across every server copy.
+    const guestLimitResponse = await limitBookingAttempt(req, {
+      prefix: 'event-waitlist-guest',
+      subject: normalizedPhone,
+      max: GUEST_BOOKING_MAX_PER_HOUR
+    })
+    if (guestLimitResponse) {
+      return guestLimitResponse
+    }
+
     const supabase = createAdminClient()
     const idempotencyState = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
@@ -252,6 +263,10 @@ export async function POST(request: NextRequest) {
         email: parsed.data.email || null
       })
       if (!customerResolution.customerId) {
+        logger.error('Event waitlist could not find or create the customer', {
+          error: new Error('customer_resolution_failed'),
+          metadata: { eventId: parsed.data.event_id },
+        })
         return createErrorResponse('Failed to resolve customer', 'CUSTOMER_RESOLUTION_FAILED', 500)
       }
 
@@ -277,10 +292,11 @@ export async function POST(request: NextRequest) {
       // Recorded once the entry exists, so the consent names it (BK-080), and before the waitlist
       // text so that text's channel choice sees it.
       if (state === 'queued' && waitlistResult.waitlist_entry_id) {
-        await ConsentService.applyBookingContactConsent(
-          customerResolution.customerId,
-          parsed.data.communication_consent,
-          {
+        // A failure is logged and raised with the manager; the entry carries on (BK-039).
+        await applyBookingContactConsentSafe({
+          customerId: customerResolution.customerId,
+          consent: parsed.data.communication_consent,
+          context: {
             source: 'public_event_waitlist',
             captureMethod: 'checkbox',
             sourceUrl: req.headers.get('referer'),
@@ -288,8 +304,9 @@ export async function POST(request: NextRequest) {
             relatedEntityType: 'event_waitlist',
             relatedEntityId: waitlistResult.waitlist_entry_id,
             metadata: { idempotency_key: idempotencyKey, event_id: parsed.data.event_id }
-          }
-        )
+          },
+          alert: { domain: 'event_bookings', bookingId: waitlistResult.waitlist_entry_id, path: `/events/${parsed.data.event_id}` },
+        })
       }
 
       if (state === 'queued') {

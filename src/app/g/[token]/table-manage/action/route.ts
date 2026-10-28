@@ -5,6 +5,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { logger } from '@/lib/logger'
+import { hashGuestToken } from '@/lib/guest/tokens'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 import {
   getTableManagePreviewByRawToken,
   updateTableBookingByRawToken
@@ -183,6 +185,28 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { action: payload.action }
     })
+    // A cancellation that crashed leaves the table booked, and nobody at the pub knows the guest
+    // is not coming (BK-115). The guest sees the error banner with the pub's number; the manager
+    // is told too. The booking is not known here, only the link, so the alert names the link's
+    // hash (never the link itself, which is the guest's key).
+    await alertMoneyNeedsAPerson(supabase, {
+      domain: 'table_bookings',
+      bookingId: hashGuestToken(token),
+      kind: `guest_manage_${payload.action}_failed`,
+      subjectTag: 'BOOKING ACTION NEEDED',
+      path: '/table-bookings',
+      title: payload.action === 'cancel'
+        ? 'A guest tried to cancel a table booking online and it failed'
+        : 'A guest tried to change a table booking online and it failed',
+      summary: payload.action === 'cancel'
+        ? 'A guest used their manage link to cancel, but the cancellation did not save, so the booking still holds its table. The guest was shown an error with the pub phone number. Check the log for this time, find the booking and cancel it if the guest calls or does not arrive.'
+        : 'A guest used their manage link to change their booking, but the change did not save. The guest was shown an error with the pub phone number. Check the log for this time and the booking if the guest calls.',
+      context: {
+        Action: payload.action,
+        'Link hash': hashGuestToken(token),
+        Error: error instanceof Error ? error.message : String(error),
+      },
+    })
     return redirectWithStatus(request, token, 'error')
   }
 }
@@ -297,7 +321,8 @@ async function auditGuestPreorderSave(input: {
       },
     })
   } catch (error) {
-    logger.warn('Could not audit a guest pre-order save', {
+    logger.error('Could not audit a guest pre-order save', {
+      error: error instanceof Error ? error : new Error(String(error)),
       metadata: {
         tableBookingId: input.tableBookingId,
         error: error instanceof Error ? error.message : String(error),
@@ -444,8 +469,11 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
         }
         savedDishIds.push(...(input.addonMenuItemIds ?? []))
       } catch (error) {
-        // Never log the seat's dietary note or name: this field is staff-and-kitchen only.
-        logger.warn('Guest pre-order seat could not be saved', {
+        // Never log the seat's dietary note or name: this field is staff-and-kitchen only. Too many
+        // courses for the seat's tier is the guest's choice to fix (a warning); anything else is a
+        // fault that loses their food choice (an error, BK-115).
+        const logSeatFailure = error instanceof PreorderCourseLimitError ? logger.warn : logger.error
+        logSeatFailure.call(logger, 'Guest pre-order seat could not be saved', {
           metadata: {
             tableBookingId: order.tableBookingId,
             ordinal,
@@ -484,7 +512,8 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
 
     return redirectWithPreorderStatus(request, token, 'saved')
   } catch (error) {
-    logger.warn('Guest pre-order save failed unexpectedly', {
+    logger.error('Guest pre-order save failed unexpectedly', {
+      error: error instanceof Error ? error : new Error(String(error)),
       metadata: {
         error: error instanceof Error ? error.message : String(error)
       }

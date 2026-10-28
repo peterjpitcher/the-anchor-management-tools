@@ -86,6 +86,7 @@ import {
   Field,
   Fieldset,
   FormFooter,
+  CustomerLink,
   Icon,
   IconButton,
   Input,
@@ -2659,6 +2660,16 @@ export default function PrivateBookingDetailClient({
         </>
       }
     >
+      {/* The customer's profile, one tap from the booking (BK-181). */}
+      <p className="text-sm text-text-muted">
+        Customer:{' '}
+        <CustomerLink
+          customerId={booking.customer_id}
+          name={booking.customer_full_name || booking.customer_name}
+          fallback="Unknown customer"
+        />
+      </p>
+
       {pageError && (
         <Alert
           tone="danger"

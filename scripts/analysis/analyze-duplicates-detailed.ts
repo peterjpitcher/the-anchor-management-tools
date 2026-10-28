@@ -27,6 +27,7 @@ type CustomerRow = {
   table_booking_count: number | null
   no_show_count: number | null
   bookings?: Array<{ count: number }> | null
+  table_bookings?: Array<{ count: number }> | null
 }
 
 function assertReadOnly(argv: string[]): void {
@@ -54,9 +55,9 @@ async function main() {
         messaging_status,
         sms_delivery_failures,
         last_successful_sms_at,
-        table_booking_count,
         no_show_count,
-        bookings (count)
+        bookings (count),
+        table_bookings (count)
       `)
     .order('created_at')
 
@@ -67,6 +68,11 @@ async function main() {
       data: data as CustomerRow[] | null,
       allowMissing: true,
     }) ?? []) as CustomerRow[]
+
+  // customers.table_booking_count was dropped (BK-165): count the bookings themselves.
+  for (const customer of allCustomers) {
+    customer.table_booking_count = customer.table_bookings?.[0]?.count ?? 0
+  }
 
   const phoneMap = new Map<string, CustomerRow[]>()
   for (const customer of allCustomers) {

@@ -17,6 +17,9 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
 
+const mockAudit = vi.hoisted(() => vi.fn())
+vi.mock('@/services/audit', () => ({ AuditService: { logAuditEvent: mockAudit } }))
+
 vi.mock('@/lib/sms/support', () => ({
   ensureReplyInstruction: vi.fn((body: string) => body),
 }))
@@ -264,5 +267,49 @@ describe('BOH table booking SMS route safety signals', () => {
         }),
       })
     )
+  })
+
+  // BK-182: a text typed on the booking page records who sent it.
+  it('records the sender on the message and in the audit log', async () => {
+    const bookingId = '00000000-0000-4000-8000-000000000003'
+    const customerId = '00000000-0000-4000-8000-000000000013'
+    const bookingMaybeSingle = vi.fn().mockResolvedValue({
+      data: {
+        id: bookingId,
+        booking_reference: 'ABC777',
+        customer: { id: customerId, first_name: 'Pat', mobile_number: '+447700900001', sms_status: 'active' },
+      },
+      error: null,
+    })
+    const messagesSelectGte = vi.fn().mockResolvedValue({ count: 0, error: null })
+    const supabase = {
+      from: vi.fn((table: string) => {
+        if (table === 'table_bookings') {
+          return { select: () => ({ eq: () => ({ maybeSingle: bookingMaybeSingle }) }) }
+        }
+        return { select: () => ({ eq: () => ({ eq: () => ({ gte: messagesSelectGte }) }) }) }
+      }),
+    }
+    ;(requireFohPermission as unknown as Mock).mockResolvedValue({ ok: true, userId: 'user-1', supabase })
+    ;(sendSMS as unknown as Mock).mockResolvedValue({ success: true, sid: 'SM777', status: 'queued' })
+
+    const response = await POST(
+      new Request(`http://localhost/api/boh/table-bookings/${bookingId}/sms`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: 'Your table is ready' }),
+      }) as any,
+      { params: Promise.resolve({ id: bookingId }) }
+    )
+
+    expect(response.status).toBe(200)
+    expect((sendSMS as unknown as Mock).mock.calls[0][2].metadata).toMatchObject({ sent_by_user_id: 'user-1' })
+    expect(mockAudit).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'user-1',
+      operation_type: 'table_booking.manual_sms_sent',
+      resource_id: bookingId,
+      operation_status: 'success',
+      additional_info: expect.objectContaining({ customer_id: customerId, message_sid: 'SM777' }),
+    }))
   })
 })

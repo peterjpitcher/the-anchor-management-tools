@@ -24,6 +24,35 @@ type IdempotencyRecord = {
 // so the same idempotency key can be retried instead of blocking until the 24h TTL expires.
 export const STALE_PROCESSING_MS = 10 * 60 * 1000
 
+/**
+ * A processing claim can carry the answer for a booking that has already been saved
+ * (BK-127, customer bookings review of 24 October 2026). The route writes it the moment the
+ * booking exists, and again with the full answer when storing that answer failed. Without it a
+ * claim left behind by a function that died after saving, or by a failed response write, was
+ * reclaimed after STALE_PROCESSING_MS, and a retry with the same key booked a second time.
+ *
+ * While the claim is fresh nothing changes: the original request may still be running, so a
+ * retry is told the request is in progress. Once it is stale, the stored answer is replayed
+ * instead of the key being handed to a new attempt.
+ */
+type ProcessingResponse = {
+  state?: string
+  claimed_at?: string
+  committed_response?: unknown
+}
+
+function committedResponseOf(response: unknown): unknown {
+  if (!response || typeof response !== 'object') return undefined
+  const committed = (response as ProcessingResponse).committed_response
+  return committed === null ? undefined : committed
+}
+
+function isStaleProcessingClaim(response: ProcessingResponse, staleProcessingMs: number): boolean {
+  const claimedAt = typeof response.claimed_at === 'string' ? response.claimed_at : null
+  if (!claimedAt) return true
+  return claimedAt < new Date(Date.now() - staleProcessingMs).toISOString()
+}
+
 export function stableSerialize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
     return JSON.stringify(value)
@@ -125,6 +154,14 @@ export async function lookupIdempotencyKey(
 
   if (data.request_hash !== requestHash) {
     return { state: 'conflict' }
+  }
+
+  const processing = data.response as ProcessingResponse | null
+  if (processing?.state === 'processing') {
+    const committed = committedResponseOf(processing)
+    if (committed !== undefined && isStaleProcessingClaim(processing, STALE_PROCESSING_MS)) {
+      return { state: 'replay', response: committed }
+    }
   }
 
   return {
@@ -248,14 +285,20 @@ export async function claimIdempotencyKey(
     return { state: 'conflict' }
   }
 
-  const response = existing.response as { state?: string; claimed_at?: string } | null
+  const response = existing.response as ProcessingResponse | null
   if (response?.state === 'processing') {
     const claimedAt = typeof response.claimed_at === 'string' ? response.claimed_at : null
-    const staleCutoffIso = new Date(Date.now() - staleProcessingMs).toISOString()
 
     // Claims without claimed_at predate this field and are treated as stale.
-    if (claimedAt && claimedAt >= staleCutoffIso) {
+    if (!isStaleProcessingClaim(response, staleProcessingMs)) {
       return { state: 'in_progress' }
+    }
+
+    // The booking behind this claim was saved. Replay its answer; never hand the key to a new
+    // attempt, which would book again (BK-127).
+    const committed = committedResponseOf(response)
+    if (committed !== undefined) {
+      return { state: 'replay', response: committed }
     }
 
     let reclaimQuery = supabase
@@ -296,7 +339,7 @@ export async function claimIdempotencyKey(
     }
 
     if (latest.state === 'replay') {
-      const latestResponse = latest.response as { state?: string } | null
+      const latestResponse = latest.response as ProcessingResponse | null
       if (latestResponse?.state === 'processing') {
         return { state: 'in_progress' }
       }
@@ -330,6 +373,60 @@ export async function persistIdempotencyResponse(
   if (error) {
     throw error
   }
+}
+
+/**
+ * Record, on a claim that is still processing, the answer to replay for a booking that has been
+ * saved (see ProcessingResponse above). Call it as soon as the booking exists, and again with the
+ * full answer when persistIdempotencyResponse failed. Refreshes claimed_at, because the caller is
+ * demonstrably still running.
+ *
+ * Throws on a database error. Callers log it and carry on: the booking is already made.
+ */
+export async function markIdempotencyClaimCommitted(
+  supabase: SupabaseClient<any, 'public', any>,
+  key: string,
+  requestHash: string,
+  committedResponse: unknown
+): Promise<void> {
+  const { error } = await supabase
+    .from('idempotency_keys')
+    .update({
+      response: {
+        state: 'processing',
+        claimed_at: new Date().toISOString(),
+        committed_response: committedResponse
+      }
+    })
+    .eq('key', key)
+    .eq('request_hash', requestHash)
+    .filter('response->>state', 'eq', 'processing')
+
+  if (error) {
+    throw error
+  }
+}
+
+/**
+ * Delete stored answers past their expiry (BK-189). An expired row is already treated as new by
+ * every reader, so removing it changes no behaviour; it only stops the table growing for ever.
+ * Returns how many rows went.
+ */
+export async function deleteExpiredIdempotencyKeys(
+  supabase: SupabaseClient<any, 'public', any>,
+  now: Date = new Date()
+): Promise<number> {
+  const { data, error } = await supabase
+    .from('idempotency_keys')
+    .delete()
+    .lt('expires_at', now.toISOString())
+    .select('key')
+
+  if (error) {
+    throw error
+  }
+
+  return Array.isArray(data) ? data.length : 0
 }
 
 export async function releaseIdempotencyClaim(

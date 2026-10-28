@@ -29,6 +29,9 @@ vi.mock('@/lib/logger', () => ({
   logger: mocks.logger,
 }))
 
+const alertMoneyNeedsAPerson = vi.hoisted(() => vi.fn())
+vi.mock('@/lib/money-alerts', () => ({ alertMoneyNeedsAPerson }))
+
 import { GET, POST } from '@/app/g/[token]/table-manage/action/route'
 
 function buildCancelRequest() {
@@ -58,6 +61,23 @@ describe('guest table-manage cancellation route', () => {
       charge_request_id: null,
       charge_amount: null,
     })
+  })
+
+  it('shows the guest the error state, logs an error and tells the manager when a cancellation crashes (BK-115)', async () => {
+    mocks.updateTableBookingByRawToken.mockRejectedValue(new Error('cancel_table_booking_v05 timed out'))
+    alertMoneyNeedsAPerson.mockResolvedValue({ sent: true, duplicate: false })
+
+    const response = await POST(buildCancelRequest(), { params: Promise.resolve({ token: 'raw-token' }) })
+
+    expect(response.status).toBe(303)
+    expect(new URL(response.headers.get('location') || '').searchParams.get('status')).toBe('error')
+    expect(mocks.logger.error).toHaveBeenCalledWith('Guest table-manage action failed unexpectedly', expect.anything())
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      domain: 'table_bookings',
+      kind: 'guest_manage_cancel_failed',
+    }))
+    // The link is the guest's key: only its hash may appear in the alert.
+    expect(JSON.stringify(alertMoneyNeedsAPerson.mock.calls[0][1])).not.toContain('raw-token')
   })
 
   it('accepts the cancel form without a party_size field', async () => {

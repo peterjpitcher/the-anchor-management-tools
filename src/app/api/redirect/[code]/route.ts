@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { waitUntil } from '@vercel/functions'
 import { logger } from '@/lib/logger'
+import { isDistributedRateLimitExhausted, recordDistributedRateLimitHit } from '@/lib/distributed-rate-limit'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { createTablePaymentToken, getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
@@ -16,6 +17,31 @@ import {
 } from '@/lib/user-agent-parser'
 
 const FALLBACK_REDIRECT_URL = 'https://www.the-anchor.pub'
+
+/**
+ * Wrong guesses allowed per address (BK-203, customer bookings review of 24 October 2026). Guest
+ * manage, payment and confirm links sit behind short codes, so guessing codes at scale could land
+ * on a stranger's booking. Only codes that resolve to nothing are counted, across every server
+ * copy, so people opening real links are never slowed; an address that has used up its misses is
+ * refused before any lookup until the hour moves on. A mistyped link costs one.
+ */
+const SHORT_LINK_MISS_LIMIT = {
+  prefix: 'short-link-miss',
+  window: '1 h' as const,
+  max: 30,
+}
+
+async function redirectForMiss(request: NextRequest): Promise<NextResponse> {
+  await recordDistributedRateLimitHit(request, SHORT_LINK_MISS_LIMIT)
+  return NextResponse.redirect(FALLBACK_REDIRECT_URL)
+}
+
+function tooManyMisses(): NextResponse {
+  return new NextResponse(
+    'Too many links that do not exist have been opened from your connection. Please try again in an hour, or call us on 01753 682707.',
+    { status: 429, headers: { 'Retry-After': '3600', 'Content-Type': 'text/plain; charset=utf-8' } }
+  )
+}
 const MISSING_RELATION_CODE = '42P01'
 let hasLoggedMissingAliasTable = false
 const PASSTHROUGH_TRACKING_PARAMS = [
@@ -321,10 +347,15 @@ export async function GET(
 ) {
   try {
     const { code: rawCode } = await params
+
+    if (await isDistributedRateLimitExhausted(request, SHORT_LINK_MISS_LIMIT)) {
+      return tooManyMisses()
+    }
+
     const shortCode = normalizeShortCode(rawCode)
 
     if (!shortCode) {
-      return NextResponse.redirect(FALLBACK_REDIRECT_URL)
+      return redirectForMiss(request)
     }
 
     const supabase = createAdminClient()
@@ -360,7 +391,7 @@ export async function GET(
       }
 
       if (!alias) {
-        return NextResponse.redirect(FALLBACK_REDIRECT_URL)
+        return redirectForMiss(request)
       }
 
       const { data: targetLink, error: targetError } = await supabase
@@ -375,7 +406,7 @@ export async function GET(
       }
 
       if (!targetLink) {
-        return NextResponse.redirect(FALLBACK_REDIRECT_URL)
+        return redirectForMiss(request)
       }
 
       resolvedLink = targetLink as ShortLinkRow

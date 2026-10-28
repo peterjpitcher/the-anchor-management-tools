@@ -269,7 +269,14 @@ export default function CustomersClient({
     try {
       const result = await deleteCustomerAction(deleteTarget.id)
       if ('error' in result && result.error) throw new Error(result.error)
-      toast.success('Customer deleted successfully'); refreshCurrentPage()
+      // Some personal data could not be removed: say so, with what is left and how to finish it,
+      // rather than report a clean delete (the record is hidden either way).
+      if ('incomplete' in result && result.incomplete) {
+        toast.error(`Customer deleted, but not everything was removed. ${result.message ?? ''}`.trim(), { duration: 15000 })
+      } else {
+        toast.success('Customer deleted. Their details are removed and their opt-outs kept.')
+      }
+      refreshCurrentPage()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to delete customer')
     } finally { setDeleteTarget(null) }
@@ -670,10 +677,8 @@ export default function CustomersClient({
       )}
 
       {/* Delete confirmation.
-          The copy has to describe both outcomes of deleteCustomer, because the
-          action picks between them on its own: a straight delete cascades far
-          wider than bookings, and a customer with a table, private or parking
-          booking cannot be deleted at all and is anonymised in place instead. */}
+          deleteCustomer anonymises the record through the shared erasure path and refuses while
+          the customer has bookings coming up (BK-161), so the copy describes exactly that. */}
       <ConfirmDialog
         open={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
@@ -684,17 +689,15 @@ export default function CustomersClient({
             <div className="space-y-2">
               <p>
                 Delete {deleteTarget.first_name}
-                {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Where the record can be
-                removed, this permanently deletes it along with their event bookings, message history,
-                consent records, event check-ins, labels and loyalty membership.
+                {deleteTarget.last_name ? ` ${deleteTarget.last_name}` : ''}? Their name, phone number,
+                email and notes are removed, and the wording of their messages is cleared. Their past
+                bookings stay, without their details, so totals and history still add up.
               </p>
               <p>
-                A record tied to a table, private or parking booking, or to an SMS campaign, cannot be
-                removed. It is anonymised instead: the name becomes &quot;Deleted Customer&quot;, the
-                phone number and email are cleared, internal notes are wiped and every marketing opt-in
-                is switched off. Their bookings and message history stay.
+                Any opt-outs they gave are kept, so if they book again they start opted out. A customer
+                with bookings coming up cannot be deleted until those are cancelled or moved.
               </p>
-              <p className="font-medium">Either way, this cannot be undone.</p>
+              <p className="font-medium">This cannot be undone.</p>
             </div>
           ) : (
             ''

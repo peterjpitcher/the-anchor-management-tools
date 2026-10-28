@@ -196,6 +196,16 @@ type PrivateBlockForTable = {
   }
 }
 
+/**
+ * Parts of the floor that could not be loaded. Each one is drawn as if empty, so the screen must
+ * say so (BK-179); the iPad shows a banner and the next poll tries again.
+ */
+export type FohScheduleLoadWarning = 'private_hires' | 'event_names' | 'communal_event_seats' | 'standing_event_guests' | 'table_areas'
+
+function errorForLog(error: unknown): Error {
+  return new Error(String((error as { message?: unknown } | null)?.message ?? error))
+}
+
 function isMissingSchemaError(error: unknown): boolean {
   const message = String((error as { message?: string } | null)?.message || '').toLowerCase()
   return (
@@ -211,7 +221,7 @@ async function loadScheduleBookingRows(
   date: string,
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, allergies, dietary_requirements, celebration_type, internal_notes, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, requires_accessible_table, christmas_course_counts, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, allergies, dietary_requirements, celebration_type, internal_notes, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, requires_accessible_table, christmas_course_counts, guest_confirmed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
   ]
@@ -285,8 +295,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load schedule bookings' }, { status: 500 })
   }
 
+  const loadWarnings: FohScheduleLoadWarning[] = []
+  const warn = (warning: FohScheduleLoadWarning, error: unknown) => {
+    loadWarnings.push(warning)
+    logger.error('FOH schedule could not load part of the floor', {
+      error: errorForLog(error),
+      metadata: { date, warning },
+    })
+  }
+
   const areaNameById = new Map<string, string>()
-  if (!tableAreasResult.error) {
+  if (tableAreasResult.error) {
+    warn('table_areas', tableAreasResult.error)
+  } else {
     for (const row of (tableAreasResult.data || [])) {
       if (row?.id && row?.name) {
         areaNameById.set(row.id, row.name)
@@ -474,7 +495,9 @@ export async function GET(request: NextRequest) {
   }
 
   const eventNameById = new Map<string, string>()
-  if (!eventsResult.error) {
+  if (eventsResult.error) {
+    warn('event_names', eventsResult.error)
+  } else {
     for (const row of (eventsResult.data || [])) {
       if (typeof row?.id === 'string' && typeof row?.name === 'string' && row.name.trim().length > 0) {
         eventNameById.set(row.id, row.name.trim())
@@ -486,18 +509,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Failed to load table assignments' }, { status: 500 })
   }
 
-  const communalRows =
-    communalAllocationsResult.error && isMissingSchemaError(communalAllocationsResult.error)
-      ? []
-      : communalAllocationsResult.error
-        ? []
-        : communalAllocationsResult.data || []
-  const standingRows =
-    standingBookingsResult.error && isMissingSchemaError(standingBookingsResult.error)
-      ? []
-      : standingBookingsResult.error
-        ? []
-        : standingBookingsResult.data || []
+  // A failed read draws those seats and guests as absent, so it is reported, never dropped
+  // silently (BK-179).
+  if (communalAllocationsResult.error) warn('communal_event_seats', communalAllocationsResult.error)
+  if (standingBookingsResult.error) warn('standing_event_guests', standingBookingsResult.error)
+  const communalRows = communalAllocationsResult.error ? [] : communalAllocationsResult.data || []
+  const standingRows = standingBookingsResult.error ? [] : standingBookingsResult.data || []
 
   const assignmentsByBooking = new Map<string, any[]>()
   for (const row of (assignmentsResult.data || [])) {
@@ -510,6 +527,7 @@ export async function GET(request: NextRequest) {
   // When the hires cannot be read the screen says so (BK-159): it used to draw no blocks at all,
   // which looked like a night with every table free.
   const privateHiresUnavailable = Boolean(privateBookingsResult.error)
+  if (privateBookingsResult.error) warn('private_hires', privateBookingsResult.error)
   for (const block of privateBookingsResult.blocks) {
     if (!visibleTableIds.has(block.table_id)) continue
     const privateBooking = block.booking
@@ -712,6 +730,8 @@ export async function GET(request: NextRequest) {
           requires_accessible_table: booking.requires_accessible_table ?? false,
           christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null,
           guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null,
+          // The guest tapped 'confirm' on the day-before text (BK-094).
+          guest_confirmed_at: typeof booking.guest_confirmed_at === 'string' ? booking.guest_confirmed_at : null,
           // Guest requirements the floor needs before they walk to the table.
           // These are columns the booking forms already write to, but nothing on
           // the FOH screen read them, so an allergy could only be discovered by
@@ -789,7 +809,8 @@ export async function GET(request: NextRequest) {
       is_outside_seating: booking.is_outside_seating ?? false,
       requires_accessible_table: booking.requires_accessible_table ?? false,
       christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null,
-      guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null
+      guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null,
+      guest_confirmed_at: typeof booking.guest_confirmed_at === 'string' ? booking.guest_confirmed_at : null
     }))
 
   // Outside bookings hold no table assignment, so they land in the untabled bucket.
@@ -886,6 +907,7 @@ export async function GET(request: NextRequest) {
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
       outside_bookings: outsideBookings,
       private_hires_unavailable: privateHiresUnavailable,
+      load_warnings: loadWarnings,
       day_load: dayLoadResult
     }
   })
