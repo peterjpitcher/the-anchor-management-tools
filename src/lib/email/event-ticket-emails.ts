@@ -35,7 +35,14 @@ import {
 import { logger } from '@/lib/logger'
 import { buildEventReminderEmailLines, type EventReminderDayWord } from '@/lib/events/event-reminder-message'
 
-type EventEmailResult = { success: boolean; error?: string; messageId?: string; skipped?: boolean }
+type EventEmailResult = {
+  success: boolean
+  error?: string
+  messageId?: string
+  skipped?: boolean
+  /** The send was not attempted because the duplicate check could not run; try again later. */
+  deferred?: boolean
+}
 
 const DELIVERABLE_EMAIL_STATUSES = ['queued', 'sent', 'delivered', 'delivery_delayed', 'opened', 'clicked']
 
@@ -461,6 +468,8 @@ async function hasSuccessfulEventEmail(
     bookingId: string
     commType: string
     metadataContains?: Record<string, unknown>
+    /** Throw when the check cannot run, instead of answering "not sent". */
+    failClosed?: boolean
   }
 ): Promise<boolean> {
   try {
@@ -482,11 +491,13 @@ async function hasSuccessfulEventEmail(
       logger.warn('Failed to check existing event email', {
         metadata: { bookingId: input.bookingId, commType: input.commType, error: error.message },
       })
+      if (input.failClosed) throw new Error(`Event email duplicate check failed: ${error.message}`)
       return false
     }
 
     return Boolean(data)
   } catch (error) {
+    if (input.failClosed) throw error
     logger.warn('Event email duplicate check unavailable', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { bookingId: input.bookingId, commType: input.commType },
@@ -678,10 +689,24 @@ export async function sendEventReminderEmail(
   if (context.bookingStatus && context.bookingStatus !== 'confirmed') return { success: false, skipped: true }
   if (!context.eventWhen) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
-  })
+  // Fail closed: the cron comes back every 15 minutes, so an unreadable email log means "not
+  // now", never "not sent yet", or one outage could email the guest every run until the event.
+  let alreadySent: boolean
+  try {
+    alreadySent = await hasSuccessfulEventEmail(supabase, {
+      bookingId: input.bookingId,
+      commType: EVENT_REMINDER_EMAIL_COMM_TYPE,
+      failClosed: true,
+    })
+  } catch (error) {
+    logger.warn('Event reminder email deferred: duplicate check unavailable', {
+      metadata: {
+        bookingId: input.bookingId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+    return { success: false, skipped: true, deferred: true }
+  }
   if (alreadySent) return { success: true, skipped: true }
 
   const manageResult = await createManageLink(supabase, context, input.appBaseUrl)

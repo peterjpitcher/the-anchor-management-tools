@@ -945,6 +945,7 @@ async function processReminders(
     const emailDay: EventReminderDayWord =
       toLocalIsoDate(eventStart) === toLocalIsoDate(now) ? 'today' : 'tomorrow'
     let emailed = false
+    let deferred = false
     try {
       const emailResult = await sendEventReminderEmail(supabase, {
         bookingId: booking.id,
@@ -952,6 +953,7 @@ async function processReminders(
         appBaseUrl,
       })
       emailed = emailResult.success === true
+      deferred = emailResult.deferred === true
     } catch (emailError) {
       logger.warn('Event reminder email failed; falling back to a text when possible', {
         metadata: {
@@ -959,6 +961,12 @@ async function processReminders(
           error: emailError instanceof Error ? emailError.message : String(emailError),
         },
       })
+    }
+    // The email log could not be read, so an email may already have gone: no text either, and the
+    // next run tries again.
+    if (deferred) {
+      result.skipped += 1
+      continue
     }
     if (emailed) {
       sentSet.add(`${booking.id}:${TEMPLATE_REMINDER_1D}`)

@@ -151,6 +151,7 @@ function buildSupabase(options?: {
   event?: EventFixture
   customer?: Record<string, unknown>
   existingConfirmation?: Record<string, unknown> | null
+  emailLookupError?: string
 }) {
   const defaultBooking = {
     id: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
@@ -180,8 +181,8 @@ function buildSupabase(options?: {
   const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
   const emailMaybeSingle = vi.fn().mockResolvedValue({
-    data: options?.existingConfirmation ?? null,
-    error: null,
+    data: options?.emailLookupError ? null : options?.existingConfirmation ?? null,
+    error: options?.emailLookupError ? { message: options.emailLookupError } : null,
   })
   const emailLimit = vi.fn().mockReturnValue({ maybeSingle: emailMaybeSingle })
   const emailContains = vi.fn().mockReturnValue({ limit: emailLimit })
@@ -322,6 +323,16 @@ describe('day-before reminder email', () => {
     )
 
     expect(result).toEqual({ success: true, skipped: true })
+    expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('defers, and sends nothing, when the email log cannot be read', async () => {
+    const result = await sendEventReminderEmail(
+      buildSupabase({ emailLookupError: 'connection reset' }) as any,
+      { bookingId: BOOKING_ID, reminderDay: 'tomorrow' }
+    )
+
+    expect(result).toEqual({ success: false, skipped: true, deferred: true })
     expect(sendEmail).not.toHaveBeenCalled()
   })
 })
