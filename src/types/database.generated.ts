@@ -5174,6 +5174,55 @@ export type Database = {
           },
         ]
       }
+      event_guest_details_reminders: {
+        Row: {
+          event_booking_id: string | null
+          event_id: string
+          id: string
+          kind: string
+          metadata: Json
+          sent_at: string
+        }
+        Insert: {
+          event_booking_id?: string | null
+          event_id: string
+          id?: string
+          kind: string
+          metadata?: Json
+          sent_at?: string
+        }
+        Update: {
+          event_booking_id?: string | null
+          event_id?: string
+          id?: string
+          kind?: string
+          metadata?: Json
+          sent_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_guest_details_reminders_event_booking_id_fkey"
+            columns: ["event_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_guest_details_reminders_event_booking_id_fkey"
+            columns: ["event_booking_id"]
+            isOneToOne: false
+            referencedRelation: "reminder_timing_debug"
+            referencedColumns: ["booking_id"]
+          },
+          {
+            foreignKeyName: "event_guest_details_reminders_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_images: {
         Row: {
           alt_text: string | null
