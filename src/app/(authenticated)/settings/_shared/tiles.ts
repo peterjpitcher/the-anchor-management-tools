@@ -15,7 +15,6 @@ export type SettingsTileRequirement =
   | 'calendarNotesView'
   | 'customersView'
   | 'messagesView'
-  | 'messageTemplatesManage'
   | 'menuManage'
   | 'maintenanceAreas'
 
@@ -71,7 +70,6 @@ const SETTINGS_TILE_GROUPS: SettingsTileGroupEntry[] = [
     title: 'Customers & Communications',
     tiles: [
       { href: '/settings/customer-labels', title: 'Customer Labels', description: 'Customer tags and automation rules', icon: 'tag', requires: 'customersView' },
-      { href: '/settings/message-templates', title: 'Message Templates', description: 'Manage SMS message templates and customise content', icon: 'fileText', requires: 'messageTemplatesManage' },
       { href: '/settings/import-messages', title: 'Import Messages', description: 'Import historical SMS messages from your Twilio account', icon: 'download', requires: 'messagesView' },
       { href: '/settings/sms-failures', title: 'SMS Failures', description: 'Retry or dismiss failed messages', icon: 'message', requires: 'settingsManage' },
     ],

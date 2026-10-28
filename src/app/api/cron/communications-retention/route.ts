@@ -5,6 +5,7 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { getLocalIsoDateDaysAgo } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
 import { GdprService } from '@/services/gdpr'
+import { resolveJobHistoryRetentionMode, runJobHistoryRetention } from '@/lib/jobs/job-history-retention'
 import {
   resolveGuestDetailsRetentionMode,
   runEventGuestDetailsRetention,
@@ -137,7 +138,16 @@ export async function GET(request: Request) {
       throw new Error(`Event guest details retention could not clear ${guestDetails.bookingsFailed} booking(s)`)
     }
 
-    return NextResponse.json({ success: true, result, preorders, guestDetails })
+    // Finished background jobs older than 90 days (owner decision D36, BK-214). Ships as a dry run:
+    // it only counts until JOB_HISTORY_RETENTION is 'delete'.
+    const jobHistory = await runJobHistoryRetention(createAdminClient(), {
+      mode: resolveJobHistoryRetentionMode(),
+    })
+    logger.info('Job history retention completed', {
+      metadata: jobHistory,
+    })
+
+    return NextResponse.json({ success: true, result, preorders, guestDetails, jobHistory })
   } catch (error) {
     logger.error('Retention cleanup failed', {
       error: error instanceof Error ? error : new Error(String(error)),
