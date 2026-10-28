@@ -1289,10 +1289,12 @@ export async function sendEventPostponedEmail(
   const heading = 'Your event has been postponed'
   // A refund is only on the table where money changed hands. A free night has nothing to refund,
   // and offering one invited a question nobody could answer.
-  const paidForTickets = context.paymentMode === 'prepaid'
+  // Owner decision D8: postponed tickets carry over to the new date, and anyone who paid can ask
+  // for a refund instead.
+  const paidForTickets = context.paymentMode === 'prepaid' && context.bookingStatus === 'confirmed'
   const nextStepsLine = paidForTickets
-    ? 'We will decide whether to hold your tickets for the new date, move them to another night, or refund you, and we will be in touch as soon as that is settled.'
-    : 'We will be in touch with the new date as soon as it is settled, and your place carries over to it.'
+    ? `Your tickets carry over to the new date, and we will let you know as soon as it is set. If the new date does not suit you, call ${GUEST_CONTACT.phoneDisplay} and we will refund you.`
+    : 'Your place carries over to the new date, and we will let you know as soon as it is set.'
 
   const body = [
     `Hi ${context.firstName},`,

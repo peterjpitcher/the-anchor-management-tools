@@ -50,6 +50,7 @@ import {
 } from '@/app/actions/event-marketing-links'
 import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventChangesAfterBookingCard } from './EventChangesAfterBookingCard'
+import { EventGuestsNotReachedCard } from './EventGuestsNotReachedCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
 import { EventGuestAnswersCard } from './EventGuestAnswersCard'
@@ -619,6 +620,7 @@ export default function EventDetailClient({
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
+              <EventGuestsNotReachedCard eventId={event.id} bookings={bookings} />
               <EventChangesAfterBookingCard eventId={event.id} />
               <OverviewTab
                 event={event}

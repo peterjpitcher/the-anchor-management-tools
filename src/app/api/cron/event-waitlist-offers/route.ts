@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { onlineBookingClosedReason } from '@/lib/events/bookable'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
@@ -51,14 +52,15 @@ async function sendEventWaitlistOffers(request: NextRequest) {
 
     for (const eventId of uniqueEventIds) {
       try {
-        // Check bookings_enabled before creating an offer
+        // The waitlist is an online channel: Accept bookings off, sales closed or a postponed night
+        // stop offers, as the booking rule does (BK-035, BK-089; owner decision D11).
         const { data: eventFlags } = await supabase
           .from('events')
-          .select('bookings_enabled')
+          .select('bookings_enabled, booking_cutoff_at, event_status, booking_open')
           .eq('id', eventId)
           .maybeSingle()
 
-        if (eventFlags?.bookings_enabled === false) {
+        if (eventFlags && onlineBookingClosedReason(eventFlags)) {
           result.skipped += 1
           continue
         }

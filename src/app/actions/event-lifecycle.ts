@@ -425,3 +425,42 @@ export async function getEventChangesAfterFirstBooking(eventId: string): Promise
     return { error: 'Changes could not be loaded.' }
   }
 }
+
+export type EventGuestsNotReached = {
+  kind: 'postpone' | 'reschedule' | 'cancel_event'
+  at: string
+  bookingIds: string[]
+}
+
+/**
+ * The guests the latest postponement, new date or cancellation notice could not reach by email
+ * or text, so staff can ring them (BK-089). Null when every guest was reached.
+ */
+export async function getEventGuestsNotReached(eventId: string): Promise<{ error?: string; data?: EventGuestsNotReached | null }> {
+  try {
+    if (!eventIdSchema.safeParse(eventId).success) return { error: 'Event not found.' }
+    if (!(await checkUserPermission('events', 'view'))) return { error: 'Insufficient permissions' }
+    const { data, error } = await createAdminClient()
+      .from('audit_logs')
+      .select('operation_type, created_at, additional_info')
+      .eq('resource_type', 'event')
+      .eq('resource_id', eventId)
+      .in('operation_type', ['postpone', 'reschedule', 'cancel_event'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+    if (error) throw error
+    const row = data?.[0]
+    if (!row) return { data: null }
+    const info = (row.additional_info ?? {}) as { not_reached_booking_ids?: unknown; notReachedBookingIds?: unknown }
+    const raw = Array.isArray(info.not_reached_booking_ids) ? info.not_reached_booking_ids : Array.isArray(info.notReachedBookingIds) ? info.notReachedBookingIds : []
+    const bookingIds = raw.filter((id): id is string => typeof id === 'string')
+    if (bookingIds.length === 0) return { data: null }
+    return { data: { kind: row.operation_type as EventGuestsNotReached['kind'], at: row.created_at as string, bookingIds } }
+  } catch (error) {
+    logger.error('Failed to load guests a notice did not reach', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId },
+    })
+    return { error: 'Could not check which guests were not told.' }
+  }
+}

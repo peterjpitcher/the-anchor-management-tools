@@ -161,4 +161,25 @@ describe('describeUncancelledBookings', () => {
     )
     expect(describeUncancelledBookings(0)).toBeNull()
   })
+
+  // BK-089: a guest counts as told only when a channel really sent, and those nobody reached are
+  // listed for staff to ring.
+  it('counts emails, ignores failed texts, and lists the guests nobody reached', async () => {
+    const { db } = recordingDb(
+      {
+        bookings: [booking('booking-emailed', 'customer-emailed'), booking('booking-texted', 'customer-texted'), booking('booking-silent', 'customer-silent')],
+        payments: [],
+      },
+      'none',
+    )
+    vi.mocked(sendEventBookingCancelledEmail).mockImplementation(async (_db, input) =>
+      ({ success: input.bookingId === 'booking-emailed' }) as never)
+    vi.mocked(sendSMS).mockImplementation(async (_to, _body, options) =>
+      ({ success: (options as { customerId: string }).customerId === 'customer-texted' }) as never)
+
+    const result = await EventService.cancelEventBookings({ ...params, supabase: db })
+
+    expect(result.customersNotified).toBe(2)
+    expect(result.notReachedBookingIds).toEqual(['booking-silent'])
+  })
 })

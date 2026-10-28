@@ -1467,7 +1467,12 @@ export class UnifiedJobQueue {
         // (Settings, Background jobs) and on a failure audit row. The service logs them at
         // error level. Nobody watches those pages after cancelling an event, so the owner is
         // also emailed through the cron alert inbox.
-        const warning = describeUncancelledBookings(result.bookingsFailed)
+        // Guests no email or text reached must be rung (BK-089), so they join the warning too.
+        const notReached = result.notReachedBookingIds?.length ?? 0
+        const ringWarning = notReached > 0
+          ? `${notReached === 1 ? '1 guest' : `${notReached} guests`} could not be told by email or text. Ring them from the event page.`
+          : null
+        const warning = [describeUncancelledBookings(result.bookingsFailed), ringWarning].filter(Boolean).join(' ') || null
         if (warning) {
           try {
             const { reportCronFailure } = await import('@/lib/cron/alerting')
