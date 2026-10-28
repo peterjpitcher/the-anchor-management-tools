@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertCleanText } from '../../../../tests/mocks/emailRenderChecks'
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
@@ -16,7 +16,7 @@ vi.mock('@/lib/logger', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { sendSMS } from '@/lib/twilio'
-import { dispatchEventRescheduleNotifications } from '../reschedule-notifications'
+import { dispatchEventRescheduleNotifications, resolveRescheduledHoldExpiry } from '../reschedule-notifications'
 
 type UpdateRecord = { table: string; payload: Record<string, unknown> }
 
@@ -33,8 +33,7 @@ function makeDb(bookings: Array<Record<string, unknown>>) {
       update: vi.fn((payload: Record<string, unknown>) => {
         updates.push({ table, payload })
         return {
-          in: vi.fn().mockReturnValue({
-            lt: vi.fn().mockResolvedValue({ error: null }),
+          eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockResolvedValue({ error: null }),
           }),
         }
@@ -50,6 +49,8 @@ const PENDING_BOOKING = {
   customer_id: 'customer-1',
   seats: 2,
   status: 'pending_payment',
+  // A 15-minute website checkout hold, still live at the fixed clock below.
+  hold_expires_at: '2026-09-10T12:15:00.000Z',
   customers: {
     id: 'customer-1',
     first_name: 'Pat',
@@ -67,10 +68,57 @@ describe('event reschedule notifications', () => {
       expiresAt: '2026-09-23T18:00:00.000Z',
     })
     vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM1' } as Awaited<ReturnType<typeof sendSMS>>)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-10T12:00:00.000Z'))
   })
 
-  it('extends an unpaid hold to the London instant of the new start, not the server clock reading', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // BK-140: a live unpaid hold gets 24 hours' grace after a move, not the whole run to the new
+  // start, and the booking, its hold row and its linked table booking all get the same value.
+  it('gives a live unpaid hold 24 hours of grace instead of holding the seats until the night', async () => {
     const { db, updates } = makeDb([PENDING_BOOKING])
+    vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await dispatchEventRescheduleNotifications({
+      eventId: 'event-1',
+      eventName: 'Quiz Night',
+      oldDate: '2026-09-16',
+      oldTime: '19:00',
+      newDate: '2026-09-23',
+      newTime: '19:00',
+      userId: 'user-1',
+    })
+
+    expect(updates).toEqual([
+      { table: 'bookings', payload: { hold_expires_at: '2026-09-11T12:00:00.000Z' } },
+      { table: 'booking_holds', payload: { expires_at: '2026-09-11T12:00:00.000Z' } },
+      { table: 'table_bookings', payload: { hold_expires_at: '2026-09-11T12:00:00.000Z' } },
+    ])
+  })
+
+  it('leaves a hold that has already lapsed alone', async () => {
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-09-10T11:45:00.000Z' }])
+    vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await dispatchEventRescheduleNotifications({
+      eventId: 'event-1',
+      eventName: 'Quiz Night',
+      oldDate: '2026-09-16',
+      oldTime: '19:00',
+      newDate: '2026-09-23',
+      newTime: '19:00',
+      userId: 'user-1',
+    })
+
+    expect(updates).toEqual([])
+  })
+
+  it('caps the grace at the London instant of the new start, not the server clock reading', async () => {
+    vi.setSystemTime(new Date('2026-09-23T09:00:00.000Z'))
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-09-23T09:15:00.000Z' }])
     vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
 
     await dispatchEventRescheduleNotifications({
@@ -88,6 +136,7 @@ describe('event reschedule notifications', () => {
     expect(updates).toEqual([
       { table: 'bookings', payload: { hold_expires_at: '2026-09-23T18:00:00.000Z' } },
       { table: 'booking_holds', payload: { expires_at: '2026-09-23T18:00:00.000Z' } },
+      { table: 'table_bookings', payload: { hold_expires_at: '2026-09-23T18:00:00.000Z' } },
     ])
   })
 
@@ -132,7 +181,8 @@ describe('event reschedule notifications', () => {
   })
 
   it('handles a new start just after midnight', async () => {
-    const { db, updates } = makeDb([PENDING_BOOKING])
+    vi.setSystemTime(new Date('2026-10-31T23:00:00.000Z'))
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-10-31T23:15:00.000Z' }])
     vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
 
     await dispatchEventRescheduleNotifications({
@@ -150,5 +200,12 @@ describe('event reschedule notifications', () => {
     expect(body).toContain('Sun 1 Nov at 12:15am')
     // 00:15 on 1 November 2026 is after the clocks went back, so London is on UTC.
     expect(updates[0].payload).toEqual({ hold_expires_at: '2026-11-01T00:15:00.000Z' })
+  })
+
+  it('shortens a hold that would outlast a night moved earlier', () => {
+    const now = Date.parse('2026-09-10T12:00:00.000Z')
+    expect(resolveRescheduledHoldExpiry('2026-09-20T12:00:00.000Z', '2026-09-12T18:00:00.000Z', now)).toBe('2026-09-12T18:00:00.000Z')
+    expect(resolveRescheduledHoldExpiry('2026-09-11T20:00:00.000Z', '2026-09-30T18:00:00.000Z', now)).toBeNull()
+    expect(resolveRescheduledHoldExpiry(null, '2026-09-30T18:00:00.000Z', now)).toBeNull()
   })
 })

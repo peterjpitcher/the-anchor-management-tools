@@ -17,9 +17,14 @@ export interface TicketSettingsEvent {
   collect_guest_details?: boolean | null
 }
 
-interface Props { event: TicketSettingsEvent; canManage: boolean }
+interface Props {
+  event: TicketSettingsEvent
+  canManage: boolean
+  /** Bookings already made. Once there are any, the payment method is locked (D9). */
+  activeBookingCount?: number
+}
 
-export function EventTicketSettings({ event, canManage }: Props) {
+export function EventTicketSettings({ event, canManage, activeBookingCount = 0 }: Props) {
   const router = useRouter()
   const [mode, setMode] = useState(event.payment_mode || 'free')
   const [discountType, setDiscountType] = useState(event.online_discount_type || '')
@@ -76,9 +81,14 @@ export function EventTicketSettings({ event, canManage }: Props) {
         <CardHeader title="Payment and Guest Details" subtitle="Choose how guests pay and what each person needs to tell us" />
         <CardBody>
           <div className="space-y-4">
-            <Select label="Payment method" value={mode} onChange={event => setMode(event.target.value)} options={[
+            <Select label="Payment method" value={mode} onChange={event => setMode(event.target.value)} disabled={activeBookingCount > 0} options={[
               { value: 'free', label: 'Free entry' }, { value: 'cash_only', label: 'Pay on arrival' }, { value: 'prepaid', label: 'Pay online' },
             ]} />
+            {activeBookingCount > 0 && (
+              <p className="text-sm text-text-muted">
+                Locked because {activeBookingCount === 1 ? '1 booking has' : `${activeBookingCount} bookings have`} been made. Guests keep the terms they booked under. You can still change ticket prices for new sales.
+              </p>
+            )}
             {paid && <>
               <Checkbox
                 label="Ask for each guest's name and answers"

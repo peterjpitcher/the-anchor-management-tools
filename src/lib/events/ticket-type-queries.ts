@@ -225,6 +225,17 @@ export function bookingItemsAreMultiType(
   return items[0].ticket_type_id !== defaultTypeId
 }
 
+/**
+ * Whether a booking's seat count can be edited directly. A booking with one line, on any ticket
+ * type, can: sync_booking_default_item_v01 moves that line's quantity with the seats. Only a
+ * booking with two or more lines takes its seats from the lines (BK-143). This is a different
+ * question from `bookingItemsAreMultiType`, which decides how a booking is priced: a single line
+ * on a type that is no longer the default must still be priced from its own line.
+ */
+export function bookingSeatsEditableDirectly(items: Array<Pick<BookingItemRow, 'ticket_type_id'>>): boolean {
+  return items.length <= 1
+}
+
 /** The event's default (lowest sort_order) active ticket type id, or null. */
 export async function getDefaultTicketTypeId(
   supabase: SupabaseClient<any, 'public', any>,

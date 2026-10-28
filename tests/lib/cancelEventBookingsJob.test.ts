@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({ marker: 'admin' })) }))
+const eventRow = vi.hoisted(() => ({ status: 'cancelled' as string | null, error: null as { message: string } | null }))
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: vi.fn(() => ({
+    marker: 'admin',
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: eventRow.status === null ? null : { event_status: eventRow.status }, error: eventRow.error }),
+        }),
+      }),
+    }),
+  })),
+}))
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
@@ -44,6 +56,30 @@ function run() {
 describe('cancel_event_bookings job', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    eventRow.status = 'cancelled'
+    eventRow.error = null
+  })
+
+  // BK-026, BK-035: the cancellation waits 10 minutes and can be undone, so the job reads the
+  // event again and refunds and messages nobody if it is no longer cancelled.
+  it('stops without cancelling, refunding or messaging anyone when the event is no longer cancelled', async () => {
+    eventRow.status = 'scheduled'
+
+    const result = await run()
+
+    expect(result).toEqual({ skipped: true, reason: 'event_no_longer_cancelled' })
+    expect(mocks.cancelEventBookings).not.toHaveBeenCalled()
+    expect(mocks.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'cancel_event_skipped',
+      additional_info: { reason: 'event_no_longer_cancelled', event_status: 'scheduled' },
+    }))
+  })
+
+  it('fails without cancelling anything when the event cannot be read again', async () => {
+    eventRow.error = { message: 'timeout' }
+
+    await expect(run()).rejects.toThrow('could not re-read the event')
+    expect(mocks.cancelEventBookings).not.toHaveBeenCalled()
   })
 
   it('records bookings that could not be cancelled in the job result and a failure audit row', async () => {

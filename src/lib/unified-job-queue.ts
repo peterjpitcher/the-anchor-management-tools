@@ -1429,6 +1429,30 @@ export class UnifiedJobQueue {
           import('@/app/actions/audit'),
         ])
         const supabase = createAdminClient()
+
+        // The cancellation waits 10 minutes so it can be undone, and staff could always move the
+        // status back. Read the event again and stop if it is no longer cancelled, so nobody is
+        // refunded or told about a cancellation that was taken back (BK-026, BK-035).
+        const { data: currentEvent, error: currentEventError } = await supabase
+          .from('events')
+          .select('event_status')
+          .eq('id', eventId)
+          .maybeSingle()
+        if (currentEventError) {
+          throw new Error(`cancel_event_bookings could not re-read the event, so nothing was cancelled: ${currentEventError.message}`)
+        }
+        if (currentEvent?.event_status !== 'cancelled') {
+          await logAuditEvent({
+            user_id: cancelledBy,
+            operation_type: 'cancel_event_skipped',
+            resource_type: 'event',
+            resource_id: eventId,
+            operation_status: 'success',
+            additional_info: { reason: 'event_no_longer_cancelled', event_status: currentEvent?.event_status ?? null },
+          })
+          return { skipped: true, reason: 'event_no_longer_cancelled' }
+        }
+
         const result = await EventService.cancelEventBookings({
           eventId,
           eventName,

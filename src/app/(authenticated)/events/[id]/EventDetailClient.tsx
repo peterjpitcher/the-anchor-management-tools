@@ -49,6 +49,7 @@ import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
 import { EventTicketTypesCard } from './EventTicketTypesCard'
+import { EventChangesAfterBookingCard } from './EventChangesAfterBookingCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
 import { EventGuestAnswersCard } from './EventGuestAnswersCard'
@@ -618,6 +619,7 @@ export default function EventDetailClient({
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
+              <EventChangesAfterBookingCard eventId={event.id} />
               <OverviewTab
                 event={event}
                 statusBadges={
@@ -718,7 +720,7 @@ export default function EventDetailClient({
                 allowMultiple={allowMultipleTicketTypes}
                 event={event as TicketSettingsEvent}
               />
-              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} activeBookingCount={activeBookings.filter(booking => booking.is_reminder_only !== true).length} />
             </div>
           )}
 
@@ -909,6 +911,7 @@ export default function EventDetailClient({
           event={event}
           categories={categories}
           onSave={handleDrawerSave}
+          seatsSold={totalSeats}
         />
       )}
     </PageLayout>
