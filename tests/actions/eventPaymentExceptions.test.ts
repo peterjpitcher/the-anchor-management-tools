@@ -76,7 +76,8 @@ describe('resolveEventPaymentException', () => {
     expect(db.tables.event_payment_exceptions[0]).toMatchObject({
       status: 'resolved', resolution: 'confirmed', resolved_by: 'manager-1', resolved_at: expect.any(String),
     })
-    expect(sendEventPaymentConfirmationSms).toHaveBeenCalledTimes(1)
+    // Email first (BK-167): the email went, so no text follows it.
+    expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
     expect(sendEventPaymentConfirmationEmail).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ bookingId: BOOKING, amount: 80 }))
   })
 

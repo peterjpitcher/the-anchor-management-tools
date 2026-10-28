@@ -12,7 +12,7 @@ import { EventBookingService } from '@/services/event-bookings'
 import { createClient } from '@/lib/supabase/server' // Required for getting user in action
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
-import { londonLocalInputToUtcIso } from '@/lib/dateUtils'
+import { getTodayIsoDate, londonLocalInputToUtcIso } from '@/lib/dateUtils'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
@@ -24,15 +24,10 @@ import {
   type EventRefundResult
 } from '@/lib/events/manage-booking'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
-import {
-  sendEventBookingSeatUpdateSms,
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentManualReviewSms
-} from '@/lib/events/event-payments'
+import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import {
   sendEventBookingCancelledEmail,
-  sendEventPaymentConfirmationEmail,
-  sendEventPaymentManualReviewEmail,
   sendEventTicketTransferredEmail,
 } from '@/lib/email/event-ticket-emails'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -46,7 +41,9 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { logger } from '@/lib/logger'
 import { buildKeywordsUnion } from '@/lib/keywords'
 import { normalizeEventPricingFields, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
-import { formatEventWhenCompactLondon, resolveEventStartIso, type EventWhenSource } from '@/lib/events/event-when'
+import { resolveEventStartIso, type EventWhenSource } from '@/lib/events/event-when'
+import { buildEventBookingCancelledText, formatEventTextWhen } from '@/lib/events/event-guest-texts'
+import { sendEventMessageEmailFirst, type EventTextAttempt } from '@/lib/events/event-guest-notify'
 import {
   eventTicketTypesEnabled,
   buildTicketBreakdownLines,
@@ -1251,38 +1248,6 @@ type UpdateEventManualBookingSeatsResult =
     }
   }
 
-/**
- * The event's start for a text message.
- *
- * The date and time columns are a London wall clock reading, so the fallback resolves them with
- * `whenLondonClockReaches`. Parsing them directly made a UTC server read a 7pm British Summer
- * Time event as 8pm.
- */
-function formatEventDateTimeForSms(input: {
-  startDatetime?: string | null
-  date?: string | null
-  time?: string | null
-}): string {
-  return formatEventWhenCompactLondon(resolveEventStartIso(input)) ?? 'your event time'
-}
-
-function buildEventBookingCancelledSms(input: {
-  firstName: string
-  eventName: string
-  eventStartText: string
-  seats: number
-  isReminderOnly: boolean
-  refundNote?: string | null
-}): string {
-  if (input.isReminderOnly) {
-    return `The Anchor: ${input.firstName}, your reminder guest entry for ${input.eventName} on ${input.eventStartText} has been removed. Reply if you need help rejoining.`
-  }
-
-  const seatWord = input.seats === 1 ? 'seat' : 'seats'
-  const refundPart = input.refundNote ? ` ${input.refundNote}` : ''
-  return `The Anchor: ${input.firstName}, your booking for ${input.eventName} on ${input.eventStartText} has been cancelled (${input.seats} ${seatWord}).${refundPart} Reply if you need help rebooking.`
-}
-
 export async function updateEventManualBookingSeats(input: {
   bookingId: string
   seats: number
@@ -1939,25 +1904,30 @@ export async function cancelEventManualBooking(input: {
       }
     }
 
-    let smsSent = false
-    let smsMeta: SmsSafetyMeta = null
+    // Email first, a text only when no email goes (BK-167, owner decision D14). A cancellation on
+    // the day of the event goes by both, so a guest on their way is told in time.
+    const cancelState: { smsSent: boolean; smsMeta: SmsSafetyMeta } = { smsSent: false, smsMeta: null }
     const shouldSendSms = parsed.data.sendSms !== false
-    if (
+    const sendCancellationText = async (): Promise<EventTextAttempt> => {
+    if (!(
       shouldSendSms &&
       customerRecord?.id &&
       typeof customerRecord.mobile_number === 'string' &&
       customerRecord.mobile_number.trim() &&
       customerRecord.sms_status === 'active'
-    ) {
+    )) return null
+      let smsSent = false
+      let smsMeta: SmsSafetyMeta = null
       const smsBody = ensureReplyInstruction(
-        buildEventBookingCancelledSms({
+        buildEventBookingCancelledText({
           firstName: getSmartFirstName(customerRecord.first_name),
           eventName: eventRecord?.name || 'your event',
-          eventStartText: formatEventDateTimeForSms({
-            startDatetime: eventRecord?.start_datetime ?? null,
+          // The date and time columns are a London wall clock reading, resolved in London.
+          when: formatEventTextWhen(resolveEventStartIso({
+            start_datetime: eventRecord?.start_datetime ?? null,
             date: eventRecord?.date ?? null,
             time: eventRecord?.time ?? null
-          }),
+          })),
           seats: Math.max(0, Number(bookingRow.seats || 0)),
           isReminderOnly: bookingRow.is_reminder_only === true,
           refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount, paymentTaken: maxRefundable > 0 })
@@ -1979,7 +1949,7 @@ export async function cancelEventManualBooking(input: {
         const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
         const smsDeliveredOrUnknown = smsResult.success === true || smsLogFailure
         smsSent = smsDeliveredOrUnknown
-        smsMeta = { success: smsDeliveredOrUnknown, code: smsCode, logFailure: smsLogFailure }
+        smsMeta = { success: smsDeliveredOrUnknown, code: smsCode ?? (smsDeliveredOrUnknown ? null : 'send_failed'), logFailure: smsLogFailure }
 
         if (smsLogFailure) {
           logger.error('Event booking cancellation SMS sent but outbound message logging failed', {
@@ -2001,18 +1971,32 @@ export async function cancelEventManualBooking(input: {
         })
         smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
       }
+      cancelState.smsSent = smsSent
+      cancelState.smsMeta = smsMeta
+      return smsMeta
     }
 
-    await sendEventBookingCancelledEmail(supabase, {
+    const eventDateIso = typeof eventRecord?.date === 'string' ? eventRecord.date : null
+    await sendEventMessageEmailFirst({
+      templateKey: 'event_booking_cancelled_admin',
       bookingId: bookingRow.id,
-      refundStatus: refundStatus === 'none' ? null : refundStatus,
-      // Zero is "no refund", not "a refund of £0.00". maxRefundable is what this booking actually
-      // paid, so it decides whether a refund sentence has anything to say at all.
-      refundAmount: refundAmount > 0 ? refundAmount : null,
-      currency: 'GBP',
-      reason: 'staff_cancel',
-      paymentTaken: maxRefundable > 0
+      eventId: bookingRow.event_id ?? null,
+      customerId: bookingRow.customer_id ?? null,
+      both: eventDateIso === getTodayIsoDate(),
+      email: () => sendEventBookingCancelledEmail(supabase, {
+        bookingId: bookingRow.id,
+        refundStatus: refundStatus === 'none' ? null : refundStatus,
+        // Zero is "no refund", not "a refund of £0.00". maxRefundable is what this booking actually
+        // paid, so it decides whether a refund sentence has anything to say at all.
+        refundAmount: refundAmount > 0 ? refundAmount : null,
+        currency: 'GBP',
+        reason: 'staff_cancel',
+        paymentTaken: maxRefundable > 0
+      }),
+      text: sendCancellationText,
     })
+    const smsSent = cancelState.smsSent
+    const smsMeta = cancelState.smsMeta
 
     await logAuditEvent({
       user_id: actingUserId ?? undefined,
@@ -2524,36 +2508,22 @@ export async function markEventBookingPaidManually(input: {
       }
     }
 
+    // Email first, a text only when no email goes (BK-167, owner decision D14). Staff can still
+    // turn the text off; a repeat confirmation re-checks the email only.
     let smsSent = false
     let smsMeta: SmsSafetyMeta = null
-    if (parsed.data.sendSms !== false && (state === 'confirmed' || state === 'already_confirmed')) {
-      const smsResult = await sendEventPaymentConfirmationSms(supabase, {
+    if (state === 'confirmed' || state === 'already_confirmed' || state === 'manual_review') {
+      const outcome = await notifyEventPaymentOutcome(supabase, {
         bookingId: parsed.data.bookingId,
-        eventName: typeof confirm.event_name === 'string' ? confirm.event_name : 'your event',
-        seats: typeof confirm.seats === 'number' ? confirm.seats : seatCount,
-        appBaseUrl: getAppUrl()
-      })
-      smsSent = smsResult.success === true || smsResult.logFailure === true
-      smsMeta = smsResult
-    } else if (state === 'manual_review') {
-      const smsResult = await sendEventPaymentManualReviewSms(supabase, { bookingId: parsed.data.bookingId })
-      smsSent = smsResult.success === true || smsResult.logFailure === true
-      smsMeta = smsResult
-    }
-
-    if (state === 'confirmed' || state === 'already_confirmed') {
-      await sendEventPaymentConfirmationEmail(supabase, {
-        bookingId: parsed.data.bookingId,
+        eventId: bookingRow.event_id ?? null,
+        outcome: state === 'manual_review' ? 'manual_review' : 'confirmed',
         amount: expectedAmount,
         currency: 'GBP',
-        appBaseUrl: getAppUrl()
+        appBaseUrl: getAppUrl(),
+        textAllowed: state === 'manual_review' || (parsed.data.sendSms !== false && state === 'confirmed'),
       })
-    } else if (state === 'manual_review') {
-      await sendEventPaymentManualReviewEmail(supabase, {
-        bookingId: parsed.data.bookingId,
-        amount: expectedAmount,
-        currency: 'GBP'
-      })
+      smsSent = outcome.texted
+      smsMeta = outcome.smsMeta
     }
 
     await logAuditEvent({

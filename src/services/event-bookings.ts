@@ -7,6 +7,12 @@ import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { createEventPaymentToken } from '@/lib/events/event-payments'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { formatHoldUntilLondon } from '@/lib/events/event-when'
+import {
+  buildEventBookingConfirmedText,
+  buildEventBookingHeldText,
+  formatEventTextWhen,
+} from '@/lib/events/event-guest-texts'
+import { sendEventMessageEmailFirst } from '@/lib/events/event-guest-notify'
 import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
@@ -270,53 +276,40 @@ function normalizeSeatingPreference(value: unknown): 'seated' | 'standing' {
   return value === 'standing' ? 'standing' : 'seated'
 }
 
-function formatLondonDateTime(isoDateTime: string | null | undefined): string {
-  if (!isoDateTime) return 'your event time'
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12'
-    }).format(new Date(isoDateTime))
-  } catch {
-    return 'your event time'
-  }
-}
-
+/**
+ * The booking text, held or confirmed. The words live in src/lib/events/event-guest-texts.ts
+ * (BK-221), calm and exact (BK-171, owner decision D15); a missing date is left out rather than
+ * written as "your event time".
+ */
 function buildEventBookingSms(
   state: EventBookingRpcResult['state'],
   payload: {
     firstName: string
     eventName: string
     seats: number
-    eventStart: string
-    paymentMode?: EventBookingRpcResult['payment_mode']
+    eventStart: string | null
     seatingType?: EventBookingRpcResult['event_seating_type']
+    bookingMode?: string | null
     paymentLink?: string | null
     manageLink?: string | null
     /** "7:42pm", or "Wed 29 Oct at 7:42pm": when the seats stop being held (BK-100). */
     holdUntil?: string | null
   }
 ): string {
-  const seatWord = payload.seatingType === 'standing'
-    ? (payload.seats === 1 ? 'standing ticket' : 'standing tickets')
-    : (payload.seats === 1 ? 'seat' : 'seats')
-
-  if (state === 'pending_payment') {
-    const managePart = payload.manageLink ? ` ${payload.manageLink}` : ''
-    // The guest is told how long the hold lasts, so it does not lapse without warning (BK-100).
-    const holdPart = payload.holdUntil ? ` We'll hold them until ${payload.holdUntil}.` : ''
-    if (payload.paymentLink) {
-      return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one.${holdPart} Pay here: ${payload.paymentLink}.${managePart}`
-    }
-    return `The Anchor: Hi ${payload.firstName}, ${payload.seats} ${seatWord} held for ${payload.eventName} on ${payload.eventStart}, nice one. We couldn't send your payment link just now, so we'll be in touch, or call us on 01753 682707.${managePart}`
+  const facts = {
+    firstName: payload.firstName,
+    eventName: payload.eventName,
+    when: payload.eventStart,
+    seats: payload.seats,
+    seatingType: payload.seatingType ?? null,
+    bookingMode: payload.bookingMode ?? null,
+    manageLink: payload.manageLink ?? null,
   }
-
-  return `The Anchor: Hi ${payload.firstName}, you're in. ${payload.seats} ${seatWord} locked in for ${payload.eventName} on ${payload.eventStart}. See you there!${payload.manageLink ? ` ${payload.manageLink}` : ''}`
+  if (state === 'pending_payment') {
+    // The guest is told how long the hold lasts, so it does not lapse without warning (BK-100).
+    return buildEventBookingHeldText({ ...facts, holdUntil: payload.holdUntil ?? null, paymentLink: payload.paymentLink ?? null })
+  }
+  return buildEventBookingConfirmedText(facts)
 }
 
 /**
@@ -345,7 +338,9 @@ async function sendBookingSmsIfAllowed(
   manageLink: string | null | undefined,
   /** Log tag, e.g. "event booking" or "FOH event booking" */
   logTag: string,
-  callerFirstName?: string
+  callerFirstName?: string,
+  /** events.booking_mode, so a shared-seating night says places, not seats. */
+  bookingMode?: string | null
 ): Promise<SmsSafetyMeta> {
   // Capitalise first char for sentence-start messages; preserve acronyms like "FOH".
   const logTagCap = logTag.charAt(0).toUpperCase() + logTag.slice(1)
@@ -372,7 +367,7 @@ async function sendBookingSmsIfAllowed(
   const supportPhone =
     process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const eventName = bookingResult.event_name || 'your event'
-  const eventStart = formatLondonDateTime(bookingResult.event_start_datetime)
+  const eventStart = formatEventTextWhen(bookingResult.event_start_datetime)
   // Name precedence: DB name if real > caller-provided name > "there"
   const dbFirstName = customer.first_name
   const bestName = !isPlaceholderName(dbFirstName) ? dbFirstName : callerFirstName
@@ -384,8 +379,8 @@ async function sendBookingSmsIfAllowed(
       eventName,
       seats,
       eventStart,
-      paymentMode: bookingResult.payment_mode,
       seatingType: bookingResult.event_seating_type,
+      bookingMode: bookingMode ?? null,
       paymentLink,
       manageLink,
       holdUntil: bookingResult.state === 'pending_payment' ? formatHoldUntilLondon(bookingResult.hold_expires_at) : null
@@ -944,7 +939,7 @@ export class EventBookingService {
         })
       }
 
-      const runBookingSms = async (): Promise<void> => {
+      const runBookingSms = async (): Promise<SmsSafetyMeta> => {
         try {
           smsMeta = await sendBookingSmsIfAllowed(
             supabase,
@@ -955,7 +950,8 @@ export class EventBookingService {
             nextStepUrl,
             manageUrl,
             logTag,
-            firstName
+            firstName,
+            bookingMode
           )
         } catch (smsError) {
           const message = smsError instanceof Error ? smsError.message : String(smsError)
@@ -968,104 +964,78 @@ export class EventBookingService {
           })
           smsMeta = { success: false, code: 'unexpected_exception', logFailure: false }
         }
+        return smsMeta
       }
 
       /**
-       * Confirmation goes by email where the guest has a usable address, and by text otherwise
-       * (owner decision, 12 September 2026). Thirteen of the fifteen events on the books are free
-       * or paid on the night, and their guests used to get a text and nothing else, while the
-       * booking form made an email address compulsory "so we can send your confirmation".
+       * Every booking message goes by email first, where the guest has a usable address, and by
+       * text only when no email goes (owner decisions of 12 September 2026 and D14; BK-167). The
+       * messenger records each one, so a booking confirmed to nobody is listed for staff.
        *
-       * Two exceptions, both about where the guest is standing when the booking is made:
-       *  - a walk-in is booked in at the venue by staff, and is already in the room, so there is
-       *    nothing to confirm to them in writing;
-       *  - a guest who booked by replying to a text is mid-conversation, so the text is the
-       *    confirmation and no email follows it (owner decision, 9 October 2026: the pair read as
-       *    a duplicate). The email goes only if the text could not.
-       *
-       * Whichever channel leads, the other covers it when it does not go out, so a booking is
-       * never confirmed to nobody.
+       * Exceptions, all about where the guest is when the booking is made:
+       *  - a walk-in confirmed at the venue is already in the room, so there is nothing to
+       *    confirm in writing (a text still goes, as before, when one can);
+       *  - a guest who booked by replying to a text is mid-conversation, so the text leads and
+       *    the email goes only if the text could not (owner decision, 9 October 2026);
+       *  - a website guest paying on screen is sent nothing while they pay (BK-084).
        */
-      const confirmedBookingId =
-        resolvedState === 'confirmed' && source !== 'walk-in' ? rpcResult.booking_id : null
-      const textLeads = source === 'sms_reply'
       const canText = shouldSendSms && Boolean(normalizedPhone)
-      if (confirmedBookingId) {
-        tasks.push({
-          label: 'email:event_booking_confirmed',
-          promise: (async () => {
-            if (textLeads && canText) {
-              await runBookingSms()
-              if (resolveEventNotificationChannel(false, smsMeta) === 'sms') return
-            }
-
-            let emailed = false
-            try {
-              const emailResult = await sendEventBookingConfirmedEmail(supabase, {
-                bookingId: confirmedBookingId,
-                appBaseUrl
-              })
-              emailed = emailResult.success === true
-              confirmationEmailed = emailed
-            } catch (emailError) {
-              logger.warn(`${logTagCap} confirmation email rejected unexpectedly`, {
-                metadata: {
-                  bookingId: confirmedBookingId,
-                  error: emailError instanceof Error ? emailError.message : String(emailError)
-                }
-              })
-            }
-
-            if (!emailed && !textLeads && canText) {
-              await runBookingSms()
-            }
-          })()
+      const textLeads = source === 'sms_reply'
+      const bookingMessageId = rpcResult.booking_id ?? null
+      const recordOutcome = (outcome: Awaited<ReturnType<typeof sendEventMessageEmailFirst>>) => {
+        if (outcome.emailed) confirmationEmailed = true
+      }
+      const sendBookingMessage = async (input: {
+        templateKey: string
+        email: (() => ReturnType<typeof sendEventPaymentLinkEmail>) | null
+      }): Promise<void> => {
+        if (!bookingMessageId) return
+        const outcome = await sendEventMessageEmailFirst({
+          templateKey: input.templateKey,
+          bookingId: bookingMessageId,
+          eventId,
+          customerId,
+          textFirst: textLeads,
+          email: input.email,
+          text: canText ? runBookingSms : null,
         })
-      } else if (
-        resolvedState === 'pending_payment' &&
-        source === 'admin' &&
-        rpcResult.booking_id &&
-        nextStepUrl
-      ) {
-        // BK-142: a phone or bar booking's payment link goes by email first, where the guest has
-        // a usable address, and by text only when no email went (owner decision D14).
-        const pendingBookingId = rpcResult.booking_id
+        recordOutcome(outcome)
+      }
+
+      if (resolvedState === 'confirmed' && source !== 'walk-in' && bookingMessageId) {
+        const confirmedBookingId = bookingMessageId
+        tasks.push({
+          label: 'message:event_booking_confirmed',
+          promise: sendBookingMessage({
+            templateKey: 'event_booking_confirmed',
+            email: () => sendEventBookingConfirmedEmail(supabase, { bookingId: confirmedBookingId, appBaseUrl }),
+          }),
+        })
+      } else if (resolvedState === 'pending_payment' && source === 'brand_site' && skipPendingPaymentSms) {
+        // BK-084: the guest is looking at the PayPal buttons. A second pay link only confuses
+        // them, and one held by quiet hours arrives after they have paid or the hold has gone. A
+        // lapsed hold is still covered by the hold-released message.
+      } else if (resolvedState === 'pending_payment' && bookingMessageId) {
+        // BK-142: a phone, bar or text booking's payment link, email first (owner decision D14).
+        const pendingBookingId = bookingMessageId
         const paymentLink = nextStepUrl
         tasks.push({
-          label: 'email:event_payment_link',
-          promise: (async () => {
-            let emailed = false
-            try {
-              const emailResult = await sendEventPaymentLinkEmail(supabase, {
-                bookingId: pendingBookingId,
-                paymentLink,
-                holdExpiresAt: rpcResult.hold_expires_at,
-              })
-              emailed = emailResult.success === true
-              confirmationEmailed = emailed
-            } catch (emailError) {
-              logger.warn(`${logTagCap} payment link email rejected unexpectedly`, {
-                metadata: {
+          label: 'message:event_booking_pending_payment',
+          promise: sendBookingMessage({
+            templateKey: 'event_booking_pending_payment',
+            email: paymentLink
+              ? () => sendEventPaymentLinkEmail(supabase, {
                   bookingId: pendingBookingId,
-                  error: emailError instanceof Error ? emailError.message : String(emailError)
-                }
-              })
-            }
-            if (!emailed && canText) await runBookingSms()
-          })()
+                  paymentLink,
+                  holdExpiresAt: rpcResult.hold_expires_at,
+                })
+              : null,
+          }),
         })
-      } else if (
-        resolvedState === 'pending_payment' &&
-        source === 'brand_site' &&
-        skipPendingPaymentSms
-      ) {
-        // BK-084: the guest is looking at the PayPal buttons. A text with a second pay link only
-        // confuses them, and one held by quiet hours arrives after they have paid or the hold has
-        // gone. A lapsed hold is still covered by the hold-released email and text.
       } else if (canText) {
         tasks.push({
           label: 'sms:booking_created',
-          promise: runBookingSms()
+          promise: runBookingSms().then(() => undefined)
         })
       }
 
@@ -1080,23 +1050,6 @@ export class EventBookingService {
             manageUrl,
             appBaseUrl,
           }),
-        })
-      }
-
-      if (
-        resolvedState === 'pending_payment' &&
-        source !== 'brand_site' &&
-        source !== 'admin' &&
-        rpcResult.booking_id &&
-        nextStepUrl
-      ) {
-        tasks.push({
-          label: 'email:event_payment_link',
-          promise: sendEventPaymentLinkEmail(supabase, {
-            bookingId: rpcResult.booking_id,
-            paymentLink: nextStepUrl,
-            holdExpiresAt: rpcResult.hold_expires_at,
-          })
         })
       }
 
