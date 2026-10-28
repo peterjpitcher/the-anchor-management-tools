@@ -9,6 +9,7 @@ import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
 import { processEventRefund, type EventRefundResult } from '@/lib/events/manage-booking';
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts';
+import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts';
 import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails';
 import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
@@ -1142,6 +1143,9 @@ export class EventService {
     let refundsProcessed = 0
     let refundsFailed = 0
     let customersNotified = 0
+    // Tickets paid at the bar, in cash or on the card terminal, cannot go back through PayPal; a
+    // person hands the money back and records it (BK-135). Listed in the job result and the alert.
+    const barRefundsOwed: EventCancellationResult['barRefundsOwed'] = []
 
     // 1. Fetch the bookings to cancel, and the payments to refund, before anything changes.
     // Both reads used to ignore their errors: a failed bookings read looked like "no bookings",
@@ -1162,19 +1166,51 @@ export class EventService {
     }
 
     const candidateIds = (bookingRows ?? []).map((b) => b.id)
-    let payments: Array<{ id: string; event_booking_id: string | null; amount: number | null; status: string | null }> = []
+    let payments: Array<{
+      id: string
+      event_booking_id: string | null
+      amount: number | null
+      status: string | null
+      payment_provider: string | null
+      payment_method: string | null
+    }> = []
+    // What has already gone back, by the payment it came from, so each payment is asked only for
+    // what it still holds (BK-136). Asking for the original amount after a partial refund made
+    // PayPal return the remainder, and the result read as a failed refund.
+    const refundedByPayment = new Map<string, number>()
+    const unattributedRefundsByBooking = new Map<string, number>()
     if (candidateIds.length > 0) {
-      const { data: paymentRows, error: paymentsError } = await db
-        .from('payments')
-        .select('id, event_booking_id, amount, status')
-        .in('event_booking_id', candidateIds)
-        .in('charge_type', ['prepaid_event', 'seat_increase'])
-        .in('status', ['succeeded', 'partially_refunded'])
+      const [{ data: paymentRows, error: paymentsError }, { data: refundRows, error: refundsError }] = await Promise.all([
+        db
+          .from('payments')
+          .select('id, event_booking_id, amount, status, payment_provider, payment_method')
+          .in('event_booking_id', candidateIds)
+          .in('charge_type', ['prepaid_event', 'seat_increase'])
+          .in('status', ['succeeded', 'partially_refunded']),
+        db
+          .from('payments')
+          .select('event_booking_id, amount, metadata')
+          .in('event_booking_id', candidateIds)
+          .eq('charge_type', 'refund')
+          .in('status', ['refunded', 'pending', 'succeeded']),
+      ])
 
       if (paymentsError) {
         throw new Error(`Could not read the payments for the cancelled event, so no booking was cancelled: ${paymentsError.message}`)
       }
+      if (refundsError) {
+        throw new Error(`Could not read the refunds for the cancelled event, so no booking was cancelled: ${refundsError.message}`)
+      }
       payments = paymentRows ?? []
+      for (const refund of refundRows ?? []) {
+        const amount = Math.max(0, Number(refund.amount ?? 0))
+        const source = (refund.metadata as Record<string, unknown> | null)?.['source_payment_id']
+        if (typeof source === 'string' && source) {
+          refundedByPayment.set(source, (refundedByPayment.get(source) ?? 0) + amount)
+        } else if (refund.event_booking_id) {
+          unattributedRefundsByBooking.set(refund.event_booking_id, (unattributedRefundsByBooking.get(refund.event_booking_id) ?? 0) + amount)
+        }
+      }
     }
 
     const paidBookingIds = new Set(payments.map((payment) => payment.event_booking_id).filter(Boolean))
@@ -1201,11 +1237,13 @@ export class EventService {
           .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
         { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
       )
-      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
+      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, barRefundsOwed }
     }
 
-    // Track refund results per booking for SMS/email
-    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number }>()
+    // Track refund results per booking for SMS/email. 'bar_refund_due' is a ticket paid at the bar:
+    // a person returns it. partOfPayment is set when only the rest of a partly refunded payment
+    // went back, so the guest is told "the rest of your payment".
+    const refundResults = new Map<string, { status: CancellationRefundStatus; amount: number; partOfPayment: boolean }>()
 
     // 2. Cancel each booking, release its holds and tables, then refund it straight away, so a
     // failure part way through never leaves a cancelled booking that nobody will refund.
@@ -1265,14 +1303,34 @@ export class EventService {
         continue
       }
 
-      // 3. Refund this booking's payments.
+      // 3. Refund this booking's payments: what each still holds, never its original amount.
+      // Refunds recorded without a source payment come off the booking's payments in order.
+      let unattributed = unattributedRefundsByBooking.get(booking.id) ?? 0
       for (const payment of payments.filter((row) => row.event_booking_id === booking.id)) {
+        const paymentAmount = Math.max(0, Number(payment.amount ?? 0))
+        let stillHeld = Math.max(0, paymentAmount - (refundedByPayment.get(payment.id) ?? 0))
+        const fromUnattributed = Math.min(stillHeld, unattributed)
+        stillHeld = Math.round((stillHeld - fromUnattributed) * 100) / 100
+        unattributed -= fromUnattributed
+        const partOfPayment = stillHeld + 0.004 < paymentAmount
+        const existing = refundResults.get(booking.id) ?? { status: 'succeeded' as CancellationRefundStatus, amount: 0, partOfPayment: false }
+        existing.partOfPayment = existing.partOfPayment || partOfPayment
+        refundResults.set(booking.id, existing)
+        if (stillHeld <= 0) continue
+
+        if (payment.payment_provider === 'manual') {
+          barRefundsOwed.push({ bookingId: booking.id, paymentId: payment.id, amount: stillHeld, method: payment.payment_method ?? null })
+          existing.amount = Math.round((existing.amount + stillHeld) * 100) / 100
+          existing.status = 'bar_refund_due'
+          continue
+        }
+
         try {
           const refundResult = await processEventRefund(db, {
             bookingId: booking.id,
             customerId: customer?.id || '',
             eventId,
-            amount: Number(payment.amount ?? 0),
+            amount: stillHeld,
             reason: 'event_cancelled',
             sourcePaymentId: payment.id,
             // One refund per payment: a retried job replays it rather than refunding twice.
@@ -1286,20 +1344,18 @@ export class EventService {
               bookingId: booking.id,
               kind: 'refund_failed',
               reason: refundResult.reason ?? refundResult.status,
-              amount: Number(payment.amount ?? 0),
+              amount: stillHeld,
               source: 'whole event cancellation',
             })
           }
-          const existing: { status: EventRefundResult['status']; amount: number } =
-            refundResults.get(booking.id) ?? { status: 'succeeded', amount: 0 }
-          existing.amount += refundResult.amount
-          if (refundResult.status !== 'succeeded') {
+          existing.amount = Math.round((existing.amount + refundResult.amount) * 100) / 100
+          if (refundResult.status !== 'succeeded' && existing.status !== 'bar_refund_due') {
             existing.status = refundResult.status
           }
-          refundResults.set(booking.id, existing)
         } catch (err) {
           refundsFailed++
-          refundResults.set(booking.id, { status: 'failed', amount: Math.max(0, Number(payment.amount || 0)) })
+          existing.status = 'failed'
+          existing.amount = Math.round((existing.amount + stillHeld) * 100) / 100
           logger.error('Failed to process refund during event cancellation', {
             error: err instanceof Error ? err : new Error(String(err)),
             metadata: { paymentId: payment.id, bookingId: booking.id, eventId }
@@ -1308,7 +1364,7 @@ export class EventService {
             bookingId: booking.id,
             kind: 'refund_failed',
             reason: err instanceof Error ? err.message.slice(0, 200) : 'the refund threw',
-            amount: Number(payment.amount ?? 0),
+            amount: stillHeld,
             source: 'whole event cancellation',
           })
         }
@@ -1316,6 +1372,10 @@ export class EventService {
     }
 
     const uncancelledBookingIds = new Set(failedBookingIds)
+
+    if (barRefundsOwed.length > 0) {
+      await alertBarRefundsOwed(db, { eventId, eventName, owed: barRefundsOwed })
+    }
 
     // 4. Send cancellation SMS
     const formattedDate = formatEventDateForSms(eventDate, eventTime)
@@ -1337,7 +1397,8 @@ export class EventService {
         refundAmount: refundResult?.amount ?? null,
         currency: 'GBP',
         reason: 'event_cancelled',
-        paymentTaken: Boolean(refundResult)
+        paymentTaken: Boolean(refundResult),
+        refundIsRestOfPayment: refundResult?.partOfPayment === true
       })
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
@@ -1346,8 +1407,10 @@ export class EventService {
         const isPrepaid = !!refundResult
         const refundNote = buildRefundNote({
           isPrepaid,
-          refundSucceeded: refundResult?.status === 'succeeded',
-          refundAmount: refundResult?.amount ?? null
+          refundSucceeded: refundResult?.status === 'succeeded' || refundResult?.status === 'pending',
+          refundAmount: refundResult?.amount ?? null,
+          restOfPayment: refundResult?.partOfPayment === true,
+          returnedAtBar: refundResult?.status === 'bar_refund_due'
         })
 
         const smsBody = buildEventCancelledSms({
@@ -1408,7 +1471,7 @@ export class EventService {
       })
     }
 
-    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
+    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, barRefundsOwed }
   }
 }
 
@@ -1420,6 +1483,41 @@ export interface EventCancellationResult {
   refundsProcessed: number
   refundsFailed: number
   customersNotified: number
+  /** Tickets paid at the bar that a person must hand back (BK-135). Ids and amounts only. */
+  barRefundsOwed: Array<{ bookingId: string; paymentId: string; amount: number; method: string | null }>
+}
+
+type CancellationRefundStatus = EventRefundResult['status'] | 'bar_refund_due'
+
+/**
+ * One manager alert per cancelled event listing the bar payments to hand back (BK-135). Ids,
+ * amounts and methods only. Never throws.
+ */
+async function alertBarRefundsOwed(
+  db: ReturnType<typeof createAdminClient>,
+  input: { eventId: string; eventName: string; owed: EventCancellationResult['barRefundsOwed'] }
+): Promise<void> {
+  try {
+    const total = Math.round(input.owed.reduce((sum, row) => sum + row.amount, 0) * 100) / 100
+    const methodText = (method: string | null) => (method === 'card_terminal' ? 'card' : method === 'cash' ? 'cash' : 'at the bar')
+    await alertMoneyNeedsAPerson(db, {
+      domain: 'event_bookings',
+      bookingId: input.eventId,
+      kind: 'event_cancelled_bar_refunds',
+      title: `Cancelled event: ${formatPounds(total)} paid at the bar to hand back`,
+      summary: `${input.eventName || 'The cancelled event'} had ${input.owed.length} ${input.owed.length === 1 ? 'payment' : 'payments'} taken at the bar, in cash or on the card terminal. PayPal cannot return those, so hand each one back and record it with Record cash or card refund on the booking. The guests have been told we will be in touch about it.`,
+      path: `/events/${input.eventId}`,
+      context: Object.fromEntries(input.owed.map((row, index) => [
+        `Booking ${index + 1}`,
+        `${row.bookingId}: ${formatPounds(row.amount)} (${methodText(row.method)})`,
+      ])),
+    })
+  } catch (error) {
+    logger.error('Could not send the alert for bar payments owed on a cancelled event', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId: input.eventId, count: input.owed.length },
+    })
+  }
 }
 
 /**

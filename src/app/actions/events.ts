@@ -19,9 +19,12 @@ import {
   createEventManageToken,
   getEventRefundPolicy,
   processEventRefund,
+  recordManualEventRefund,
   updateEventBookingSeatsById,
+  type EventManualRefundMethod,
   type EventRefundResult
 } from '@/lib/events/manage-booking'
+import { resolveEventRefundRequestRow } from '@/lib/events/refund-requests'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
 import {
   sendEventBookingSeatUpdateSms,
@@ -1285,7 +1288,13 @@ function buildEventBookingCancelledSms(input: {
 function buildStaffCancellationRefundNote(input: {
   refundStatus: EventRefundResult['status']
   refundAmount: number
+  /** Part of the refund paid at the bar, handed back there (BK-135). */
+  barRefundAmount?: number
 }): string | null {
+  if ((input.barRefundAmount ?? 0) > 0 && input.refundAmount <= 0) {
+    const bar = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.barRefundAmount ?? 0)
+    return `You paid ${bar} at the bar, so we will be in touch to give it back.`
+  }
   if (input.refundAmount <= 0) return 'No refund is due under the event cancellation policy.'
   const formatted = new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.refundAmount)
   if (input.refundStatus === 'succeeded') return `Refund issued: ${formatted}.`
@@ -1632,26 +1641,37 @@ async function resolveEventRefundActor(
 async function computeEventBookingRefundable(
   supabase: ReturnType<typeof createAdminClient>,
   bookingId: string
-): Promise<{ amountPaid: number; alreadyRefunded: number; maxRefundable: number }> {
+): Promise<{ amountPaid: number; alreadyRefunded: number; maxRefundable: number; barRefundable: number; paypalRefundable: number }> {
   const [paidResult, refundResult] = await Promise.all([
     // Fully refunded charges count as taken: their refund rows are subtracted below, once.
-    supabase.from('payments').select('amount')
+    supabase.from('payments').select('amount, payment_provider')
       .eq('event_booking_id', bookingId)
       .in('charge_type', ['prepaid_event', 'seat_increase'])
       .in('status', ['succeeded', 'partially_refunded', 'refunded']),
-    supabase.from('payments').select('amount')
+    supabase.from('payments').select('amount, payment_provider')
       .eq('event_booking_id', bookingId)
       .eq('charge_type', 'refund')
       .in('status', ['refunded', 'pending', 'succeeded'])
   ])
   if (paidResult.error) throw paidResult.error
   if (refundResult.error) throw refundResult.error
-  const amountPaid = (paidResult.data || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
-  const alreadyRefunded = (refundResult.data || []).reduce((sum, row) => sum + Math.max(0, Number(row.amount || 0)), 0)
+  const sum = (rows: Array<{ amount: unknown }>) => rows.reduce((total, row) => total + Math.max(0, Number(row.amount || 0)), 0)
+  const paidRows = paidResult.data || []
+  const refundRows = refundResult.data || []
+  const amountPaid = sum(paidRows)
+  const alreadyRefunded = sum(refundRows)
+  const maxRefundable = toMoney(Math.max(0, amountPaid - alreadyRefunded))
+  // Money taken at the bar (cash or card terminal) goes back across the bar and is recorded by
+  // hand; PayPal can only return what PayPal took (BK-135).
+  const barRefundable = toMoney(Math.min(maxRefundable, Math.max(0,
+    sum(paidRows.filter((row) => row.payment_provider === 'manual')) - sum(refundRows.filter((row) => row.payment_provider === 'manual'))
+  )))
   return {
     amountPaid: toMoney(amountPaid),
     alreadyRefunded: toMoney(alreadyRefunded),
-    maxRefundable: toMoney(Math.max(0, amountPaid - alreadyRefunded))
+    maxRefundable,
+    barRefundable,
+    paypalRefundable: toMoney(Math.max(0, maxRefundable - barRefundable))
   }
 }
 
@@ -1730,9 +1750,9 @@ export async function cancelEventManualBooking(input: {
       Boolean(eventForRefund) &&
       (eventForRefund as any).payment_mode === 'prepaid'
 
-    const { maxRefundable } = isPrepaidConfirmed
+    const { maxRefundable, paypalRefundable } = isPrepaidConfirmed
       ? await computeEventBookingRefundable(supabase, bookingRow.id)
-      : { maxRefundable: 0 }
+      : { maxRefundable: 0, paypalRefundable: 0 }
 
     const { userId: actingUserId, mayRefund } = await resolveEventRefundActor(supabase)
     const refundDecision = parsed.data.refundDecision ?? 'none'
@@ -1917,14 +1937,21 @@ export async function cancelEventManualBooking(input: {
     let refundAmount = 0
     // Set when PayPal refunded the money but the payment record did not update.
     let refundStaffWarning: string | null = null
+    // PayPal returns only what PayPal took. Any of the chosen refund paid at the bar is handed back
+    // there and recorded from the booking's refund dialog (BK-135); staff are told how much.
+    const paypalRefundAmount = toMoney(Math.min(resolvedRefundAmount, paypalRefundable))
+    const barRefundAmount = toMoney(Math.max(0, resolvedRefundAmount - paypalRefundAmount))
+    const barRefundWarning = barRefundAmount > 0
+      ? `£${barRefundAmount.toFixed(2)} of this refund was paid at the bar. Hand it back, then record it with Refund, Record cash or card refund.`
+      : null
 
-    if (resolvedRefundAmount > 0 && bookingRow.customer_id && bookingRow.event_id) {
+    if (paypalRefundAmount > 0 && bookingRow.customer_id && bookingRow.event_id) {
       try {
         const refundResult = await processEventRefund(supabase, {
           bookingId: bookingRow.id,
           customerId: bookingRow.customer_id,
           eventId: bookingRow.event_id,
-          amount: resolvedRefundAmount,
+          amount: paypalRefundAmount,
           reason: 'staff_cancel_refund',
           metadata: {
             idempotency_key: `staff-cancel-refund:${bookingRow.id}`,
@@ -1939,7 +1966,7 @@ export async function cancelEventManualBooking(input: {
         refundStaffWarning = refundResult.staffWarning ?? null
       } catch (refundError) {
         refundStatus = 'manual_required'
-        refundAmount = resolvedRefundAmount
+        refundAmount = paypalRefundAmount
         logger.error('Failed to process event refund during staff cancellation', {
           error: refundError instanceof Error ? refundError : new Error(String(refundError)),
           metadata: {
@@ -1973,7 +2000,7 @@ export async function cancelEventManualBooking(input: {
           }),
           seats: Math.max(0, Number(bookingRow.seats || 0)),
           isReminderOnly: bookingRow.is_reminder_only === true,
-          refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount })
+          refundNote: buildStaffCancellationRefundNote({ refundStatus, refundAmount, barRefundAmount })
         }),
         process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
       )
@@ -2016,12 +2043,13 @@ export async function cancelEventManualBooking(input: {
       }
     }
 
+    const barRefundOnly = barRefundAmount > 0 && refundAmount <= 0
     await sendEventBookingCancelledEmail(supabase, {
       bookingId: bookingRow.id,
-      refundStatus: refundStatus === 'none' ? null : refundStatus,
+      refundStatus: barRefundOnly ? 'bar_refund_due' : refundStatus === 'none' ? null : refundStatus,
       // Zero is "no refund", not "a refund of £0.00". maxRefundable is what this booking actually
       // paid, so it decides whether a refund sentence has anything to say at all.
-      refundAmount: refundAmount > 0 ? refundAmount : null,
+      refundAmount: barRefundOnly ? barRefundAmount : refundAmount > 0 ? refundAmount : null,
       currency: 'GBP',
       reason: 'staff_cancel',
       paymentTaken: maxRefundable > 0
@@ -2078,7 +2106,7 @@ export async function cancelEventManualBooking(input: {
         sms_sent: smsSent,
         refund_status: refundStatus,
         refund_amount: refundAmount,
-        warning: [followupWarning, refundStaffWarning].filter(Boolean).join(' ') || null
+        warning: [followupWarning, refundStaffWarning, barRefundWarning].filter(Boolean).join(' ') || null
       },
       meta: {
         sms: smsMeta,
@@ -2102,6 +2130,9 @@ type EventBookingRefundInfo =
         alreadyRefunded: number
         maxRefundable: number
         policySuggestion: number
+        /** What PayPal can return, and what was paid at the bar and goes back there (BK-135). */
+        paypalRefundable: number
+        barRefundable: number
       }
     }
 
@@ -2134,13 +2165,16 @@ export async function getEventBookingRefundInfo(bookingId: string): Promise<Even
       bookingRow.is_reminder_only !== true &&
       Boolean(eventRecord) &&
       (eventRecord as any).payment_mode === 'prepaid'
+    // A cancelled booking, or one paid at the door, can still hold money to give back.
+    const mayHoldMoney =
+      bookingRow.is_reminder_only !== true && (bookingRow.status === 'confirmed' || bookingRow.status === 'cancelled')
 
-    const { amountPaid, alreadyRefunded, maxRefundable } = isPrepaidConfirmed
+    const { amountPaid, alreadyRefunded, maxRefundable, barRefundable, paypalRefundable } = mayHoldMoney
       ? await computeEventBookingRefundable(supabase, bookingRow.id)
-      : { amountPaid: 0, alreadyRefunded: 0, maxRefundable: 0 }
+      : { amountPaid: 0, alreadyRefunded: 0, maxRefundable: 0, barRefundable: 0, paypalRefundable: 0 }
 
     let policySuggestion = 0
-    if (maxRefundable > 0 && eventRecord) {
+    if (isPrepaidConfirmed && maxRefundable > 0 && eventRecord) {
       const startIso =
         (eventRecord as any).start_datetime ||
         ((eventRecord as any).date
@@ -2154,7 +2188,7 @@ export async function getEventBookingRefundInfo(bookingId: string): Promise<Even
 
     return {
       success: true,
-      data: { canRefund: mayRefund, amountPaid, alreadyRefunded, maxRefundable, policySuggestion }
+      data: { canRefund: mayRefund, amountPaid, alreadyRefunded, maxRefundable, policySuggestion, paypalRefundable, barRefundable }
     }
   } catch (error) {
     logger.error('Failed to load event booking refund info', {
@@ -2173,7 +2207,12 @@ const refundEventBookingManualSchema = z.object({
     .uuid({ message: 'Please reload the page and try the refund again.' }),
   // Omitted → refund everything still refundable.
   amount: z.number().min(0.01).max(100000).optional(),
-  reason: z.string().trim().max(200).optional()
+  reason: z.string().trim().max(200).optional(),
+  // 'paypal' sends money back through PayPal. 'cash' or 'card_terminal' records money handed back
+  // at the bar against tickets paid there; nothing moves through PayPal (BK-135).
+  method: z.enum(['paypal', 'cash', 'card_terminal']).optional().default('paypal'),
+  // The refund request this refund settles (owner decision D7), when it was opened from one.
+  refundRequestId: z.string().uuid().optional()
 })
 
 type RefundEventBookingManualResult =
@@ -2200,6 +2239,8 @@ export async function refundEventBookingManual(input: {
   requestId: string
   amount?: number
   reason?: string
+  method?: 'paypal' | 'cash' | 'card_terminal'
+  refundRequestId?: string
 }): Promise<RefundEventBookingManualResult> {
   try {
     const canManageEvents = await checkUserPermission('events', 'manage')
@@ -2240,39 +2281,67 @@ export async function refundEventBookingManual(input: {
       return { error: 'This booking is missing customer or event details, so it cannot be refunded here.' }
     }
 
-    const { maxRefundable } = await computeEventBookingRefundable(supabase, bookingRow.id)
+    const refundable = await computeEventBookingRefundable(supabase, bookingRow.id)
+    const { maxRefundable } = refundable
     if (maxRefundable <= 0) {
       return { error: 'There is nothing left to refund on this booking.' }
     }
+    const atTheBar = parsed.data.method !== 'paypal'
+    // PayPal returns only what PayPal took; a bar payment goes back across the bar (BK-135).
+    const methodLimit = atTheBar ? refundable.barRefundable : refundable.paypalRefundable
+    if (methodLimit <= 0) {
+      return {
+        error: atTheBar
+          ? 'Nothing on this booking was paid at the bar. Refund it through PayPal instead.'
+          : 'This booking was paid at the bar, in cash or by card. Hand the money back and choose Record cash or card refund.'
+      }
+    }
 
-    let resolvedAmount = maxRefundable
+    let resolvedAmount = methodLimit
     if (typeof parsed.data.amount === 'number') {
       const requested = toMoney(Math.max(0, parsed.data.amount))
       if (requested <= 0) {
         return { error: 'Enter a refund amount greater than zero.' }
       }
-      if (requested > maxRefundable) {
-        return { error: `Refund cannot exceed the amount paid (£${maxRefundable.toFixed(2)}).` }
+      if (requested > methodLimit) {
+        return {
+          error: atTheBar
+            ? `A cash or card refund cannot exceed what was paid at the bar (£${methodLimit.toFixed(2)}).`
+            : `Refund cannot exceed the amount paid (£${methodLimit.toFixed(2)}).`
+        }
       }
       resolvedAmount = requested
     }
 
+    // Per request, not per booking (BK-024): a double click replays, a second refund is new.
+    const idempotencyKey = `staff-manual-refund:${bookingRow.id}:${parsed.data.requestId}`
     let refundResult: EventRefundResult
     try {
-      refundResult = await processEventRefund(supabase, {
-        bookingId: bookingRow.id,
-        customerId: bookingRow.customer_id,
-        eventId: bookingRow.event_id,
-        amount: resolvedAmount,
-        reason: 'staff_manual_refund',
-        metadata: {
-          // Per request, not per booking (BK-024): a double click replays, a second refund is new.
-          idempotency_key: `staff-manual-refund:${bookingRow.id}:${parsed.data.requestId}`,
-          initiated_by: actingUserId,
-          note: parsed.data.reason || null,
-          max_refundable: maxRefundable
-        }
-      })
+      refundResult = atTheBar
+        ? await recordManualEventRefund(supabase, {
+            bookingId: bookingRow.id,
+            amount: resolvedAmount,
+            method: parsed.data.method as EventManualRefundMethod,
+            reason: 'staff_manual_refund',
+            idempotencyKey,
+            recordedBy: actingUserId,
+            note: parsed.data.reason || null,
+            metadata: { max_refundable: maxRefundable, refund_request_id: parsed.data.refundRequestId ?? null }
+          })
+        : await processEventRefund(supabase, {
+            bookingId: bookingRow.id,
+            customerId: bookingRow.customer_id,
+            eventId: bookingRow.event_id,
+            amount: resolvedAmount,
+            reason: 'staff_manual_refund',
+            metadata: {
+              idempotency_key: idempotencyKey,
+              initiated_by: actingUserId,
+              note: parsed.data.reason || null,
+              max_refundable: maxRefundable,
+              refund_request_id: parsed.data.refundRequestId ?? null
+            }
+          })
     } catch (refundError) {
       logger.error('Failed to process manual event refund', {
         error: refundError instanceof Error ? refundError : new Error(String(refundError)),
@@ -2301,9 +2370,23 @@ export async function refundEventBookingManual(input: {
         refund_status: refundResult.status,
         refund_amount: refundResult.amount,
         max_refundable: maxRefundable,
+        method: parsed.data.method,
+        refund_request_id: parsed.data.refundRequestId ?? null,
         reason: parsed.data.reason || null
       }
     })
+
+    // A refund opened from a waiting refund request settles it (owner decision D7).
+    if (parsed.data.refundRequestId && (refundResult.status === 'succeeded' || refundResult.status === 'pending') && refundResult.amount > 0) {
+      await resolveEventRefundRequestRow(supabase, {
+        requestId: parsed.data.refundRequestId,
+        bookingId: bookingRow.id,
+        status: 'refunded',
+        amount: refundResult.amount,
+        resolvedBy: actingUserId,
+        note: parsed.data.reason || null
+      })
+    }
 
     if (bookingRow.event_id) {
       revalidatePath(`/events/${bookingRow.event_id}`)
