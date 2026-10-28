@@ -84,6 +84,8 @@ type FohCreateBookingModalProps = {
   formRequiresDeposit: boolean
   /** Non-Christmas seasonal period covering the chosen date, if any. */
   seasonalPeriod: FohBookingPeriod | null
+  /** The Christmas period's pre-order cutoff in days (BK-150); null when not known. */
+  christmasPreorderCutoffDays?: number | null
   seasonalAnswer: boolean | null
   onSetSeasonalAnswer: (accepted: boolean) => void
   // Messages
@@ -121,13 +123,25 @@ const CHRISTMAS_COURSE_OPTIONS = [
  * kitchen could not tell who was paying for what. "Everyone" fills every guest at once, because a
  * table often all has the same.
  */
+/**
+ * When pre-orders close, from the period setting rather than a fixed 7 (BK-150).
+ * "noon 7 days before the date", or "the pre-order deadline" when the setting is not known.
+ */
+export function christmasPreorderDeadlineText(cutoffDays: number | null | undefined): string {
+  if (typeof cutoffDays !== 'number' || !Number.isFinite(cutoffDays)) return 'the pre-order deadline'
+  if (cutoffDays === 0) return 'noon on the date'
+  return `noon ${cutoffDays} day${cutoffDays === 1 ? '' : 's'} before the date`
+}
+
 function ChristmasCreateCourses({
   partySize,
   counts,
+  cutoffDays,
   onChange,
 }: {
   partySize: number
   counts: number[]
+  cutoffDays: number | null
   onChange: (counts: number[]) => void
 }) {
   const seats = Number.isFinite(partySize) ? Math.max(0, Math.min(CHRISTMAS_MAX_PARTY_SIZE, partySize)) : 0
@@ -140,7 +154,7 @@ function ChristmasCreateCourses({
       <legend className="text-sm font-medium text-text">Christmas courses for each guest</legend>
       <p className="text-xs text-text-muted">
         Guests on 1 course have nothing to pre-order. 2 courses is a main plus a starter or a dessert;
-        3 courses is all three. 2 and 3 courses need food choices by noon 7 days before the date.
+        3 courses is all three. 2 and 3 courses need food choices by {christmasPreorderDeadlineText(cutoffDays)}.
       </p>
       <Select
         label="Everyone"
@@ -197,6 +211,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     walkInPurposeAutoSelectionEnabled,
     formRequiresDeposit,
     seasonalPeriod,
+    christmasPreorderCutoffDays = null,
     seasonalAnswer,
     onSetSeasonalAnswer,
     errorMessage,
@@ -427,8 +442,9 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
                 at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
                 deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
-                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after noon
-                7 days before the date, it&apos;s the 1 course menu for everyone, with no pre-order.
+                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after{' '}
+                {christmasPreorderDeadlineText(christmasPreorderCutoffDays)}, it&apos;s the 1 course menu for
+                everyone, with no pre-order.
               </p>
             )}
           </div>
@@ -437,6 +453,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             <ChristmasCreateCourses
               partySize={Number.parseInt(createForm.party_size, 10)}
               counts={createForm.christmas_course_counts ?? []}
+              cutoffDays={christmasPreorderCutoffDays}
               onChange={(counts) => onSetCreateForm((current) => ({ ...current, christmas_course_counts: counts }))}
             />
           )}

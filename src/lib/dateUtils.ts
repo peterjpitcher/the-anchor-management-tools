@@ -312,6 +312,50 @@ export function whenLondonClockReaches(isoDate: string, time: string): Date | nu
 }
 
 /**
+ * Easter Sunday for a year, YYYY-MM-DD (Gregorian, the anonymous computus). Ported from the
+ * website's lib/recurring-dates.ts so both systems agree on the date.
+ */
+export function getEasterSunday(year: number): string {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+/**
+ * Mothering Sunday, the UK Mother's Day: the fourth Sunday of Lent, three weeks before Easter
+ * Sunday. 15 March 2026, 7 March 2027. Not the US Mother's Day in May.
+ */
+export function getMotheringSunday(year: number): string {
+  return shiftIsoDate(getEasterSunday(year), -21) as string
+}
+
+/**
+ * A stored date and London clock time (for example a private booking's event_date and
+ * start_time) as an ISO instant. Midnight when there is no time; null when unreadable.
+ *
+ * Use this rather than `${date}T${time}`, which has no zone and is read in the server's zone,
+ * UTC on the live site, so summer-time visits land an hour late (BK-211).
+ */
+export function londonVisitAtIso(date: string | null | undefined, time: string | null | undefined): string | null {
+  const datePart = date?.slice(0, 10)
+  if (!datePart) return null
+  const timePart = time?.trim() || '00:00'
+  return whenLondonClockReaches(datePart, timePart)?.toISOString() ?? null
+}
+
+/**
  * The London calendar date `days` days before today's London date, YYYY-MM-DD.
  * See getLocalIsoDateDaysAhead for why this is calendar arithmetic rather than elapsed time.
  */

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { FohCreateBookingModal, type CreateForm } from '../FohCreateBookingModal'
+import { christmasPreorderDeadlineText, FohCreateBookingModal, type CreateForm } from '../FohCreateBookingModal'
 
 const CHRISTMAS_FORM: CreateForm = {
   booking_date: '2026-12-05',
@@ -32,6 +32,7 @@ function renderModal(
     onSetCreateForm?: (updater: (current: CreateForm) => CreateForm) => void
     walkInTargetTable?: { id: string; name: string } | null
     canWaiveDeposit?: boolean
+    christmasPreorderCutoffDays?: number | null
   } = {},
 ) {
   render(
@@ -56,6 +57,7 @@ function renderModal(
       walkInPurposeAutoSelectionEnabled={false}
       formRequiresDeposit
       seasonalPeriod={null}
+      christmasPreorderCutoffDays={options.christmasPreorderCutoffDays ?? null}
       seasonalAnswer={null}
       onSetSeasonalAnswer={vi.fn()}
       errorMessage={null}
@@ -195,5 +197,25 @@ describe('the Pub Event tick', () => {
   it('is never shown on a Christmas booking', () => {
     renderModal({ ...CHRISTMAS_FORM, party_size: '20' }, { canWaiveDeposit: true })
     expect(screen.queryByLabelText(/Pub Event/)).not.toBeInTheDocument()
+  })
+})
+
+// BK-150: the deadline comes from the Christmas period's editable cutoff, not a fixed 7.
+describe('FohCreateBookingModal: the Christmas pre-order deadline', () => {
+  it('quotes the period setting', () => {
+    renderModal(CHRISTMAS_FORM, { christmasPreorderCutoffDays: 10 })
+    expect(screen.getByText(/need food choices by noon 10 days before the date/)).toBeInTheDocument()
+    expect(screen.getByText(/Booked after noon 10 days before the date/)).toBeInTheDocument()
+    expect(screen.queryByText(/7 days/)).not.toBeInTheDocument()
+  })
+
+  it('names no number when the setting is not known', () => {
+    renderModal(CHRISTMAS_FORM)
+    expect(screen.getByText(/need food choices by the pre-order deadline/)).toBeInTheDocument()
+  })
+
+  it('words one day and the day itself', () => {
+    expect(christmasPreorderDeadlineText(1)).toBe('noon 1 day before the date')
+    expect(christmasPreorderDeadlineText(0)).toBe('noon on the date')
   })
 })

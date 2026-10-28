@@ -7,6 +7,7 @@ import {
 } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { errorLogFields } from '@/lib/errors'
 import {
   getPeriodOfferability,
   mapBookingPeriodRow,
@@ -192,14 +193,25 @@ export async function GET(request: NextRequest) {
       try {
         // Only live periods are ever visible. The database exclusion constraint guarantees at most
         // one covers any date, so this is a single row by construction, not by optimism.
-        const { data: periodRow, error: periodError } = await supabase
-          .from('booking_periods')
-          .select(PERIOD_COLUMNS)
-          .eq('is_active', true)
-          .is('archived_at', null)
-          .lte('starts_on', date)
-          .gte('ends_on', date)
-          .maybeSingle()
+        const readPeriod = () =>
+          supabase
+            .from('booking_periods')
+            .select(PERIOD_COLUMNS)
+            .eq('is_active', true)
+            .is('archived_at', null)
+            .lte('starts_on', date)
+            .gte('ends_on', date)
+            .maybeSingle()
+
+        // BK-152: one retry before giving up. A failed read here makes the website treat the date
+        // as having no seasonal period, so a guest could be offered the ordinary menu at Christmas.
+        let { data: periodRow, error: periodError } = await readPeriod()
+        if (periodError) {
+          logger.warn('Seasonal booking period read failed; retrying once', {
+            metadata: { date, ...errorLogFields(periodError) },
+          })
+          ;({ data: periodRow, error: periodError } = await readPeriod())
+        }
 
         if (periodError) throw periodError
 
@@ -272,9 +284,11 @@ export async function GET(request: NextRequest) {
           req.method,
         )
       } catch (error) {
+        // Field by field: supabase-js errors are plain objects and used to log '[object Object]'.
+        const fields = errorLogFields(error)
         logger.error('Failed to load the seasonal booking period', {
-          error: error instanceof Error ? error : new Error(String(error)),
-          metadata: { date },
+          error: error instanceof Error ? error : new Error(fields.message),
+          metadata: { date, ...fields },
         })
         return createErrorResponse('Failed to load the booking period', 'INTERNAL_ERROR', 500)
       }
