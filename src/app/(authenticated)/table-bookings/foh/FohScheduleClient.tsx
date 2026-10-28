@@ -31,6 +31,7 @@ import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
 import { useFohCreateBooking } from './hooks/useFohCreateBooking'
 import { useFohDeploymentRefresh } from './hooks/useFohDeploymentRefresh'
+import { FohLoadWarningsBanner } from './components/FohLoadWarningsBanner'
 import { useFohDrag } from './useFohDrag'
 
 import { FohHeader } from './components/FohHeader'
@@ -50,6 +51,7 @@ import {
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
 import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
+import { AwaitingConfirmationPanel } from '@/components/features/table-bookings/AwaitingConfirmationPanel'
 
 /** The warning for a guest who was not told about a change, or null. */
 function describeGuestNotReached(result: unknown): string | null {
@@ -237,9 +239,16 @@ export function FohScheduleClient({
     || partySizeEditOpen || walkoutModalOpen || changeTimeOpen
   )
 
+  // An open booking panel no longer holds a new release off: the screen reloads once it has been
+  // idle, and an open form delays that by at most 15 minutes (BK-096).
   useFohDeploymentRefresh({
     currentVersion: deploymentVersion,
-    pauseReload: hasActiveFohWork,
+    busy: Boolean(bookingActionInFlight || createBooking.submittingBooking || submittingFoodOrderAlert),
+    formOpen: Boolean(
+      createBooking.isCreateModalOpen || showCancelBookingConfirmation
+      || partySizeEditOpen || walkoutModalOpen || changeTimeOpen
+    ),
+    lastInteractionAtMsRef,
   })
 
   useEffect(() => {
@@ -571,7 +580,12 @@ export function FohScheduleClient({
         </Alert>
       )}
 
+      <FohLoadWarningsBanner warnings={schedule?.load_warnings} />
+
       <GuestNotToldPanel refreshKey={guestNotToldRefresh} canEdit={canEdit} />
+
+      {/* Guests asked to confirm the day before who have not answered (BK-094). */}
+      <AwaitingConfirmationPanel canEdit={canEdit} />
 
       {viewMode === 'inside' ? (
         <>
@@ -663,6 +677,7 @@ export function FohScheduleClient({
         walkInPurposeAutoSelectionEnabled={createBooking.walkInPurposeAutoSelectionEnabled}
         formRequiresDeposit={createBooking.formRequiresDeposit}
         seasonalPeriod={createBooking.seasonalPeriod}
+        christmasPreorderCutoffDays={createBooking.christmasPreorderCutoffDays}
         seasonalAnswer={createBooking.seasonalAnswer}
         onSetSeasonalAnswer={createBooking.setSeasonalAnswer}
         errorMessage={errorMessage}

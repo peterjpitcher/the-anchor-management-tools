@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+import { errorLogFields } from '@/lib/errors'
 import {
   getPeriodOfferability,
   mapBookingPeriodRow,
@@ -98,6 +99,8 @@ export async function GET(request: NextRequest) {
           guest_question: period.guestQuestion,
           guest_blurb: period.guestBlurb,
           requires_preorder: period.requiresPreorder,
+          // The editable pre-order cutoff, so the Christmas hint quotes the setting (BK-150).
+          preorder_cutoff_days: period.preorderCutoffDays,
           min_party_size: period.minPartySize,
           max_party_size: period.maxPartySize,
           bookable: offerability.offerable,
@@ -107,9 +110,11 @@ export async function GET(request: NextRequest) {
       },
     })
   } catch (error) {
+    // Field by field: supabase-js errors are plain objects (BK-152).
+    const fields = errorLogFields(error)
     logger.error('Failed to load the seasonal booking period for FOH', {
-      error: error instanceof Error ? error : new Error(String(error)),
-      metadata: { date },
+      error: error instanceof Error ? error : new Error(fields.message),
+      metadata: { date, ...fields },
     })
     return NextResponse.json(
       { success: false, error: 'Failed to load the booking period' },

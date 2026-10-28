@@ -105,11 +105,8 @@ async function analyzeTableBookings() {
     console.log('');
     
     console.log('-- Step 4: Reset customer booking stats (optional)');
-    console.log('UPDATE customers SET ');
-    console.log('  table_booking_count = 0,');
-    console.log('  no_show_count = 0,');
-    console.log('  last_table_booking_date = NULL');
-    console.log('WHERE table_booking_count > 0 OR no_show_count > 0;');
+    // table_booking_count and last_table_booking_date were dropped (BK-165); only no-shows are kept.
+    console.log('UPDATE customers SET no_show_count = 0 WHERE no_show_count > 0;');
     console.log('');
     
     console.log('-- Step 5: Commit the transaction');

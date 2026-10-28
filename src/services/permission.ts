@@ -139,19 +139,52 @@ function revalidateUserPermissionTags(userIds: Array<string | null | undefined>)
   }
 }
 
+/**
+ * The permission lookup itself failed (a network blip or a database hiccup), so we do not know
+ * what the user may do. Distinct from a real "no": a page can say "connection problem" and retry
+ * instead of sending staff to Access Denied (BK-095). Thrown from inside the cached fetch, so the
+ * failure is never cached and the next request asks again.
+ */
+export class PermissionsUnavailableError extends Error {
+  constructor(message = 'Could not check permissions') {
+    super(message);
+    this.name = 'PermissionsUnavailableError';
+  }
+}
+
+/** allowed and denied are real answers; unavailable means the lookup failed and must be retried. */
+export type PermissionCheckStatus = 'allowed' | 'denied' | 'unavailable';
+
+type RpcResult<T> = { data: T | null; error: unknown };
+
+/** Calls the RPC, retries once on an error, and throws PermissionsUnavailableError if both fail. */
+async function rpcWithOneRetry<T>(label: string, call: () => PromiseLike<RpcResult<T>>): Promise<T | null> {
+  let lastError: unknown = null;
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const { data, error } = await call();
+      if (!error) return data;
+      lastError = error;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  console.error(`Error fetching cached ${label} (after one retry):`, lastError);
+  throw new PermissionsUnavailableError();
+}
+
 // Cache all permissions for a user for 60 seconds.
 // A single call to get_user_permissions is reused across all checkUserPermission calls
 // within the same cache window, reducing N DB round-trips to 1.
+// A failed lookup throws rather than returning [], so an empty list is never cached (BK-095).
 const getCachedUserPermissions = (userId: string) =>
   unstable_cache(
     async (): Promise<UserPermission[]> => {
       const admin = createAdminClient();
-      const { data, error } = await admin.rpc('get_user_permissions', { p_user_id: userId });
-      if (error) {
-        console.error('Error fetching cached user permissions:', error);
-        return [];
-      }
-      return (data as UserPermission[]) ?? [];
+      const data = await rpcWithOneRetry('user permissions', () =>
+        admin.rpc('get_user_permissions', { p_user_id: userId })
+      );
+      return (data as UserPermission[] | null) ?? [];
     },
     ['user-permissions', userId],
     { revalidate: 60, tags: [`permissions-${userId}`] }
@@ -159,16 +192,15 @@ const getCachedUserPermissions = (userId: string) =>
 
 // Cache whether a user holds the super_admin role for 60 seconds, sharing the
 // same cache tag as permissions so it is busted on any role change.
+// A failed lookup throws rather than caching false (BK-095).
 const getCachedIsSuperAdmin = (userId: string) =>
   unstable_cache(
     async (): Promise<boolean> => {
       const admin = createAdminClient();
-      const { data, error } = await admin.rpc('get_user_roles', { p_user_id: userId });
-      if (error) {
-        console.error('Error fetching cached user roles:', error);
-        return false;
-      }
-      return ((data as Array<{ role_name?: string }>) ?? []).some(
+      const data = await rpcWithOneRetry('user roles', () =>
+        admin.rpc('get_user_roles', { p_user_id: userId })
+      );
+      return ((data as Array<{ role_name?: string }> | null) ?? []).some(
         (row) => row.role_name === 'super_admin'
       );
     },
@@ -177,24 +209,51 @@ const getCachedIsSuperAdmin = (userId: string) =>
   )();
 
 export class PermissionService {
+  /**
+   * Answers allowed, denied or unavailable. Unavailable is only ever returned when a lookup
+   * failed; it never grants anything, so callers that treat it as "no" still fail closed.
+   */
+  static async getPermissionStatus(
+    moduleName: ModuleName,
+    action: ActionType,
+    userId: string
+  ): Promise<PermissionCheckStatus> {
+    // super_admin is granted every permission. This short-circuit guarantees
+    // full access even if no explicit permission rows are assigned to the role.
+    let superAdminUnknown = false;
+    try {
+      if (await getCachedIsSuperAdmin(userId)) {
+        return 'allowed';
+      }
+    } catch {
+      superAdminUnknown = true;
+    }
+
+    let permissions: UserPermission[];
+    try {
+      // Use the cached permissions fetch so multiple permission checks within the
+      // same request window only make one DB call.
+      permissions = await getCachedUserPermissions(userId);
+    } catch {
+      return 'unavailable';
+    }
+
+    if (permissions.some((p) => p.module_name === moduleName && p.action === action)) {
+      return 'allowed';
+    }
+    return superAdminUnknown ? 'unavailable' : 'denied';
+  }
+
   static async checkUserPermission(
     moduleName: ModuleName,
     action: ActionType,
     userId: string
   ): Promise<boolean> {
-    // super_admin is granted every permission. This short-circuit guarantees
-    // full access even if no explicit permission rows are assigned to the role.
-    if (await getCachedIsSuperAdmin(userId)) {
-      return true;
-    }
-    // Use the cached permissions fetch so multiple permission checks within the
-    // same request window only make one DB call.
-    const permissions = await getCachedUserPermissions(userId);
-    return permissions.some(
-      (p) => p.module_name === moduleName && p.action === action
-    );
+    // Fails closed: an unavailable lookup answers no for this request only, and is not cached.
+    return (await this.getPermissionStatus(moduleName, action, userId)) === 'allowed';
   }
 
+  /** Throws PermissionsUnavailableError when the lookup fails; callers already handle a throw. */
   static async getUserPermissions(userId: string) {
     // Delegate to the cached fetch so callers also benefit from caching.
     return getCachedUserPermissions(userId);

@@ -45,6 +45,8 @@ export type FohBookingPeriod = {
   guest_question: string
   guest_blurb: string | null
   requires_preorder: boolean
+  /** Days before the date that pre-orders close, at noon London. Null from an older API. */
+  preorder_cutoff_days?: number | null
   min_party_size: number | null
   max_party_size: number | null
   bookable: boolean
@@ -80,6 +82,8 @@ export type UseFohCreateBookingReturn = {
   formRequiresDeposit: boolean
   /** The non-Christmas seasonal period covering the chosen date, if any. */
   seasonalPeriod: FohBookingPeriod | null
+  /** The Christmas period's pre-order cutoff in days for the chosen date, or null (BK-150). */
+  christmasPreorderCutoffDays: number | null
   /** Null until staff answer, and again whenever the period or date changes. */
   seasonalAnswer: boolean | null
   setSeasonalAnswer: (accepted: boolean) => void
@@ -301,6 +305,13 @@ export function useFohCreateBooking(input: {
   const seasonalPeriod =
     bookingPeriod && bookingPeriod.period_kind !== 'christmas' && createForm.purpose !== 'event'
       ? bookingPeriod
+      : null
+
+  // The Christmas period's own pre-order cutoff, for the hint staff read (BK-150). Null when the
+  // date has no Christmas period or the lookup failed; the hint then names no number.
+  const christmasPreorderCutoffDays =
+    bookingPeriod?.period_kind === 'christmas' && typeof bookingPeriod.preorder_cutoff_days === 'number'
+      ? bookingPeriod.preorder_cutoff_days
       : null
 
   // Read back only while it still belongs to the period and date on screen.
@@ -720,7 +731,7 @@ export function useFohCreateBooking(input: {
     walkInPurposeAutoSelectionEnabled, tableEventPromptAcknowledgedEventId,
     selectedEventOption,
     overlappingEventForTable, formRequiresDeposit,
-    seasonalPeriod, seasonalAnswer, setSeasonalAnswer,
+    seasonalPeriod, seasonalAnswer, setSeasonalAnswer, christmasPreorderCutoffDays,
     setCreateForm, setCustomerQuery, setSelectedCustomer, setCustomerResults,
     setTableEventPromptAcknowledgedEventId,
     setWalkInPurposeAutoSelectionEnabled,

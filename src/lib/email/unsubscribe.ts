@@ -150,6 +150,35 @@ export type UnsubscribeLookup =
  * Says nothing about WHICH token failed or whose it was. Somebody probing tokens learns the
  * same from every miss.
  */
+/** Longer than any real chain of merges; stops a loop in bad data from spinning. */
+const MAX_MERGE_HOPS = 5
+
+/**
+ * The customer a token's record was merged into, if it was (BK-164). A customer can hold one
+ * unsubscribe token, so when both merged records held one, the duplicate's stays with the
+ * anonymised record; following merged_into_customer_id makes an old email's link opt out the
+ * record that is still sent marketing. Null when the chain cannot be read, so the guest is told
+ * it did not go through rather than told they are unsubscribed.
+ */
+async function followCustomerMerges(
+  supabase: SupabaseClient<any, 'public', any>,
+  customerId: string
+): Promise<string | null> {
+  let current = customerId
+  for (let hop = 0; hop < MAX_MERGE_HOPS; hop += 1) {
+    const { data, error } = await supabase
+      .from('customers')
+      .select('merged_into_customer_id')
+      .eq('id', current)
+      .maybeSingle()
+    if (error) return null
+    const next = (data as { merged_into_customer_id?: string | null } | null)?.merged_into_customer_id
+    if (!next) return current
+    current = next
+  }
+  return current
+}
+
 export async function lookupUnsubscribeToken(
   supabase: SupabaseClient<any, 'public', any>,
   rawToken: string
@@ -168,10 +197,12 @@ export async function lookupUnsubscribeToken(
   if (!data) return { ok: false, reason: 'not_found' }
 
   if (data.customer_id) {
+    const customerId = await followCustomerMerges(supabase, data.customer_id as string)
+    if (!customerId) return { ok: false, reason: 'unavailable' }
     return {
       ok: true,
       subjectType: 'customer',
-      customerId: data.customer_id as string,
+      customerId,
       businessContactId: null,
     }
   }

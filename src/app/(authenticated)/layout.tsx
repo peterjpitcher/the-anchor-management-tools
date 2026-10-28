@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { redirect } from 'next/navigation';
 import AuthenticatedLayout from './AuthenticatedLayout';
+import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,11 +89,21 @@ export default async function Layout({ children }: { children: React.ReactNode }
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       const admin = createAdminClient();
-      const { data: roles } = await admin
+      const { data: roles, error: rolesError } = await admin
         .from('user_roles')
         .select('roles(name)')
         .eq('user_id', user.id)
         .returns<UserRoleRow[]>();
+
+      // Both lookups failed: a connection problem, not a portal-only login. Show a retry screen
+      // instead of sending a manager to the staff portal (BK-095). Nothing is granted.
+      if (rolesError) {
+        return (
+          <AuthenticatedLayout initialPermissions={[]} userRoleLabel={userRoleLabel} isSuperAdmin={false}>
+            <PermissionsUnavailable />
+          </AuthenticatedLayout>
+        );
+      }
 
       const roleNames = (roles ?? [])
         .map(roleNameFromRow)
