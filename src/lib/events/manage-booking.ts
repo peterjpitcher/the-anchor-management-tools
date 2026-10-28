@@ -11,6 +11,7 @@ import {
   loadBookingItems
 } from '@/lib/events/ticket-type-queries'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { londonCalendarDaysUntil } from '@/lib/dateUtils'
 
 export type EventManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -123,23 +124,26 @@ const EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING =
   'The refund went through, but the original payment was not updated to show it. Do not refund ' +
   'again: tell the developer so the payment record can be corrected.'
 
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 const MANAGE_TOKEN_MAX_LIFETIME_MS = 180 * 24 * 60 * 60 * 1000
 const MANAGE_TOKEN_FALLBACK_MS = 48 * 60 * 60 * 1000
 
+/**
+ * The ticket refund band: in full 7 or more days before, half 3 to 6 days before, none inside 3.
+ * The days are whole London calendar days from today to the event's London date, as the ticket
+ * email and the website promise and as table deposits count (BK-111). It used to count elapsed
+ * hours, so a guest giving up seats on the evening a week before a 19:00 event got half back.
+ */
 export function getEventRefundPolicy(eventStartIso: string, now = new Date()): EventRefundPolicy {
-  const eventStart = Date.parse(eventStartIso)
-  if (!Number.isFinite(eventStart)) {
+  const days = londonCalendarDaysUntil(eventStartIso, now)
+  if (days === null) {
     return { refundRate: 0, policyBand: 'none' }
   }
 
-  const diffMs = eventStart - now.getTime()
-  if (diffMs >= SEVEN_DAYS_MS) {
+  if (days >= 7) {
     return { refundRate: 1, policyBand: 'full' }
   }
 
-  if (diffMs >= THREE_DAYS_MS) {
+  if (days >= 3) {
     return { refundRate: 0.5, policyBand: 'partial' }
   }
 
