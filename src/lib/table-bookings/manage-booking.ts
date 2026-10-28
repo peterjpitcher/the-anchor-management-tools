@@ -13,6 +13,7 @@ import {
 } from './staff-deposit-transitions'
 import { carriedTurnaroundMs, moveBookingAssignmentToTables, readConfiguredTurnaroundMinutes } from './move-table'
 import { guestIncreaseOverfillsKitchen } from './kitchen-pacing'
+import { readTableBookingPartyLimit } from './party-limit'
 
 export type TableManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -319,30 +320,6 @@ async function undoTableMoveForPartySize(
       metadata: { bookingId, previousTableIds: move.previousTableIds }
     })
   }
-}
-
-/** What the booking function falls back to when the setting is missing or unreadable. */
-const DEFAULT_ONLINE_PARTY_LIMIT = 20
-
-/**
- * The largest party a guest may book or amend to themselves: table_booking_max_party_online, as
- * create_table_booking_public_v06 reads it (get_setting_int with a default of 20).
- */
-async function readOnlinePartyLimit(supabase: SupabaseClient<any, 'public', any>): Promise<number> {
-  const { data, error } = await supabase
-    .from('system_settings')
-    .select('value')
-    .eq('key', 'table_booking_max_party_online')
-    .maybeSingle()
-  if (error) {
-    logger.error('Could not read the online party limit; using the default', {
-      metadata: { code: error.code ?? null, message: error.message },
-    })
-    return DEFAULT_ONLINE_PARTY_LIMIT
-  }
-  const raw = (data?.value as { value?: unknown } | null | undefined)?.value
-  const limit = typeof raw === 'number' ? raw : Number(raw)
-  return Number.isInteger(limit) && limit > 0 ? limit : DEFAULT_ONLINE_PARTY_LIMIT
 }
 
 export async function createTableManageToken(
@@ -698,7 +675,7 @@ export async function updateTableBookingByRawToken(
 
   // The website's own party limit, the setting the booking function reads for online bookings
   // (BK-129: this was a hard-coded 21, so lowering the setting never reached a guest's own change).
-  if (newPartySize > (await readOnlinePartyLimit(supabase))) {
+  if (newPartySize > (await readTableBookingPartyLimit(supabase))) {
     return {
       state: 'blocked',
       reason: 'too_large_party'

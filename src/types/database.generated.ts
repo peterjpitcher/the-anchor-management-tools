@@ -24143,6 +24143,15 @@ export type Database = {
         Args: { p_party_size: number; p_table_booking_id: string }
         Returns: boolean
       }
+      table_booking_drinks_full: {
+        Args: {
+          p_arrival_minutes: number
+          p_booking_date: string
+          p_now?: string
+          p_party_size: number
+        }
+        Returns: boolean
+      }
       table_booking_matches_service_window_v05: {
         Args: {
           p_booking_date: string
@@ -24156,6 +24165,17 @@ export type Database = {
       table_booking_settings_keys: {
         Args: { p_section: string }
         Returns: string[]
+      }
+      table_booking_turn_minutes: {
+        Args: {
+          p_booking_date: string
+          p_party_size: number
+          p_purpose: string
+        }
+        Returns: {
+          duration_minutes: number
+          turnaround_minutes: number
+        }[]
       }
       table_booking_within_service_window_v06: {
         Args: {

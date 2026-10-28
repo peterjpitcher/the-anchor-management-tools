@@ -233,7 +233,7 @@ export function mapFohBlockedReason(blockedReason?: string | null, reason?: stri
     case 'no_table':
       return 'No suitable table is available for that booking window.'
     case 'too_large_party':
-      return 'Party size is too large for online booking. Please call the venue.'
+      return 'That party is over the table booking limit. A bigger group is a private booking.'
     case 'customer_conflict':
       return 'This customer already has an event booking at that time.'
     case 'in_past':

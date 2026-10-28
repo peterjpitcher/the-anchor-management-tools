@@ -53,6 +53,7 @@ import {
   FOH_BOOKING_CLIENT_CONTRACT,
   FOH_BOOKING_CLIENT_HEADER,
 } from '@/lib/foh/booking-client-contract'
+import { walkInOverridePickerRpc } from '../mocks/walkInOverridePicker'
 
 function makeThenable(result: any) {
   const builder: any = {
@@ -89,6 +90,8 @@ function buildSupabase(options: { syncError?: { message: string } } = {}) {
     if (fn === 'sync_outside_reservation') {
       return Promise.resolve({ data: null, error: options.syncError ?? null })
     }
+    const picked = walkInOverridePickerRpc(fn)
+    if (picked) return Promise.resolve(picked)
     return Promise.resolve({ data: null, error: null })
   })
   const tableBookingInsert = vi.fn(() =>
