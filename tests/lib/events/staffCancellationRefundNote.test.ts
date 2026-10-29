@@ -18,6 +18,10 @@ describe('staff cancellation refund note', () => {
     ['a refund still going through', { refundStatus: 'pending', refundAmount: 12.5, paymentTaken: true }, 'Refund pending: £12.50.'],
     ['a refund that needs a person', { refundStatus: 'manual_required', refundAmount: 30, paymentTaken: true }, "We'll be in touch about your £30.00 refund."],
     ['a refund that failed', { refundStatus: 'failed', refundAmount: 30, paymentTaken: true }, "We'll be in touch about your £30.00 refund."],
+    // BK-135 and the review finding on PR 277: bar money goes back at the bar, PayPal money online.
+    ['a booking paid only at the bar', { refundStatus: 'none', refundAmount: 0, paymentTaken: true, barRefundAmount: 45 }, "You paid £45.00 at the bar, so we'll be in touch to give it back."],
+    ['a booking paid both ways', { refundStatus: 'succeeded', refundAmount: 80, paymentTaken: true, barRefundAmount: 45 }, "Refund issued: £80.00, and we'll hand back the £45.00 you paid at the bar."],
+    ['a booking paid both ways whose PayPal part needs a person', { refundStatus: 'failed', refundAmount: 80, paymentTaken: true, barRefundAmount: 45 }, "We'll be in touch about your £80.00 refund, and we'll hand back the £45.00 you paid at the bar."],
   ] as const)('%s', (_label, input, expected) => {
     const note = buildStaffCancellationRefundNote(input)
     expect(note).toBe(expected)

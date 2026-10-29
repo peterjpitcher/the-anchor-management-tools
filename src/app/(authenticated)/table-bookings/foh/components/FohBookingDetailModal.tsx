@@ -25,6 +25,7 @@ import {
   statusBadgeClass,
   postBookingAction,
   getFohTimeChangeBlocker,
+  isFohEventLinkedBooking,
 } from '../utils'
 import { staffCancellationBody } from '@/lib/table-bookings/staff-cancellation'
 import { FohCancelBookingConfirm } from './FohCancelBookingConfirm'
@@ -105,8 +106,12 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const selectedBookingSeatedTime = formatLifecycleTime(selectedBooking.seated_at)
   const selectedBookingLeftTime = formatLifecycleTime(selectedBooking.left_at)
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
+  // The table half of an event booking is cancelled or no-showed from the event (BK-074).
+  const selectedBookingIsEventLinked = isFohEventLinkedBooking(selectedBooking)
+  const eventLinkedBlocker = selectedBookingIsEventLinked ? 'Tied to an event. Change it from the event.' : null
   const selectedBookingCanBeCancelled = Boolean(
     selectedBooking &&
+      !selectedBookingIsEventLinked &&
       !selectedBooking.is_private_block &&
       selectedBookingVisualState !== 'cancelled' &&
       selectedBookingVisualState !== 'no_show'
@@ -141,6 +146,12 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             {selectedBooking.assignment_count && selectedBooking.assignment_count > 1 ? ` · joined ${selectedBooking.assignment_count} tables` : ''}
             {selectedBookingContext?.laneTableName ? ` · table ${selectedBookingContext.laneTableName}` : ''}
           </p>
+          {selectedBookingIsEventLinked && (
+            <p className="mt-1 text-xs text-text">
+              <Badge tone="info">Event booking</Badge>{' '}
+              Linked to event booking for {selectedBooking.event_name || 'an event'}. Change or cancel it from the event.
+            </p>
+          )}
           {selectedBooking.booking_type === 'christmas' && (
             // BK-057: who is on 1, 2 or 3 courses, so the floor can price the bill.
             <p className="mt-1 text-xs text-text">
@@ -234,6 +245,7 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             showCancelBookingConfirmation={showCancelBookingConfirmation}
             showNoShowConfirmation={showNoShowConfirmation}
             selectedBookingCanBeCancelled={selectedBookingCanBeCancelled}
+            eventLinkedBlocker={eventLinkedBlocker}
             selectedMoveTarget={selectedMoveTarget}
             selectedMoveOptions={selectedMoveOptions}
             loadingSelectedMoveOptions={loadingSelectedMoveOptions}
@@ -403,6 +415,8 @@ function BookingActions(props: {
   showCancelBookingConfirmation: boolean
   showNoShowConfirmation: boolean
   selectedBookingCanBeCancelled: boolean
+  /** Set for the table half of an event booking: why cancel and no-show are not offered (BK-074). */
+  eventLinkedBlocker: string | null
   selectedMoveTarget: string
   selectedMoveOptions: FohMoveTableOption[]
   loadingSelectedMoveOptions: boolean
@@ -429,6 +443,7 @@ function BookingActions(props: {
     showCancelBookingConfirmation,
     showNoShowConfirmation,
     selectedBookingCanBeCancelled,
+    eventLinkedBlocker,
     selectedMoveTarget,
     selectedMoveOptions,
     loadingSelectedMoveOptions,
@@ -489,8 +504,10 @@ function BookingActions(props: {
           type="button"
           variant="secondary"
           size="sm"
-          disabled={Boolean(bookingActionInFlight)}
+          disabled={Boolean(bookingActionInFlight) || Boolean(eventLinkedBlocker)}
+          title={eventLinkedBlocker ?? undefined}
           onClick={() => {
+            if (eventLinkedBlocker) return
             onSetShowNoShowConfirmation(!showNoShowConfirmation)
           }}
           className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showNoShowConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
@@ -532,6 +549,7 @@ function BookingActions(props: {
           variant="secondary"
           size="sm"
           disabled={Boolean(bookingActionInFlight) || !selectedBookingCanBeCancelled}
+          title={eventLinkedBlocker ?? undefined}
           onClick={() => {
             if (!selectedBookingCanBeCancelled) return
             onSetShowCancelBookingConfirmation(!showCancelBookingConfirmation)

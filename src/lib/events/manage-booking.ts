@@ -11,6 +11,7 @@ import {
   loadBookingItems
 } from '@/lib/events/ticket-type-queries'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { londonCalendarDaysUntil } from '@/lib/dateUtils'
 
 export type EventManagePreviewResult = {
   state: 'ready' | 'blocked'
@@ -123,23 +124,26 @@ const EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING =
   'The refund went through, but the original payment was not updated to show it. Do not refund ' +
   'again: tell the developer so the payment record can be corrected.'
 
-const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000
 const MANAGE_TOKEN_MAX_LIFETIME_MS = 180 * 24 * 60 * 60 * 1000
 const MANAGE_TOKEN_FALLBACK_MS = 48 * 60 * 60 * 1000
 
+/**
+ * The ticket refund band: in full 7 or more days before, half 3 to 6 days before, none inside 3.
+ * The days are whole London calendar days from today to the event's London date, as the ticket
+ * email and the website promise and as table deposits count (BK-111). It used to count elapsed
+ * hours, so a guest giving up seats on the evening a week before a 19:00 event got half back.
+ */
 export function getEventRefundPolicy(eventStartIso: string, now = new Date()): EventRefundPolicy {
-  const eventStart = Date.parse(eventStartIso)
-  if (!Number.isFinite(eventStart)) {
+  const days = londonCalendarDaysUntil(eventStartIso, now)
+  if (days === null) {
     return { refundRate: 0, policyBand: 'none' }
   }
 
-  const diffMs = eventStart - now.getTime()
-  if (diffMs >= SEVEN_DAYS_MS) {
+  if (days >= 7) {
     return { refundRate: 1, policyBand: 'full' }
   }
 
-  if (diffMs >= THREE_DAYS_MS) {
+  if (days >= 3) {
     return { refundRate: 0.5, policyBand: 'partial' }
   }
 
@@ -442,6 +446,8 @@ export async function processEventRefund(
   let sawFailure = false
   let sawManualRequired = false
   let paymentRecordNotUpdated = false
+  // Stays true while every capture looked at has nothing left on it.
+  let everyCaptureFullyRefunded = true
   const paypalRefundIds: string[] = []
   const currency = (paymentRows[0]?.currency || 'GBP').toUpperCase()
 
@@ -470,6 +476,7 @@ export async function processEventRefund(
     const paymentAmount = Math.max(0, Number(payment.amount || 0))
     const available = roundCurrencyAmount(Math.max(0, paymentAmount - alreadyRefunded))
     if (available <= 0) continue
+    everyCaptureFullyRefunded = false
 
     const amountForPayment = roundCurrencyAmount(Math.min(remaining, available))
     let paypalRefundMeta: { id: string; status: string; currency: string | null } | null = null
@@ -692,6 +699,12 @@ export async function processEventRefund(
 
   const amount = roundCurrencyAmount(processedAmount)
   if (amount <= 0) {
+    // Every capture was already refunded in full, so nothing is owed and nothing failed (BK-136):
+    // a whole-event cancellation after a partial refund used to report this as a refund that
+    // needed staff follow-up, and the guest was told so.
+    if (!sawFailure && everyCaptureFullyRefunded) {
+      return { status: 'succeeded', amount: 0, currency, reason: 'nothing_left_to_refund' }
+    }
     return {
       status: sawFailure ? 'failed' : 'manual_required',
       amount: refundAmount,
@@ -718,6 +731,65 @@ export async function processEventRefund(
     paypalRefundIds,
     reason: fullAmountProcessed ? undefined : 'partial_refund_only',
     ...(paymentRecordNotUpdated ? { staffWarning: EVENT_REFUND_PAYMENT_NOT_UPDATED_WARNING } : {})
+  }
+}
+
+export type EventManualRefundMethod = 'cash' | 'card_terminal'
+
+/**
+ * Records a refund handed back at the bar, in cash or on the card terminal, against tickets paid
+ * there (BK-135, customer bookings review of 24 October 2026). The refund code only knew PayPal,
+ * so a cash or card ticket could be "refunded" from the dialog without any record: the booking
+ * still read as paid and offered the same money back again.
+ *
+ * The whole record is one database transaction, record_manual_event_refund_v01 (review finding on
+ * PR 277): it locks the booking, replays an earlier call with the same idempotency key, writes one
+ * refund payments row per bar payment it draws on (payment_provider 'manual', the method, the
+ * amount and who recorded it) and moves each source payment to partially_refunded or refunded. It
+ * used to read the balance here and insert after, so two overlapping submissions could both see
+ * the same balance and record the money twice. No money moves here: the member of staff has
+ * handed it back. Never more than the bar payments still hold.
+ */
+export async function recordManualEventRefund(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: {
+    bookingId: string
+    amount: number
+    method: EventManualRefundMethod
+    reason: string
+    idempotencyKey: string
+    recordedBy: string | null
+    note?: string | null
+    metadata?: Record<string, unknown>
+  }
+): Promise<EventRefundResult> {
+  const refundAmount = roundCurrencyAmount(input.amount)
+  if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+    return { status: 'none', amount: 0, currency: 'GBP' }
+  }
+
+  const { data, error } = await supabase.rpc('record_manual_event_refund_v01', {
+    p_booking_id: input.bookingId,
+    p_amount: refundAmount,
+    p_method: input.method,
+    p_reason: input.reason,
+    p_idempotency_key: input.idempotencyKey,
+    p_recorded_by: input.recordedBy,
+    p_note: input.note || null,
+    p_metadata: input.metadata || {}
+  })
+  if (error) throw error
+
+  const result = (data ?? {}) as { status?: string; amount?: number | string; reason?: string }
+  const status: EventRefundResult['status'] =
+    result.status === 'succeeded' || result.status === 'manual_required' || result.status === 'none'
+      ? result.status
+      : 'failed'
+  return {
+    status,
+    amount: roundCurrencyAmount(Number(result.amount ?? 0)),
+    currency: 'GBP',
+    reason: result.reason ?? undefined
   }
 }
 
