@@ -771,7 +771,7 @@ describe('SMS reply-to-book', () => {
       const texts = sentTexts()
       expect(texts).toHaveLength(1)
       expect(texts[0].to).toBe('+447700900123')
-      expect(texts[0].body).toContain("you're in. 2 seats locked in for Quiz Night")
+      expect(texts[0].body).toContain("you're booked in for Quiz Night")
       expect(texts[0].body.endsWith(` ${MANAGE_LINK}`)).toBe(true)
       expect(appLinksIn(texts[0].body)).toEqual([MANAGE_LINK])
       assertCleanText(texts[0].body)

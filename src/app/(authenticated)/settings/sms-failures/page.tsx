@@ -128,7 +128,7 @@ function getSource(row: SmsFailureRow): { label: string; href?: string } {
   if (body.includes('thanks for popping in') && body.includes('quick review')) {
     return { label: 'Table review followup' }
   }
-  if (body.includes('hope you had a belter') && body.includes('quick review')) {
+  if ((body.includes('hope you had a belter') && body.includes('quick review')) || body.includes("we'd love to know how it went")) {
     return { label: 'Event review followup' }
   }
   if (row.message_sid.startsWith('local-fail-')) {

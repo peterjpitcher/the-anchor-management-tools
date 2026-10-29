@@ -58,7 +58,6 @@ import {
   sendEventPaymentConfirmationSms,
   sendEventPaymentRetrySms,
 } from '@/lib/events/event-payments'
-import { sendWaitlistOfferSms } from '@/lib/events/waitlist-offers'
 import {
   sendEventPaymentConfirmationEmail,
   sendEventPaymentLinkEmail,
@@ -277,28 +276,6 @@ describe('texts carrying an app link', () => {
 
     const body = sentText()
     expectAppLink(body, '/g/guest-token/manage-booking')
-    assertCleanText(body)
-  })
-
-  it('waitlist offer, as the waitlist cron sends it', async () => {
-    const db = fixtureDb({ customers: CUSTOMER, events: EVENT, waitlist_offers: { id: 'offer-1' } })
-
-    await sendWaitlistOfferSms(
-      db,
-      {
-        state: 'offered',
-        waitlist_offer_id: 'offer-1',
-        waitlist_entry_id: 'entry-1',
-        event_id: 'event-1',
-        customer_id: 'customer-1',
-        requested_seats: 2,
-        event_start_datetime: EVENT.start_datetime as string,
-      },
-      getAppUrl()
-    )
-
-    const body = sentText()
-    expectAppLink(body, '/g/guest-token/waitlist-offer')
     assertCleanText(body)
   })
 })

@@ -41,7 +41,7 @@ describe('events list physical capacity', () => {
     const body = await response.json()
     expect(body.data.events[0]).toMatchObject({
       maximumAttendeeCapacity: 49, seated_capacity: 39, standing_capacity: 10,
-      seated_remaining: 7, standing_remaining: 10, total_remaining: 17, waitlist_enabled: true,
+      seated_remaining: 7, standing_remaining: 10, total_remaining: 17, waitlist_enabled: false,
     })
     expect(JSON.stringify(body)).not.toContain('999')
     expect(db.calls.filter(call => call.kind === 'rpc')).toEqual([

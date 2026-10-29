@@ -110,7 +110,7 @@ describe('public booking routes: a number that cannot take texts', () => {
     expect(ensureCustomerForPhone).not.toHaveBeenCalled()
   })
 
-  it('event waitlist: asks for an email for a landline', async () => {
+  it('event waitlist: closed, so it writes nothing and says to call (BK-138)', async () => {
     const request = new NextRequest('http://localhost/api/event-waitlist', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'idempotency-key': 'idem-1' },
@@ -119,8 +119,9 @@ describe('public booking routes: a number that cannot take texts', () => {
     const response = await postWaitlist(request as any)
     const payload = await response.json()
 
-    expect(response.status).toBe(400)
-    expect(payload).toMatchObject({ code: 'EMAIL_REQUIRED_FOR_NON_MOBILE' })
+    expect(response.status).toBe(410)
+    expect(payload).toMatchObject({ code: 'WAITLIST_CLOSED' })
+    expect(JSON.stringify(payload)).toContain('01753 682707')
     expect(ensureCustomerForPhone).not.toHaveBeenCalled()
   })
 

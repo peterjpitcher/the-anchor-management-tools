@@ -1657,7 +1657,8 @@ export function buildDepositReminderEmail(input: {
     subject = input.holdExpiry
       ? `Your hold at The Anchor expires on ${input.holdExpiry}`
       : `Your hold at The Anchor expires in ${days} ${dayWord}`;
-    paragraphs = [`A quick nudge. Your hold ${date} ${expires}.`, `Pay the ${deposit} deposit and the date's yours.`];
+    // Calm and exact, as SSOT section 1 asks of money messages (BK-171, owner decision D15).
+    paragraphs = [`A reminder that your hold ${date} ${expires}.`, `Pay the ${deposit} deposit to keep the date.`];
   } else if (input.stage === '3day') {
     const expires = input.holdExpiry ? `expires on ${input.holdExpiry}` : 'is expiring soon';
     subject = input.holdExpiry ? `Your hold at The Anchor expires on ${input.holdExpiry}` : 'Your hold at The Anchor is expiring soon';
