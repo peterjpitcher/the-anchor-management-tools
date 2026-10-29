@@ -449,7 +449,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           <div className="col-span-full flex items-center justify-between gap-4 pt-4 border-t border-border">
             <div>
               <p className="text-sm font-medium text-text">Default promotional SMS</p>
-              <p className="text-xs text-text-muted">New events in this category will inherit this setting</p>
+              <p className="text-xs text-text-muted">New events in this category will inherit this setting. It also stops the review request the morning after; booking messages and the day-before reminder still go out.</p>
             </div>
             <Switch
               aria-label="Default promotional SMS"

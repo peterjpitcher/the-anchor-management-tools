@@ -17,6 +17,13 @@ import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/bulk'
 import { createEventManageToken } from '@/lib/events/manage-booking'
+import {
+  buildEventPaymentConfirmedText,
+  buildEventPaymentManualReviewText,
+  buildEventPaymentReminderText,
+  buildEventSeatUpdateText,
+  formatEventTextWhen,
+} from '@/lib/events/event-guest-texts'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveEventPriceAmount } from '@/lib/events/pricing'
 import {
@@ -1017,21 +1024,7 @@ export async function sendEventPaymentConfirmationSms(
     const eventRow = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
     const eventStartIso = eventRow?.start_datetime || null
 
-    if (eventStartIso) {
-      try {
-        eventDateFormatted = new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Europe/London',
-          weekday: 'short',
-          day: 'numeric',
-          month: 'short',
-          hour: 'numeric',
-          minute: '2-digit',
-          hourCycle: 'h12'
-        }).format(new Date(eventStartIso))
-      } catch {
-        eventDateFormatted = null
-      }
-    }
+    eventDateFormatted = formatEventTextWhen(eventStartIso)
 
     const manageToken = await createEventManageToken(supabase, {
       customerId: customer.id,
@@ -1048,10 +1041,6 @@ export async function sendEventPaymentConfirmationSms(
   const eventRow = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
   const eventName = eventRow?.name || input.eventName
   const seats = Math.max(1, Number((booking as any).seats ?? input.seats))
-  const seatLabel = booking.event_seating_type === 'standing'
-    ? (seats === 1 ? 'standing ticket' : 'standing tickets')
-    : (seats === 1 ? 'seat' : 'seats')
-  const datePart = eventDateFormatted ? ` on ${eventDateFormatted}` : ''
 
   // Multi-type bookings get a compact per-type note (e.g. " (1x Regular, 1x Non-Alcohol)").
   // Single-type bookings keep the exact legacy body. Display-only — never block the SMS.
@@ -1075,7 +1064,15 @@ export async function sendEventPaymentConfirmationSms(
   }
 
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, payment received. Your booking for ${eventName}${datePart} is confirmed for ${seats} ${seatLabel}${breakdownPart}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    buildEventPaymentConfirmedText({
+      firstName,
+      eventName,
+      when: eventDateFormatted,
+      seats,
+      seatingType: booking.event_seating_type,
+      breakdown: breakdownPart,
+      manageLink,
+    }),
     supportPhone
   )
 
@@ -1162,10 +1159,7 @@ export async function sendEventPaymentManualReviewSms(
   const eventName = eventRow?.name || 'your event'
   const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, we have received your payment for ${eventName}, but staff need to check your booking before confirming. We will contact you shortly.`,
-    supportPhone
-  )
+  const body = ensureReplyInstruction(buildEventPaymentManualReviewText({ firstName, eventName }), supportPhone)
 
   try {
     const smsResult = await sendSMS(customer.mobile_number, body, {
@@ -1190,10 +1184,6 @@ export type EventPaymentSmsMeta = {
   success: boolean
   code: string | null
   logFailure: boolean
-}
-
-function formatSeatCount(count: number): string {
-  return `${count} ${count === 1 ? 'seat' : 'seats'}`
 }
 
 export type EventBookingSeatUpdateSmsResult = {
@@ -1260,8 +1250,6 @@ export async function sendEventBookingSeatUpdateSms(
   const firstName = getSmartFirstName(customer.first_name)
   const supportPhone = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const eventName = input.eventName || 'your event'
-  const oldLabel = formatSeatCount(Math.max(1, input.oldSeats))
-  const newLabel = formatSeatCount(Math.max(1, input.newSeats))
 
   let manageLink: string | null = null
   try {
@@ -1284,7 +1272,7 @@ export async function sendEventBookingSeatUpdateSms(
   }
 
   const body = ensureReplyInstruction(
-    `The Anchor: Hi ${firstName}, your booking for ${eventName} has been updated from ${oldLabel} to ${newLabel}.${manageLink ? ` Manage booking: ${manageLink}` : ''}`,
+    buildEventSeatUpdateText({ firstName, eventName, oldSeats: input.oldSeats, newSeats: input.newSeats, manageLink }),
     supportPhone
   )
 
@@ -1351,11 +1339,6 @@ export async function sendEventBookingSeatUpdateSms(
   }
 }
 
-/** The payment reminder text (BK-142). Pure, so it can be rendered with fixture data. */
-export function buildEventPaymentReminderSms(input: { firstName: string; eventName: string; heldUntil: string | null; paymentLink: string }): string {
-  const until = input.heldUntil ? ` are held until ${input.heldUntil}` : ' are held for you'
-  return `The Anchor: Hi ${input.firstName}, your seats for ${input.eventName}${until}. Pay here: ${input.paymentLink}`
-}
 
 export async function sendEventPaymentRetrySms(
   supabase: SupabaseClient<any, 'public', any>,
@@ -1437,7 +1420,7 @@ export async function sendEventPaymentRetrySms(
   // BK-142: most people reminded never tried to pay (a phone or bar booking), so the reminder
   // says what is held and until when, not that a payment "wasn't completed".
   const body = ensureReplyInstruction(
-    buildEventPaymentReminderSms({
+    buildEventPaymentReminderText({
       firstName,
       eventName: event?.name || 'your event',
       heldUntil: formatEventWhenCompactLondon(booking.hold_expires_at),

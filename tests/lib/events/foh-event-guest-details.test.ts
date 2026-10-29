@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { fohEventBookingExtras, fohEventSeatCount } from '@/app/(authenticated)/table-bookings/foh/event-guest-details'
-import { buildEventPaymentReminderSms } from '@/lib/events/event-payments'
+import { buildEventPaymentReminderText as buildEventPaymentReminderSms } from '@/lib/events/event-guest-texts'
 import type { FohEventOption } from '@/app/(authenticated)/table-bookings/foh/types'
 
 const base = { id: 'e', name: 'Quiz', date: '2026-01-01', time: '19:00', start_datetime: null, end_datetime: null, payment_mode: 'cash_only',

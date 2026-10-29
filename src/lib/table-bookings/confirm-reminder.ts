@@ -11,7 +11,7 @@
  * Everything below is a reason why some booking does NOT get one.
  */
 
-import { getSmartFirstName } from '@/lib/sms/name-utils'
+import { getSmartFirstName, isPlaceholderName } from '@/lib/sms/name-utils'
 
 /**
  * Only a CONFIRMED booking is chased, as an allow-list rather than a list of dead
@@ -171,8 +171,8 @@ export function buildConfirmReminderMessage(input: {
   partySize: number | null
   confirmUrl: string
 }): string {
-  const name = getSmartFirstName(input.firstName)
-  const greeting = name ? `${name}, ` : ''
+  // A missing or placeholder name gives no greeting, never "there, your table" (BK-221).
+  const greeting = isPlaceholderName(input.firstName) ? '' : `${getSmartFirstName(input.firstName)}, `
   const party = input.partySize && input.partySize > 0 ? ` for ${input.partySize}` : ''
 
   return (

@@ -276,7 +276,7 @@ describe('event review ask: one per night (BK-087)', () => {
     ])
 
     expect(textsFor('event_review_followup')).toEqual([
-      "The Anchor: Sam! Hope you had a belter at Music Bingo last night. Got 30 seconds? We'd love to know how we did: https://l.the-anchor.pub/rev123",
+      "The Anchor: Hi Sam, thanks for coming to Music Bingo last night. If you have 30 seconds, we'd love to know how it went: https://l.the-anchor.pub/rev123",
     ])
     expect(payload.reviews).toEqual(expect.objectContaining({ sent: 1 }))
   })
@@ -301,13 +301,13 @@ describe('event review ask: one per night (BK-087)', () => {
   it('says yesterday after an afternoon event', async () => {
     await runCronAt(MORNING_AFTER, [booking({ event: { start_datetime: '2026-09-16T13:00:00Z' } })])
 
-    expect(textsFor('event_review_followup')[0]).toContain('at Music Bingo yesterday.')
+    expect(textsFor('event_review_followup')[0]).toContain('to Music Bingo yesterday.')
   })
 
   it('names the weekday when the ask goes out later than the next day', async () => {
     // Saturday 19 September for the Wednesday night.
     await runCronAt('2026-09-19T09:00:00Z', [booking()])
 
-    expect(textsFor('event_review_followup')[0]).toContain('at Music Bingo on Wednesday.')
+    expect(textsFor('event_review_followup')[0]).toContain('to Music Bingo on Wednesday.')
   })
 })

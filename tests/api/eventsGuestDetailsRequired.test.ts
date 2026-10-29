@@ -54,3 +54,35 @@ describe('events list guest_details_required', () => {
     })
   })
 })
+
+// BK-035, BK-089 (owner decision D11): one "can a guest book this online now?" answer, so the
+// website hides the form whenever AMS would refuse.
+describe('events list bookable', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('is false when Accept bookings is off, sales have closed or the night is closed, and true otherwise', async () => {
+    const events = [
+      event('open', 'cash_only', null),
+      { ...event('switched-off', 'cash_only', null), bookings_enabled: false },
+      { ...event('sales-closed', 'cash_only', null), booking_cutoff_at: '2020-01-01T00:00:00.000Z' },
+      { ...event('reinstated-but-closed', 'cash_only', null), booking_open: false },
+    ]
+    const db = new FakeDb({ events, event_ticket_types: [] })
+    db.rpcHandlers.get_event_capacity_snapshot_v05 = () => events.map((row) => ({
+      event_id: row.id, capacity: 40, seats_remaining: 40, total_remaining: 40, is_full: false,
+    }))
+    vi.mocked(createAdminClient).mockReturnValue(db.asDb())
+
+    const response = await GET(new NextRequest('https://management.orangejelly.co.uk/api/events'))
+    const body = await response.json() as { data: { events: Array<{ id: string; bookable: boolean; booking_closed_reason: string | null; bookings_enabled: boolean }> } }
+    const byId = Object.fromEntries(body.data.events.map((row) => [row.id, [row.bookable, row.booking_closed_reason]]))
+    expect(byId).toEqual({
+      open: [true, null],
+      'switched-off': [false, 'bookings_disabled'],
+      'sales-closed': [false, 'sales_closed'],
+      'reinstated-but-closed': [false, 'booking_closed'],
+    })
+    // The fields the live website reads today keep their meaning.
+    expect(body.data.events.find((row) => row.id === 'sales-closed')?.bookings_enabled).toBe(true)
+  })
+})

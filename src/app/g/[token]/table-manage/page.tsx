@@ -155,6 +155,12 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
         tone: 'amber',
         text: `The kitchen is full at your time, so we can't add more people online and your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll see what we can do.`
       }
+    // The table belongs to an event booking, which a person changes with its tickets (BK-074).
+    case 'event_linked':
+      return {
+        tone: 'amber',
+        text: `This table is part of your event booking, so it can't be changed here and your booking hasn't changed. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+      }
     case 'too_large':
       return {
         tone: 'amber',
@@ -347,7 +353,9 @@ export default async function TableManageBookingPage({
       {!preview.can_edit ? (
         <GuestCard>
           <p className={GUEST_MUTED_CLASS}>
-            Booking changes are no longer available. Please call to make any changes.
+            {preview.event_linked
+              ? `This table is part of your event booking. To change it, please call us on ${GUEST_CONTACT.phoneDisplay}.`
+              : 'Booking changes are no longer available. Please call to make any changes.'}
           </p>
         </GuestCard>
       ) : (
