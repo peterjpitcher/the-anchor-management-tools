@@ -424,8 +424,10 @@ function buildPaymentLines(context: EventTicketEmailContext): string[] {
 /**
  * The cancellation and refund bands, for a booking with money in it.
  *
- * Recorded in SSOT section 7 and applied by `calculateRefundTier`: full 7 or more days before,
- * half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in full. Guest
+ * Recorded in SSOT section 7 and applied by `getEventRefundPolicy` in
+ * src/lib/events/manage-booking.ts, counting whole London calendar days (BK-111): full 7 or more
+ * days before, half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in
+ * full. Guest
  * cancelling was removed from the manage-booking page, so the only route is the phone.
  */
 function buildCancellationTermsLines(): string[] {
@@ -1143,10 +1145,31 @@ function buildRefundEmailLine(input: {
   reason?: string | null
   /** True when money was actually taken for this booking. */
   paymentTaken?: boolean
+  /** Only the rest of a partly refunded payment goes back now (BK-136). */
+  refundIsRestOfPayment?: boolean
+  /** Paid partly at the bar: what a person hands back there (review finding on PR 277). */
+  barRefundAmount?: number | null
 }): string | null {
   const amountText = formatPositiveCurrency(input.refundAmount ?? null, input.currency || 'GBP')
+  const barText = formatPositiveCurrency(input.barRefundAmount ?? null, input.currency || 'GBP')
+
+  // Paid both online and at the bar: say which money goes back which way, never the whole sum
+  // as if it were all to collect at the bar.
+  if (amountText && barText && input.refundStatus !== 'bar_refund_due') {
+    const bar = `We'll hand back the ${barText} you paid at the bar.`
+    if (input.refundStatus === 'succeeded') return `We've refunded the ${amountText} you paid online. ${bar}`
+    if (input.refundStatus === 'pending') return `We're refunding the ${amountText} you paid online. ${bar}`
+    return `We'll be in touch about your refund of the ${amountText} you paid online. ${bar}`
+  }
 
   if (amountText) {
+    // Paid at the bar in cash or by card: PayPal cannot return it, a person does (BK-135).
+    if (input.refundStatus === 'bar_refund_due') {
+      return `You paid ${amountText} at the bar, so we'll be in touch to give it back.`
+    }
+    if (input.refundIsRestOfPayment && (input.refundStatus === 'succeeded' || input.refundStatus === 'pending')) {
+      return `The rest of your payment, ${amountText}, ${input.refundStatus === 'succeeded' ? 'has been refunded' : 'is being refunded'} to your original payment method.`
+    }
     if (input.refundStatus === 'succeeded') {
       return `A refund of ${amountText} has been issued to your original payment method.`
     }
@@ -1178,6 +1201,10 @@ export async function sendEventBookingCancelledEmail(
     reason?: 'guest_cancel' | 'staff_cancel' | 'event_cancelled' | string | null
     /** True when money was taken for this booking, so a refund sentence has something to say. */
     paymentTaken?: boolean
+    /** Part of the payment was refunded before, so this refund is the rest of it (BK-136). */
+    refundIsRestOfPayment?: boolean
+    /** Paid partly at the bar: what a person hands back, beside the PayPal refund. */
+    barRefundAmount?: number | null
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
@@ -1328,7 +1355,8 @@ export async function sendEventTicketTransferredEmail(
   const body = [
     `Hi ${context.firstName},`,
     `Your ${seatWord} ${haveWord} been moved from ${fromText} to ${toText}.`,
-    overpaymentText ? `The new night costs less, so we owe you ${overpaymentText} and will be in touch about your refund.` : null,
+    // A manager decides the refund from what was paid (owner decision D7, BK-028).
+    overpaymentText ? `The new night costs ${overpaymentText} less than you paid, and we will be in touch about the difference.` : null,
     ...buildAttendanceLines(context),
     `Booking reference: ${bookingReference(context.bookingId)}.`,
     `If the new night does not suit you, call ${GUEST_CONTACT.phoneDisplay}.`,
@@ -1367,6 +1395,86 @@ export async function sendEventTicketTransferredEmail(
       manage_link_included: Boolean(manageLink),
       short_link_fallback: manageResult?.shortened === false,
       overpayment: typeof input.overpayment === 'number' && input.overpayment > 0 ? input.overpayment : undefined,
+    },
+  })
+}
+
+export type EventTicketsChange =
+  | { kind: 'guests_removed'; count: number; refundToDecide: boolean }
+  | { kind: 'guests_added'; count: number; amountTaken: number }
+  | { kind: 'ticket_type_changed'; count: number; ticketTypeName: string | null; amountTaken: number; refundToDecide: boolean }
+
+/**
+ * The booker's updated confirmation after staff change the tickets on a booking (BK-023): guests
+ * taken off or added, or tickets moved to another type. A refund is never promised: when one may
+ * be owed, a manager decides it (owner decision D7), so the email says a manager will look at it.
+ */
+export async function sendEventBookingTicketsChangedEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; change: EventTicketsChange; appBaseUrl?: string }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const { change } = input
+  const count = Math.max(1, change.count)
+  const changedWord = count === 1 ? 'ticket' : 'tickets'
+  const them = count === 1 ? 'it' : 'them'
+  const taken = 'amountTaken' in change ? formatPositiveCurrency(change.amountTaken) : null
+  let changeLine: string
+  if (change.kind === 'guests_removed') {
+    changeLine = `We have taken ${count} ${changedWord} off your booking.`
+  } else if (change.kind === 'guests_added') {
+    changeLine = `We have added ${count} ${changedWord} to your booking.`
+  } else {
+    changeLine = `We have changed ${count} ${changedWord} to ${change.ticketTypeName || 'a different ticket type'}.`
+  }
+  const moneyLine = 'refundToDecide' in change && change.refundToDecide
+    ? `A manager will look at a refund for ${them} and let you know.`
+    : taken
+      ? `We have taken ${taken} for ${them}.`
+      : null
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
+  const seatWord = ticketWord(context.seats)
+  const heading = 'Your booking has been updated'
+  const body = [
+    `Hi ${context.firstName},`,
+    `Your booking for ${context.eventName}${whenSuffix(context)} has been updated. You now have ${context.seats} ${seatWord}.`,
+    changeLine,
+    moneyLine,
+    ...buildAttendanceLines(context),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+    `If anything here is not right, call ${GUEST_CONTACT.phoneDisplay}.`,
+  ]
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: subjectWithDate('Booking updated', context),
+    text: buildGuestEmailText([
+      ...body,
+      manageLink ? `Manage your booking here: ${manageLink}` : null,
+    ]),
+    html: buildGuestEmailHtml({
+      title: heading,
+      preheader: `You now have ${context.seats} ${seatWord} for ${context.eventName}.`,
+      heading,
+      body,
+      cta: manageLink ? { href: manageLink, label: 'Manage booking' } : null,
+      footNote: 'This is a service message about your booking.',
+    }),
+    commType: 'event_booking_tickets_changed',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_booking_tickets_changed_email',
+      change: change.kind,
+      count,
+      amount_taken: taken ? ('amountTaken' in change ? change.amountTaken : null) : null,
+      refund_to_decide: 'refundToDecide' in change ? change.refundToDecide : false,
+      manage_link_included: Boolean(manageLink),
     },
   })
 }
