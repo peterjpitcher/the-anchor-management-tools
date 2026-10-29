@@ -16,7 +16,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261029121530_event_guest_details_reminders.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029090720_event_guest_details_reminders.sql'
 ROLLBACK = ROOT / 'tasks/event-guest-details-reminders/rollback.sql'
 
 BASE_SCHEMA = r"""
