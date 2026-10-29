@@ -2676,7 +2676,9 @@ export async function revokeBookingPortalLinks(
     additional_info: { action: 'portal_links_revoked', revoked_at: revokedAt },
   })
 
-  const url = await privateBookingPortalLink(revoked)
+  // Issued strictly after the switch-off, so it opens the booking and differs from every link
+  // issued before it, even within the same millisecond.
+  const url = await privateBookingPortalLink(revoked, { issuedAfterMs: Date.parse(revokedAt) })
   revalidatePath(`/private-bookings/${bookingId}`)
   if (!url) return { success: true, error: 'The old links are off, but a new one could not be made (the app URL is not an http or https address).' }
   return { success: true, url }

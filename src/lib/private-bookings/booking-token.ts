@@ -3,13 +3,14 @@ import { getAppUrl } from '@/lib/env'
 import { shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 
 // UUID strings are always 36 chars; base64url(36 bytes) = 48 chars (no padding needed since 36 % 3 === 0).
-// The issue time and the expiry are unix seconds as fixed-width hex (8 chars each, good until 2106).
-// The HMAC signature is always 32 hex chars.
-// Total token length: 96 chars, no separator, so the split is positional and avoids the dot that
+// The issue time is unix milliseconds as fixed-width hex (11 chars, good until 2527), so a link can
+// be told apart from a switch-off made in the same second. The expiry is unix seconds as
+// fixed-width hex (8 chars, good until 2106). The HMAC signature is always 32 hex chars.
+// Total token length: 99 chars, no separator, so the split is positional and avoids the dot that
 // Next.js treats as a file extension.
 const ID_ENCODED_LENGTH = 48
 const EXPIRY_ENCODED_LENGTH = 8
-const ISSUED_ENCODED_LENGTH = 8
+const ISSUED_ENCODED_LENGTH = 11
 const SIGNATURE_LENGTH = 32
 const TOKEN_LENGTH = ID_ENCODED_LENGTH + ISSUED_ENCODED_LENGTH + EXPIRY_ENCODED_LENGTH + SIGNATURE_LENGTH
 
@@ -62,6 +63,11 @@ export interface PortalLinkOptions {
   eventDate?: string | null
   /** True while the date is to be confirmed: the stored date is a placeholder, so it is ignored. */
   dateTbd?: boolean | null
+  /**
+   * A switch-off of the booking's links, in unix milliseconds. The link is issued strictly after
+   * it, so it is never refused by it and is never the same as a link issued before it (BK-204).
+   */
+  issuedAfterMs?: number | null
 }
 
 /** When a link issued now stops working, in unix seconds. */
@@ -80,7 +86,7 @@ function expirySeconds(nowMs: number, options: PortalLinkOptions): number {
 /**
  * Generates an HMAC-signed, time-limited token for a booking ID.
  * The token is URL-safe and can be embedded in emails and links.
- * Format: <base64url(bookingId, 48 chars)><issued-hex-8><expiry-hex-8><hmac-hex-32>.
+ * Format: <base64url(bookingId, 48 chars)><issued-ms-hex-11><expiry-hex-8><hmac-hex-32>.
  *
  * The issue time and the expiry are inside the signed payload, so neither can be edited without
  * invalidating the token. The issue time lets staff switch off every link issued before a moment
@@ -89,7 +95,10 @@ function expirySeconds(nowMs: number, options: PortalLinkOptions): number {
  */
 export function generateBookingToken(bookingId: string, options: PortalLinkOptions = {}): string {
   const nowMs = Date.now()
-  const issuedEncoded = Math.floor(nowMs / 1000).toString(16).padStart(ISSUED_ENCODED_LENGTH, '0')
+  const issuedMs = typeof options.issuedAfterMs === 'number' && Number.isFinite(options.issuedAfterMs)
+    ? Math.max(nowMs, Math.floor(options.issuedAfterMs) + 1)
+    : nowMs
+  const issuedEncoded = issuedMs.toString(16).padStart(ISSUED_ENCODED_LENGTH, '0')
   const expiryEncoded = expirySeconds(nowMs, options).toString(16).padStart(EXPIRY_ENCODED_LENGTH, '0')
   const idEncoded = Buffer.from(bookingId).toString('base64url')
   return `${idEncoded}${issuedEncoded}${expiryEncoded}${sign(`booking-portal:${bookingId}:${issuedEncoded}:${expiryEncoded}`)}`
@@ -112,7 +121,7 @@ export function buildPrivateBookingPortalUrl(bookingId: string, options: PortalL
 
 export interface VerifiedBookingToken {
   bookingId: string
-  /** Unix seconds the link was issued, or null for a link from before issue times were kept. */
+  /** Unix milliseconds the link was issued, or null for a link from before issue times were kept. */
   issuedAt: number | null
 }
 

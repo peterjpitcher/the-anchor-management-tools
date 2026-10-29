@@ -18,8 +18,12 @@ export async function privateBookingPortalLink(booking: {
   customer_id?: string | null
   event_date?: string | null
   date_tbd?: boolean | null
-}): Promise<string | null> {
-  const longUrl = buildPrivateBookingPortalUrl(booking.id, { eventDate: booking.event_date, dateTbd: booking.date_tbd })
+}, options: { issuedAfterMs?: number | null } = {}): Promise<string | null> {
+  const longUrl = buildPrivateBookingPortalUrl(booking.id, {
+    eventDate: booking.event_date,
+    dateTbd: booking.date_tbd,
+    issuedAfterMs: options.issuedAfterMs,
+  })
   if (!longUrl) return null
   const result = await buildGuestShortLink({
     longUrl,
