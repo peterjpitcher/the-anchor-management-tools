@@ -3,21 +3,21 @@
 -- whether or not its migration was applied, and a second run is a no-op.
 --
 -- Parts, newest first, so run this file top to bottom:
---   3. 20261028125329_event_date_move_and_slug_history
---   2. 20261028125238_event_bookable_rules
---   1. 20261028125127_event_payment_mode_lock_and_single_line_seats
+--   3. 20261029083003_event_date_move_and_slug_history
+--   2. 20261029083002_event_bookable_rules
+--   1. 20261029083001_event_payment_mode_lock_and_single_line_seats
 --
 -- Data: part 3 drops event_slug_history and the old addresses it recorded. Nothing else here
 -- touches a row. Bookings moved to a new night by move_event_seated_bookings_v01 stay where they
 -- were moved; rolling back does not move them again.
 
--- ── Part 3: 20261028125329_event_date_move_and_slug_history ─────────────────────────────────────
+-- ── Part 3: 20261029083003_event_date_move_and_slug_history ─────────────────────────────────────
 DROP TRIGGER IF EXISTS trg_record_event_slug_history ON public.events;
 DROP FUNCTION IF EXISTS public.record_event_slug_history_v01();
 DROP TABLE IF EXISTS public.event_slug_history;
 DROP FUNCTION IF EXISTS public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer);
 
--- ── Part 2: 20261028125238_event_bookable_rules ─────────────────────────────────────────────────
+-- ── Part 2: 20261029083002_event_bookable_rules ─────────────────────────────────────────────────
 -- Each replacement is put back to production's passage, newest step first, wherever it is found.
 DO $rollback$
 DECLARE
@@ -140,7 +140,7 @@ BEGIN
 END
 $grants$;
 
--- ── Part 1: 20261028125127_event_payment_mode_lock_and_single_line_seats ──────────────────────────────────────────────────────────────────────────────────
+-- ── Part 1: 20261029083001_event_payment_mode_lock_and_single_line_seats ──────────────────────────────────────────────────────────────────────────────────
 DROP TRIGGER IF EXISTS zz_guard_event_payment_mode_locked ON public.events;
 DROP FUNCTION IF EXISTS public.guard_event_payment_mode_locked_v01();
 

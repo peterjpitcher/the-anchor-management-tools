@@ -23,7 +23,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 LIVE = ROOT / 'tests/database/event-edits-cancel-postpone/live-pricing-functions.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261028125127_event_payment_mode_lock_and_single_line_seats.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029083001_event_payment_mode_lock_and_single_line_seats.sql'
 ROLLBACK = ROOT / 'tasks/event-edits-cancel-postpone/rollback.sql'
 PRODUCTION_MD5 = {
     'normalize_event_pricing_v01': 'a212ac010e38cd6b23f62be224dabdae',

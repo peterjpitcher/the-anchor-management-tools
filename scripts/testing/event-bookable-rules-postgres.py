@@ -28,7 +28,7 @@ CAPACITY = ROOT / 'supabase/migrations/20260921074304_event_physical_capacity.sq
 RELEASE_3 = ROOT / 'supabase/migrations/20261026212246_private_hire_occupies_space.sql'
 ROOM_WINDOW = ROOT / 'supabase/migrations/20261027132945_private_hire_room_window_and_diner_clashes.sql'
 WHOLE_PUB = ROOT / 'supabase/migrations/20261027133013_whole_pub_hire_stops_ticket_sales.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261028125238_event_bookable_rules.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029083002_event_bookable_rules.sql'
 ROLLBACK = ROOT / 'tasks/event-edits-cancel-postpone/rollback.sql'
 FUNCTIONS = {
     'create_event_booking_v05': '3451c92d9e571f975b4651dcde605af3',
