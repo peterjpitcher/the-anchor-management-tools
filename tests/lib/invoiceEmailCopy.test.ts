@@ -3,18 +3,21 @@ import { assertCleanText } from '../mocks/emailRenderChecks'
 import {
   INVOICE_SIGN_OFF,
   buildChaseEmail,
+  buildCombinedReminderEmail,
   buildFirstReminderEmail,
   buildInvoiceEmail,
   buildMonthlyInvoiceEmail,
   buildPrivateHireInvoiceEmail,
   buildReceiptEmail,
   buildSecondReminderEmail,
+  buildWeeklyReminderEmail,
   firstNameFrom,
   formatInvoiceDate,
   formatInvoiceMoney,
   formatInvoiceMonth,
   invoiceGreeting,
   payOnlinePostscript,
+  payOnlinePostscriptForSeveral,
   type InvoiceEmailDraft,
 } from '@/lib/invoices/email-copy'
 
@@ -398,6 +401,14 @@ describe('reminders', () => {
     const bodies = [
       buildFirstReminderEmail({ firstName: 'Sam', invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' }),
       buildSecondReminderEmail({ firstName: 'Sam', invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' }),
+      buildWeeklyReminderEmail({ firstName: 'Sam', invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' }),
+      buildCombinedReminderEmail({
+        firstName: 'Sam',
+        invoices: [
+          { invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' },
+          { invoiceNumber: 'INV-2', balance: 20, dueDate: '2026-10-16' },
+        ],
+      }),
     ].map((draft) => `${draft.subject}\n${draft.body}`)
     for (const text of bodies) {
       expect(text).not.toMatch(/Final Reminder|First Reminder|Second Reminder|disruption to services|immediately|Payment Due Today|disregard/i)
@@ -469,5 +480,93 @@ describe('pay online postscript', () => {
     expect(payOnlinePostscript('https://management.example.test/invoice-portal/abc')).toBe(
       'P.S. You can also pay this online by card or PayPal: https://management.example.test/invoice-portal/abc'
     )
+  })
+})
+
+
+describe('weekly chasers', () => {
+  it('one invoice: says it again plainly, names the year and attaches another copy', () => {
+    const draft = buildWeeklyReminderEmail({
+      firstName: 'Sam',
+      invoiceNumber: 'INV-003WG',
+      balance: 500,
+      dueDate: '2026-09-08',
+    })
+    expectPersonalAndClean(draft, 'Sam')
+    expect(draft.subject).toBe('Invoice INV-003WG is overdue')
+    expect(draft.body).toContain(
+      "I'm writing again about invoice INV-003WG. It was due on Tuesday 8 September 2026 and £500.00 is still to pay. Another copy is attached."
+    )
+    expect(draft.body).toContain("Could you let me know when it will be paid? If something is holding it up, just reply and I'll do what I can to help.")
+    expect(draft.body).toContain("If you've paid in the last few days, thank you, and please ignore this.")
+    expect(draft.body).not.toContain('already received')
+  })
+
+  it('one invoice, part paid: thanks them and asks only for what is left', () => {
+    const draft = buildWeeklyReminderEmail({
+      firstName: null,
+      invoiceNumber: 'INV-003WD',
+      balance: 1520,
+      paid: 1000,
+      dueDate: '2026-09-26',
+    })
+    expectPersonalAndClean(draft, null)
+    expect(draft.body).toContain('It was due on Saturday 26 September 2026 and £1,520.00 is still to pay.')
+    expect(draft.body).toContain("Thank you for the £1,000.00 already received. The £1,520.00 is what's left.")
+  })
+
+  it('several invoices: one list, oldest first, with the total', () => {
+    const draft = buildCombinedReminderEmail({
+      firstName: 'Sam',
+      invoices: [
+        { invoiceNumber: 'INV-003W9', balance: 500, dueDate: '2026-08-08' },
+        { invoiceNumber: 'INV-003WG', balance: 500, dueDate: '2026-09-08' },
+      ],
+    })
+    expectPersonalAndClean(draft, 'Sam')
+    expect(draft.subject).toBe('Overdue invoices from Orange Jelly: £1,000.00 to pay')
+    expect(draft.body).toContain("I'm writing again about these invoices, which are overdue. Copies are attached.")
+    expect(draft.body).toContain(
+      'INV-003W9: £500.00, due Saturday 8 August 2026\nINV-003WG: £500.00, due Tuesday 8 September 2026\nTotal to pay: £1,000.00'
+    )
+    expect(draft.body).toContain("Could you let me know when they will be paid? If something is holding them up, just reply and I'll do what I can to help.")
+    expect(draft.body).not.toContain('already received')
+  })
+
+  it('several invoices, one part paid: the amounts are what is left, and it says so', () => {
+    const draft = buildCombinedReminderEmail({
+      firstName: 'Sam',
+      invoices: [
+        { invoiceNumber: 'INV-1', balance: 360.8, paid: 250, dueDate: '2026-09-01' },
+        { invoiceNumber: 'INV-2', balance: 1200, dueDate: '2026-09-15' },
+      ],
+    })
+    expectPersonalAndClean(draft, 'Sam')
+    expect(draft.body).toContain('Total to pay: £1,560.80')
+    expect(draft.body).toContain("Thank you for the payments already received. The amounts above are what's left.")
+  })
+
+  it('never reuses the first or second reminder subjects, which the email history reads', () => {
+    const weekly = buildWeeklyReminderEmail({ firstName: 'Sam', invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' })
+    const several = buildCombinedReminderEmail({
+      firstName: 'Sam',
+      invoices: [{ invoiceNumber: 'INV-1', balance: 10, dueDate: '2026-10-09' }],
+    })
+    for (const subject of [weekly.subject, several.subject]) {
+      expect(subject.toLowerCase()).not.toMatch(/a quick reminder|still outstanding|first reminder|second reminder/)
+    }
+  })
+
+  it('pays online with one link per invoice, or one line for a single link', () => {
+    const one = payOnlinePostscriptForSeveral([{ invoiceNumber: 'INV-1', url: 'https://management.example.test/invoice-portal/a' }])
+    expect(one).toBe('P.S. You can also pay invoice INV-1 online by card or PayPal: https://management.example.test/invoice-portal/a')
+    const two = payOnlinePostscriptForSeveral([
+      { invoiceNumber: 'INV-1', url: 'https://management.example.test/invoice-portal/a' },
+      { invoiceNumber: 'INV-2', url: 'https://management.example.test/invoice-portal/b' },
+    ])
+    expect(two).toBe(
+      'P.S. You can also pay these online by card or PayPal:\nINV-1: https://management.example.test/invoice-portal/a\nINV-2: https://management.example.test/invoice-portal/b'
+    )
+    assertCleanText(two)
   })
 })

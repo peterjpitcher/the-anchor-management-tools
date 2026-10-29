@@ -77,6 +77,17 @@ type InvoiceEmailOptions = {
    * the default never falls back to the company name.
    */
   greetingName?: string | null
+  /**
+   * For an email that covers several invoices (the reminder job's combined reminder): every
+   * invoice it covers, this one included, saved as `metadata.covers_invoice_ids` so each of
+   * their email histories lists it. The email itself is recorded once, against this invoice.
+   */
+  coversInvoiceIds?: string[]
+  /**
+   * Replaces the pay online P.S. that is otherwise worked out for this invoice alone. An email
+   * covering several invoices passes one with a link per invoice; '' leaves the P.S. out.
+   */
+  paymentLinkFooter?: string
 }
 
 /**
@@ -219,7 +230,9 @@ export async function sendInvoiceEmail(
     const { withInvoicePaymentLink } = await import('@/lib/invoices/payment-link-footer')
     const bodyWithPaymentLink = isRemittanceAdvice
       ? emailBody
-      : withInvoicePaymentLink(emailBody, invoice)
+      : emailOptions?.paymentLinkFooter !== undefined
+        ? `${emailBody}${emailOptions.paymentLinkFooter}`
+        : withInvoicePaymentLink(emailBody, invoice)
 
     const copied = await screenCopiedAddresses(ccRecipients)
     if (copied.dropped.length > 0) {
@@ -255,6 +268,7 @@ export async function sendInvoiceEmail(
         invoice_number: invoice.invoice_number,
         document_kind: documentKind,
         email_kind: emailOptions?.emailKind ?? (isRemittanceAdvice ? 'receipt' : 'invoice'),
+        ...(emailOptions?.coversInvoiceIds?.length ? { covers_invoice_ids: emailOptions.coversInvoiceIds } : {}),
         // Who was asked for, who was left off, and who the email was actually submitted to.
         cc_proposed: copied.proposed,
         cc_dropped: copied.dropped,
