@@ -1,4 +1,4 @@
--- Rollback for 20261029090000_event_table_skips_private_hire.sql. Puts create_table_booking_v05
+-- Rollback for 20261029082723_event_table_skips_private_hire.sql. Puts create_table_booking_v05
 -- back exactly as production held it on 29 October 2026 (md5(prosrc)
 -- c94267f14af8e5dac93990def620a424) by replacing each added passage with the original. Refuses to
 -- run unless each added passage appears exactly once. Restores the fault: a table-seated event on a
