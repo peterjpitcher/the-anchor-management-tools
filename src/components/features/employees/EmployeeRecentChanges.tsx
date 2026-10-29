@@ -92,7 +92,7 @@ export function EmployeeRecentChanges({ employeeId }: EmployeeRecentChangesProps
     }
 
     if (changes.length === 0) {
-      return <Empty size="sm" title="No changes yet" />
+      return <Empty size="sm" title="No changes in the last 30 days" />
     }
 
     return (
