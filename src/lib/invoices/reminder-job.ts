@@ -1,28 +1,35 @@
 /**
  * The automatic invoice reminder job (R2 of tasks/spec-2026-10-04-invoice-issuing-and-chasing.md).
  *
- * Runs once per London weekday. It marks invoices overdue, sends at most two reminders per
- * invoice in the owner's own voice, and then sends the owner ONE summary of the run in place
- * of an alert per reminder.
+ * Runs once per London weekday. It marks invoices overdue, sends the first and second reminders
+ * in the owner's own voice, and then sends the owner ONE summary of the run in place of an
+ * alert per reminder.
+ *
+ * With `INVOICE_WEEKLY_REMINDERS_FROM` set (owner decision, 29 October 2026) an unpaid invoice
+ * is never left alone: from 21 days overdue the client is emailed every week until it is paid,
+ * and each run sends a client ONE email covering every invoice of theirs that is due a
+ * reminder, each attached. Without it, at most one reminder per client per run, as before.
  *
  * What keeps a customer from being emailed wrongly, in the order it is checked:
  *   1. The switch. Without `INVOICE_REMINDERS_GO_LIVE_DATE` the send step is never entered.
  *   2. The rules (`reminder-rules.ts`), which fail closed and are re-run against a fresh read
  *      of the invoice immediately before each send.
- *   3. A claim per invoice and stage, taken before the send.
- *   4. The two columns on the invoice, written once the email is accepted. They are the
- *      lasting record: they do not expire and they survive a changed due date.
+ *   3. A claim per invoice and stage, taken before the send. A weekly chaser's claim is per
+ *      London week, so a week can never send it twice.
+ *   4. The columns on the invoice, written once the email is accepted. They are the lasting
+ *      record: they do not expire and they survive a changed due date.
  *
  * SENT AND RECORDED ARE TWO DIFFERENT THINGS. Once the email is accepted, nothing here may
  * release the claim, whatever fails afterwards. A send that was definitely refused is released
  * so the next run can retry. A send whose outcome is unknown is kept, never retried, and
- * handed to the owner to check in Sent Items.
+ * handed to the owner to check in Sent Items. A weekly chaser with an unknown outcome counts
+ * as that week's: the next one goes a week later, so the chasing never stops.
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/emailService'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
-import { getTodayIsoDate, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { getIsoWeekday, getTodayIsoDate, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { getAppUrl } from '@/lib/env'
 import { getErrorMessage } from '@/lib/errors'
@@ -37,21 +44,28 @@ import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import type { InvoiceWithDetails } from '@/types/invoices'
 import { invoiceBalanceDue } from './balance'
 import {
+  buildCombinedReminderEmail,
   buildFirstReminderEmail,
   buildSecondReminderEmail,
+  buildWeeklyReminderEmail,
   formatInvoiceDate,
   formatInvoiceMoney,
+  payOnlinePostscriptForSeveral,
+  type InvoiceEmailDraft,
+  type InvoiceEmailKind,
 } from './email-copy'
-import { countsAsCustomerInvoiceEmail } from './email-log-rules'
+import { countsAsCustomerInvoiceEmail, emailMetadata } from './email-log-rules'
 import { resolveInvoiceGreetingName } from './greeting'
-import { invoiceRemindersGoLiveDate } from './release-switches'
+import { invoiceRemindersGoLiveDate, invoiceWeeklyRemindersFrom } from './release-switches'
 import {
   QUIET_DAYS,
+  WEEKLY_GAP_DAYS,
   daysBetween,
   decideReminder,
   describeNeedsOwner,
   isDueOnNextRun,
   isWeekday,
+  weeklyChasersOn,
   type ReminderDecision,
   type ReminderInvoice,
   type ReminderStage,
@@ -89,13 +103,19 @@ const CLAIM_NEVER_STALE_MS = CLAIM_TTL_HOURS * 60 * 60 * 1000
 
 /**
  * No new send is started after this long. Each send renders a PDF, and a send cut off by the
- * platform's time limit is an unknown outcome that stops that invoice's reminders for good.
- * Better to leave the rest for the next run.
+ * platform's time limit is an unknown outcome: a first or second reminder is then never
+ * retried, and a weekly chaser waits a week. Better to leave the rest for the next run.
  */
 const SEND_TIME_BUDGET_MS = 200_000
 
 /** How far back to look for emails to a client. One day more than the rule needs, for margin. */
 const RECENT_EMAIL_LOOKBACK_DAYS = QUIET_DAYS + 1
+
+/** How far back to look for a client's latest weekly chaser or hand-sent chase. */
+const CHASER_LOOKBACK_DAYS = WEEKLY_GAP_DAYS + 1
+
+/** Logged emails that start a client's seven-day weekly clock. */
+const CHASER_EMAIL_KINDS = new Set(['chase', 'reminder_weekly', 'reminder_combined'])
 
 // The vendor columns are the ones the invoice PDF prints and the pay online line checks. The
 // reminder says "I've attached another copy", so the copy must match the original: the old job
@@ -138,6 +158,8 @@ interface Candidate {
   vendorId: string
   clientName: string
   isPrivateHire: boolean
+  /** True when its private booking was cancelled. Only read while weekly chasers are on. */
+  bookingCancelled: boolean
   decision: ReminderDecision
   /** What is still owed, as last read. Null when the amounts could not be read. */
   balance: number | null
@@ -151,10 +173,17 @@ interface RunContext {
   supabase: AdminClient
   today: string
   goLiveDate: string | null
+  /** `INVOICE_WEEKLY_REMINDERS_FROM`, or null while weekly chasers are off. */
+  weeklyFrom: string | null
   appUrl: string
   startedMs: number
   /** London date of the latest email to each client, by client id. Updated as the run sends. */
   lastEmailByVendor: Map<string, string>
+  /**
+   * London date of the latest weekly chaser or hand-sent chase to each client, by client id.
+   * Only filled while weekly chasers are on. Updated as the run sends.
+   */
+  lastChaserByVendor: Map<string, string>
   sent: SummarySentEntry[]
   problems: SummaryProblemEntry[]
   /** Invoice numbers whose reminder was refused, has an unknown outcome or could not be recorded. */
@@ -193,13 +222,19 @@ type ReminderInvoiceRow = Pick<
   | 'reminders_held_until'
   | 'reminder_first_sent_at'
   | 'reminder_second_sent_at'
+  | 'reminder_last_weekly_sent_at'
 >
 
 /**
  * An invoice row in the shape the rules take. Shared with the invoice page, so its "next
  * reminder" line is worked out from exactly what the job would see.
  */
-export function toReminderInvoice(invoice: ReminderInvoiceRow, isPrivateHire: boolean, balance: number): ReminderInvoice {
+export function toReminderInvoice(
+  invoice: ReminderInvoiceRow,
+  isPrivateHire: boolean,
+  balance: number,
+  bookingCancelled = false
+): ReminderInvoice {
   return {
     status: invoice.status,
     dueDate: String(invoice.due_date ?? '').slice(0, 10),
@@ -210,6 +245,8 @@ export function toReminderInvoice(invoice: ReminderInvoiceRow, isPrivateHire: bo
     heldUntil: invoice.reminders_held_until ?? null,
     firstReminderDate: reminderDateOf(invoice.reminder_first_sent_at),
     secondReminderDate: reminderDateOf(invoice.reminder_second_sent_at),
+    lastWeeklyDate: reminderDateOf(invoice.reminder_last_weekly_sent_at),
+    bookingCancelled,
   }
 }
 
@@ -217,11 +254,30 @@ export function toReminderInvoice(invoice: ReminderInvoiceRow, isPrivateHire: bo
 function decide(candidate: Candidate, context: RunContext): ReminderDecision {
   const balance = invoiceBalanceDue(candidate.invoice)
   candidate.balance = balance
-  return decideReminder(toReminderInvoice(candidate.invoice, candidate.isPrivateHire, balance), {
+  return decideReminder(toReminderInvoice(candidate.invoice, candidate.isPrivateHire, balance, candidate.bookingCancelled), {
     today: context.today,
     goLiveDate: context.goLiveDate,
     lastClientEmailDate: context.lastEmailByVendor.get(candidate.vendorId) ?? null,
+    weeklyFrom: context.weeklyFrom,
+    lastClientChaserDate: context.lastChaserByVendor.get(candidate.vendorId) ?? null,
   })
+}
+
+/** Keeps the later of the date already known for a client and a freshly read one. */
+function noteLater(dates: Map<string, string>, vendorId: string, fresh: string | null | undefined): void {
+  const known = dates.get(vendorId)
+  if (fresh && (!known || fresh > known)) dates.set(vendorId, fresh)
+}
+
+/** Candidates grouped by client, in the order each client's oldest invoice comes. */
+function groupByVendor(candidates: Candidate[]): Candidate[][] {
+  const groups = new Map<string, Candidate[]>()
+  for (const candidate of candidates) {
+    const group = groups.get(candidate.vendorId)
+    if (group) group.push(candidate)
+    else groups.set(candidate.vendorId, [candidate])
+  }
+  return [...groups.values()]
 }
 
 function heldToday(invoice: { reminders_held_until?: string | null }, today: string): boolean {
@@ -444,9 +500,59 @@ async function loadPrivateHireInvoiceIds(supabase: AdminClient, invoiceIds: stri
 }
 
 /**
+ * The invoices, of those given, whose private booking was cancelled. Cancelling a booking voids
+ * an unpaid invoice; one with money already received stays open only until its credit note is
+ * issued, so nothing is owed on it. Read the way `invoiceBookingCancelled`
+ * (cancelled-private-booking.ts) reads it: the booking's own invoice, or a linked one.
+ *
+ * Throws when it cannot be read: weekly chasers would otherwise chase a guest whose booking is
+ * cancelled, so the whole run stops, as it does for the private hire list.
+ */
+async function loadCancelledBookingInvoiceIds(supabase: AdminClient, invoiceIds: string[]): Promise<Set<string>> {
+  if (invoiceIds.length === 0) return new Set()
+
+  const [{ data: owners, error: ownersError }, { data: links, error: linksError }] = await Promise.all([
+    supabase.from('private_bookings').select('invoice_id, status').in('invoice_id', invoiceIds),
+    supabase.from('private_booking_invoices').select('invoice_id, booking_id').in('invoice_id', invoiceIds),
+  ])
+  if (ownersError || linksError) {
+    throw new Error(`Could not read which invoices belong to cancelled bookings: ${(ownersError ?? linksError)?.message}`)
+  }
+
+  const cancelled = new Set<string>()
+  for (const row of (owners ?? []) as Array<{ invoice_id?: string | null; status?: string | null }>) {
+    if (row.invoice_id && row.status === 'cancelled') cancelled.add(row.invoice_id)
+  }
+
+  const linkRows = ((links ?? []) as Array<{ invoice_id?: string | null; booking_id?: string | null }>).filter(
+    (row) => row.invoice_id && row.booking_id
+  )
+  const bookingIds = [...new Set(linkRows.map((row) => row.booking_id as string))]
+  if (bookingIds.length > 0) {
+    const { data: bookings, error: bookingsError } = await supabase
+      .from('private_bookings')
+      .select('id, status')
+      .in('id', bookingIds)
+    if (bookingsError) {
+      throw new Error(`Could not read which invoices belong to cancelled bookings: ${bookingsError.message}`)
+    }
+    const cancelledBookings = new Set(
+      ((bookings ?? []) as Array<{ id?: string | null; status?: string | null }>)
+        .filter((booking) => booking.id && booking.status === 'cancelled')
+        .map((booking) => booking.id as string)
+    )
+    for (const row of linkRows) {
+      if (cancelledBookings.has(row.booking_id as string)) cancelled.add(row.invoice_id as string)
+    }
+  }
+
+  return cancelled
+}
+
+/**
  * The London date of the latest invoice email each client was sent, from two sources:
  *
- *  (a) the invoices' own columns (`sent_at` and the two reminder columns), across ALL of the
+ *  (a) the invoices' own columns (`sent_at` and the reminder columns), across ALL of the
  *      client's invoices, and
  *  (b) the email log, for the client's invoices over the last few days.
  *
@@ -474,9 +580,11 @@ export async function loadLastClientEmailDates(
 
   const { data: stamped, error: stampedError } = await supabase
     .from('invoices')
-    .select('vendor_id, sent_at, reminder_first_sent_at, reminder_second_sent_at')
+    .select('vendor_id, sent_at, reminder_first_sent_at, reminder_second_sent_at, reminder_last_weekly_sent_at')
     .in('vendor_id', vendorIds)
-    .or(`sent_at.gte.${since},reminder_first_sent_at.gte.${since},reminder_second_sent_at.gte.${since}`)
+    .or(
+      `sent_at.gte.${since},reminder_first_sent_at.gte.${since},reminder_second_sent_at.gte.${since},reminder_last_weekly_sent_at.gte.${since}`
+    )
 
   if (stampedError) {
     throw new Error(`Could not read when each client was last emailed: ${stampedError.message}`)
@@ -486,6 +594,7 @@ export async function loadLastClientEmailDates(
     note(row.vendor_id, row.sent_at)
     note(row.vendor_id, row.reminder_first_sent_at)
     note(row.vendor_id, row.reminder_second_sent_at)
+    note(row.vendor_id, row.reminder_last_weekly_sent_at)
   }
 
   const { data: emails, error: emailsError } = await supabase
@@ -536,6 +645,93 @@ export async function loadLastClientEmailDates(
   return latest
 }
 
+/**
+ * The London date of the latest weekly chaser or hand-sent chase each client was sent, for any
+ * of their invoices: the weekly column on every invoice of theirs, and the email log over the
+ * last week. A weekly chaser waits a week after it, so a chase sent by hand counts as that
+ * week's email. The log also carries the weekly and combined reminders themselves, so one whose
+ * column could not be written still holds the next back a full week. A combined reminder counts
+ * even when it held no weekly invoice: at worst that delays the next weekly email, never adds
+ * one. Throws when either cannot be read: guessing could mean a second chaser in a week.
+ */
+export async function loadLastClientChaserDates(
+  supabase: AdminClient,
+  vendorIds: string[],
+  today: string
+): Promise<Map<string, string>> {
+  const latest = new Map<string, string>()
+  if (vendorIds.length === 0) return latest
+
+  const since = shiftIsoDate(today, -CHASER_LOOKBACK_DAYS) ?? today
+  const wanted = new Set(vendorIds)
+  const note = (vendorId: string | null | undefined, timestamp: string | null | undefined): void => {
+    const date = londonDateOf(timestamp)
+    if (vendorId && date && wanted.has(vendorId)) noteLater(latest, vendorId, date)
+  }
+
+  const { data: weekly, error: weeklyError } = await supabase
+    .from('invoices')
+    .select('vendor_id, reminder_last_weekly_sent_at')
+    .in('vendor_id', vendorIds)
+    .gte('reminder_last_weekly_sent_at', since)
+
+  if (weeklyError) {
+    throw new Error(`Could not read when each client was last sent a weekly reminder: ${weeklyError.message}`)
+  }
+  for (const row of (weekly ?? []) as Array<{ vendor_id?: string | null; reminder_last_weekly_sent_at?: string | null }>) {
+    note(row.vendor_id, row.reminder_last_weekly_sent_at)
+  }
+
+  const { data: emails, error: emailsError } = await supabase
+    .from('email_messages')
+    .select('invoice_id, subject, status, metadata, created_at, sent_at')
+    .eq('direction', 'outbound')
+    .not('invoice_id', 'is', null)
+    .gte('created_at', `${since}T00:00:00.000Z`)
+    .order('created_at', { ascending: false })
+    .limit(1000)
+
+  if (emailsError) {
+    throw new Error(`Could not read recent invoice chases: ${emailsError.message}`)
+  }
+
+  type EmailRow = {
+    invoice_id?: string | null
+    subject?: string | null
+    status?: string | null
+    metadata?: unknown
+    created_at?: string | null
+    sent_at?: string | null
+  }
+  const chases = ((emails ?? []) as EmailRow[]).filter(
+    (row) =>
+      Boolean(row.invoice_id) &&
+      CHASER_EMAIL_KINDS.has(String(emailMetadata(row).email_kind ?? '')) &&
+      countsAsCustomerInvoiceEmail(row)
+  )
+  const chasedInvoiceIds = [...new Set(chases.flatMap((row) => row.invoice_id ?? []))]
+  if (chasedInvoiceIds.length === 0) return latest
+
+  const { data: owners, error: ownersError } = await supabase
+    .from('invoices')
+    .select('id, vendor_id')
+    .in('id', chasedInvoiceIds)
+
+  if (ownersError) {
+    throw new Error(`Could not match recent chases to clients: ${ownersError.message}`)
+  }
+
+  const vendorByInvoice = new Map<string, string>()
+  for (const row of (owners ?? []) as Array<{ id?: string | null; vendor_id?: string | null }>) {
+    if (row.id && row.vendor_id) vendorByInvoice.set(row.id, row.vendor_id)
+  }
+  for (const row of chases) {
+    note(vendorByInvoice.get(row.invoice_id as string), row.sent_at ?? row.created_at)
+  }
+
+  return latest
+}
+
 /** One invoice, read again from the database. Deleted invoices come back too, as deleted. */
 async function loadInvoiceFresh(supabase: AdminClient, invoiceId: string): Promise<InvoiceWithDetails> {
   const { data, error } = await supabase
@@ -555,7 +751,57 @@ async function loadInvoiceFresh(supabase: AdminClient, invoiceId: string): Promi
 // ---------------------------------------------------------------------------------------------
 
 function stageWord(stage: ReminderStage): string {
-  return stage === 'first' ? 'first' : 'second'
+  if (stage === 'first') return 'first'
+  if (stage === 'second') return 'second'
+  return 'weekly'
+}
+
+function stageTitle(stage: ReminderStage): string {
+  if (stage === 'first') return 'First reminder'
+  if (stage === 'second') return 'Second reminder'
+  return 'Weekly reminder'
+}
+
+function reminderKind(stage: ReminderStage): InvoiceEmailKind {
+  if (stage === 'first') return 'reminder_first'
+  if (stage === 'second') return 'reminder_second'
+  return 'reminder_weekly'
+}
+
+/** The invoice column that records an accepted reminder of each stage. */
+function reminderColumn(
+  stage: ReminderStage
+): 'reminder_first_sent_at' | 'reminder_second_sent_at' | 'reminder_last_weekly_sent_at' {
+  if (stage === 'first') return 'reminder_first_sent_at'
+  if (stage === 'second') return 'reminder_second_sent_at'
+  return 'reminder_last_weekly_sent_at'
+}
+
+/** The Monday of the London week a calendar date falls in. */
+function weekStartOf(isoDate: string): string {
+  const weekday = getIsoWeekday(isoDate)
+  return (weekday ? shiftIsoDate(isoDate, 1 - weekday) : null) ?? isoDate
+}
+
+/**
+ * The claim for one invoice's reminder. The old job's "cron:invoice-reminder:..." claims are
+ * ignored on purpose: they mixed owner alerts with customer sends, so they prove nothing about
+ * what a customer received. The hash covers the invoice and stage only, never the days
+ * overdue, so the key means the same thing on every day of the window. A weekly chaser's claim
+ * also names the London week, so each week has its own and no week can send it twice.
+ */
+function claimFor(invoiceId: string, stage: ReminderStage, today: string): { key: string; hash: string } {
+  if (stage === 'weekly') {
+    const week = weekStartOf(today)
+    return {
+      key: `invoice-reminder:v2:${invoiceId}:weekly:${week}`,
+      hash: computeIdempotencyRequestHash({ invoice_id: invoiceId, stage, week }),
+    }
+  }
+  return {
+    key: `invoice-reminder:v2:${invoiceId}:${stage}`,
+    hash: computeIdempotencyRequestHash({ invoice_id: invoiceId, stage }),
+  }
 }
 
 /**
@@ -643,140 +889,294 @@ function describeWaitingPayment(waiting: WaitingPayment): string {
   return `${formatInvoiceMoney(waiting.amount)} from this client arrived on ${formatInvoiceDate(waiting.date, { withYear: true })} and is not matched to an invoice yet, so no reminder was sent. Match it on the receipts page, or chase by hand if it was for something else`
 }
 
+function sentStage(candidate: Candidate): ReminderStage | null {
+  return candidate.decision.action === 'send' ? candidate.decision.stage : null
+}
+
 /**
- * Tries to send one reminder. Returns true when the client must be left alone for the rest of
- * this run: something was attempted, or the invoice could not be checked. Returns false when
- * nothing was attempted and the client's next invoice may be looked at.
+ * The pay online P.S. for an email covering several invoices, one link per invoice that can be
+ * paid online. Imported here rather than at the top because the link module is server only.
  */
-async function attemptReminder(context: RunContext, candidate: Candidate, stage: ReminderStage): Promise<boolean> {
+async function severalPaymentFooter(invoices: InvoiceWithDetails[]): Promise<string> {
+  const { invoiceCanOfferPayPal, invoicePortalUrl } = await import('./payment-link-footer')
+  const links = invoices
+    .filter((invoice) => invoiceCanOfferPayPal(invoice))
+    .map((invoice) => ({ invoiceNumber: invoice.invoice_number, url: invoicePortalUrl(invoice.id) }))
+  return links.length > 0 ? `\n\n${payOnlinePostscriptForSeveral(links)}` : ''
+}
+
+/**
+ * Records a weekly chaser whose outcome is unknown as sent, so the next one goes a week from now
+ * and never sooner. A failure here is only logged: this week's claim still blocks a repeat.
+ */
+async function recordWeeklyAttempt(supabase: AdminClient, invoiceId: string, atIso: string): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('invoices')
+      .update({ reminder_last_weekly_sent_at: atIso })
+      .eq('id', invoiceId)
+      .select('id')
+      .maybeSingle()
+    if (error) throw new Error(error.message || 'the update failed')
+  } catch (error) {
+    console.error(
+      `[invoice-reminders] Could not record the weekly reminder attempt for invoice ${invoiceId}; this week's claim still blocks a repeat:`,
+      getErrorMessage(error)
+    )
+  }
+}
+
+interface TakenClaim {
+  candidate: Candidate
+  stage: ReminderStage
+  key: string
+  hash: string
+}
+
+/**
+ * Hands back the claims of an attempt that sent nothing, so the next run may try again. Returns
+ * the ones that could not be released: those stay held.
+ */
+async function releaseClaims(supabase: AdminClient, taken: TakenClaim[]): Promise<Set<TakenClaim>> {
+  const stuck = new Set<TakenClaim>()
+  for (const entry of taken) {
+    try {
+      await releaseIdempotencyClaim(supabase, entry.key, entry.hash)
+    } catch (error) {
+      stuck.add(entry)
+      console.error(`[invoice-reminders] Could not release claim ${entry.key}:`, getErrorMessage(error))
+    }
+  }
+  return stuck
+}
+
+/**
+ * Tries to send one reminder email to a client, covering every invoice in `batch`: all theirs,
+ * oldest due date first, each already decided as "send". With weekly chasers off a batch is
+ * always one invoice, and this does exactly what the single-invoice sender did. Several go in
+ * one email with each invoice attached (owner decision, 29 October 2026).
+ *
+ * Returns true when the client must be left alone for the rest of this run: something was
+ * attempted, or the invoices could not be checked. Returns false when nothing was attempted and
+ * the client's next invoice may be looked at.
+ */
+async function attemptClientReminder(context: RunContext, batch: Candidate[]): Promise<boolean> {
   const { supabase, today } = context
-  const word = stageWord(stage)
+  const vendorId = batch[0].vendorId
+  const weekly = weeklyChasersOn(context)
+  // The stage each invoice was picked for. A fresh look that says otherwise leaves it out.
+  const wanted = new Map(batch.map((candidate) => [candidate, sentStage(candidate)]))
 
   // Everything is checked again against fresh data, so a payment, a hold or a chase entered
   // since the run started still counts.
   try {
-    const fresh = await loadInvoiceFresh(supabase, candidate.invoice.id)
-    const freshEmails = await loadLastClientEmailDates(supabase, [candidate.vendorId], today)
-    const freshDate = freshEmails.get(candidate.vendorId)
-    const knownDate = context.lastEmailByVendor.get(candidate.vendorId)
-    if (freshDate && (!knownDate || freshDate > knownDate)) {
-      context.lastEmailByVendor.set(candidate.vendorId, freshDate)
+    const freshEmails = await loadLastClientEmailDates(supabase, [vendorId], today)
+    noteLater(context.lastEmailByVendor, vendorId, freshEmails.get(vendorId))
+    if (weekly) {
+      const freshChasers = await loadLastClientChaserDates(supabase, [vendorId], today)
+      noteLater(context.lastChaserByVendor, vendorId, freshChasers.get(vendorId))
     }
-    candidate.invoice = fresh
-    candidate.decision = decide(candidate, context)
+    for (const candidate of batch) {
+      candidate.invoice = await loadInvoiceFresh(supabase, candidate.invoice.id)
+      candidate.decision = decide(candidate, context)
+    }
   } catch (error) {
-    addProblem(
-      context,
-      candidate,
-      `Could not re-check the invoice before sending, so nothing was sent: ${getErrorMessage(error)}`
-    )
+    for (const candidate of batch) {
+      addProblem(
+        context,
+        candidate,
+        `Could not re-check the invoice before sending, so nothing was sent: ${getErrorMessage(error)}`
+      )
+    }
     return true
   }
 
-  const decision = candidate.decision
-  if (decision.action !== 'send' || decision.stage !== stage) {
-    return false
-  }
+  const stillDue = batch.filter((candidate) => {
+    const stage = sentStage(candidate)
+    return stage !== null && stage === wanted.get(candidate)
+  })
+  if (stillDue.length === 0) return false
 
-  // The bank may already show this client paying, and a reminder would then ask them to pay twice.
-  let waiting: WaitingPayment | null
-  try {
-    waiting = await findWaitingClientPayment(supabase, candidate)
-  } catch (error) {
-    addProblem(
-      context,
-      candidate,
-      `Could not check the bank for a payment from this client, so nothing was sent: ${getErrorMessage(error)}`
-    )
-    return true
+  // The bank may already show this client paying, and a reminder would then ask them to pay
+  // twice. An invoice that a waiting payment fits is held back; the rest still go.
+  const payable: Candidate[] = []
+  for (const candidate of stillDue) {
+    let waiting: WaitingPayment | null
+    try {
+      waiting = await findWaitingClientPayment(supabase, candidate)
+    } catch (error) {
+      addProblem(
+        context,
+        candidate,
+        `Could not check the bank for a payment from this client, so nothing was sent: ${getErrorMessage(error)}`
+      )
+      return true
+    }
+    if (waiting) {
+      candidate.blocked = { reason: 'payment_waiting', detail: describeWaitingPayment(waiting) }
+      continue
+    }
+    payable.push(candidate)
   }
-  if (waiting) {
-    candidate.blocked = { reason: 'payment_waiting', detail: describeWaitingPayment(waiting) }
-    return false
-  }
+  if (payable.length === 0) return false
 
-  const invoice = candidate.invoice
-  const vendor = invoice.vendor
   let recipients: { to: string | null; cc: string[] }
   try {
-    const resolved = await resolveVendorInvoiceRecipients(supabase, candidate.vendorId, vendor?.email)
+    const resolved = await resolveVendorInvoiceRecipients(supabase, vendorId, payable[0].invoice.vendor?.email)
     if ('error' in resolved) throw new Error(resolved.error)
     recipients = resolved
   } catch (error) {
-    addProblem(context, candidate, `Could not read who to send to, so nothing was sent: ${getErrorMessage(error)}`)
+    for (const candidate of payable) {
+      addProblem(context, candidate, `Could not read who to send to, so nothing was sent: ${getErrorMessage(error)}`)
+    }
     return true
   }
 
   const toAddress = recipients.to
   if (!toAddress) {
-    candidate.blocked = {
-      reason: 'no_address',
-      detail: 'There is no email address on the client record or its contacts, so no reminder can be sent. Add one, or chase by hand',
+    for (const candidate of payable) {
+      candidate.blocked = {
+        reason: 'no_address',
+        detail: 'There is no email address on the client record or its contacts, so no reminder can be sent. Add one, or chase by hand',
+      }
     }
     return false
   }
 
-  // Built before the claim is taken, so nothing between the claim and the send can fail.
-  const firstName = await resolveInvoiceGreetingName(supabase, candidate.vendorId)
-  const emailInput = {
-    firstName,
-    invoiceNumber: invoice.invoice_number,
-    balance: candidate.balance ?? 0,
-    paid: Number(invoice.paid_amount) || 0,
-    dueDate: String(invoice.due_date ?? '').slice(0, 10),
+  const firstName = await resolveInvoiceGreetingName(supabase, vendorId)
+
+  // One claim per invoice and stage, all taken before anything is sent.
+  const taken: TakenClaim[] = []
+  for (const candidate of payable) {
+    const stage = sentStage(candidate) as ReminderStage
+    const { key, hash } = claimFor(candidate.invoice.id, stage, today)
+
+    let claimState: string
+    try {
+      const claim = await claimIdempotencyKey(supabase, key, hash, CLAIM_TTL_HOURS, CLAIM_NEVER_STALE_MS)
+      claimState = claim.state
+    } catch (error) {
+      // Nothing has been sent, so whatever this attempt already took goes back.
+      for (const entry of await releaseClaims(supabase, taken)) entry.candidate.excludeFromForecast = true
+      addProblem(context, candidate, `Could not take the send lock, so nothing was sent: ${getErrorMessage(error)}`)
+      return true
+    }
+
+    if (claimState !== 'claimed') {
+      // The record says this reminder is due, yet a claim for it exists. An earlier attempt
+      // either died part way or ended with an unknown outcome. Either way the customer may
+      // already hold it.
+      candidate.blocked = {
+        reason: 'reminder_outcome_unknown',
+        detail:
+          stage === 'weekly'
+            ? 'An earlier attempt this week to send the weekly reminder has an unknown outcome, so no more will be sent this week. Check Sent Items; the next weekly reminder goes next week'
+            : weekly
+              ? `An earlier attempt to send the ${stageWord(stage)} reminder has an unknown outcome, so it will not be sent again; the weekly reminders take over from 21 days overdue. Check Sent Items before chasing`
+              : `An earlier attempt to send the ${stageWord(stage)} reminder has an unknown outcome, so nothing more will be sent automatically. Check Sent Items before chasing`,
+      }
+      continue
+    }
+    taken.push({ candidate, stage, key, hash })
   }
-  const draft = stage === 'first' ? buildFirstReminderEmail(emailInput) : buildSecondReminderEmail(emailInput)
+  if (taken.length === 0) return false
 
-  // The old job's "cron:invoice-reminder:..." claims are ignored on purpose: they mixed owner
-  // alerts with customer sends, so they prove nothing about what a customer received. The hash
-  // covers the invoice and stage only, never the days overdue, so the key means the same thing
-  // on every day of the window.
-  const claimKey = `invoice-reminder:v2:${invoice.id}:${stage}`
-  const claimHash = computeIdempotencyRequestHash({ invoice_id: invoice.id, stage })
+  const lead = taken[0].candidate
+  const reminderInput = (candidate: Candidate) => ({
+    firstName,
+    invoiceNumber: candidate.invoice.invoice_number,
+    balance: candidate.balance ?? 0,
+    paid: Number(candidate.invoice.paid_amount) || 0,
+    dueDate: String(candidate.invoice.due_date ?? '').slice(0, 10),
+  })
 
-  let claimState: string
+  let draft: InvoiceEmailDraft
+  let emailKind: InvoiceEmailKind
+  let extraAttachments: Array<{ name: string; contentType: string; buffer: Buffer }> | undefined
+  let paymentLinkFooter: string | undefined
   try {
-    const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, CLAIM_TTL_HOURS, CLAIM_NEVER_STALE_MS)
-    claimState = claim.state
+    if (taken.length === 1) {
+      const { stage } = taken[0]
+      const input = reminderInput(lead)
+      draft =
+        stage === 'first'
+          ? buildFirstReminderEmail(input)
+          : stage === 'second'
+            ? buildSecondReminderEmail(input)
+            : buildWeeklyReminderEmail(input)
+      emailKind = reminderKind(stage)
+    } else {
+      draft = buildCombinedReminderEmail({ firstName, invoices: taken.map(({ candidate }) => reminderInput(candidate)) })
+      emailKind = 'reminder_combined'
+      // The first invoice's PDF is made by the sender. The others are made here, before the
+      // send, so a failure leaves nothing half sent.
+      const { generateInvoicePDF } = await import('@/lib/pdf-generator')
+      extraAttachments = []
+      for (const { candidate } of taken.slice(1)) {
+        extraAttachments.push({
+          name: `invoice-${candidate.invoice.invoice_number}.pdf`,
+          contentType: 'application/pdf',
+          buffer: await generateInvoicePDF(candidate.invoice),
+        })
+      }
+      paymentLinkFooter = await severalPaymentFooter(taken.map(({ candidate }) => candidate.invoice))
+    }
   } catch (error) {
-    addProblem(context, candidate, `Could not take the send lock, so nothing was sent: ${getErrorMessage(error)}`)
+    // Nothing has been sent, so the claims go back and the next run may try again.
+    const stuck = await releaseClaims(supabase, taken)
+    for (const entry of taken) {
+      if (stuck.has(entry)) entry.candidate.excludeFromForecast = true
+      addProblem(
+        context,
+        entry.candidate,
+        stuck.has(entry)
+          ? `The reminder email could not be put together, so nothing was sent: ${getErrorMessage(error)}. It could not be queued to try again, so chase by hand`
+          : `The reminder email could not be put together, so nothing was sent: ${getErrorMessage(error)}. The next run will try again`
+      )
+    }
     return true
   }
 
-  if (claimState !== 'claimed') {
-    // The stage's column is empty (the rules said send) yet a claim exists. An earlier attempt
-    // either died part way or ended with an unknown outcome. Either way the customer may
-    // already hold this reminder.
-    candidate.blocked = {
-      reason: 'reminder_outcome_unknown',
-      detail: `An earlier attempt to send the ${word} reminder has an unknown outcome, so nothing more will be sent automatically. Check Sent Items before chasing`,
-    }
-    return false
-  }
-
   const unknownOutcome = async (reason: string): Promise<void> => {
-    await keepClaim(supabase, claimKey, claimHash, {
-      state: 'outcome_unknown',
-      invoice_id: invoice.id,
-      stage,
-      error: reason,
-      attempted_at: new Date().toISOString(),
-    })
+    const attemptedAtIso = new Date().toISOString()
     // The email may be in the customer's inbox, so the client counts as emailed today.
-    context.lastEmailByVendor.set(candidate.vendorId, today)
-    candidate.excludeFromForecast = true
-    context.sendFailures.push(invoice.invoice_number)
-    addProblem(
-      context,
-      candidate,
-      `The ${word} reminder may or may not have been sent (${reason}). It will not be retried automatically. Check Sent Items before chasing`
-    )
+    context.lastEmailByVendor.set(vendorId, today)
+    for (const { candidate, stage, key, hash } of taken) {
+      await keepClaim(supabase, key, hash, {
+        state: 'outcome_unknown',
+        invoice_id: candidate.invoice.id,
+        stage,
+        error: reason,
+        attempted_at: attemptedAtIso,
+      })
+      candidate.excludeFromForecast = true
+      context.sendFailures.push(candidate.invoice.invoice_number)
+      if (stage === 'weekly') {
+        // Counted as this week's, so the chasing goes on next week and never twice in one.
+        await recordWeeklyAttempt(supabase, candidate.invoice.id, attemptedAtIso)
+        context.lastChaserByVendor.set(vendorId, today)
+        addProblem(
+          context,
+          candidate,
+          `The weekly reminder may or may not have been sent (${reason}). It counts as this week's, so the next one goes in a week. Check Sent Items`
+        )
+      } else {
+        addProblem(
+          context,
+          candidate,
+          `The ${stageWord(stage)} reminder may or may not have been sent (${reason}). It will not be retried automatically. Check Sent Items before chasing`
+        )
+      }
+    }
   }
 
   let result: Awaited<ReturnType<typeof sendInvoiceEmail>>
   try {
-    result = await sendInvoiceEmail(invoice, toAddress, draft.subject, draft.body, recipients.cc, undefined, {
-      emailKind: stage === 'first' ? 'reminder_first' : 'reminder_second',
+    result = await sendInvoiceEmail(lead.invoice, toAddress, draft.subject, draft.body, recipients.cc, extraAttachments, {
+      emailKind,
+      ...(taken.length > 1
+        ? { coversInvoiceIds: taken.map(({ candidate }) => candidate.invoice.id), paymentLinkFooter }
+        : {}),
     })
   } catch (error) {
     await unknownOutcome(getErrorMessage(error))
@@ -794,101 +1194,109 @@ async function attemptReminder(context: RunContext, candidate: Candidate, stage:
     }
 
     // Definitely refused: nothing left the building, so the next run may try again while the
-    // window is open. This is the ONLY place a claim is released.
-    let released = true
-    try {
-      await releaseIdempotencyClaim(supabase, claimKey, claimHash)
-    } catch (error) {
-      released = false
-      console.error(`[invoice-reminders] Could not release claim ${claimKey}:`, getErrorMessage(error))
+    // reminder is still due. A claim is only ever released when nothing was sent.
+    const stuck = await releaseClaims(supabase, taken)
+    for (const entry of taken) {
+      if (stuck.has(entry)) entry.candidate.excludeFromForecast = true
+      context.sendFailures.push(entry.candidate.invoice.invoice_number)
+      const word = stageWord(entry.stage)
+      addProblem(
+        context,
+        entry.candidate,
+        stuck.has(entry)
+          ? `The ${word} reminder was refused and nothing was sent: ${result.error}. It could not be queued to try again, so chase by hand`
+          : `The ${word} reminder was refused and nothing was sent: ${result.error}. The next run will try again while the reminder is still due`
+      )
     }
-    if (!released) candidate.excludeFromForecast = true
-    context.sendFailures.push(invoice.invoice_number)
-    addProblem(
-      context,
-      candidate,
-      released
-        ? `The ${word} reminder was refused and nothing was sent: ${result.error}. The next run will try again while the reminder is still due`
-        : `The ${word} reminder was refused and nothing was sent: ${result.error}. It could not be queued to try again, so chase by hand`
-    )
     return true
   }
 
-  // ACCEPTED. From here the claim is never released, whatever fails.
+  // ACCEPTED. From here no claim is released, whatever fails.
   const acceptedAtIso = new Date().toISOString()
-  context.lastEmailByVendor.set(candidate.vendorId, today)
-  context.sent.push({
-    invoiceNumber: invoice.invoice_number,
-    clientName: candidate.clientName,
-    to: toAddress,
-    stage,
-    date: today,
-  })
+  context.lastEmailByVendor.set(vendorId, today)
+  if (taken.some(({ stage }) => stage === 'weekly')) context.lastChaserByVendor.set(vendorId, today)
 
-  const column = stage === 'first' ? 'reminder_first_sent_at' : 'reminder_second_sent_at'
-  let recordError: string | null = null
-  try {
-    // Only where it is still empty: the first accepted send is the one that counts.
-    const { error } = await supabase
-      .from('invoices')
-      .update({ [column]: acceptedAtIso })
-      .eq('id', invoice.id)
-      .is(column, null)
-      .select('id')
-      .maybeSingle()
-    if (error) recordError = error.message || 'the update failed'
-  } catch (error) {
-    recordError = getErrorMessage(error)
-  }
+  for (const { candidate, stage, key, hash } of taken) {
+    const invoice = candidate.invoice
+    context.sent.push({
+      invoiceNumber: invoice.invoice_number,
+      clientName: candidate.clientName,
+      to: toAddress,
+      stage,
+      date: today,
+    })
 
-  if (recordError) {
-    await keepClaim(supabase, claimKey, claimHash, {
-      state: 'sent_not_recorded',
-      invoice_id: invoice.id,
-      stage,
-      accepted_at: acceptedAtIso,
-      error: recordError,
-    })
-    candidate.excludeFromForecast = true
-    context.sendFailures.push(invoice.invoice_number)
-    addProblem(
-      context,
-      candidate,
-      `The ${word} reminder was sent to ${toAddress}, but the app could not record it (${recordError}). It will not be sent again, and no further automatic reminder will follow: chase by hand from here`
-    )
-  } else {
-    candidate.invoice =
-      stage === 'first'
-        ? { ...invoice, reminder_first_sent_at: acceptedAtIso }
-        : { ...invoice, reminder_second_sent_at: acceptedAtIso }
-    await keepClaim(supabase, claimKey, claimHash, {
-      state: 'processed',
-      invoice_id: invoice.id,
-      stage,
-      accepted_at: acceptedAtIso,
-    })
+    const column = reminderColumn(stage)
+    let recordError: string | null = null
+    try {
+      // First and second: only where still empty, so the first accepted send is the one that
+      // counts. Weekly: always the latest, which is what the seven-day clock runs from.
+      const update = supabase.from('invoices').update({ [column]: acceptedAtIso }).eq('id', invoice.id)
+      const { error } = await (stage === 'weekly' ? update : update.is(column, null)).select('id').maybeSingle()
+      if (error) recordError = error.message || 'the update failed'
+    } catch (error) {
+      recordError = getErrorMessage(error)
+    }
+
+    if (recordError) {
+      await keepClaim(supabase, key, hash, {
+        state: 'sent_not_recorded',
+        invoice_id: invoice.id,
+        stage,
+        accepted_at: acceptedAtIso,
+        error: recordError,
+      })
+      candidate.excludeFromForecast = true
+      context.sendFailures.push(invoice.invoice_number)
+      addProblem(
+        context,
+        candidate,
+        stage === 'weekly'
+          ? `The weekly reminder was sent to ${toAddress}, but the app could not record it (${recordError}). It will not be sent again this week`
+          : weekly
+            ? `The ${stageWord(stage)} reminder was sent to ${toAddress}, but the app could not record it (${recordError}). It will not be sent again; the weekly reminders take over from 21 days overdue`
+            : `The ${stageWord(stage)} reminder was sent to ${toAddress}, but the app could not record it (${recordError}). It will not be sent again, and no further automatic reminder will follow: chase by hand from here`
+      )
+    } else {
+      candidate.invoice =
+        stage === 'first'
+          ? { ...invoice, reminder_first_sent_at: acceptedAtIso }
+          : stage === 'second'
+            ? { ...invoice, reminder_second_sent_at: acceptedAtIso }
+            : { ...invoice, reminder_last_weekly_sent_at: acceptedAtIso }
+      await keepClaim(supabase, key, hash, {
+        state: 'processed',
+        invoice_id: invoice.id,
+        stage,
+        accepted_at: acceptedAtIso,
+      })
+    }
   }
 
   // The older per-recipient log, which the Chase Payment dialog's "recent reminder" warning
-  // reads. A failure here loses a log line, not an email.
+  // reads: one set of rows for each invoice the email covered. A failure here loses a log line,
+  // not an email.
   try {
-    const days = decision.daysOverdue
-    const body = `${stage === 'first' ? 'First' : 'Second'} reminder, ${days} ${days === 1 ? 'day' : 'days'} overdue`
-    const { error } = await supabase.from('invoice_email_logs').insert(
-      [toAddress, ...recipients.cc].map((address) => ({
-        invoice_id: invoice.id,
+    const others = taken.length - 1
+    const rows = taken.flatMap(({ candidate, stage }) => {
+      const days = candidate.decision.action === 'send' ? candidate.decision.daysOverdue : 0
+      const shared = others > 0 ? `, in one email with ${others} other ${others === 1 ? 'invoice' : 'invoices'}` : ''
+      const body = `${stageTitle(stage)}, ${days} ${days === 1 ? 'day' : 'days'} overdue${shared}`
+      return [toAddress, ...recipients.cc].map((address) => ({
+        invoice_id: candidate.invoice.id,
         sent_to: address,
         sent_by: 'system',
         subject: draft.subject,
         body,
         status: 'sent',
       }))
-    )
+    })
+    const { error } = await supabase.from('invoice_email_logs').insert(rows)
     if (error) throw new Error(error.message)
   } catch (error) {
     context.warnings += 1
     console.warn(
-      `[invoice-reminders] Reminder for ${invoice.invoice_number} was sent but its email log could not be written:`,
+      `[invoice-reminders] Reminder for ${taken.map(({ candidate }) => candidate.invoice.invoice_number).join(', ')} was sent but its email log could not be written:`,
       getErrorMessage(error)
     )
   }
@@ -911,26 +1319,36 @@ interface RunCounts {
   summary: SummaryDelivery
 }
 
-async function processRun(context: RunContext, runId: string): Promise<RunCounts> {
-  const { supabase, today, goLiveDate } = context
+/**
+ * The overdue invoices as candidates, oldest due date first: that is the order reminders go in
+ * when a client has several. Also notes when each client was last emailed and, with weekly
+ * chasers on, last chased. Shared by the run and the preview, so they read the same things.
+ */
+async function loadCandidates(context: RunContext): Promise<Candidate[]> {
+  const { supabase, today } = context
+  const weekly = weeklyChasersOn(context)
 
   const invoices = await loadOverdueInvoices(supabase, today)
-  const privateHireIds = await loadPrivateHireInvoiceIds(
-    supabase,
-    invoices.map((invoice) => invoice.id)
-  )
+  const invoiceIds = invoices.map((invoice) => invoice.id)
+  const privateHireIds = await loadPrivateHireInvoiceIds(supabase, invoiceIds)
+  const cancelledIds = weekly ? await loadCancelledBookingInvoiceIds(supabase, invoiceIds) : new Set<string>()
   const vendorIds = [...new Set(invoices.map((invoice) => invoice.vendor_id).filter(Boolean))]
   for (const [vendorId, date] of await loadLastClientEmailDates(supabase, vendorIds, today)) {
     context.lastEmailByVendor.set(vendorId, date)
   }
+  if (weekly) {
+    for (const [vendorId, date] of await loadLastClientChaserDates(supabase, vendorIds, today)) {
+      context.lastChaserByVendor.set(vendorId, date)
+    }
+  }
 
-  // Oldest due date first: that is the order reminders go in when a client has several.
-  const candidates: Candidate[] = invoices
+  return invoices
     .map((invoice) => ({
       invoice,
       vendorId: invoice.vendor_id,
       clientName: invoice.vendor?.name?.trim() || 'Unknown client',
       isPrivateHire: privateHireIds.has(invoice.id),
+      bookingCancelled: cancelledIds.has(invoice.id),
       decision: { action: 'none', reason: 'not_collectable' } as ReminderDecision,
       balance: null,
     }))
@@ -939,6 +1357,13 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
         String(left.invoice.due_date).localeCompare(String(right.invoice.due_date)) ||
         String(left.invoice.invoice_number).localeCompare(String(right.invoice.invoice_number))
     )
+}
+
+async function processRun(context: RunContext, runId: string): Promise<RunCounts> {
+  const { supabase, today, goLiveDate } = context
+  const weekly = weeklyChasersOn(context)
+
+  const candidates = await loadCandidates(context)
 
   let markedOverdue = 0
   for (const candidate of candidates) {
@@ -984,37 +1409,64 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
   if (goLiveDate) {
     const doneVendors = new Set<string>()
     const notReached: Candidate[] = []
+    // Saved after every attempt, not only at the end. A run killed part way through the loop
+    // would otherwise leave no record of the reminders it had already sent, and they would
+    // never appear in any summary. The row stays "running" until the run finishes.
+    const saveProgress = () =>
+      saveRun(supabase, runId, 'running', {
+        v: 1,
+        sent: context.sent,
+        problems: context.problems,
+        needs_you_keys: [],
+        summary: 'pending',
+      })
 
-    for (const candidate of candidates) {
-      // At most one reminder per client per run.
-      if (doneVendors.has(candidate.vendorId)) continue
+    if (weekly) {
+      // One email per client per run, covering every invoice of theirs that is due a reminder,
+      // whatever its stage, each attached (owner decision, 29 October 2026).
+      for (const group of groupByVendor(candidates)) {
+        // Decided again with what this run has learned.
+        const due: Candidate[] = []
+        for (const candidate of group) {
+          try {
+            candidate.decision = decide(candidate, context)
+          } catch {
+            continue
+          }
+          if (candidate.decision.action === 'send') due.push(candidate)
+        }
+        if (due.length === 0) continue
 
-      // Decided again with what this run has learned: an earlier send to the same client, or
-      // a fresh look at their recent emails.
-      try {
-        candidate.decision = decide(candidate, context)
-      } catch {
-        continue
+        if (Date.now() - context.startedMs > SEND_TIME_BUDGET_MS) {
+          notReached.push(...due)
+          continue
+        }
+
+        if (await attemptClientReminder(context, due)) await saveProgress()
       }
-      if (candidate.decision.action !== 'send') continue
+    } else {
+      for (const candidate of candidates) {
+        // At most one reminder per client per run.
+        if (doneVendors.has(candidate.vendorId)) continue
 
-      if (Date.now() - context.startedMs > SEND_TIME_BUDGET_MS) {
-        notReached.push(candidate)
-        continue
-      }
+        // Decided again with what this run has learned: an earlier send to the same client, or
+        // a fresh look at their recent emails.
+        try {
+          candidate.decision = decide(candidate, context)
+        } catch {
+          continue
+        }
+        if (candidate.decision.action !== 'send') continue
 
-      if (await attemptReminder(context, candidate, candidate.decision.stage)) {
-        doneVendors.add(candidate.vendorId)
-        // Saved after every attempt, not only at the end. A run killed part way through the
-        // loop would otherwise leave no record of the reminders it had already sent, and they
-        // would never appear in any summary. The row stays "running" until the run finishes.
-        await saveRun(supabase, runId, 'running', {
-          v: 1,
-          sent: context.sent,
-          problems: context.problems,
-          needs_you_keys: [],
-          summary: 'pending',
-        })
+        if (Date.now() - context.startedMs > SEND_TIME_BUDGET_MS) {
+          notReached.push(candidate)
+          continue
+        }
+
+        if (await attemptClientReminder(context, [candidate])) {
+          doneVendors.add(candidate.vendorId)
+          await saveProgress()
+        }
       }
     }
 
@@ -1108,17 +1560,26 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
     })
   }
 
-  // Going next: what the rules say the next run would send, one per client, oldest first.
+  // Going next: what the rules say the next run would send, oldest first. Without weekly
+  // chasers that is one per client; with them, every invoice the client's one email would cover.
   const goingNext: SummaryGoingNextEntry[] = []
   const forecastVendors = new Set<string>()
   for (const candidate of candidates) {
     if (candidate.blocked || candidate.excludeFromForecast || candidate.balance === null) continue
-    if (forecastVendors.has(candidate.vendorId)) continue
+    if (!weekly && forecastVendors.has(candidate.vendorId)) continue
 
-    const stage = isDueOnNextRun(toReminderInvoice(candidate.invoice, candidate.isPrivateHire, candidate.balance), {
+    const reminderInvoice = toReminderInvoice(
+      candidate.invoice,
+      candidate.isPrivateHire,
+      candidate.balance,
+      candidate.bookingCancelled
+    )
+    const stage = isDueOnNextRun(reminderInvoice, {
       today,
       goLiveDate,
       lastClientEmailDate: context.lastEmailByVendor.get(candidate.vendorId) ?? null,
+      weeklyFrom: context.weeklyFrom,
+      lastClientChaserDate: context.lastChaserByVendor.get(candidate.vendorId) ?? null,
     })
     if (!stage) continue
 
@@ -1256,14 +1717,17 @@ export async function runInvoiceReminders(): Promise<ReminderRunResponse> {
     problems.push(...(run.earlierAttempt?.problems ?? []).filter((entry) => entry.date === today))
 
     const goLiveDate = invoiceRemindersGoLiveDate()
+    const weeklyFrom = invoiceWeeklyRemindersFrom()
     const results = await processRun(
       {
         supabase,
         today,
         goLiveDate,
+        weeklyFrom,
         appUrl: getAppUrl(),
         startedMs: Date.now(),
         lastEmailByVendor: new Map(),
+        lastChaserByVendor: new Map(),
         sent,
         problems,
         sendFailures: [],
@@ -1276,7 +1740,13 @@ export async function runInvoiceReminders(): Promise<ReminderRunResponse> {
 
     return {
       status: 200,
-      body: { success: true, runKey: today, reminders_on: Boolean(goLiveDate), results },
+      body: {
+        success: true,
+        runKey: today,
+        reminders_on: Boolean(goLiveDate),
+        weekly_chasers_on: Boolean(goLiveDate) && weeklyChasersOn({ today, weeklyFrom }),
+        results,
+      },
     }
   } catch (error) {
     console.error('[invoice-reminders] Fatal error:', error)
@@ -1318,6 +1788,8 @@ interface PreviewLine {
  * (spec R2, "Go-live check"). It uses the same rules as the real run, and the same
  * one-reminder-per-client order. `asOf` lets it answer for a day other than today, with the
  * balances and emails as they stand now, so it is a forecast for any day but today.
+ * `weeklyFrom` answers the same for INVOICE_WEEKLY_REMINDERS_FROM: with it, every invoice a
+ * client's one email would cover is listed, and nothing waits for one-per-client.
  *
  * Addresses are not returned, only whether one exists: the output is for a person to read and
  * may be pasted into a message.
@@ -1325,6 +1797,7 @@ interface PreviewLine {
 export async function previewInvoiceReminders(input: {
   goLiveDate: string | null
   asOf?: string | null
+  weeklyFrom?: string | null
 }): Promise<ReminderRunResponse> {
   // A real calendar date: one that survives a round trip. The date parser rolls 31 February
   // over into March rather than refusing it.
@@ -1340,9 +1813,13 @@ export async function previewInvoiceReminders(input: {
   if (input.asOf && !isIsoDate(input.asOf)) {
     return { status: 400, body: { error: 'as_of must be a date written as YYYY-MM-DD' } }
   }
+  if (input.weeklyFrom && !isIsoDate(input.weeklyFrom)) {
+    return { status: 400, body: { error: 'weekly_from must be a date written as YYYY-MM-DD' } }
+  }
 
   const today = input.asOf || getTodayIsoDate()
   const goLiveDate = input.goLiveDate
+  const weeklyFrom = input.weeklyFrom || null
 
   try {
     const supabase = createAdminClient()
@@ -1350,39 +1827,19 @@ export async function previewInvoiceReminders(input: {
       supabase,
       today,
       goLiveDate,
+      weeklyFrom,
       appUrl: getAppUrl(),
       startedMs: Date.now(),
       lastEmailByVendor: new Map(),
+      lastChaserByVendor: new Map(),
       sent: [],
       problems: [],
       sendFailures: [],
       warnings: 0,
     }
+    const weekly = weeklyChasersOn(context)
 
-    const invoices = await loadOverdueInvoices(supabase, today)
-    const privateHireIds = await loadPrivateHireInvoiceIds(
-      supabase,
-      invoices.map((invoice) => invoice.id)
-    )
-    const vendorIds = [...new Set(invoices.map((invoice) => invoice.vendor_id).filter(Boolean))]
-    for (const [vendorId, date] of await loadLastClientEmailDates(supabase, vendorIds, today)) {
-      context.lastEmailByVendor.set(vendorId, date)
-    }
-
-    const candidates: Candidate[] = invoices
-      .map((invoice) => ({
-        invoice,
-        vendorId: invoice.vendor_id,
-        clientName: invoice.vendor?.name?.trim() || 'Unknown client',
-        isPrivateHire: privateHireIds.has(invoice.id),
-        decision: { action: 'none', reason: 'not_collectable' } as ReminderDecision,
-        balance: null,
-      }))
-      .sort(
-        (left, right) =>
-          String(left.invoice.due_date).localeCompare(String(right.invoice.due_date)) ||
-          String(left.invoice.invoice_number).localeCompare(String(right.invoice.invoice_number))
-      )
+    const candidates = await loadCandidates(context)
 
     const wouldSend: Array<PreviewLine & { reminder: string; has_address: boolean }> = []
     const needsYou: Array<PreviewLine & { why: string }> = []
@@ -1411,7 +1868,7 @@ export async function previewInvoiceReminders(input: {
       } else if (decision.action === 'wait') {
         waiting.push({ ...line(), why: decision.reason })
       } else if (decision.action === 'send') {
-        if (doneVendors.has(candidate.vendorId)) {
+        if (!weekly && doneVendors.has(candidate.vendorId)) {
           waiting.push({ ...line(), why: 'one_reminder_per_client_per_run' })
           continue
         }
@@ -1455,6 +1912,10 @@ export async function previewInvoiceReminders(input: {
         nothing_was_sent_or_changed: true,
         as_of: today,
         go_live_date: goLiveDate,
+        weekly_from: weeklyFrom,
+        weekly_chasers_on: weekly,
+        // With weekly chasers, a client's lines here all go in one email, each invoice attached.
+        one_email_per_client: weekly,
         is_a_run_day: isWeekday(today),
         would_send: wouldSend,
         needs_you: needsYou,

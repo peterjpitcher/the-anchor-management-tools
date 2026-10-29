@@ -7,6 +7,7 @@ import {
   isDueOnNextRun,
   isWeekday,
   nextRunDate,
+  weeklyChasersOn,
   type ReminderContext,
   type ReminderInvoice,
 } from '@/lib/invoices/reminder-rules'
@@ -314,6 +315,247 @@ describe('wording for the owner', () => {
     )
     expect(describeNeedsOwner({ action: 'needs_owner', reason: 'overdue_21_days', daysOverdue: 26 })).toBe(
       '26 days overdue. Automatic reminders have finished: chase by hand'
+    )
+  })
+})
+
+
+/**
+ * Weekly chasers (owner decision, 29 October 2026): "We should never stop emailing them if
+ * something isn't paid ... weekly once it breaches the agreed schedule for chasing until it's
+ * paid without exception." The invoice falls due on Friday 9 October, so day 21 is Friday
+ * 30 October; 2 November is a Monday.
+ */
+const WEEKLY_FROM = '2026-10-01'
+
+function weeklyOn(today: string, overrides: Partial<ReminderContext> = {}): ReminderContext {
+  return on(today, { weeklyFrom: WEEKLY_FROM, ...overrides })
+}
+
+const AFTER_BOTH = { firstReminderDate: '2026-10-14', secondReminderDate: '2026-10-23' }
+
+describe('weekly chasers: switching them on', () => {
+  it('is on from the date given, and off while it is unset, unreadable or still to come', () => {
+    expect(weeklyChasersOn({ today: '2026-10-01', weeklyFrom: '2026-10-01' })).toBe(true)
+    expect(weeklyChasersOn({ today: '2026-09-30', weeklyFrom: '2026-10-01' })).toBe(false)
+    expect(weeklyChasersOn({ today: '2026-10-30', weeklyFrom: null })).toBe(false)
+    expect(weeklyChasersOn({ today: '2026-10-30', weeklyFrom: 'rubbish' })).toBe(false)
+  })
+
+  it('changes nothing while off: the owner still takes over at 21 days', () => {
+    const late = invoice(AFTER_BOTH)
+    for (const weeklyFrom of [null, 'rubbish', '2026-11-02']) {
+      expect(decideReminder(late, on('2026-10-30', { weeklyFrom }))).toEqual({
+        action: 'needs_owner',
+        reason: 'overdue_21_days',
+        daysOverdue: 21,
+      })
+    }
+  })
+
+  it('the master switch still stops everything', () => {
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-30', { goLiveDate: null }))).toEqual({
+      action: 'needs_owner',
+      reason: 'reminders_off',
+      daysOverdue: 21,
+    })
+  })
+})
+
+describe('weekly chasers: from 21 days overdue until it is paid', () => {
+  it('starts at 21 days, a week after the second reminder', () => {
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-30'))).toEqual({
+      action: 'send',
+      stage: 'weekly',
+      daysOverdue: 21,
+    })
+  })
+
+  it('waits a full week after a second reminder that went late', () => {
+    const late = invoice({ firstReminderDate: '2026-10-14', secondReminderDate: '2026-10-26' })
+    expect(decideReminder(late, weeklyOn('2026-10-30'))).toEqual({ action: 'wait', reason: 'weekly_too_soon', daysOverdue: 21 })
+    expect(decideReminder(late, weeklyOn('2026-11-02'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 24 })
+  })
+
+  it('goes every week after that, with no end while it is owed', () => {
+    const chased = invoice({ ...AFTER_BOTH, lastWeeklyDate: '2026-10-30' })
+    expect(decideReminder(chased, weeklyOn('2026-11-05'))).toEqual({ action: 'wait', reason: 'weekly_too_soon', daysOverdue: 27 })
+    expect(decideReminder(chased, weeklyOn('2026-11-06'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 28 })
+
+    const monthsLater = invoice({ ...AFTER_BOTH, lastWeeklyDate: '2027-03-05' })
+    expect(decideReminder(monthsLater, weeklyOn('2027-03-12'))).toMatchObject({ action: 'send', stage: 'weekly' })
+  })
+
+  it('stops only when the invoice is paid, voided, written off or nothing is owed', () => {
+    const owed = { ...AFTER_BOTH, lastWeeklyDate: '2026-10-30' }
+    for (const status of ['paid', 'void', 'written_off']) {
+      expect(decideReminder(invoice({ ...owed, status }), weeklyOn('2026-11-06'))).toEqual({
+        action: 'none',
+        reason: 'not_collectable',
+      })
+    }
+    expect(decideReminder(invoice({ ...owed, balance: 0 }), weeklyOn('2026-11-06'))).toEqual({
+      action: 'none',
+      reason: 'nothing_owed',
+    })
+    // Part paid is still owed.
+    expect(decideReminder(invoice({ ...owed, status: 'partially_paid', balance: 35 }), weeklyOn('2026-11-06'))).toMatchObject({
+      action: 'send',
+      stage: 'weekly',
+    })
+  })
+
+  it('one email a week per client: an invoice waits for the client\'s next weekly email', () => {
+    // The client was sent a weekly email for another invoice on Wednesday 28 October.
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-30', { lastClientChaserDate: '2026-10-28' }))).toEqual({
+      action: 'wait',
+      reason: 'weekly_too_soon',
+      daysOverdue: 21,
+    })
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-11-04', { lastClientChaserDate: '2026-10-28' }))).toMatchObject({
+      action: 'send',
+      stage: 'weekly',
+    })
+  })
+
+  it('a chase sent by hand counts as that week\'s email', () => {
+    // lastClientChaserDate carries hand-sent chases as well as weekly emails.
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-11-02', { lastClientChaserDate: '2026-10-29' }))).toEqual({
+      action: 'wait',
+      reason: 'weekly_too_soon',
+      daysOverdue: 24,
+    })
+  })
+
+  it('a hold and the three quiet days still apply', () => {
+    expect(decideReminder(invoice({ ...AFTER_BOTH, heldUntil: '2026-11-06' }), weeklyOn('2026-10-30'))).toEqual({
+      action: 'wait',
+      reason: 'held',
+      daysOverdue: 21,
+    })
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-30', { lastClientEmailDate: '2026-10-29' }))).toEqual({
+      action: 'wait',
+      reason: 'recent_client_email',
+      daysOverdue: 21,
+    })
+  })
+
+  it('fails closed on a reminder date it cannot read', () => {
+    expect(decideReminder(invoice({ ...AFTER_BOTH, lastWeeklyDate: 'rubbish' }), weeklyOn('2026-11-06'))).toEqual({
+      action: 'wait',
+      reason: 'weekly_too_soon',
+      daysOverdue: 28,
+    })
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-11-06', { lastClientChaserDate: 'rubbish' }))).toEqual({
+      action: 'wait',
+      reason: 'weekly_too_soon',
+      daysOverdue: 28,
+    })
+  })
+})
+
+describe('weekly chasers: without exception', () => {
+  it('follows up an invoice that fell due before go-live', () => {
+    // Like INV-003WG: due Tuesday 8 September, before reminders went live on 5 October.
+    const old = invoice({ dueDate: '2026-09-08' })
+    expect(decideReminder(old, on('2026-10-30'))).toMatchObject({ action: 'needs_owner', reason: 'due_before_go_live' })
+    expect(decideReminder(old, weeklyOn('2026-10-30'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 52 })
+  })
+
+  it('leaves private hire to the owner until 21 days, a week after the party, then chases weekly', () => {
+    const party = invoice({ isPrivateHire: true })
+    expect(decideReminder(party, weeklyOn('2026-10-19'))).toEqual({ action: 'needs_owner', reason: 'private_hire', daysOverdue: 10 })
+    expect(decideReminder(party, weeklyOn('2026-10-30'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 21 })
+  })
+
+  it('never chases the invoice of a cancelled booking: it waits for a credit note', () => {
+    const cancelled = invoice({ isPrivateHire: true, bookingCancelled: true })
+    expect(decideReminder(cancelled, weeklyOn('2026-10-30'))).toEqual({
+      action: 'needs_owner',
+      reason: 'booking_cancelled',
+      daysOverdue: 21,
+    })
+  })
+
+  it('chases an invoice the app has no record of emailing, from 21 days', () => {
+    const byHand = invoice({ sentAt: null })
+    expect(decideReminder(byHand, on('2026-10-14'))).toEqual({ action: 'none', reason: 'never_emailed' })
+    // "I've attached another copy in case the first one got buried" would not be true for it.
+    expect(decideReminder(byHand, weeklyOn('2026-10-14'))).toEqual({ action: 'wait', reason: 'waiting_for_weekly', daysOverdue: 5 })
+    expect(decideReminder(byHand, weeklyOn('2026-10-30'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 21 })
+  })
+
+  it('gives an invoice that fell due before go-live no first reminder, only the weekly ones', () => {
+    const old = invoice({ dueDate: '2026-10-02' })
+    expect(decideReminder(old, weeklyOn('2026-10-09'))).toEqual({ action: 'wait', reason: 'waiting_for_weekly', daysOverdue: 7 })
+    expect(decideReminder(old, weeklyOn('2026-10-23'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 21 })
+  })
+
+  it('holds a new invoice\'s first or second reminder for a client chased this week', () => {
+    // The client had a weekly email on Monday 12 October; this invoice is 5 days overdue on the 14th.
+    expect(decideReminder(invoice(), weeklyOn('2026-10-14', { lastClientChaserDate: '2026-10-12' }))).toEqual({
+      action: 'wait',
+      reason: 'weekly_too_soon',
+      daysOverdue: 5,
+    })
+    // On the next weekly day it goes, in the same email as the client's other invoices.
+    expect(decideReminder(invoice(), weeklyOn('2026-10-19', { lastClientChaserDate: '2026-10-12' }))).toEqual({
+      action: 'send',
+      stage: 'first',
+      daysOverdue: 10,
+    })
+    expect(
+      decideReminder(invoice({ firstReminderDate: '2026-10-14' }), weeklyOn('2026-10-23', { lastClientChaserDate: '2026-10-19' }))
+    ).toEqual({ action: 'wait', reason: 'weekly_too_soon', daysOverdue: 14 })
+  })
+
+  it('waits for the weekly emails between the second reminder and day 21', () => {
+    expect(decideReminder(invoice(AFTER_BOTH), on('2026-10-26'))).toEqual({ action: 'none', reason: 'both_sent' })
+    expect(decideReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-26'))).toEqual({
+      action: 'wait',
+      reason: 'waiting_for_weekly',
+      daysOverdue: 17,
+    })
+  })
+
+  it('picks up a missed first window at 21 days instead of handing it over', () => {
+    const missed = invoice()
+    expect(decideReminder(missed, on('2026-10-23'))).toMatchObject({ action: 'needs_owner', reason: 'first_window_missed' })
+    expect(decideReminder(missed, weeklyOn('2026-10-23'))).toEqual({ action: 'wait', reason: 'waiting_for_weekly', daysOverdue: 14 })
+    expect(decideReminder(missed, weeklyOn('2026-10-30'))).toEqual({ action: 'send', stage: 'weekly', daysOverdue: 21 })
+  })
+
+  it('keeps the first and second reminders exactly as they were', () => {
+    expect(decideReminder(invoice(), weeklyOn('2026-10-14'))).toEqual({ action: 'send', stage: 'first', daysOverdue: 5 })
+    expect(decideReminder(invoice({ firstReminderDate: '2026-10-14' }), weeklyOn('2026-10-23'))).toEqual({
+      action: 'send',
+      stage: 'second',
+      daysOverdue: 14,
+    })
+  })
+})
+
+describe('weekly chasers: forecast', () => {
+  it('names the next weekly email, and there always is one while it is owed', () => {
+    expect(forecastNextReminder(invoice(AFTER_BOTH), weeklyOn('2026-10-26'))).toEqual({ date: '2026-10-30', stage: 'weekly' })
+    expect(forecastNextReminder(invoice({ ...AFTER_BOTH, lastWeeklyDate: '2026-10-30' }), weeklyOn('2026-10-30'))).toEqual({
+      date: '2026-11-06',
+      stage: 'weekly',
+    })
+    // Without weekly chasers there is nothing after the second.
+    expect(forecastNextReminder(invoice(AFTER_BOTH), on('2026-10-26'))).toBeNull()
+  })
+
+  it('a weekly email due on a Saturday goes on the Monday', () => {
+    // A week after Saturday 31 October is Saturday 7 November: no run, so Monday 9 November.
+    expect(
+      forecastNextReminder(invoice({ ...AFTER_BOTH, lastWeeklyDate: '2026-10-31' }), weeklyOn('2026-11-06'))
+    ).toEqual({ date: '2026-11-09', stage: 'weekly' })
+  })
+
+  it('says why a cancelled booking\'s invoice is not chased', () => {
+    expect(describeNeedsOwner({ action: 'needs_owner', reason: 'booking_cancelled', daysOverdue: 21 })).toBe(
+      '21 days overdue. Its private booking was cancelled, so it is not chased: settle it with a credit note'
     )
   })
 })

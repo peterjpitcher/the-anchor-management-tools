@@ -18,8 +18,15 @@ import {
   type InvoiceEmailRow,
   type NextReminderLine,
 } from '@/lib/invoices/email-history'
-import { invoiceRemindersGoLiveDate } from '@/lib/invoices/release-switches'
-import { INVOICE_REMINDERS_JOB, loadLastClientEmailDates, toReminderInvoice } from '@/lib/invoices/reminder-job'
+import { invoiceBookingCancelled } from '@/lib/invoices/cancelled-private-booking'
+import { invoiceRemindersGoLiveDate, invoiceWeeklyRemindersFrom } from '@/lib/invoices/release-switches'
+import {
+  INVOICE_REMINDERS_JOB,
+  loadLastClientChaserDates,
+  loadLastClientEmailDates,
+  toReminderInvoice,
+} from '@/lib/invoices/reminder-job'
+import { weeklyChasersOn } from '@/lib/invoices/reminder-rules'
 
 interface ReminderHoldResult {
   success?: boolean
@@ -231,7 +238,7 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
     const { data: invoice, error: invoiceError } = await admin
       .from('invoices')
       .select(
-        'id, vendor_id, status, invoice_date, due_date, total_amount, paid_amount, sent_at, deleted_at, reminders_held_until, reminder_first_sent_at, reminder_second_sent_at, credits:credit_notes(status, amount_inc_vat)'
+        'id, vendor_id, status, invoice_date, due_date, total_amount, paid_amount, sent_at, deleted_at, reminders_held_until, reminder_first_sent_at, reminder_second_sent_at, reminder_last_weekly_sent_at, credits:credit_notes(status, amount_inc_vat)'
       )
       .eq('id', parsedId.data)
       .is('deleted_at', null)
@@ -257,11 +264,35 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
       return { error: 'The email history could not be loaded' }
     }
 
-    const emailRows = (rows ?? []) as InvoiceEmailRow[]
+    // A reminder covering several invoices is saved once, against the first of them, and names
+    // them all in `metadata.covers_invoice_ids`, so each of the others reads it from there. A
+    // failure here only leaves those out: the rest of the history still shows.
+    const { data: coveredRows, error: coveredError } = await admin
+      .from('email_messages')
+      .select('id, to_address, subject, status, error, created_at, sent_at, body_text, metadata, resend_message_id')
+      .contains('metadata', { covers_invoice_ids: [invoice.id] })
+      .eq('direction', 'outbound')
+      .order('created_at', { ascending: false })
+      .limit(EMAIL_HISTORY_LIMIT + 1)
+
+    if (coveredError) {
+      console.error('Error loading the reminders that covered this invoice:', coveredError.message)
+    }
+
+    const byId = new Map<string, InvoiceEmailRow>()
+    for (const row of [...((rows ?? []) as InvoiceEmailRow[]), ...((coveredRows ?? []) as InvoiceEmailRow[])]) {
+      byId.set(row.id, row)
+    }
+    const emailRows = [...byId.values()].sort((left, right) =>
+      String(right.created_at ?? '').localeCompare(String(left.created_at ?? ''))
+    )
     const today = getTodayIsoDate()
     const sentDate = londonDateOf(invoice.sent_at)
     const firstReminderDate = londonDateOf(invoice.reminder_first_sent_at)
     const secondReminderDate = londonDateOf(invoice.reminder_second_sent_at)
+    const lastWeeklyDate = londonDateOf(invoice.reminder_last_weekly_sent_at)
+    const weeklyFrom = invoiceWeeklyRemindersFrom()
+    const weeklyOn = weeklyChasersOn({ today, weeklyFrom })
 
     let nextReminder: NextReminderLine
     try {
@@ -284,6 +315,22 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
         console.warn('Could not read recent client emails for the reminder forecast:', getErrorMessage(error))
       }
 
+      // Only sharpens the forecast of a weekly chaser, as above.
+      let lastClientChaserDate: string | null = null
+      let bookingCancelled = false
+      if (weeklyOn) {
+        try {
+          const dates = await loadLastClientChaserDates(admin, [invoice.vendor_id], today)
+          lastClientChaserDate = dates.get(invoice.vendor_id) ?? null
+        } catch (error) {
+          console.warn('Could not read recent client chases for the reminder forecast:', getErrorMessage(error))
+        }
+        if (bookingLink) {
+          // Unknown counts as cancelled: the line must not forecast a reminder it cannot vouch for.
+          bookingCancelled = (await invoiceBookingCancelled(invoice.id)) !== false
+        }
+      }
+
       const { data: todayRun } = await admin
         .from('cron_job_runs')
         .select('status')
@@ -292,10 +339,12 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
         .maybeSingle()
 
       nextReminder = describeNextReminder({
-        invoice: toReminderInvoice(invoice, Boolean(bookingLink), invoiceBalanceDue(invoice)),
+        invoice: toReminderInvoice(invoice, Boolean(bookingLink), invoiceBalanceDue(invoice), bookingCancelled),
         today,
         goLiveDate: invoiceRemindersGoLiveDate(),
         lastClientEmailDate,
+        weeklyFrom,
+        lastClientChaserDate,
         todayRunDone: todayRun?.status === 'completed',
       })
     } catch (error) {
@@ -313,6 +362,9 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
           { label: 'Invoice emailed', value: dated(sentDate, 'No record') },
           { label: 'First reminder', value: dated(firstReminderDate, 'Not sent') },
           { label: 'Second reminder', value: dated(secondReminderDate, 'Not sent') },
+          ...(weeklyOn || lastWeeklyDate
+            ? [{ label: 'Latest weekly reminder', value: dated(lastWeeklyDate, 'Not sent') }]
+            : []),
         ],
         earlierEmailsNotRecorded: (sentDate ?? String(invoice.invoice_date ?? '').slice(0, 10)) < EMAIL_HISTORY_STARTS,
         emails: toInvoiceEmailHistory(emailRows.slice(0, EMAIL_HISTORY_LIMIT)),

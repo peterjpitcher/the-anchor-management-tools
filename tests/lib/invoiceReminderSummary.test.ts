@@ -294,3 +294,21 @@ describe('email log rules', () => {
     }
   })
 })
+
+
+describe('weekly chasers in the summary', () => {
+  it('names a weekly reminder as one, and reads it back from a saved run', () => {
+    const sent = [
+      { invoiceNumber: 'INV-003W9', clientName: 'Golden Barrels Limited', to: 'accounts@golden.example', stage: 'weekly' as const, date: TUESDAY },
+      { invoiceNumber: 'INV-003WG', clientName: 'Golden Barrels Limited', to: 'accounts@golden.example', stage: 'weekly' as const, date: TUESDAY },
+    ]
+    const summary = buildReminderSummary(input({ sent }))
+    expect(summary?.text).toContain('- INV-003W9, Golden Barrels Limited: weekly reminder to accounts@golden.example')
+    expect(summary?.text).toContain('- INV-003WG, Golden Barrels Limited: weekly reminder to accounts@golden.example')
+    assertCleanText(summary?.subject ?? '')
+    assertCleanText(summary?.text ?? '')
+
+    const state: ReminderRunState = { v: 1, sent, problems: [], needs_you_keys: [], summary: 'accepted' }
+    expect(parseRunState(serialiseRunState(state))).toEqual(state)
+  })
+})
