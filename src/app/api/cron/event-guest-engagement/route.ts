@@ -1,3 +1,4 @@
+import { buildEventReviewAskText } from '@/lib/events/event-guest-texts'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { fromZonedTime, toZonedTime } from 'date-fns-tz'
@@ -1329,7 +1330,13 @@ async function processReviewFollowups(
     if (!shortened) result.shortLinkFallbacks += 1
     const firstName = getSmartFirstName(customer.first_name)
     const messageBody = ensureReplyInstruction(
-      `The Anchor: ${firstName}! Hope you had a belter at ${event.name} ${describeEventDayForReview(eventStartIso, now)}. Got 30 seconds? We'd love to know how we did: ${redirectUrl}`,
+      // Calm wording, owner decision D15 (BK-171): no "belter".
+      buildEventReviewAskText({
+        firstName,
+        eventName: event.name,
+        dayText: describeEventDayForReview(eventStartIso, now),
+        reviewLink: redirectUrl,
+      }),
       supportPhone
     )
 

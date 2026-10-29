@@ -4,15 +4,8 @@ import { z } from 'zod'
 
 import { withApiAuth } from '@/lib/api/auth'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  captureEventPayPalOrderByBookingId,
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentManualReviewSms,
-} from '@/lib/events/event-payments'
-import {
-  sendEventPaymentConfirmationEmail,
-  sendEventPaymentManualReviewEmail,
-} from '@/lib/email/event-ticket-emails'
+import { captureEventPayPalOrderByBookingId } from '@/lib/events/event-payments'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import { logAuditEvent } from '@/app/actions/audit'
 import { eventPaymentRefusal } from '@/lib/events/event-payment-reasons'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
@@ -44,19 +37,15 @@ export async function POST(
 
       if (result.state === 'confirmed' || result.state === 'already_confirmed') {
         const appBaseUrl = getAppUrl()
-        if (result.state === 'confirmed') {
-          await sendEventPaymentConfirmationSms(supabase, {
-            bookingId,
-            eventName: 'your event',
-            seats: 1,
-            appBaseUrl,
-          })
-        }
-        await sendEventPaymentConfirmationEmail(supabase, {
+        // Email first, a text only when no email goes (BK-167, owner decision D14). A repeat
+        // confirmation re-checks the email only.
+        await notifyEventPaymentOutcome(supabase, {
           bookingId,
+          outcome: 'confirmed',
           amount: result.amount,
           currency: result.currency,
           appBaseUrl,
+          textAllowed: result.state === 'confirmed',
         })
 
         void logAuditEvent({
@@ -127,9 +116,9 @@ export async function POST(
           orderId: parsed.data.orderId,
           source: 'website capture',
         })
-        await sendEventPaymentManualReviewSms(supabase, { bookingId })
-        await sendEventPaymentManualReviewEmail(supabase, {
+        await notifyEventPaymentOutcome(supabase, {
           bookingId,
+          outcome: 'manual_review',
           amount: result.amount,
           currency: result.currency,
         })
