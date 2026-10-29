@@ -17,7 +17,7 @@ const CUSTOMER = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
 let db: FakeDb
 
 function hire(id: string, extra: Record<string, unknown> = {}) {
-  return { id, customer_id: CUSTOMER, status: 'confirmed', event_date: '2026-12-05', contact_phone: '+447700900111', contact_email: 'old@example.com', ...extra }
+  return { id, customer_id: CUSTOMER, status: 'confirmed', event_date: '2026-12-05', date_tbd: false, contact_phone: '+447700900111', contact_email: 'old@example.com', ...extra }
 }
 
 beforeEach(() => {
@@ -41,12 +41,12 @@ afterEach(() => {
 })
 
 describe('private booking contact details after a customer change', () => {
-  it('finds only upcoming open hires that still carry the old phone or email', async () => {
+  it('finds only open hires still on the old details, with the fields that match', async () => {
     expect(await findUpcomingBookingsWithOldContact(
       CUSTOMER,
       { phone: '07700900111', email: 'OLD@example.com' },
       { phone: '+447700900999', email: 'new@example.com' },
-    )).toEqual(['upcoming'])
+    )).toEqual([{ bookingId: 'upcoming', fields: ['contact_phone', 'contact_email'] }])
   })
 
   it('finds nothing when neither changed', async () => {
@@ -57,9 +57,76 @@ describe('private booking contact details after a customer change', () => {
     )).toEqual([])
   })
 
-  it('copies the new details onto the chosen hires only, with an audit row per field', async () => {
-    expect(await copyCustomerContactToBookings({ customerId: CUSTOMER, bookingIds: ['upcoming', 'past'], performedBy: 'user-1' }))
-      .toEqual({ updated: 1 })
+  it('includes a hire whose date is still to be confirmed, whatever its placeholder date', async () => {
+    db.rows('private_bookings').push(hire('undated', { event_date: '2026-10-01', date_tbd: true }))
+    const offers = await findUpcomingBookingsWithOldContact(
+      CUSTOMER,
+      { phone: '07700900111', email: null },
+      { phone: '+447700900999', email: null },
+    )
+    expect(offers.map((offer) => offer.bookingId).sort()).toEqual(['undated', 'upcoming'])
+  })
+
+  it('a phone-only change offers, and changes, the phone only: the organiser email stays', async () => {
+    db.rows('private_bookings').push(hire('organiser', { contact_email: 'organiser@example.com' }))
+    const offers = await findUpcomingBookingsWithOldContact(
+      CUSTOMER,
+      { phone: '07700900111', email: 'old@example.com' },
+      { phone: '+447700900999', email: 'old@example.com' },
+    )
+    expect(offers).toEqual([
+      { bookingId: 'upcoming', fields: ['contact_phone'] },
+      { bookingId: 'organiser', fields: ['contact_phone'] },
+    ])
+
+    await copyCustomerContactToBookings({ customerId: CUSTOMER, offers, performedBy: 'user-1' })
+
+    const rows = Object.fromEntries(db.rows('private_bookings').map((row) => [row.id, row]))
+    expect(rows.organiser).toMatchObject({ contact_phone: '+447700900999', contact_email: 'organiser@example.com' })
+  })
+
+  it('an email-only change offers, and changes, the email only: a booking-specific phone stays', async () => {
+    db.rows('private_bookings').push(hire('own-phone', { contact_phone: '+447700900777' }))
+    const offers = await findUpcomingBookingsWithOldContact(
+      CUSTOMER,
+      { phone: '07700900111', email: 'old@example.com' },
+      { phone: '07700900111', email: 'new@example.com' },
+    )
+    expect(offers).toContainEqual({ bookingId: 'own-phone', fields: ['contact_email'] })
+
+    await copyCustomerContactToBookings({ customerId: CUSTOMER, offers, performedBy: 'user-1' })
+
+    const rows = Object.fromEntries(db.rows('private_bookings').map((row) => [row.id, row]))
+    expect(rows['own-phone']).toMatchObject({ contact_phone: '+447700900777', contact_email: 'new@example.com' })
+  })
+
+  it('copies a cleared email onto the chosen hires, as no email', async () => {
+    db.rows('customers')[0].email = null
+    const offers = await findUpcomingBookingsWithOldContact(
+      CUSTOMER,
+      { phone: '+447700900999', email: 'old@example.com' },
+      { phone: '+447700900999', email: null },
+    )
+    expect(offers).toEqual([{ bookingId: 'upcoming', fields: ['contact_email'] }])
+
+    expect(await copyCustomerContactToBookings({ customerId: CUSTOMER, offers, performedBy: 'user-1' })).toEqual({ updated: 1 })
+
+    const rows = Object.fromEntries(db.rows('private_bookings').map((row) => [row.id, row]))
+    expect(rows.upcoming).toMatchObject({ contact_phone: '+447700900111', contact_email: null })
+    expect(db.rows('private_booking_audit').map((row) => [row.field_name, row.old_value, row.new_value])).toEqual([
+      ['contact_email', 'old@example.com', ''],
+    ])
+  })
+
+  it('copies only the offered fields of the offered, open, upcoming hires, with an audit row per field', async () => {
+    expect(await copyCustomerContactToBookings({
+      customerId: CUSTOMER,
+      offers: [
+        { bookingId: 'upcoming', fields: ['contact_phone', 'contact_email'] },
+        { bookingId: 'past', fields: ['contact_phone'] },
+      ],
+      performedBy: 'user-1',
+    })).toEqual({ updated: 1 })
     const rows = Object.fromEntries(db.rows('private_bookings').map((row) => [row.id, row]))
     expect(rows.upcoming).toMatchObject({ contact_phone: '+447700900999', contact_email: 'new@example.com' })
     expect(rows.past).toMatchObject({ contact_phone: '+447700900111' })

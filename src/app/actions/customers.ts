@@ -17,7 +17,11 @@ import { sendBulkSms } from '@/lib/sms/bulk'
 import { ConsentService } from '@/services/consent'
 import { generatePhoneVariants } from '@/lib/utils'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
-import { copyCustomerContactToBookings, findUpcomingBookingsWithOldContact } from '@/services/private-bookings/contact-sync'
+import {
+  copyCustomerContactToBookings,
+  findUpcomingBookingsWithOldContact,
+  type BookingContactOffer,
+} from '@/services/private-bookings/contact-sync'
 
 // ---------------------------------------------------------------------------
 // Customer list filtering and search
@@ -442,7 +446,7 @@ export async function updateCustomer(id: string, formData: FormData) {
     revalidateTag('dashboard')
 
     // Never fails the save: the customer is already updated.
-    let privateBookingsWithOldContact: string[] = []
+    let privateBookingsWithOldContact: BookingContactOffer[] = []
     try {
       if (before) {
         privateBookingsWithOldContact = await findUpcomingBookingsWithOldContact(
@@ -473,7 +477,7 @@ export async function updateCustomer(id: string, formData: FormData) {
  */
 export async function updateUpcomingPrivateBookingContacts(
   customerId: string,
-  bookingIds: string[],
+  offers: BookingContactOffer[],
 ): Promise<{ success?: boolean; error?: string; updated?: number }> {
   try {
     const context = await requireCustomerManageContext()
@@ -481,8 +485,17 @@ export async function updateUpcomingPrivateBookingContacts(
     const canEditBookings = await checkUserPermission('private_bookings', 'edit', context.user.id)
       || await checkUserPermission('private_bookings', 'manage', context.user.id)
     if (!canEditBookings) return { error: 'You do not have permission to update private bookings' }
-    const ids = Array.isArray(bookingIds) ? bookingIds.filter((value) => typeof value === 'string').slice(0, 50) : []
-    const { updated } = await copyCustomerContactToBookings({ customerId, bookingIds: ids, performedBy: context.user.id })
+    // Only well-formed offers, and only the two contact fields: the browser sends these back.
+    const clean = (Array.isArray(offers) ? offers : [])
+      .filter((offer): offer is BookingContactOffer => typeof offer?.bookingId === 'string' && Array.isArray(offer.fields))
+      .map((offer) => ({
+        bookingId: offer.bookingId,
+        fields: offer.fields.filter((field) => field === 'contact_phone' || field === 'contact_email'),
+      }))
+      .filter((offer) => offer.fields.length > 0)
+      .slice(0, 50)
+    const ids = clean.map((offer) => offer.bookingId)
+    const { updated } = await copyCustomerContactToBookings({ customerId, offers: clean, performedBy: context.user.id })
     await logAuditEvent({
       user_id: context.user.id,
       user_email: context.user.email,

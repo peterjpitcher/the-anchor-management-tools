@@ -1449,15 +1449,10 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
     })
   }
 
-  // BK-154, D25: a change to the date, times or guest numbers can leave the contract the customer
-  // was sent saying something else. Any request to sign it that is still open is withdrawn, and
-  // the booking page asks for the next version. Never throws.
-  if (CONTRACT_TERM_FIELDS.some((key) => key in updatePayload)) {
-    await withdrawOutOfDateContractRequests(id, performedByUserId)
-  }
-
   // SOP §17: add the £25 electricity line when high-power equipment is newly flagged.
-  if (input.high_power_equipment === true && (currentBooking as any).high_power_equipment !== true) {
+  const addsElectricityCharge =
+    input.high_power_equipment === true && (currentBooking as any).high_power_equipment !== true
+  if (addsElectricityCharge) {
     try {
       await ensureElectricityChargeItem(createAdminClient(), id)
     } catch (electricityError) {
@@ -1466,6 +1461,15 @@ export async function updateBooking(id: string, input: UpdatePrivateBookingInput
         metadata: { bookingId: id },
       })
     }
+  }
+
+  // BK-154, D25: a change to the date, times, guest numbers or price can leave the contract the
+  // customer was sent saying something else. Any request to sign it that is still open is
+  // withdrawn, and the booking page asks for the next version. Checked after every write here that
+  // can move the price (the electricity line above), so it compares the booking as it now stands.
+  // Never throws.
+  if (addsElectricityCharge || CONTRACT_TERM_FIELDS.some((key) => key in updatePayload)) {
+    await withdrawOutOfDateContractRequests(id, performedByUserId)
   }
 
   // SOP §21: ticking or unticking "Outside food" changes whether the waiver is
