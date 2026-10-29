@@ -130,10 +130,6 @@
       "schedule": "*/15 * * * *"
     },
     {
-      "path": "/api/cron/event-waitlist-offers",
-      "schedule": "*/5 * * * *"
-    },
-    {
       "path": "/api/cron/event-guest-engagement",
       "schedule": "*/15 * * * *"
     },
@@ -300,6 +296,10 @@
     {
       "path": "/api/cron/preorder-reminders",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/event-guest-details-reminders",
+      "schedule": "0 10 * * *"
     },
     {
       "path": "/api/cron/table-booking-confirm",

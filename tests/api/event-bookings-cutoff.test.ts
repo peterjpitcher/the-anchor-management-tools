@@ -196,6 +196,18 @@ describe('event booking online sales cutoff', () => {
     expect(body.error.code).toBe('SALES_CLOSED')
   })
 
+  // BK-089: a postponed night has no date to book, so the website is told it is not taking
+  // bookings before anything is written.
+  it.each(['postponed', 'cancelled'])('rejects a booking on a %s night with 409 EVENT_NOT_BOOKABLE', async (status) => {
+    mockAdminClientWithEvent({ ...baseEventRow, event_status: status, booking_cutoff_at: null })
+
+    const response = await POST(buildRequest() as any)
+    const body = await response.json()
+
+    expect(response.status).toBe(409)
+    expect(body.error.code).toBe('EVENT_NOT_BOOKABLE')
+  })
+
   it('does not block the booking when booking_cutoff_at is null', async () => {
     mockAdminClientWithEvent({ ...baseEventRow, booking_cutoff_at: null })
 

@@ -52,7 +52,9 @@ import { createEventManageToken } from '@/lib/events/manage-booking'
 import {
   sendEventBookingCancelledEmail,
   sendEventBookingConfirmedEmail,
+  sendEventBookingTicketsChangedEmail,
   sendEventPaymentConfirmationEmail,
+  sendEventGuestDetailsReminderEmail,
   sendEventPaymentExpiredEmail,
   sendEventPaymentLinkEmail,
   sendEventPaymentManualReviewEmail,
@@ -158,6 +160,8 @@ function buildSupabase(options?: {
   event?: EventFixture
   customer?: Record<string, unknown>
   existingConfirmation?: Record<string, unknown> | null
+  /** The email log read fails, so the duplicate check cannot run (BK-167: fail closed). */
+  emailLogError?: boolean
 }) {
   const defaultBooking = {
     id: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
@@ -187,8 +191,8 @@ function buildSupabase(options?: {
   const bookingSelect = vi.fn().mockReturnValue({ eq: bookingEq })
 
   const emailMaybeSingle = vi.fn().mockResolvedValue({
-    data: options?.existingConfirmation ?? null,
-    error: null,
+    data: options?.emailLogError ? null : options?.existingConfirmation ?? null,
+    error: options?.emailLogError ? { message: 'statement timeout' } : null,
   })
   const emailLimit = vi.fn().mockReturnValue({ maybeSingle: emailMaybeSingle })
   const emailContains = vi.fn().mockReturnValue({ limit: emailLimit })
@@ -544,7 +548,7 @@ describe('event guest emails', () => {
     expect(result).toEqual({ success: true, messageId: 'email-1' })
     const sent = lastSend()
     assertCleanRender(sent)
-    expect(sent.text).toContain('Rebook here: https://www.the-anchor.pub/events/quiz-night')
+    expect(sent.text).toContain('Book again here: https://www.the-anchor.pub/events/quiz-night')
   })
 
   describe('cancellations', () => {
@@ -704,7 +708,82 @@ describe('event guest emails', () => {
       assertCleanRender(sent)
       expect(sent.subject).toContain('Ticket transferred: Quiz Night')
       expect(sent.text).toContain('Your ticket has been moved from')
-      expect(sent.text).toContain('we owe you £42.00 and will be in touch about your refund')
+      // D7: a manager decides the refund, so the email names the difference without promising it.
+      expect(sent.text).toContain('The new night costs £42.00 less than you paid, and we will be in touch about the difference.')
+    })
+  })
+
+  describe('ticket changes by staff (BK-023)', () => {
+    const bookingId = '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70'
+
+    it('tells the booker guests came off and a manager will look at a refund, never promising one', async () => {
+      await sendEventBookingTicketsChangedEmail(buildSupabase({ booking: { seats: 3 } }) as any, {
+        bookingId,
+        change: { kind: 'guests_removed', count: 1, refundToDecide: true },
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toContain('Booking updated')
+      expect(sent.text).toContain('You now have 3 tickets.')
+      expect(sent.text).toContain('We have taken 1 ticket off your booking.')
+      expect(sent.text).toContain('A manager will look at a refund for it and let you know.')
+      expect(sent.text).not.toMatch(/we owe|will be refunded/i)
+    })
+
+    it('says what was taken for added guests', async () => {
+      await sendEventBookingTicketsChangedEmail(buildSupabase({ booking: { seats: 4 } }) as any, {
+        bookingId,
+        change: { kind: 'guests_added', count: 2, amountTaken: 90 },
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain('We have added 2 tickets to your booking.')
+      expect(sent.text).toContain('We have taken £90.00 for them.')
+    })
+
+    it('names the new ticket type, and says nothing about money when none moved', async () => {
+      await sendEventBookingTicketsChangedEmail(buildSupabase({ booking: { seats: 2 } }) as any, {
+        bookingId,
+        change: { kind: 'ticket_type_changed', count: 1, ticketTypeName: 'Child', amountTaken: 0, refundToDecide: false },
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain('We have changed 1 ticket to Child.')
+      expect(sent.text).not.toContain('£0.00')
+      expect(sent.text).not.toMatch(/refund/i)
+    })
+  })
+
+  describe('refund wording on a cancellation (BK-135, BK-136)', () => {
+    const bookingId = '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70'
+
+    it('calls the remainder of a partly refunded payment the rest of it', async () => {
+      await sendEventBookingCancelledEmail(buildSupabase() as any, {
+        bookingId, refundStatus: 'succeeded', refundAmount: 60, reason: 'event_cancelled', paymentTaken: true, refundIsRestOfPayment: true,
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain('The rest of your payment, £60.00, has been refunded to your original payment method.')
+      expect(sent.text).not.toContain('needs staff follow-up')
+    })
+
+    it('splits a refund paid partly online and partly at the bar, never the whole sum at the bar', async () => {
+      await sendEventBookingCancelledEmail(buildSupabase() as any, {
+        bookingId, refundStatus: 'succeeded', refundAmount: 80, barRefundAmount: 45, reason: 'event_cancelled', paymentTaken: true,
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain("We've refunded the £80.00 you paid online. We'll hand back the £45.00 you paid at the bar.")
+      expect(sent.text).not.toContain('£125.00')
+    })
+
+    it('tells a guest who paid at the bar that we will be in touch to give it back', async () => {
+      await sendEventBookingCancelledEmail(buildSupabase() as any, {
+        bookingId, refundStatus: 'bar_refund_due', refundAmount: 45, reason: 'event_cancelled', paymentTaken: true,
+      })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain("You paid £45.00 at the bar, so we'll be in touch to give it back.")
     })
   })
 
@@ -829,7 +908,8 @@ describe('event guest emails', () => {
       assertCleanRender(sent)
       expect(sent.text).toContain(`Karaoke Night on ${expectedLongDate('2026-09-18')} at 8pm has been postponed.`)
       expect(sent.text).not.toContain('refund')
-      expect(sent.text).toContain('your place carries over to it')
+      // Owner decision D8: the booking carries over to the new date.
+      expect(sent.text).toContain('Your place carries over to the new date')
     })
 
     it('offers a paid guest the refund option', async () => {
@@ -839,7 +919,70 @@ describe('event guest emails', () => {
 
       const sent = lastSend()
       assertCleanRender(sent)
-      expect(sent.text).toContain('or refund you')
+      // Owner decision D8: tickets carry over, and a paid guest can ask for a refund instead.
+      expect(sent.text).toContain('Your tickets carry over to the new date')
+      expect(sent.text).toContain('call 01753 682707 and we will refund you')
+    })
+  })
+
+  describe('release 25: email first, guest details, a way to book again', () => {
+    const BOOKING_ID = '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70'
+
+    it('links the released-places email to the event page when the event has no booking link (BK-173)', async () => {
+      const result = await sendEventPaymentExpiredEmail(buildSupabase({ event: { ...TASTING_EVENT, booking_url: null, slug: 'tasting-night-21-november' } }) as any, { bookingId: BOOKING_ID })
+
+      expect(result).toEqual({ success: true, messageId: 'email-1' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toMatch(/^Held places released: Tinsel and Tipples Christmas Tasting Night/)
+      expect(sent.text).toContain("We've released the 2 places we were holding for Tinsel and Tipples Christmas Tasting Night")
+      expect(sent.text).toContain('Book again here: https://www.the-anchor.pub/events/tasting-night-21-november')
+      expect(sent.html).toContain('>Book again</a>')
+    })
+
+    it('gives the pub number when there is no link at all', async () => {
+      await sendEventPaymentExpiredEmail(buildSupabase({ event: { ...TASTING_EVENT, booking_url: null, slug: null } }) as any, { bookingId: BOOKING_ID })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain("call us on 01753 682707 and we'll check what's left")
+    })
+
+    it('defers, sending nothing, when the email log cannot be read', async () => {
+      for (const send of [
+        () => sendEventPaymentConfirmationEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' }),
+        () => sendEventPaymentManualReviewEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' }),
+        () => sendEventPaymentExpiredEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID }),
+        () => sendEventBookingConfirmedEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID }),
+        () => sendEventBookingCancelledEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, reason: 'staff_cancel', paymentTaken: false }),
+      ]) {
+        vi.mocked(sendEmail).mockClear()
+        await expect(send()).resolves.toEqual({ success: false, skipped: true, deferred: true })
+        expect(sendEmail).not.toHaveBeenCalled()
+      }
+    })
+
+    it('points a prepaid booker at their guest details from the confirmation (BK-133)', async () => {
+      await sendEventPaymentConfirmationEmail(buildSupabase({ event: { ...TASTING_EVENT, collect_guest_details: true } }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.text).toContain('Check or update your guest details from your booking page.')
+    })
+
+    it('leaves the guest details line out where the event asks for none', async () => {
+      await sendEventBookingConfirmedEmail(buildSupabase({ event: { ...QUIZ_EVENT, collect_guest_details: false } }) as any, { bookingId: BOOKING_ID })
+      expect(lastSend().text).not.toContain('guest details')
+    })
+
+    it('renders the guest details reminder (BK-132)', async () => {
+      const result = await sendEventGuestDetailsReminderEmail(buildSupabase({ event: { ...TASTING_EVENT, collect_guest_details: true } }) as any, { bookingId: BOOKING_ID, missingCount: 2 })
+
+      expect(result).toEqual({ success: true, messageId: 'email-1' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toMatch(/^Guest details still needed: Tinsel and Tipples Christmas Tasting Night/)
+      expect(sent.text).toContain('2 of your tickets still need a guest name or answers for Tinsel and Tipples Christmas Tasting Night on ')
+      expect(sent.text).toMatch(/Add guest details here: https:\/\//)
+      expect(sent.commType).toBe('event_guest_details_reminder')
     })
   })
 })

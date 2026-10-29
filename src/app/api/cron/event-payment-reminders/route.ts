@@ -7,23 +7,11 @@ import { logger } from '@/lib/logger'
 import { createEventPaymentToken, sendEventPaymentRetrySms } from '@/lib/events/event-payments'
 import { sendEventPaymentLinkEmail } from '@/lib/email/event-ticket-emails'
 import { withCronRun } from '@/lib/cron/run-recorder'
+import { sendEventMessageEmailFirst } from '@/lib/events/event-guest-notify'
+import { resolveReminderStage, textWouldArriveTooLate } from '@/lib/events/payment-reminder-timing'
 
-// Up to 200 bookings, each a text and an email; the 15-second project default is too tight (BK-212).
+// Up to 200 bookings, each an email or a text; the 15-second project default is too tight (BK-212).
 export const maxDuration = 300
-
-type ReminderStage = 'payment_due_12h' | 'payment_due_2h'
-
-function resolveStage(holdExpiresAt: string | null): ReminderStage | null {
-  if (!holdExpiresAt) return null
-  const expiresMs = Date.parse(holdExpiresAt)
-  if (!Number.isFinite(expiresMs)) return null
-
-  const remainingMs = expiresMs - Date.now()
-  if (remainingMs <= 0) return null
-  if (remainingMs <= 2 * 60 * 60 * 1000) return 'payment_due_2h'
-  if (remainingMs <= 12 * 60 * 60 * 1000) return 'payment_due_12h'
-  return null
-}
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && (error as { code?: string }).code === '23505'
@@ -66,18 +54,20 @@ async function sendEventPaymentReminders(request: NextRequest) {
 
   for (const row of rows || []) {
     result.checked++
-    const stage = resolveStage(row.hold_expires_at as string | null)
+    const stage = resolveReminderStage(row.hold_expires_at as string | null)
     if (!stage) {
       result.skipped++
       continue
     }
 
-    let reminderId: string | null = null
+    // One claim per booking and stage, made before anything is sent, so two overlapping runs
+    // cannot both remind the guest. The reminder goes by email first and a text only when no
+    // email goes (BK-167, owner decision D14); the row's channel is the lead channel.
     const { data: reminderRow, error: claimError } = await (supabase.from('event_payment_reminders') as any)
       .insert({
         event_booking_id: row.id,
         stage,
-        channel: 'sms',
+        channel: 'email',
         sent_at: new Date().toISOString(),
         metadata: {
           claimed: true,
@@ -103,104 +93,77 @@ async function sendEventPaymentReminders(request: NextRequest) {
       continue
     }
 
-    reminderId = reminderRow?.id || null
+    const reminderId: string | null = reminderRow?.id || null
+    const holdExpiresAt = row.hold_expires_at as string
+    let emailMessageId: string | null = null
+    let emailError: string | null = null
+    let textSkippedReason: string | null = null
 
     try {
-      const smsResult = await sendEventPaymentRetrySms(supabase, {
+      const outcome = await sendEventMessageEmailFirst({
+        templateKey: 'event_payment_reminder',
         bookingId: row.id,
-        appBaseUrl: getAppUrl(),
+        customerId: (row.customer_id as string | null) ?? null,
+        email: async () => {
+          const paymentToken = await createEventPaymentToken(supabase, {
+            customerId: row.customer_id as string,
+            bookingId: row.id,
+            holdExpiresAt,
+            appBaseUrl: getAppUrl(),
+          })
+          const emailResult = await sendEventPaymentLinkEmail(supabase, {
+            bookingId: row.id,
+            paymentLink: paymentToken.url,
+            holdExpiresAt,
+            reminder: true,
+          })
+          emailMessageId = emailResult.messageId || null
+          emailError = emailResult.error || null
+          return emailResult
+        },
+        text: async () => {
+          // BK-213: never a payment link that quiet hours would hold until the seats are gone.
+          if (textWouldArriveTooLate(holdExpiresAt)) {
+            textSkippedReason = 'quiet_hours_until_hold_end'
+            return null
+          }
+          return sendEventPaymentRetrySms(supabase, { bookingId: row.id, appBaseUrl: getAppUrl() })
+        },
       })
 
       if (reminderId) {
         await settleWrite(
           (supabase.from('event_payment_reminders') as any)
             .update({
+              message_id: emailMessageId,
               metadata: {
                 claimed: true,
                 source: row.source || null,
-                sms_success: smsResult.success,
-                sms_code: smsResult.code,
-                sms_log_failure: smsResult.logFailure,
+                sent_channel: outcome.channel,
+                outcome: outcome.status,
+                email_sent: outcome.emailed,
+                email_error: emailError,
+                sms_sent: outcome.texted,
+                sms_code: outcome.smsMeta?.code ?? null,
+                sms_log_failure: outcome.smsMeta?.logFailure ?? false,
+                text_skipped_reason: textSkippedReason,
               },
             })
             .eq('id', reminderId),
-          { table: 'event_payment_reminders', what: 'Recording the payment reminder SMS result', ids: { reminderId, bookingId: row.id } }
+          { table: 'event_payment_reminders', what: 'Recording the payment reminder result', ids: { reminderId, bookingId: row.id } }
         )
       }
 
-      if (smsResult.success || smsResult.logFailure) {
+      if (outcome.status === 'sent') {
         result.sent++
+      } else if (outcome.status === 'failed') {
+        result.failed++
       } else {
         result.skipped++
       }
     } catch (err) {
       result.failed++
       logger.error('Failed to send event payment reminder', {
-        error: err instanceof Error ? err : new Error(String(err)),
-        metadata: {
-          bookingId: row.id,
-          stage,
-        },
-      })
-    }
-
-    const { data: emailReminderRow, error: emailClaimError } = await (supabase.from('event_payment_reminders') as any)
-      .insert({
-        event_booking_id: row.id,
-        stage,
-        channel: 'email',
-        sent_at: new Date().toISOString(),
-        metadata: {
-          claimed: true,
-          source: row.source || null,
-        },
-      })
-      .select('id')
-      .maybeSingle()
-
-    if (emailClaimError) {
-      if (!isUniqueViolation(emailClaimError)) {
-        logger.error('Failed to claim event payment email reminder', {
-          error: new Error(emailClaimError.message || 'Unknown reminder email claim error'),
-          metadata: {
-            bookingId: row.id,
-            stage,
-          },
-        })
-      }
-      continue
-    }
-
-    try {
-      const paymentToken = await createEventPaymentToken(supabase, {
-        customerId: row.customer_id as string,
-        bookingId: row.id,
-        holdExpiresAt: row.hold_expires_at as string,
-        appBaseUrl: getAppUrl(),
-      })
-      const emailResult = await sendEventPaymentLinkEmail(supabase, {
-        bookingId: row.id,
-        paymentLink: paymentToken.url,
-        holdExpiresAt: row.hold_expires_at as string,
-        reminder: true,
-      })
-      await settleWrite(
-        (supabase.from('event_payment_reminders') as any)
-          .update({
-            message_id: emailResult.messageId || null,
-            metadata: {
-              claimed: true,
-              source: row.source || null,
-              email_success: emailResult.success,
-              email_error: emailResult.error || null,
-              email_skipped: emailResult.skipped === true,
-            },
-          })
-          .eq('id', emailReminderRow?.id),
-        { table: 'event_payment_reminders', what: 'Recording the payment reminder email result', ids: { reminderId: emailReminderRow?.id, bookingId: row.id } }
-      )
-    } catch (err) {
-      logger.error('Failed to send event payment email reminder', {
         error: err instanceof Error ? err : new Error(String(err)),
         metadata: {
           bookingId: row.id,

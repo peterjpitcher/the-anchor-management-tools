@@ -18,6 +18,7 @@ import {
 } from '@/lib/table-bookings/staff-status-actions'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkNoShowCanComeBack } from '@/lib/table-bookings/reinstate-check'
+import { eventLinkedTableBookingResponse, isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 
 // Passthrough: a cancel also carries who is cancelling and any manager refund amount (BK-046),
 // which resolveStaffCancellation reads and checks.
@@ -73,6 +74,12 @@ export async function POST(
 
   const action = parsed.data.action
   const nowIso = new Date().toISOString()
+
+  // Cancelling or no-showing the table half of an event booking would leave its paid ticket live
+  // with no seat; both are done from the event (BK-074). Seating and leaving stay here.
+  if ((action === 'cancelled' || action === 'no_show') && isEventLinkedTableBooking(booking)) {
+    return eventLinkedTableBookingResponse()
+  }
 
   // Who is cancelling decides the refund (BK-046). Read before anything changes, so a refund amount
   // from someone who may not choose one is refused with the booking untouched.

@@ -109,7 +109,8 @@ describe('PayPal event-bookings webhook', () => {
       original_state: 'blocked',
       reason: 'booking_not_pending_payment',
     })
-    expect(sendEventPaymentManualReviewSms).toHaveBeenCalledWith(expect.anything(), { bookingId: 'booking-1' })
+    // Email first (BK-167): the email went, so no text follows it.
+    expect(sendEventPaymentManualReviewSms).not.toHaveBeenCalled()
     expect(sendEventPaymentManualReviewEmail).toHaveBeenCalledWith(expect.anything(), {
       bookingId: 'booking-1',
       amount: 12.5,

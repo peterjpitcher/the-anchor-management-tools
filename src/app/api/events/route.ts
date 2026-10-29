@@ -1,4 +1,5 @@
 import { NextRequest } from 'next/server';
+import { onlineBookingClosedReason } from '@/lib/events/bookable'
 import { createAdminClient } from '@/lib/supabase/admin';
 import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/night-clashes';
 import { withApiAuth, createApiResponse, createErrorResponse, createCorsPreflightResponse } from '@/lib/api/auth';
@@ -247,7 +248,9 @@ export async function GET(_request: NextRequest) {
         event_status: event.event_status, // Expose raw status
         seats_remaining: seatsRemaining,
         is_full: isFull,
-        waitlist_enabled: typeof capacityRow?.capacity === 'number',
+        // The waiting list was removed (owner decision D11, BK-138). Still sent, as false, so the live
+        // website hides its join form until its own release ships.
+        waitlist_enabled: false,
         payment_mode: paymentMode,
         booking_mode: ['table', 'general', 'mixed', 'communal'].includes(String(event.booking_mode))
           ? event.booking_mode
@@ -284,6 +287,11 @@ export async function GET(_request: NextRequest) {
         accessibility_notes: event.accessibility_notes || null,
         bookings_enabled: (event.bookings_enabled ?? true) && !closedByWholePubHire.has(event.id),
         booking_cutoff_at: event.booking_cutoff_at ?? null,
+        // One answer to "can a guest book this online now?", the same rule the booking route and the
+        // database apply, so the website hides the form whenever AMS would refuse (BK-035, BK-089).
+        // The fields above stay as they were for the live website until it reads this.
+        bookable: !closedByWholePubHire.has(event.id) && onlineBookingClosedReason(event) === null,
+        booking_closed_reason: closedByWholePubHire.has(event.id) ? 'booking_closed' : onlineBookingClosedReason(event),
         // Same shape as the detail route, so the website's category chip and
         // "More {category}" link work off the list without a website change.
         category: category ? {
