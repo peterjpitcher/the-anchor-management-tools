@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAppUrl } from '@/lib/env'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  captureEventPayPalOrderByRawToken,
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentManualReviewSms,
-} from '@/lib/events/event-payments'
-import {
-  sendEventPaymentConfirmationEmail,
-  sendEventPaymentManualReviewEmail,
-} from '@/lib/email/event-ticket-emails'
+import { captureEventPayPalOrderByRawToken } from '@/lib/events/event-payments'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { eventPaymentRefusal } from '@/lib/events/event-payment-reasons'
@@ -61,19 +54,15 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
   if (result.state === 'confirmed' || result.state === 'already_confirmed') {
     const appBaseUrl = getAppUrl()
-    if (result.state === 'confirmed') {
-      await sendEventPaymentConfirmationSms(supabase, {
-        bookingId: result.bookingId,
-        eventName: 'your event',
-        seats: 1,
-        appBaseUrl,
-      })
-    }
-    await sendEventPaymentConfirmationEmail(supabase, {
+    // Email first, a text only when no email goes (BK-167, owner decision D14). A repeat
+    // confirmation re-checks the email only.
+    await notifyEventPaymentOutcome(supabase, {
       bookingId: result.bookingId,
+      outcome: 'confirmed',
       amount: result.amount,
       currency: result.currency,
       appBaseUrl,
+      textAllowed: result.state === 'confirmed',
     })
 
     return NextResponse.json({
@@ -116,9 +105,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
       orderId: parsed.data.orderId,
       source: 'guest payment link',
     })
-    await sendEventPaymentManualReviewSms(supabase, { bookingId: result.bookingId })
-    await sendEventPaymentManualReviewEmail(supabase, {
+    await notifyEventPaymentOutcome(supabase, {
       bookingId: result.bookingId,
+      outcome: 'manual_review',
       amount: result.amount,
       currency: result.currency,
     })

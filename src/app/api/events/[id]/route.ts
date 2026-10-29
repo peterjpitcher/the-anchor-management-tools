@@ -284,7 +284,9 @@ export async function GET(
       standing_remaining: standingRemaining,
       total_remaining: totalRemaining,
       is_full: isFull,
-      waitlist_enabled: typeof capacityRow.capacity === 'number',
+      // The waiting list was removed (owner decision D11, BK-138). Still sent, as false, so the live
+      // website hides its join form until its own release ships.
+      waitlist_enabled: false,
       performer_name: event.performer_name || null,
       performer_type: event.performer_type || null,
       created_at: event.created_at,

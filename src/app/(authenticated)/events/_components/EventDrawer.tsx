@@ -868,11 +868,18 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
             />
             {/* BK-035, D11: the switch now applies to text replies as well as the website. */}
             <p className="text-sm text-text-muted">When off, the website hides the booking form and text replies cannot book. Staff can still add bookings.</p>
-            <Switch
-              label="Promotional SMS"
-              checked={promoSmsEnabled}
-              onChange={setPromoSmsEnabled}
-            />
+            <div className="flex flex-col gap-1">
+              <Switch
+                label="Promotional SMS"
+                checked={promoSmsEnabled}
+                onChange={setPromoSmsEnabled}
+              />
+              {/* BK-169: say what the switch reaches. Booking messages and the day-before
+                  reminder are service messages and go out either way (owner decision D14). */}
+              <p className="text-sm text-text-muted">
+                Also stops the review request the morning after. Booking messages and the day-before reminder still go out.
+              </p>
+            </div>
           </div>
           {/* BK-187: what the website tells guests while bookings are off. A paid night must not
               read as "just turn up", so staff are pointed at Ticket sales close instead. */}

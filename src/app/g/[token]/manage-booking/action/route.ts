@@ -124,13 +124,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
             : saved.reason === 'not_editable' ? 'guest_details_closed' : 'guest_details_invalid',
         })
       }
-      // Counts only: the answers never reach the audit log.
+      // Counts and ids only: the answers never reach the audit log (BK-133).
       await logAuditEvent({
         operation_type: 'update',
         resource_type: 'event_booking',
         resource_id: preview.booking_id,
         operation_status: 'success',
-        additional_info: { field: 'guest_details', actor: 'guest_manage_link', guest_count: saved.guestCount, created: saved.created },
+        additional_info: {
+          field: 'guest_details',
+          actor: 'guest_manage_link',
+          guest_count: saved.guestCount,
+          created: saved.created,
+          changed_guest_ids: saved.changedGuestIds,
+          changed_question_ids: saved.changedQuestionIds,
+        },
       })
       return redirectToState(request, token, { state: 'guest_details_saved' })
     }

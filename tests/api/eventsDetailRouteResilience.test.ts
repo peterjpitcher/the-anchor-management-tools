@@ -134,7 +134,8 @@ describe('events detail route resilience', () => {
     const { data } = await response.json()
     expect(data.maximumAttendeeCapacity).toBe(49)
     expect(data.remainingAttendeeCapacity).toBe(7)
-    expect(data.waitlist_enabled).toBe(true)
+    // The waiting list was removed (BK-138): always false, even with a capacity.
+    expect(data.waitlist_enabled).toBe(false)
   })
 
   it('returns 200 detail payload when event_message_templates query errors', async () => {

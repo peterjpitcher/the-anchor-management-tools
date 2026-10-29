@@ -307,7 +307,7 @@ describe('each email-first table booking message is rebuilt as the text its send
     const shortUrl = buildShortLinkUrl('sl1')
     expect(mockedSendEmail.mock.calls[0][0].text).toContain(shortUrl)
     expect(sent.body).toBe(
-      `The Anchor: Sarah! Deposit sorted, your table for 16 people on Sat 24 Oct, 7:00 pm is locked in. See you then! High chair reserved x1. ${shortUrl}`
+      `The Anchor: Sarah, we've received your deposit. Your table for 16 people on Sat 24 Oct, 7:00 pm is confirmed. High chair reserved x1. ${shortUrl}`
     )
 
     const render = ready(await rebuild())
@@ -714,7 +714,7 @@ describe('rebuilt texts from fixture bookings, either side of the 25 October 202
     seedScenario('deposit_confirmed', { booking: { is_outside_seating: true, high_chair_count: 0, christmas_course_counts: [3, 3, 1] } })
     const outside = ready(await rebuild())
     expectCleanText(outside.sms.body)
-    expect(outside.sms.body).toContain('your outside booking for 16 people')
+    expect(outside.sms.body).toContain('Your outside booking for 16 people')
     expect(outside.sms.body).toContain('Outside seating (weather permitting).')
     expect(outside.sms.body).toContain('Christmas courses: 1 x 1 course, 2 x 3 courses. Guests on one course have nothing to pre-order.')
   })
@@ -789,7 +789,7 @@ describe('links are found, never made', () => {
     const render = ready(await rebuild())
 
     expect(render.sms.body).toBe(
-      'The Anchor: Sarah! Deposit sorted, your table for 16 people on Sat 24 Oct, 7:00 pm is locked in. See you then! High chair reserved x1.'
+      "The Anchor: Sarah, we've received your deposit. Your table for 16 people on Sat 24 Oct, 7:00 pm is confirmed. High chair reserved x1."
     )
   })
 
