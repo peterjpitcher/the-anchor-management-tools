@@ -4,15 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getPayPalOrder, getPayPalRefund, isPayPalOrderNotFoundError } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
 import { logger } from '@/lib/logger'
-import {
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentManualReviewSms,
-} from '@/lib/events/event-payments'
 import { EVENT_CAPTURE_PENDING_STATUS } from '@/lib/events/payment-awaiting-decision'
-import {
-  sendEventPaymentConfirmationEmail,
-  sendEventPaymentManualReviewEmail,
-} from '@/lib/email/event-ticket-emails'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { withCronRun } from '@/lib/cron/run-recorder'
@@ -226,19 +219,15 @@ async function reconcileEventPayPalPayments(request: NextRequest) {
 
       if (state === 'confirmed' || state === 'already_confirmed') {
         result.confirmed++
-        if (state === 'confirmed') {
-          await sendEventPaymentConfirmationSms(supabase, {
-            bookingId: row.event_booking_id as string,
-            eventName: 'your event',
-            seats: 1,
-            appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
-          })
-        }
-        await sendEventPaymentConfirmationEmail(supabase, {
+        // Email first, a text only when no email goes (BK-167, owner decision D14). A repeat
+        // confirmation re-checks the email only.
+        await notifyEventPaymentOutcome(supabase, {
           bookingId: row.event_booking_id as string,
+          outcome: 'confirmed',
           amount: capture.amount,
           currency: capture.currency,
           appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+          textAllowed: state === 'confirmed',
         })
       } else if (state === 'manual_review') {
         result.manualReview++
@@ -251,9 +240,9 @@ async function reconcileEventPayPalPayments(request: NextRequest) {
           captureId: capture.id,
           source: 'reconciliation cron',
         })
-        await sendEventPaymentManualReviewSms(supabase, { bookingId: row.event_booking_id as string })
-        await sendEventPaymentManualReviewEmail(supabase, {
+        await notifyEventPaymentOutcome(supabase, {
           bookingId: row.event_booking_id as string,
+          outcome: 'manual_review',
           amount: capture.amount,
           currency: capture.currency,
         })

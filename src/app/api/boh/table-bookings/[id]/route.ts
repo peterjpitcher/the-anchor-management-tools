@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { eventLinkedTableBookingResponse, isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { loadTradingHours, serviceInstantFor } from '@/lib/business-hours/trading-day'
@@ -132,7 +133,7 @@ export async function PATCH(
   }
 
   const { data: existing, error: loadError } = await auth.supabase.from('table_bookings')
-    .select('id, status, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes, high_chair_count, is_outside_seating')
+    .select('id, status, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, customer_id, special_requirements, dietary_requirements, allergies, celebration_type, internal_notes, high_chair_count, is_outside_seating, event_booking_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -147,6 +148,16 @@ export async function PATCH(
       { error: `Booking cannot be edited because it is ${existing.status.replace('_', ' ')}` },
       { status: 409 }
     )
+  }
+
+  // The table half of an event booking keeps the event's date and time (BK-074). Notes and
+  // needs may still change; moving it would split the table from its ticket.
+  if (
+    isEventLinkedTableBooking(existing) &&
+    (existing.booking_date !== parsed.data.booking_date ||
+      (existing.booking_time ?? '').slice(0, 5) !== parsed.data.booking_time.slice(0, 5))
+  ) {
+    return eventLinkedTableBookingResponse()
   }
 
   let bookingDateHours: TradingHours | null | undefined
@@ -396,7 +407,7 @@ export async function DELETE(
     // The PayPal columns are selected so the delete can be guarded on them and so the audit
     // row's old_values still carries the transaction pointer. Without them the audit trail
     // for a deleted paid booking named no way to find the money again.
-    .select('id, customer_id, booking_reference, booking_date, status, payment_status, cancelled_at, cancellation_reason, paypal_deposit_capture_id, paypal_deposit_order_id, deposit_amount, deposit_amount_locked, deposit_refund_status')
+    .select('id, customer_id, booking_reference, booking_date, status, payment_status, cancelled_at, cancellation_reason, paypal_deposit_capture_id, paypal_deposit_order_id, deposit_amount, deposit_amount_locked, deposit_refund_status, event_booking_id')
     .eq('id', id)
     .maybeSingle()
 
@@ -406,6 +417,12 @@ export async function DELETE(
 
   if (!existing) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // Deleting a live table half of an event booking would leave its ticket confirmed with no seat
+  // (BK-074). A table already cancelled with its event booking may still be removed.
+  if (isEventLinkedTableBooking(existing) && existing.status !== 'cancelled') {
+    return eventLinkedTableBookingResponse()
   }
 
   const nowIso = new Date().toISOString()

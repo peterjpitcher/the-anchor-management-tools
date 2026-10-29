@@ -41,13 +41,17 @@ function recordingDb(rowsByTable: Record<string, unknown[]>, failingBookingId: s
       }
     }
     chain.then = (resolve: (value: unknown) => unknown) => {
+      // The refunds read is the payments table filtered to refund rows (BK-136): its own rows.
+      const rowsKey = table === 'payments' && own.some((call) => call.method === 'eq' && call.args[0] === 'charge_type' && call.args[1] === 'refund')
+        ? 'refunds'
+        : table
       const isFailingCancel =
         table === 'bookings' &&
         own.some((call) => call.method === 'update') &&
         own.some((call) => call.method === 'eq' && call.args[0] === 'id' && call.args[1] === failingBookingId)
       const result = isFailingCancel
         ? { data: null, error: { message: 'permission denied for table bookings', code: '42501' } }
-        : { data: rowsByTable[table] ?? [], error: null }
+        : { data: rowsByTable[rowsKey] ?? [], error: null }
       return Promise.resolve(result).then(resolve)
     }
     return chain

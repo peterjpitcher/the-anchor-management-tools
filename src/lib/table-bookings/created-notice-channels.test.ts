@@ -1,3 +1,4 @@
+import { assertCleanText } from '../../../tests/mocks/emailRenderChecks'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Every external transport is stubbed, per the workspace rule: this suite never sends anything.
@@ -249,6 +250,8 @@ describe('the deposit request quotes what the booking function charged', () => {
     expect(notice.email?.text).toContain("There's a £15 per person deposit, which comes off your bill.")
     expect(notice.email?.text).not.toContain('Groups of 15 or more')
     expect(notice.email?.text).not.toMatch(/£0\.00|GBP 10\)/)
+    assertCleanText(notice.sms?.body ?? '')
+    assertCleanText(notice.email?.text ?? '')
   })
 
   it('a per-booking period shows its flat amount and no sum', async () => {
@@ -266,6 +269,8 @@ describe('the deposit request quotes what the booking function charged', () => {
     expect(notice.email?.text).toContain('The deposit comes off your bill.')
     expect(notice.email?.text).not.toContain(' x GBP ')
     expect(notice.email?.text).not.toContain('Groups of 15 or more')
+    assertCleanText(notice.sms?.body ?? '')
+    assertCleanText(notice.email?.text ?? '')
   })
 
   it('the group deposit keeps its wording', async () => {

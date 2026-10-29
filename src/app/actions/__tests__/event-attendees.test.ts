@@ -38,7 +38,14 @@ describe('staff guest answer editing', () => {
   it('preserves question wording and excludes answers from the audit record', async () => {
     expect(await updateEventAttendees(input('B'))).toEqual({ success: true })
     expect(mock.update.mock.calls[0][0].attendees[0].answers[0]).toEqual(expect.objectContaining({ label: 'Meal', value: 'B', required: true }))
-    expect(mock.audit.mock.calls[0][0].additional_info).toEqual({ field: 'guest_details', guest_count: 1 })
+    // BK-133: which guest and which question changed, by id, never the answer itself.
+    expect(mock.audit.mock.calls[0][0].additional_info).toEqual({
+      field: 'guest_details',
+      guest_count: 1,
+      changed_guest_ids: ['22222222-2222-4222-8222-222222222222'],
+      changed_question_ids: ['33333333-3333-4333-8333-333333333333'],
+    })
+    expect(JSON.stringify(mock.audit.mock.calls[0][0].additional_info)).not.toContain('"B"')
   })
   it('reports concurrent changes without claiming a save', async () => {
     mock.saved = false

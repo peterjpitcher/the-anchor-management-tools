@@ -232,6 +232,15 @@ describe('buildConfirmReminderMessage', () => {
     expect(message).not.toContain('null')
     expect(message).not.toContain('undefined')
     expect(message).toContain('your table')
+    expect(message.startsWith('The Anchor: your table')).toBe(true)
+  })
+
+  it('gives no greeting rather than "there," for a placeholder name (BK-221)', () => {
+    for (const firstName of ['', 'Guest', 'unknown']) {
+      const message = buildConfirmReminderMessage({ ...base, firstName })
+      expect(message).not.toMatch(/there,/i)
+      expect(message.startsWith('The Anchor: your table')).toBe(true)
+    }
   })
 
   it('omits the party size rather than printing "for 0"', () => {
