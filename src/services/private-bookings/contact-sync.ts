@@ -47,49 +47,76 @@ interface UpcomingBookingRow {
   contact_email: string | null
 }
 
+/** A booking field staff can bring up to date from the customer. */
+export type BookingContactField = 'contact_phone' | 'contact_email'
+
+/**
+ * One upcoming hire to offer an update for, and which of its fields still carry the customer's
+ * old details. Only those fields are offered: a booking can hold its own organiser's email, which
+ * a change to the customer's phone must not touch, and the other way round.
+ */
+export interface BookingContactOffer {
+  bookingId: string
+  fields: BookingContactField[]
+}
+
+const SELECT = 'id, contact_phone, contact_email'
+
+/**
+ * The customer's hires that are still going ahead: those dated today or later, and those whose
+ * date is still to be confirmed, whose event_date is only a placeholder (the day the enquiry came
+ * in) and would otherwise drop out the day after.
+ */
 async function readUpcomingBookings(customerId: string): Promise<UpcomingBookingRow[]> {
-  const { data, error } = await createAdminClient()
-    .from('private_bookings')
-    .select('id, contact_phone, contact_email')
-    .eq('customer_id', customerId)
-    .in('status', OPEN_STATUSES)
-    .gte('event_date', getTodayIsoDate())
+  const admin = createAdminClient()
+  const [dated, undated] = await Promise.all([
+    admin.from('private_bookings').select(SELECT).eq('customer_id', customerId).in('status', OPEN_STATUSES)
+      .gte('event_date', getTodayIsoDate()),
+    admin.from('private_bookings').select(SELECT).eq('customer_id', customerId).in('status', OPEN_STATUSES)
+      .eq('date_tbd', true),
+  ])
+  const error = dated.error ?? undated.error
   if (error) throw new Error(`Could not read the customer's private bookings: ${error.message}`)
-  return (data ?? []) as UpcomingBookingRow[]
+  const byId = new Map<string, UpcomingBookingRow>()
+  for (const row of [...(dated.data ?? []), ...(undated.data ?? [])] as UpcomingBookingRow[]) byId.set(row.id, row)
+  return Array.from(byId.values())
 }
 
 /**
  * The customer's upcoming hires that still carry the phone or email the customer has just moved
- * away from. Pure reading.
+ * away from, or cleared, with the fields that do. Pure reading.
  */
 export async function findUpcomingBookingsWithOldContact(
   customerId: string,
   before: ContactDetails,
   after: ContactDetails,
-): Promise<string[]> {
+): Promise<BookingContactOffer[]> {
   const phoneMoved = Boolean(before.phone?.trim()) && !samePhone(before.phone, after.phone)
   const emailMoved = Boolean(before.email?.trim()) && !sameEmail(before.email, after.email)
   if (!phoneMoved && !emailMoved) return []
   const rows = await readUpcomingBookings(customerId)
-  return rows
-    .filter((row) =>
-      (phoneMoved && samePhone(row.contact_phone, before.phone)) ||
-      (emailMoved && sameEmail(row.contact_email, before.email)),
-    )
-    .map((row) => row.id)
+  const offers: BookingContactOffer[] = []
+  for (const row of rows) {
+    const fields: BookingContactField[] = []
+    if (phoneMoved && samePhone(row.contact_phone, before.phone)) fields.push('contact_phone')
+    if (emailMoved && sameEmail(row.contact_email, before.email)) fields.push('contact_email')
+    if (fields.length > 0) offers.push({ bookingId: row.id, fields })
+  }
+  return offers
 }
 
 /**
- * Copy the customer's current phone and email onto the named upcoming hires. Only hires that
- * belong to this customer and are still ahead are touched, whatever ids are passed. Each change
- * goes on the booking's audit trail.
+ * Copy the customer's current phone and email onto the offered fields of the offered upcoming
+ * hires. Only hires that belong to this customer and are still going ahead are touched, and only
+ * the fields offered for each. A detail the customer has had cleared is cleared on the booking
+ * too. Each change goes on the booking's audit trail.
  */
 export async function copyCustomerContactToBookings(input: {
   customerId: string
-  bookingIds: string[]
+  offers: BookingContactOffer[]
   performedBy: string
 }): Promise<{ updated: number }> {
-  if (input.bookingIds.length === 0) return { updated: 0 }
+  if (input.offers.length === 0) return { updated: 0 }
   const admin = createAdminClient()
   const { data: customer, error: customerError } = await admin
     .from('customers')
@@ -98,16 +125,23 @@ export async function copyCustomerContactToBookings(input: {
     .maybeSingle()
   if (customerError) throw new Error(`Could not read the customer: ${customerError.message}`)
   if (!customer) throw new Error('Customer not found.')
-  const phone = (customer.mobile_e164 as string | null) || (customer.mobile_number as string | null) || null
-  const email = (customer.email as string | null)?.trim() || null
+  const current: Record<BookingContactField, string | null> = {
+    contact_phone: (customer.mobile_e164 as string | null) || (customer.mobile_number as string | null) || null,
+    contact_email: (customer.email as string | null)?.trim() || null,
+  }
 
-  const wanted = new Set(input.bookingIds)
-  const rows = (await readUpcomingBookings(input.customerId)).filter((row) => wanted.has(row.id))
+  const offered = new Map(input.offers.map((offer) => [offer.bookingId, offer.fields]))
+  const rows = (await readUpcomingBookings(input.customerId)).filter((row) => offered.has(row.id))
   let updated = 0
   for (const row of rows) {
-    const patch: Record<string, string | null> = {}
-    if (phone && !samePhone(row.contact_phone, phone)) patch.contact_phone = phone
-    if (email && !sameEmail(row.contact_email, email)) patch.contact_email = email
+    const patch: Partial<Record<BookingContactField, string | null>> = {}
+    for (const field of offered.get(row.id) ?? []) {
+      if (field !== 'contact_phone' && field !== 'contact_email') continue
+      const next = current[field]
+      const same = field === 'contact_phone' ? samePhone(row[field], next) : sameEmail(row[field], next)
+      if (same || (next === null && !row[field])) continue
+      patch[field] = next
+    }
     if (Object.keys(patch).length === 0) continue
     const { error } = await admin
       .from('private_bookings')
@@ -115,11 +149,11 @@ export async function copyCustomerContactToBookings(input: {
       .eq('id', row.id)
       .eq('customer_id', input.customerId)
     if (error) throw new Error(`Could not update a private booking: ${error.message}`)
-    const auditRows = Object.entries(patch).map(([field, value]) => ({
+    const auditRows = (Object.entries(patch) as Array<[BookingContactField, string | null]>).map(([field, value]) => ({
       booking_id: row.id,
       action: 'field_updated',
       field_name: field,
-      old_value: (field === 'contact_phone' ? row.contact_phone : row.contact_email) ?? '',
+      old_value: row[field] ?? '',
       new_value: value ?? '',
       performed_by: input.performedBy,
       metadata: { via: 'customer_contact_changed' },
