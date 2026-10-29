@@ -382,6 +382,7 @@ describe('EventDrawer confirmations and cancelling', () => {
         allowed: true,
         blockedReason: null,
         pendingCancellation: null,
+        cancellationNotQueued: false,
       },
     })
     vi.mocked(cancelEvent).mockResolvedValue({ success: true, data: { scheduledFor: '2026-09-20T10:10:00Z', impact: {} as never } })

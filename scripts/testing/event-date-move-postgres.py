@@ -32,7 +32,7 @@ ROOM_WINDOW = ROOT / 'supabase/migrations/20261027132945_private_hire_room_windo
 WHOLE_PUB = ROOT / 'supabase/migrations/20261027133013_whole_pub_hire_stops_ticket_sales.sql'
 MIGRATION = ROOT / 'supabase/migrations/20261029083003_event_date_move_and_slug_history.sql'
 ROLLBACK = ROOT / 'tasks/event-edits-cancel-postpone/rollback.sql'
-MOVE = 'move_event_seated_bookings_v01(uuid,date,text,time without time zone,integer)'
+MOVE = 'move_event_seated_bookings_v01(uuid,date,text,time without time zone,integer,jsonb,jsonb)'
 UNCHANGED = {
     'event_communal_window_v01': 'd991d0caa701827e0fffc1e1f53a257d',
     'enforce_booking_table_assignment_integrity_v05': 'bc62088e84a45351bcf8d96a2ae88399',
@@ -88,20 +88,21 @@ def main():
 
         numbers = iter(range(1, 200))
 
-        def night(mode, date, time='19:00'):
+        def night(mode, date, time='19:00', end='22:00', standing=0):
             n = next(numbers)
             event_id = f'63000000-0000-0000-0000-{n:012d}'
             sql(f"INSERT INTO events(id,name,date,time,start_datetime,end_time,duration_minutes,capacity,seated_capacity,standing_capacity,booking_mode,payment_mode,price,booking_open,bookings_enabled,event_status,slug) "
-                f"VALUES('{event_id}','Fixture {n}','{date}','{time}',('{date} {time}'::timestamp AT TIME ZONE 'Europe/London'),'22:00',180,NULL,NULL,0,'{mode}','free',0,true,true,'scheduled','fixture-{n}-{date}');")
+                f"VALUES('{event_id}','Fixture {n}','{date}','{time}',('{date} {time}'::timestamp AT TIME ZONE 'Europe/London'),'{end}',180,NULL,NULL,{standing},'{mode}','free',0,true,true,'scheduled','fixture-{n}-{date}');")
             return event_id
 
-        def book(event_id, seats=2):
-            result = json.loads(sql(f"SELECT create_event_booking_v05('{event_id}',gen_random_uuid(),{seats},'admin','seated');"))
+        def book(event_id, seats=2, seating='seated'):
+            result = json.loads(sql(f"SELECT create_event_booking_v05('{event_id}',gen_random_uuid(),{seats},'admin','{seating}');"))
             if result.get('state') != 'confirmed': raise RuntimeError(f'FAIL fixture booking was not made: {result}')
             return result['booking_id']
 
-        def move(label, event_id, date, time='19:00'):
-            sql(f"INSERT INTO fixture_results SELECT '{label}', move_event_seated_bookings_v01('{event_id}','{date}','{time}');")
+        def move(label, event_id, date, time='19:00', end=None):
+            end_sql = f"'{end}'" if end else 'NULL'
+            sql(f"INSERT INTO fixture_results SELECT '{label}', move_event_seated_bookings_v01('{event_id}','{date}','{time}',{end_sql});")
 
         def result(label, key): return f"(SELECT result->>'{key}' FROM fixture_results WHERE label='{label}')"
         def table_booking(booking_id, column): return f"(SELECT {column} FROM table_bookings WHERE event_booking_id='{booking_id}')"
@@ -164,6 +165,49 @@ def main():
                   'its table assignment moves with it')
             check("NOT EXISTS (SELECT 1 FROM booking_table_assignments WHERE start_datetime >= '2036-10-20' AND start_datetime < '2036-10-21')",
                   'the old night holds no table for it')
+
+            # Review on PR 280: a start-only change keeps the explicit end time, and an end past
+            # midnight rolls to the next day, as create_event_table_reservation_v05 reserves them.
+            earlier = night('table', '2036-07-07')
+            earlier_booking = book(earlier)
+            move('earlier', earlier, '2036-07-07', '18:00')
+            check(f"{result('earlier', 'state')} = 'moved' "
+                  f"AND {table_booking(earlier_booking, 'start_datetime')} = ('2036-07-07 17:45'::timestamp AT TIME ZONE 'Europe/London') "
+                  f"AND {table_booking(earlier_booking, 'end_datetime')} = ('2036-07-07 22:00'::timestamp AT TIME ZONE 'Europe/London') "
+                  f"AND {table_booking(earlier_booking, 'duration_minutes')} = 255",
+                  'a start-only change moves the start and keeps the 10pm end, so the last hour stays held')
+            check(f"(SELECT max(bta.end_datetime) FROM booking_table_assignments bta JOIN table_bookings tb ON tb.id=bta.table_booking_id WHERE tb.event_booking_id='{earlier_booking}') "
+                  f"= ('2036-07-07 22:00'::timestamp AT TIME ZONE 'Europe/London')",
+                  'and the table itself is held to 10pm')
+            late = night('table', '2036-07-14', end='23:30')
+            late_booking = book(late)
+            move('late', late, '2036-07-21', '21:00', '01:00')
+            check(f"{result('late', 'state')} = 'moved' "
+                  f"AND {table_booking(late_booking, 'end_datetime')} = ('2036-07-22 01:00'::timestamp AT TIME ZONE 'Europe/London') "
+                  f"AND {assignment_start(late_booking)} = ('2036-07-21 20:45'::timestamp AT TIME ZONE 'Europe/London')",
+                  'an end past midnight rolls to the next day for the booking and its table')
+
+            # Review on PR 280: the move and the rest of the edit are one transaction, so an edit
+            # the update refuses (a standing limit below the standing tickets sold) undoes the move.
+            standing_night = night('communal', '2036-08-04', standing=10)
+            standing_seated = book(standing_night, 2)
+            book(standing_night, 3, 'standing')
+            allocations_before = sql(f"SELECT md5(string_agg(to_jsonb(a)::text,'' ORDER BY a.id)) FROM event_communal_seat_allocations a WHERE event_id='{standing_night}';")
+            refused_edit = subprocess.run(cmd, input=f"SELECT move_event_seated_bookings_v01('{standing_night}','2036-08-11','19:00',NULL,NULL,'{{\"standing_capacity\": 0}}'::jsonb,NULL);",
+                                          text=True, capture_output=True)
+            if refused_edit.returncode == 0 or 'standing_capacity_below_bookings' not in refused_edit.stderr:
+                raise RuntimeError(f'FAIL the refused standing cut did not fail the call: {refused_edit.stdout!r} {refused_edit.stderr!r}')
+            check(f"(SELECT date FROM events WHERE id='{standing_night}') = '2036-08-04' AND (SELECT standing_capacity FROM events WHERE id='{standing_night}') = 10",
+                  'a move whose other edits are refused leaves the date and the standing limit as they were')
+            if sql(f"SELECT md5(string_agg(to_jsonb(a)::text,'' ORDER BY a.id)) FROM event_communal_seat_allocations a WHERE event_id='{standing_night}';") != allocations_before:
+                raise RuntimeError('FAIL the refused edit left the communal seats moved')
+            print('PASS and leaves every seat where it was')
+            saved = json.loads(sql(f"SELECT move_event_seated_bookings_v01('{standing_night}','2036-08-11','19:00',NULL,NULL,'{{\"name\": \"Moved night\"}}'::jsonb,NULL);"))
+            check(f"(SELECT name FROM events WHERE id='{standing_night}') = 'Moved night' AND (SELECT date FROM events WHERE id='{standing_night}') = '2036-08-11' "
+                  f"AND '{saved.get('event', {}).get('name')}' = 'Moved night' AND {result('table', 'state')} = 'moved'",
+                  'a move with valid other edits saves both, and returns the saved event')
+            check(f"(SELECT start_datetime FROM event_communal_seat_allocations WHERE event_booking_id='{standing_seated}' LIMIT 1) = "
+                  f"(SELECT start_datetime FROM event_communal_window_v01('{standing_night}'))", 'its seats sit on the new window')
 
             # BK-073: communal seats an hour later, with several bookings, no false clash.
             communal = night('communal', '2036-04-14')

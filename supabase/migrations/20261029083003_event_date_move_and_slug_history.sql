@@ -7,9 +7,10 @@
 --     new night showed every seat free and the old night held tables for nobody. The app refused
 --     the move while seated bookings existed (part 1). move_event_seated_bookings_v01 now moves
 --     the event and every linked seat in one transaction: it sets the event's date, start time and
---     (when given) end time and duration, shifts each live table booking and its assignments by
---     the same amount the start moved, and puts each communal seat allocation on the event's new
---     window. The existing triggers re-check every table on the new night (other bookings, private
+--     (when given) end time and duration, puts each live table booking, its assignments and each
+--     communal seat allocation on the event's new window (worked out as
+--     create_event_table_reservation_v05 does), then saves the rest of the edit through
+--     update_event_transaction in the same transaction, so a refused edit undoes the move. The existing triggers re-check every table on the new night (other bookings, private
 --     hires, communal seats, table capacity). Assignments and allocations are first parked far in
 --     the future, so bookings on the same event never clash with each other's old positions mid
 --     move. If any booking does not fit, nothing is saved at all and the result lists each booking
@@ -33,8 +34,9 @@
 -- 2026: event_communal_window_v01 d991d0caa701827e0fffc1e1f53a257d,
 -- enforce_booking_table_assignment_integrity_v05 bc62088e84a45351bcf8d96a2ae88399,
 -- enforce_event_communal_seat_allocation_v01 7c763b63915a3c15b9a2ed221ea76eee,
--- update_event_transaction 4d480796c44e214af8886cbc5eb01b74 (unchanged; the app calls the move
--- first, then the usual update with the same date).
+-- update_event_transaction 4d480796c44e214af8886cbc5eb01b74 (unchanged; for a seated move the
+-- app passes the whole edit to move_event_seated_bookings_v01, which calls it in the same
+-- transaction).
 --
 -- Rollback: tasks/event-edits-cancel-postpone/rollback.sql. Tested by
 -- scripts/testing/event-date-move-postgres.py.
@@ -44,7 +46,9 @@ CREATE FUNCTION public.move_event_seated_bookings_v01(
   p_new_date date,
   p_new_time text,
   p_new_end_time time without time zone DEFAULT NULL,
-  p_new_duration_minutes integer DEFAULT NULL
+  p_new_duration_minutes integer DEFAULT NULL,
+  p_event_data jsonb DEFAULT NULL,
+  p_faqs jsonb DEFAULT NULL
 )
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -57,7 +61,6 @@ DECLARE
   v_event RECORD;
   v_old_start timestamptz;
   v_new_start timestamptz;
-  v_delta interval;
   v_window_start timestamptz;
   v_window_end timestamptz;
   v_booking RECORD;
@@ -66,6 +69,8 @@ DECLARE
   v_table_bookings integer := 0;
   v_allocations integer := 0;
   v_rows integer;
+  v_duration integer;
+  v_saved jsonb;
 BEGIN
   IF p_new_date IS NULL OR p_new_time IS NULL OR TRIM(p_new_time) = '' THEN
     RETURN jsonb_build_object('state', 'blocked', 'reason', 'new_start_missing');
@@ -91,8 +96,6 @@ BEGIN
     RETURN jsonb_build_object('state', 'blocked', 'reason', 'new_start_in_past');
   END IF;
 
-  v_delta := v_new_start - v_old_start;
-
   UPDATE public.events
      SET date = p_new_date,
          time = TRIM(p_new_time),
@@ -101,9 +104,14 @@ BEGIN
          duration_minutes = COALESCE(p_new_duration_minutes, duration_minutes)
    WHERE id = p_event_id;
 
+  -- The event's new window: its start less 15 minutes (or the start itself once that has
+  -- passed) to its end time, or the start plus its duration, past midnight when needed. The same
+  -- window create_event_table_reservation_v05 reserves tables for and communal seats use, so a
+  -- start-only change keeps the explicit end time.
   SELECT w.start_datetime, w.end_datetime
     INTO v_window_start, v_window_end
     FROM public.event_communal_window_v01(p_event_id) w;
+  v_duration := GREATEST(30, CEIL(EXTRACT(EPOCH FROM (v_window_end - v_window_start)) / 60.0)::integer);
 
   -- Park this event's seats out of the way first.
   UPDATE public.booking_table_assignments bta
@@ -138,18 +146,19 @@ BEGIN
   LOOP
     BEGIN
       UPDATE public.table_bookings tb
-         SET start_datetime = tb.start_datetime + v_delta,
-             end_datetime = tb.end_datetime + v_delta,
-             booking_date = ((tb.start_datetime + v_delta) AT TIME ZONE 'Europe/London')::date,
-             booking_time = ((tb.start_datetime + v_delta) AT TIME ZONE 'Europe/London')::time
+         SET start_datetime = v_window_start,
+             end_datetime = v_window_end,
+             duration_minutes = v_duration,
+             booking_date = (v_window_start AT TIME ZONE 'Europe/London')::date,
+             booking_time = (v_window_start AT TIME ZONE 'Europe/London')::time
        WHERE tb.event_booking_id = v_booking.id
          AND tb.status IN ('confirmed', 'pending_payment');
       GET DIAGNOSTICS v_rows = ROW_COUNT;
       v_table_bookings := v_table_bookings + v_rows;
 
       UPDATE public.booking_table_assignments bta
-         SET start_datetime = bta.start_datetime - c_park + v_delta,
-             end_datetime = bta.end_datetime - c_park + v_delta
+         SET start_datetime = v_window_start,
+             end_datetime = v_window_end
         FROM public.table_bookings tb
        WHERE bta.table_booking_id = tb.id
          AND tb.event_booking_id = v_booking.id
@@ -173,6 +182,13 @@ BEGIN
     RAISE EXCEPTION USING ERRCODE = 'P2011', MESSAGE = 'seated_bookings_do_not_fit';
   END IF;
 
+  -- The rest of the edit, in this same transaction: if update_event_transaction refuses it (for
+  -- example a standing limit below the standing tickets sold), its error ends this call and the
+  -- move, the date and every seat are undone with it.
+  IF p_event_data IS NOT NULL THEN
+    v_saved := public.update_event_transaction(p_event_id, p_event_data, p_faqs);
+  END IF;
+
   RETURN jsonb_build_object(
     'state', 'moved',
     'event_id', p_event_id,
@@ -180,18 +196,19 @@ BEGIN
     'new_start', v_new_start,
     'bookings_moved', v_moved,
     'table_bookings_moved', v_table_bookings,
-    'communal_allocations_moved', v_allocations
+    'communal_allocations_moved', v_allocations,
+    'event', v_saved
   );
 EXCEPTION WHEN SQLSTATE 'P2011' THEN
   RETURN jsonb_build_object('state', 'blocked', 'reason', 'seated_bookings_do_not_fit', 'bookings', v_failures);
 END;
 $function$;
 
-COMMENT ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer) IS
+COMMENT ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer, jsonb, jsonb) IS
   'Moves an event to a new date and time with its table bookings, table assignments and communal seats, in one transaction; refuses with the bookings that do not fit (BK-073).';
 
-REVOKE ALL ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer, jsonb, jsonb) TO service_role;
 
 CREATE TABLE public.event_slug_history (
   old_slug character varying PRIMARY KEY,

@@ -13,6 +13,8 @@ const state = vi.hoisted(() => ({
   event: { id: '11111111-1111-4111-8111-111111111111', name: 'Quiz Night', date: '2099-11-20', time: '19:00', event_status: 'scheduled' } as Record<string, unknown> | null,
   impact: { activeBookings: 3, activeSeats: 7, pendingPaymentBookings: 0, paidBookings: 0, amountPaid: 0, reachableByEmail: 3, reachableByTextOnly: 0, unreachable: 0, seatedBookings: 0 },
   pendingJob: null as Record<string, unknown> | null,
+  /** A cancellation job that is waiting, running or done (the cascade check). */
+  cascadeJob: null as Record<string, unknown> | null,
   jobStopped: true,
   jobUpdates: [] as Array<Record<string, unknown>>,
 }))
@@ -47,12 +49,17 @@ vi.mock('@/lib/supabase/admin', () => ({
       if (table === 'events') {
         return { select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: state.event, error: null }) }) }) }
       }
-      // jobs
+      // jobs: the cascade check filters with .in('status', ...); the undo looks for a pending one.
+      let cascadeCheck = false
       const read = {
         eq: () => read,
+        in: () => { cascadeCheck = true; return read },
         contains: () => read,
         order: () => read,
-        limit: async () => ({ data: state.pendingJob ? [state.pendingJob] : [], error: null }),
+        limit: async () => {
+          const row = cascadeCheck ? state.cascadeJob ?? state.pendingJob : state.pendingJob
+          return { data: row ? [row] : [], error: null }
+        },
       }
       return {
         select: () => read,
@@ -79,6 +86,7 @@ beforeEach(() => {
   state.event = { id: EVENT_ID, name: 'Quiz Night', date: '2099-11-20', time: '19:00', event_status: 'scheduled' }
   state.impact = { activeBookings: 3, activeSeats: 7, pendingPaymentBookings: 0, paidBookings: 0, amountPaid: 0, reachableByEmail: 3, reachableByTextOnly: 0, unreachable: 0, seatedBookings: 0 }
   state.pendingJob = null
+  state.cascadeJob = null
   state.jobStopped = true
   state.jobUpdates = []
   mocks.updateEvent.mockResolvedValue({})
@@ -174,5 +182,34 @@ describe('event lifecycle actions', () => {
     expect((await cancelEvent(EVENT_ID, { confirmed: true })).error).toContain('do not have permission')
     expect((await postponeEvent(EVENT_ID, { confirmed: true })).error).toContain('do not have permission')
     expect(mocks.enqueue).not.toHaveBeenCalled()
+  })
+
+  // Review on PR 280: a cancellation whose job could not be queued must be retryable.
+  it('lets staff queue the cascade again when the first queue failed, without saving the status twice', async () => {
+    mocks.enqueue.mockResolvedValueOnce({ success: false, error: 'queue down' })
+    expect((await cancelEvent(EVENT_ID, { confirmed: true })).error).toContain('Try Cancel event again')
+    expect(mocks.updateEvent).toHaveBeenCalledTimes(1)
+
+    // The status was saved, but no job exists.
+    state.event = { ...state.event!, event_status: 'cancelled' }
+    const preview = await getEventLifecycleImpact(EVENT_ID, 'cancel')
+    if (!('success' in preview)) throw new Error(preview.error)
+    expect(preview.data.cancellationNotQueued).toBe(true)
+
+    const retry = await cancelEvent(EVENT_ID, { confirmed: true })
+    expect(retry.success).toBe(true)
+    expect(mocks.updateEvent).toHaveBeenCalledTimes(1)
+    expect(mocks.enqueue).toHaveBeenLastCalledWith('cancel_event_bookings', expect.objectContaining({ eventId: EVENT_ID }), expect.objectContaining({ delay: EVENT_CANCELLATION_DELAY_MS }))
+    expect(mocks.audit).toHaveBeenLastCalledWith(expect.objectContaining({ operation_type: 'cancel_event_requeued' }))
+  })
+
+  it('still refuses a second cancellation once its cascade is queued or has run', async () => {
+    state.event = { ...state.event!, event_status: 'cancelled' }
+    state.cascadeJob = { id: 'job-1', scheduled_for: '2099-11-01T10:10:00Z', payload: { eventId: EVENT_ID } }
+    expect(await cancelEvent(EVENT_ID, { confirmed: true })).toEqual({ error: 'This event is already cancelled.' })
+    expect(mocks.enqueue).not.toHaveBeenCalled()
+    const preview = await getEventLifecycleImpact(EVENT_ID, 'cancel')
+    if (!('success' in preview)) throw new Error(preview.error)
+    expect(preview.data.cancellationNotQueued).toBe(false)
   })
 })

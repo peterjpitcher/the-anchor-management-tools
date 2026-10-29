@@ -16,6 +16,7 @@ const impact = vi.hoisted(() => ({ value: null as EventBookingImpact | null, cal
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
+vi.mock('@/app/actions/event-marketing-links', () => ({ generateEventMarketingLinks: vi.fn(async () => undefined) }))
 vi.mock('@/lib/events/event-change-guard', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/events/event-change-guard')>()
   return {
@@ -58,6 +59,8 @@ function clientFor(row: Record<string, unknown>) {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     neq: vi.fn(() => { slugCheck = true; return chain }),
+    update: vi.fn().mockReturnThis(),
+    single: vi.fn(async () => ({ data: row, error: null })),
     maybeSingle: vi.fn(async () => {
       const data = slugCheck ? null : row
       slugCheck = false
@@ -147,15 +150,30 @@ describe('event change guards', () => {
     expect((error as { confirmations: string[] }).confirmations[0]).toContain('7 seats are already sold, so a limit of 5 closes sales')
   })
 
-  it('moves a seated night with its tables and seats before saving the rest of the edit (BK-073)', async () => {
+  it('moves a seated night and saves the rest of the edit in one database call (BK-073, review on PR 280)', async () => {
     impact.value = booked({ seatedBookings: 2 })
     const { rpc } = clientFor({ ...current, booking_mode: 'table' })
     rpc.mockImplementation(async (name: string) => name === 'move_event_seated_bookings_v01'
-      ? { data: { state: 'moved', bookings_moved: 2 }, error: null }
-      : { data: null, error: { message: 'Fixture stops before mutation' } })
-    await expect(EventService.updateEvent('event', { date: '2099-10-02', time: '20:00', end_time: '23:00' }, { confirmedChanges: true })).rejects.toThrow('Failed to update event')
-    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['move_event_seated_bookings_v01', 'update_event_transaction'])
-    expect(rpc.mock.calls[0][1]).toEqual({ p_event_id: 'event', p_new_date: '2099-10-02', p_new_time: '20:00', p_new_end_time: '23:00' })
+      ? { data: { state: 'moved', bookings_moved: 2, event: { ...current, id: 'event', date: '2099-10-02' } }, error: null }
+      : { data: null, error: { message: 'Fixture: no second call expected' } })
+    const saved = await EventService.updateEvent('event', { date: '2099-10-02', time: '20:00', end_time: '23:00', name: 'Renamed' }, { confirmedChanges: true })
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['move_event_seated_bookings_v01'])
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_event_id: 'event', p_new_date: '2099-10-02', p_new_time: '20:00', p_new_end_time: '23:00',
+      p_event_data: expect.objectContaining({ name: 'Renamed', date: '2099-10-02' }),
+      p_faqs: null,
+    })
+    expect(saved).toHaveProperty('_before')
+  })
+
+  it('reports a refused edit from the combined move, which changed nothing', async () => {
+    impact.value = booked({ seatedBookings: 1 })
+    const { rpc } = clientFor({ ...current, booking_mode: 'communal' })
+    rpc.mockResolvedValue({ data: null, error: { message: 'standing_capacity_below_bookings' } })
+    await expect(EventService.updateEvent('event', { date: '2099-10-02', standing_capacity: 0 }, { confirmedChanges: true })).rejects.toThrow(
+      'The standing ticket limit cannot be lower than the standing tickets already reserved.',
+    )
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['move_event_seated_bookings_v01'])
   })
 
   it('changes nothing and names the bookings when the seats do not fit on the new night (BK-073)', async () => {

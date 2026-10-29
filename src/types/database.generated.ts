@@ -23352,7 +23352,9 @@ export type Database = {
       }
       move_event_seated_bookings_v01: {
         Args: {
+          p_event_data?: Json
           p_event_id: string
+          p_faqs?: Json
           p_new_date: string
           p_new_duration_minutes?: number
           p_new_end_time?: string

@@ -877,34 +877,6 @@ export class EventService {
       throw new EventChangeNeedsConfirmationError(assessment.confirmations, impact)
     }
 
-    // BK-073: a seated night's tables and communal seats move with it, in one transaction that
-    // also moves the event's date and time, before the rest of the edit is saved. If any booking
-    // does not fit on the new night, nothing changes and staff are told which.
-    const startMoves =
-      nextDate !== currentEvent.date ||
-      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
-      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5))
-    if (startMoves && impact.seatedBookings > 0 && isSeatedBookingMode(currentBookingMode)) {
-      const { data: moveResult, error: moveError } = await createAdminClient().rpc('move_event_seated_bookings_v01', {
-        p_event_id: id,
-        p_new_date: nextDate,
-        p_new_time: String(nextTime ?? '').slice(0, 5),
-        ...(nextEndTime ? { p_new_end_time: String(nextEndTime).slice(0, 5) } : {}),
-        ...(typeof input.duration_minutes === 'number' ? { p_new_duration_minutes: input.duration_minutes } : {}),
-      })
-      if (moveError) {
-        logger.error('Moving an event with its seated bookings failed', {
-          error: new Error(getSupabaseErrorMessage(moveError)),
-          metadata: { eventId: id },
-        })
-        throw new EventChangeBlockedError('The seated bookings could not be moved to the new time, so nothing has changed. Try again, or ask for help moving them.')
-      }
-      const moved = (moveResult ?? {}) as { state?: string; reason?: unknown; bookings?: unknown }
-      if (moved.state !== 'moved') {
-        throw new EventChangeBlockedError(describeSeatedMoveRefusal(moved))
-      }
-    }
-
     // A night moved back from cancelled reopens for bookings. The cancellation closed booking_open
     // and nothing opened it again, so every channel kept refusing (BK-035).
     const reopensBookings = currentEvent.event_status === 'cancelled' && nextStatus !== 'cancelled'
@@ -921,28 +893,71 @@ export class EventService {
       slug, // might be undefined, handled by COALESCE in SQL
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
+    const faqs = input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace
 
-    // Execute RPC. The function is server-only (BK-105), so it runs through the service-role client; the updateEvent
-    // action has already checked events manage.
-    const { data: event, error } = await createAdminClient().rpc('update_event_transaction', {
-      p_event_id: id,
-      p_event_data: eventData,
-      p_faqs: input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace
-    });
-
-    if (error) {
-      logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
+    const describeUpdateError = (error: unknown): Error => {
       const message = getSupabaseErrorMessage(error)
       if (message.includes('standing_capacity_below_bookings')) {
-        throw new Error('The standing ticket limit cannot be lower than the standing tickets already reserved.')
+        return new Error('The standing ticket limit cannot be lower than the standing tickets already reserved.')
       }
       if (message.includes('event_mode_has_active_bookings')) {
-        throw new Error('Cannot change booking mode while this event has active bookings.')
+        return new Error('Cannot change booking mode while this event has active bookings.')
       }
       if (message.includes('event_payment_mode_locked')) {
-        throw new EventChangeBlockedError(EVENT_PAYMENT_MODE_LOCKED_MESSAGE)
+        return new EventChangeBlockedError(EVENT_PAYMENT_MODE_LOCKED_MESSAGE)
       }
-      throw new Error('Failed to update event');
+      return new Error('Failed to update event')
+    }
+
+    // BK-073: a seated night's tables and communal seats move with it. One database call moves
+    // the event's date and time and every linked seat, then saves the rest of this edit through
+    // update_event_transaction, in one transaction: if any booking does not fit, or the rest of
+    // the edit is refused, nothing changes at all (review on PR 280).
+    const startMoves =
+      nextDate !== currentEvent.date ||
+      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
+      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5))
+    const seatedMove = startMoves && impact.seatedBookings > 0 && isSeatedBookingMode(currentBookingMode)
+
+    let event: Record<string, any>
+    if (seatedMove) {
+      const { data: moveResult, error: moveError } = await createAdminClient().rpc('move_event_seated_bookings_v01', {
+        p_event_id: id,
+        p_new_date: nextDate,
+        p_new_time: String(nextTime ?? '').slice(0, 5),
+        ...(nextEndTime ? { p_new_end_time: String(nextEndTime).slice(0, 5) } : {}),
+        ...(typeof input.duration_minutes === 'number' ? { p_new_duration_minutes: input.duration_minutes } : {}),
+        p_event_data: eventData,
+        p_faqs: faqs,
+      })
+      if (moveError) {
+        logger.error('Moving an event with its seated bookings failed', {
+          error: new Error(getSupabaseErrorMessage(moveError)),
+          metadata: { eventId: id },
+        })
+        const described = describeUpdateError(moveError)
+        if (described.message !== 'Failed to update event') throw described
+        throw new EventChangeBlockedError('The seated bookings could not be moved to the new time, so nothing has changed. Try again, or ask for help moving them.')
+      }
+      const moved = (moveResult ?? {}) as { state?: string; reason?: unknown; bookings?: unknown; event?: Record<string, any> | null }
+      if (moved.state !== 'moved' || !moved.event) {
+        throw new EventChangeBlockedError(describeSeatedMoveRefusal(moved))
+      }
+      event = moved.event
+    } else {
+      // Execute RPC. The function is server-only (BK-105), so it runs through the service-role
+      // client; the updateEvent action has already checked events manage.
+      const { data: updated, error } = await createAdminClient().rpc('update_event_transaction', {
+        p_event_id: id,
+        p_event_data: eventData,
+        p_faqs: faqs,
+      });
+
+      if (error) {
+        logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
+        throw describeUpdateError(error)
+      }
+      event = updated as Record<string, any>
     }
 
     const discountEvent = await updateEventOnlineDiscountFields(id, {
