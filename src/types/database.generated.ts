@@ -685,6 +685,7 @@ export type Database = {
           booking_id: string
           created_at: string
           id: string
+          price_paid_groups: Json | null
           quantity: number
           ticket_type_id: string
           unit_price: number
@@ -694,6 +695,7 @@ export type Database = {
           booking_id: string
           created_at?: string
           id?: string
+          price_paid_groups?: Json | null
           quantity: number
           ticket_type_id: string
           unit_price: number
@@ -703,6 +705,7 @@ export type Database = {
           booking_id?: string
           created_at?: string
           id?: string
+          price_paid_groups?: Json | null
           quantity?: number
           ticket_type_id?: string
           unit_price?: number
@@ -4732,6 +4735,66 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "admin_users_view"
             referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_booking_refund_requests: {
+        Row: {
+          amount: number
+          created_at: string
+          details: Json
+          event_booking_id: string
+          id: string
+          kind: string
+          raised_by: string | null
+          resolution_note: string | null
+          resolved_amount: number | null
+          resolved_at: string | null
+          resolved_by: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          details?: Json
+          event_booking_id: string
+          id?: string
+          kind: string
+          raised_by?: string | null
+          resolution_note?: string | null
+          resolved_amount?: number | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          details?: Json
+          event_booking_id?: string
+          id?: string
+          kind?: string
+          raised_by?: string | null
+          resolution_note?: string | null
+          resolved_amount?: number | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_booking_refund_requests_event_booking_id_fkey"
+            columns: ["event_booking_id"]
+            isOneToOne: false
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_booking_refund_requests_event_booking_id_fkey"
+            columns: ["event_booking_id"]
+            isOneToOne: false
+            referencedRelation: "reminder_timing_debug"
+            referencedColumns: ["booking_id"]
           },
         ]
       }
@@ -21262,6 +21325,19 @@ export type Database = {
         Args: { p_hashed_token: string; p_source?: string }
         Returns: Json
       }
+      add_event_booking_guests_v01: {
+        Args: {
+          p_attendees: Json
+          p_booking_id: string
+          p_expected_amount: number
+          p_note: string
+          p_performed_by: string
+          p_quantity: number
+          p_settlement: string
+          p_ticket_type_id: string
+        }
+        Returns: Json
+      }
       allocate_event_communal_seats_v01: {
         Args: {
           p_end_datetime: string
@@ -21618,6 +21694,20 @@ export type Database = {
           p_course_counts: number[]
           p_expected_course_counts?: number[]
           p_removed_ordinals?: number[]
+        }
+        Returns: Json
+      }
+      change_event_booking_ticket_type_v01: {
+        Args: {
+          p_attendee_ids: string[]
+          p_booking_id: string
+          p_expected_amount: number
+          p_from_ticket_type_id: string
+          p_note: string
+          p_performed_by: string
+          p_quantity: number
+          p_settlement: string
+          p_to_ticket_type_id: string
         }
         Returns: Json
       }
@@ -22385,9 +22475,44 @@ export type Database = {
         Args: { p_encryption_key: string }
         Returns: undefined
       }
+      event_booking_line_groups_v01: {
+        Args: { p_groups: Json; p_quantity: number; p_unit: number }
+        Returns: Json
+      }
+      event_booking_net_paid_v01: {
+        Args: { p_booking_id: string }
+        Returns: number
+      }
+      event_booking_put_tickets_v01: {
+        Args: {
+          p_booking_id: string
+          p_line_price: number
+          p_price_paid: number
+          p_quantity: number
+          p_ticket_type_id: string
+        }
+        Returns: undefined
+      }
+      event_booking_refundable_v01: {
+        Args: { p_booking_id: string }
+        Returns: number
+      }
+      event_booking_staff_guest_rows_v01: {
+        Args: {
+          p_attendees: Json
+          p_event_id: string
+          p_taken_ids: string[]
+          p_ticket_type_id: string
+        }
+        Returns: Json
+      }
       event_booking_table_capacity_ok_v01: {
         Args: { p_event_booking_id: string; p_party_size: number }
         Returns: boolean
+      }
+      event_booking_take_tickets_v01: {
+        Args: { p_booking_id: string; p_takes: Json }
+        Returns: Json
       }
       event_communal_window_v01: {
         Args: { p_event_id: string }
@@ -23653,6 +23778,19 @@ export type Database = {
             }
             Returns: Json
           }
+      record_manual_event_refund_v01: {
+        Args: {
+          p_amount: number
+          p_booking_id: string
+          p_idempotency_key: string
+          p_metadata: Json
+          p_method: string
+          p_note: string
+          p_reason: string
+          p_recorded_by: string
+        }
+        Returns: Json
+      }
       record_onboarding_acknowledgement: {
         Args: { p_question: string; p_token: string }
         Returns: Json
@@ -23914,6 +24052,16 @@ export type Database = {
           p_user_id: string
         }
         Returns: string
+      }
+      remove_event_booking_guests_v01: {
+        Args: {
+          p_attendee_ids: string[]
+          p_booking_id: string
+          p_performed_by: string
+          p_quantity: number
+          p_ticket_type_id: string
+        }
+        Returns: Json
       }
       rename_receipt_vendor: {
         Args: { p_name: string; p_performed_by?: string; p_vendor_id: string }
@@ -24213,6 +24361,15 @@ export type Database = {
       }
       table_names_in_order: { Args: { p_ids: string[] }; Returns: string[] }
       tables_are_connected: { Args: { p_ids: string[] }; Returns: boolean }
+      transfer_event_booking_v01: {
+        Args: {
+          p_answers: Json
+          p_booking_id: string
+          p_performed_by: string
+          p_target_event_id: string
+        }
+        Returns: Json
+      }
       undo_receipt_rule_run: {
         Args: { p_limit?: number; p_run_id: string; p_user?: string }
         Returns: Json

@@ -128,6 +128,8 @@ function blockedStatus(reason: string | undefined): string {
       return 'christmas_call'
     case 'rate_limited':
       return 'rate_limited'
+    case 'event_linked':
+      return 'event_linked'
     default:
       return 'error'
   }

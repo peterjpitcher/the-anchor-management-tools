@@ -7,6 +7,7 @@ import { refundAndNotifyOnCancel } from '@/lib/table-bookings/cancel-notify'
 import { toDepositRefundOutcome, type DepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
 import { resolveStaffCancellation, staffCancellationAuditInfo } from '@/lib/table-bookings/staff-cancellation-auth'
 import { logAuditEvent } from '@/app/actions/audit'
+import { eventLinkedTableBookingResponse, isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -36,6 +37,11 @@ export async function POST(
 
   if (!booking) {
     return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  }
+
+  // The table half of an event booking is cancelled from the event, with its ticket (BK-074).
+  if (isEventLinkedTableBooking(booking)) {
+    return eventLinkedTableBookingResponse()
   }
 
   // Expire any pending Stripe checkout session to prevent the guest completing
