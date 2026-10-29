@@ -861,6 +861,15 @@ export const FOH_TIME_CHANGE_EDITABLE_STATUSES = new Set([
   'review_clicked',
 ])
 
+/**
+ * True when this row is the table half of an event booking (BK-074). The schedule API does not
+ * expose event_id, but it rewrites both type and purpose to 'event' for such a booking and carries
+ * the event name. Its cancel and no-show are done from the event; the server refuses them here.
+ */
+export function isFohEventLinkedBooking(booking: FohBooking): boolean {
+  return booking.booking_purpose === 'event' || booking.booking_type === 'event' || Boolean(booking.event_name)
+}
+
 export function getFohTimeChangeBlocker(booking: FohBooking): string | null {
   if (booking.is_private_block) return 'Managed by the private booking.'
   if (booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-')) {
@@ -871,7 +880,7 @@ export function getFohTimeChangeBlocker(booking: FohBooking): string | null {
   // 'event' for a booking that has one, and carries the event name. An event diner's table
   // is tied to their ticket, so re-timing only the table half would split the pair; the
   // endpoint refuses it too.
-  if (booking.booking_purpose === 'event' || booking.booking_type === 'event' || booking.event_name) {
+  if (isFohEventLinkedBooking(booking)) {
     return 'Tied to an event. Change it from the event.'
   }
   const status = (booking.status || '').toLowerCase()
