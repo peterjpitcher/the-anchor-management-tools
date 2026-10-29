@@ -29,6 +29,16 @@ vi.mock('@/lib/env', () => ({ getAppUrl: vi.fn(() => 'https://management.example
 vi.mock('@/lib/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
+// Used only for an email covering several invoices: the first invoice's PDF is the sender's.
+vi.mock('@/lib/pdf-generator', () => ({
+  generateInvoicePDF: vi.fn(async (invoice: { invoice_number: string }) => Buffer.from(`pdf:${invoice.invoice_number}`)),
+}))
+vi.mock('@/lib/invoices/payment-link-footer', () => ({
+  invoiceCanOfferPayPal: vi.fn((invoice: { vendor?: { paypal_payments_enabled?: boolean } }) =>
+    Boolean(invoice.vendor?.paypal_payments_enabled)
+  ),
+  invoicePortalUrl: vi.fn((invoiceId: string) => `https://management.example.test/invoice-portal/token-${invoiceId}`),
+}))
 
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -42,6 +52,7 @@ import {
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { resolveVendorInvoiceRecipients } from '@/lib/invoice-recipients'
 import { resolveInvoiceGreetingName } from '@/lib/invoices/greeting'
+import { generateInvoicePDF } from '@/lib/pdf-generator'
 import { GET } from '@/app/api/cron/invoice-reminders/route'
 
 type Row = Record<string, unknown>
@@ -61,6 +72,10 @@ interface Scenario {
   /** What a later re-read of one invoice returns, by id. Defaults to the row above. */
   fresh?: Record<string, Row>
   privateHireInvoiceIds?: string[]
+  /** The booking each private hire invoice is linked to, by invoice id. */
+  bookingIdByInvoice?: Record<string, string>
+  /** Private bookings: `id`, `status` and, for a booking's own invoice, `invoice_id`. */
+  privateBookings?: Row[]
   emails?: Row[]
   drafts?: Row[]
   earlierRuns?: Row[]
@@ -138,7 +153,10 @@ function fakeDb(scenario: Scenario) {
       const byId = has(query, 'eq', 'id')?.[2] as string | undefined
       if (query.op === 'update') {
         const payload = query.payload as Row
-        const writesReminder = 'reminder_first_sent_at' in payload || 'reminder_second_sent_at' in payload
+        const writesReminder =
+          'reminder_first_sent_at' in payload ||
+          'reminder_second_sent_at' in payload ||
+          'reminder_last_weekly_sent_at' in payload
         if (writesReminder && scenario.failReminderColumnWrite) {
           return { data: null, error: { message: 'connection reset by peer' } }
         }
@@ -162,7 +180,23 @@ function fakeDb(scenario: Scenario) {
     }
 
     if (query.table === 'private_booking_invoices') {
-      return ok((scenario.privateHireInvoiceIds ?? []).map((invoice_id) => ({ invoice_id })))
+      return ok(
+        (scenario.privateHireInvoiceIds ?? []).map((invoice_id) => ({
+          invoice_id,
+          booking_id: scenario.bookingIdByInvoice?.[invoice_id] ?? null,
+        }))
+      )
+    }
+    if (query.table === 'private_bookings') {
+      const byInvoice = has(query, 'in', 'invoice_id')?.[2] as string[] | undefined
+      const byBooking = has(query, 'in', 'id')?.[2] as string[] | undefined
+      return ok(
+        (scenario.privateBookings ?? []).filter(
+          (booking) =>
+            (byInvoice && byInvoice.includes(booking.invoice_id as string)) ||
+            (byBooking && byBooking.includes(booking.id as string))
+        )
+      )
     }
     if (query.table === 'email_messages') return ok(scenario.emails ?? [])
     if (query.table === 'invoice_email_logs') return ok(null)
@@ -238,7 +272,10 @@ function updatesTo(queries: Query[], table: string): Row[] {
 
 function reminderColumnWrites(queries: Query[]): Row[] {
   return updatesTo(queries, 'invoices').filter(
-    (payload) => 'reminder_first_sent_at' in payload || 'reminder_second_sent_at' in payload
+    (payload) =>
+      'reminder_first_sent_at' in payload ||
+      'reminder_second_sent_at' in payload ||
+      'reminder_last_weekly_sent_at' in payload
   )
 }
 
@@ -1108,3 +1145,265 @@ describe('invoice reminders cron: a payment from the client waiting to be matche
   })
 })
 
+
+/**
+ * Weekly chasers (owner decision, 29 October 2026): from 21 days overdue an unpaid invoice is
+ * chased every week until it is paid, and a client gets ONE email per run covering every
+ * invoice of theirs that is due, each attached. Tuesday 13 October 2026 falls in the week that
+ * starts on Monday 12 October.
+ */
+describe('invoice reminders cron: weekly chasers', () => {
+  // Due Tuesday 8 and Tuesday 15 September: 35 and 28 days overdue on the 13th, never chased.
+  const OLDER = { id: 'inv-1', invoice_number: 'INV-0101', due_date: '2026-09-08', invoice_date: '2026-08-25' }
+  const NEWER = { id: 'inv-2', invoice_number: 'INV-0102', due_date: '2026-09-15', invoice_date: '2026-09-01' }
+
+  beforeEach(() => {
+    vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-10-01')
+  })
+
+  function weeklyWrites(queries: Query[]): Query[] {
+    return queries.filter(
+      (query) => query.table === 'invoices' && query.op === 'update' && 'reminder_last_weekly_sent_at' in (query.payload as Row)
+    )
+  }
+
+  it('sends a client one email for both unpaid invoices, each attached, and records both', async () => {
+    const { queries } = fakeDb({ invoices: [invoice(NEWER), invoice(OLDER)] })
+
+    const { payload } = await run()
+
+    expect(payload).toMatchObject({ reminders_on: true, weekly_chasers_on: true })
+    expect(payload.results).toMatchObject({ reminders_sent: 2, problems: 0, summary: 'accepted' })
+
+    expect(vi.mocked(claimIdempotencyKey).mock.calls.map((call) => [call[1], call[2]])).toEqual([
+      ['invoice-reminder:v2:inv-1:weekly:2026-10-12', 'hash:{"invoice_id":"inv-1","stage":"weekly","week":"2026-10-12"}'],
+      ['invoice-reminder:v2:inv-2:weekly:2026-10-12', 'hash:{"invoice_id":"inv-2","stage":"weekly","week":"2026-10-12"}'],
+    ])
+
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+    const [lead, to, subject, body, cc, attachments, options] = vi.mocked(sendInvoiceEmail).mock.calls[0]
+    expect(lead.id).toBe('inv-1')
+    expect(to).toBe('accounts@acme.example')
+    expect(cc).toEqual(['director@acme.example'])
+    expect(subject).toBe('Overdue invoices from Orange Jelly: £2,400.00 to pay')
+    expect(body).toContain('Hi Jo,')
+    expect(body).toContain('INV-0101: £1,200.00, due Tuesday 8 September 2026\nINV-0102: £1,200.00, due Tuesday 15 September 2026\nTotal to pay: £2,400.00')
+    expect(body).toContain('Copies are attached.')
+    assertCleanText(String(subject))
+    assertCleanText(String(body))
+    expect(generateInvoicePDF).toHaveBeenCalledTimes(1)
+    expect(attachments).toEqual([
+      { name: 'invoice-INV-0102.pdf', contentType: 'application/pdf', buffer: Buffer.from('pdf:INV-0102') },
+    ])
+    // The client cannot pay online, so there is no pay link P.S. for either invoice.
+    expect(options).toEqual({ emailKind: 'reminder_combined', coversInvoiceIds: ['inv-1', 'inv-2'], paymentLinkFooter: '' })
+
+    const writes = weeklyWrites(queries)
+    expect(writes.map((query) => has(query, 'eq', 'id')?.[2])).toEqual(['inv-1', 'inv-2'])
+    expect(writes.map((query) => query.payload)).toEqual([
+      { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
+      { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
+    ])
+    // Always the latest, never only where empty: the seven-day clock runs from it.
+    expect(writes.every((query) => !has(query, 'is', 'reminder_last_weekly_sent_at'))).toBe(true)
+
+    const logRows = queries.find((query) => query.table === 'invoice_email_logs')?.payload as Row[]
+    expect(logRows.map((row) => [row.invoice_id, row.sent_to])).toEqual([
+      ['inv-1', 'accounts@acme.example'],
+      ['inv-1', 'director@acme.example'],
+      ['inv-2', 'accounts@acme.example'],
+      ['inv-2', 'director@acme.example'],
+    ])
+    expect(logRows[0].body).toBe('Weekly reminder, 35 days overdue, in one email with 1 other invoice')
+
+    const email = summary()
+    expect(email.text).toContain('- INV-0101, Acme Events Ltd: weekly reminder to accounts@acme.example')
+    expect(email.text).toContain('- INV-0102, Acme Events Ltd: weekly reminder to accounts@acme.example')
+    expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+  })
+
+  it('adds a pay link per invoice when the client can pay online', async () => {
+    const vendor = { id: 'vendor-1', name: 'Acme Events Ltd', email: 'accounts@acme.example', paypal_payments_enabled: true }
+    fakeDb({ invoices: [invoice({ ...OLDER, vendor }), invoice({ ...NEWER, vendor })] })
+
+    await run()
+
+    const options = vi.mocked(sendInvoiceEmail).mock.calls[0][6]
+    expect(options?.paymentLinkFooter).toBe(
+      '\n\nP.S. You can also pay these online by card or PayPal:\n' +
+        'INV-0101: https://management.example.test/invoice-portal/token-inv-1\n' +
+        'INV-0102: https://management.example.test/invoice-portal/token-inv-2'
+    )
+  })
+
+  it('then waits a week: nothing later that week, the next email the week after', async () => {
+    const scenario = { invoices: [invoice(OLDER), invoice(NEWER)] }
+    fakeDb(scenario)
+    await run()
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+
+    // Friday 16 October: three days on, past the quiet days but not a week.
+    vi.mocked(sendInvoiceEmail).mockClear()
+    vi.mocked(sendEmail).mockClear()
+    vi.setSystemTime(new Date('2026-10-16T09:30:00.000Z'))
+    fakeDb(scenario)
+    await run()
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+
+    // Tuesday 20 October: a week on, so both go again, under the new week's claims.
+    vi.mocked(claimIdempotencyKey).mockClear()
+    vi.setSystemTime(new Date('2026-10-20T09:30:00.000Z'))
+    fakeDb(scenario)
+    await run()
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(claimIdempotencyKey).mock.calls.map((call) => call[1])).toEqual([
+      'invoice-reminder:v2:inv-1:weekly:2026-10-19',
+      'invoice-reminder:v2:inv-2:weekly:2026-10-19',
+    ])
+  })
+
+  it('counts a send with an unknown outcome as the week\'s email: kept, recorded, not retried that week', async () => {
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, uncertain: true, error: 'The request timed out' })
+    const scenario = { invoices: [invoice(OLDER)] }
+    const { queries } = fakeDb(scenario)
+
+    await run()
+
+    expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
+    expect(persistIdempotencyResponse).toHaveBeenCalledWith(
+      expect.anything(),
+      'invoice-reminder:v2:inv-1:weekly:2026-10-12',
+      expect.any(String),
+      expect.objectContaining({ state: 'outcome_unknown', stage: 'weekly' }),
+      24 * 45
+    )
+    expect(weeklyWrites(queries).map((query) => query.payload)).toEqual([
+      { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
+    ])
+    expect(summary().text).toContain("It counts as this week's, so the next one goes in a week. Check Sent Items")
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
+
+    // Wednesday 14 October: nothing, even though the claim helper would hand out a claim.
+    vi.mocked(sendInvoiceEmail).mockClear()
+    vi.setSystemTime(new Date('2026-10-14T09:30:00.000Z'))
+    fakeDb(scenario)
+    await run()
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+  })
+
+  it('hands back the claims of a refused email so the next run tries again', async () => {
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, error: 'Mailbox unavailable (550)' })
+    const { queries } = fakeDb({ invoices: [invoice(OLDER), invoice(NEWER)] })
+
+    await run()
+
+    expect(vi.mocked(releaseIdempotencyClaim).mock.calls.map((call) => call[1])).toEqual([
+      'invoice-reminder:v2:inv-1:weekly:2026-10-12',
+      'invoice-reminder:v2:inv-2:weekly:2026-10-12',
+    ])
+    expect(weeklyWrites(queries)).toEqual([])
+    expect(summary().text).toContain('The weekly reminder was refused and nothing was sent: Mailbox unavailable (550). The next run will try again')
+  })
+
+  it('leaves out an invoice whose claim for this week is already held, and sends the rest', async () => {
+    vi.mocked(claimIdempotencyKey).mockImplementation(async (_db, key) =>
+      String(key).includes(':inv-1:') ? ({ state: 'in_progress' } as never) : ({ state: 'claimed' } as never)
+    )
+    const { queries } = fakeDb({ invoices: [invoice(OLDER), invoice(NEWER)] })
+
+    await run()
+
+    const [lead, , subject, body, , attachments, options] = vi.mocked(sendInvoiceEmail).mock.calls[0]
+    expect(lead.id).toBe('inv-2')
+    expect(subject).toBe('Invoice INV-0102 is overdue')
+    expect(body).toContain("I'm writing again about invoice INV-0102. It was due on Tuesday 15 September 2026 and £1,200.00 is still to pay.")
+    assertCleanText(String(body))
+    expect(attachments).toBeUndefined()
+    expect(options).toEqual({ emailKind: 'reminder_weekly' })
+    expect(weeklyWrites(queries).map((query) => has(query, 'eq', 'id')?.[2])).toEqual(['inv-2'])
+    expect(summary().text).toContain('An earlier attempt this week to send the weekly reminder has an unknown outcome')
+  })
+
+  it('puts a first reminder and a weekly one for the same client in the same email', async () => {
+    const { queries } = fakeDb({
+      invoices: [invoice(OLDER), invoice({ id: 'inv-3', invoice_number: 'INV-0103', due_date: '2026-10-06' })],
+    })
+
+    await run()
+
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][6]).toMatchObject({ emailKind: 'reminder_combined' })
+    expect(reminderColumnWrites(queries)).toEqual([
+      { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
+      { reminder_first_sent_at: '2026-10-13T09:30:00.000Z' },
+    ])
+    const text = summary().text
+    expect(text).toContain('- INV-0101, Acme Events Ltd: weekly reminder to accounts@acme.example')
+    expect(text).toContain('- INV-0103, Acme Events Ltd: first reminder to accounts@acme.example')
+  })
+
+  it('chases private hire from 21 days, but never the invoice of a cancelled booking', async () => {
+    fakeDb({
+      invoices: [invoice(OLDER)],
+      privateHireInvoiceIds: ['inv-1'],
+      privateBookings: [{ id: 'pb-1', invoice_id: 'inv-1', status: 'confirmed' }],
+    })
+    await run()
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][6]).toEqual({ emailKind: 'reminder_weekly' })
+
+    vi.mocked(sendInvoiceEmail).mockClear()
+    vi.mocked(sendEmail).mockClear()
+    fakeDb({
+      invoices: [invoice(OLDER)],
+      privateHireInvoiceIds: ['inv-1'],
+      bookingIdByInvoice: { 'inv-1': 'pb-2' },
+      privateBookings: [{ id: 'pb-2', status: 'cancelled' }],
+    })
+    await run()
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(summary().text).toContain('Its private booking was cancelled, so it is not chased: settle it with a credit note')
+  })
+
+  it('changes nothing without the switch: the owner still takes these', async () => {
+    vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '')
+    const { queries } = fakeDb({ invoices: [invoice(OLDER)] })
+
+    const { payload } = await run()
+
+    expect(payload.weekly_chasers_on).toBe(false)
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(queries.some((query) => query.table === 'private_bookings')).toBe(false)
+    expect(summary().text).toContain('Fell due before automatic reminders were switched on: chase by hand')
+  })
+
+  it('previews every invoice the one email would cover, and sends nothing', async () => {
+    vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '')
+    const { queries } = fakeDb({ invoices: [invoice(OLDER), invoice(NEWER)] })
+
+    const response = await GET(
+      new Request('http://cron.internal/api/cron/invoice-reminders?preview=true&go_live=2026-10-01&weekly_from=2026-10-01')
+    )
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload).toMatchObject({ weekly_from: '2026-10-01', weekly_chasers_on: true, one_email_per_client: true })
+    expect(payload.would_send.map((line: { invoice_number: string; reminder: string }) => [line.invoice_number, line.reminder])).toEqual([
+      ['INV-0101', 'weekly'],
+      ['INV-0102', 'weekly'],
+    ])
+    expect(queries.every((query) => query.op === 'select')).toBe(true)
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(claimIdempotencyKey).not.toHaveBeenCalled()
+  })
+
+  it('refuses a weekly date it cannot read', async () => {
+    fakeDb({ invoices: [invoice(OLDER)] })
+
+    const response = await GET(
+      new Request('http://cron.internal/api/cron/invoice-reminders?preview=true&go_live=2026-10-01&weekly_from=2026-13-01')
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toEqual({ error: 'weekly_from must be a date written as YYYY-MM-DD' })
+  })
+})

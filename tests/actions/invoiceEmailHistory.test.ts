@@ -18,8 +18,10 @@ vi.mock('@/lib/env', () => ({ getAppUrl: vi.fn(() => 'https://management.example
 vi.mock('@/lib/logger', () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }))
+vi.mock('@/lib/invoices/cancelled-private-booking', () => ({ invoiceBookingCancelled: vi.fn(async () => false) }))
 
 import { checkUserPermission } from '@/app/actions/rbac'
+import { invoiceBookingCancelled } from '@/lib/invoices/cancelled-private-booking'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
 import { sendEmail } from '@/lib/email/emailService'
@@ -40,6 +42,9 @@ interface Scenario {
   todayRun?: Row | null
   failEmails?: boolean
   failBookingLink?: boolean
+  /** Emails saved against another invoice that name this one in `covers_invoice_ids`. */
+  coveredEmails?: Row[]
+  failCovered?: boolean
 }
 
 const INVOICE_ID = '7c1e4b2a-9d3f-4e6a-8b5c-1f2e3d4c5b6a'
@@ -95,6 +100,12 @@ function seed(scenario: Scenario): Query[] {
         // this client" lookup, which finds nothing here.
         return { data: has(query, 'eq', 'id') ? scenario.invoice : [], error: null }
       case 'email_messages':
+        // A reminder that covered several invoices, saved against another one.
+        if (has(query, 'contains', 'metadata')) {
+          return scenario.failCovered
+            ? { data: null, error: { message: 'statement timeout' } }
+            : { data: scenario.coveredEmails ?? [], error: null }
+        }
         if (!has(query, 'eq', 'invoice_id')) return { data: [], error: null }
         return scenario.failEmails
           ? { data: null, error: { message: 'statement timeout' } }
@@ -122,7 +133,7 @@ function seed(scenario: Scenario): Query[] {
             .then(() => answer(query))
             .then(resolve, reject),
       }
-      for (const method of ['eq', 'in', 'is', 'not', 'or', 'gte', 'order', 'limit']) {
+      for (const method of ['eq', 'in', 'is', 'not', 'or', 'gte', 'order', 'limit', 'contains']) {
         builder[method] = (...args: unknown[]) => {
           query.filters.push([method, ...args])
           return builder
@@ -376,5 +387,91 @@ describe('getInvoiceEmailHistory: what it shows', () => {
     const unstamped = (await getInvoiceEmailHistory(INVOICE_ID)).history
     expect(unstamped?.earlierEmailsNotRecorded).toBe(true)
     expect(unstamped?.crossCheck[0]).toEqual({ label: 'Invoice emailed', value: 'No record' })
+  })
+
+  it('lists a reminder that covered this invoice but was saved against another, once', async () => {
+    const combined = email({
+      id: 'combined',
+      created_at: '2026-10-05T09:30:00.000Z',
+      sent_at: '2026-10-05T09:30:05.000Z',
+      subject: 'Overdue invoices from Orange Jelly: £2,400.00 to pay',
+      metadata: {
+        invoice_number: 'INV-0100',
+        email_kind: 'reminder_combined',
+        covers_invoice_ids: ['another-invoice', INVOICE_ID],
+      },
+    })
+    // Found both ways, as it would be on the invoice it was saved against.
+    const queries = seed({ invoice: invoice(), emails: [email(), combined], coveredEmails: [combined] })
+
+    const { history } = await getInvoiceEmailHistory(INVOICE_ID)
+
+    const covered = queries.find((query) => query.table === 'email_messages' && has(query, 'contains', 'metadata'))
+    expect(covered?.filters).toContainEqual(['contains', 'metadata', { covers_invoice_ids: [INVOICE_ID] }])
+    expect(covered?.filters).toContainEqual(['eq', 'direction', 'outbound'])
+    expect(history?.emails.map((entry) => entry.id)).toEqual(['combined', 'email-1'])
+    expect(history?.emails[0]).toMatchObject({ kindLabel: 'Reminder for several invoices', kindInferred: false })
+  })
+
+  it('still shows the rest of the history when the covering reminders cannot be read', async () => {
+    seed({ invoice: invoice(), emails: [email()], failCovered: true })
+
+    const result = await getInvoiceEmailHistory(INVOICE_ID)
+
+    expect(result.error).toBeUndefined()
+    expect(result.history?.emails.map((entry) => entry.id)).toEqual(['email-1'])
+  })
+
+  it('with weekly chasers on, forecasts the weekly reminder and shows when the last one went', async () => {
+    vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '2026-09-01')
+    vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-10-01')
+    seed({
+      invoice: invoice({
+        due_date: '2026-09-15',
+        reminder_first_sent_at: '2026-09-21T09:30:00.000Z',
+        reminder_second_sent_at: '2026-09-29T09:30:00.000Z',
+        reminder_last_weekly_sent_at: '2026-10-06T09:30:00.000Z',
+      }),
+    })
+
+    const { history } = await getInvoiceEmailHistory(INVOICE_ID)
+
+    // A week after Tuesday 6 October, not the day before.
+    expect(history?.nextReminder).toEqual({
+      line: 'Next automatic reminder: Tuesday 13 October (forecast)',
+      detail: 'The weekly reminder. Everything is checked again before it is sent.',
+    })
+    expect(history?.crossCheck).toContainEqual({ label: 'Latest weekly reminder', value: 'Tuesday 6 October 2026' })
+  })
+
+  it('leaves the weekly reminder line out while weekly chasers are off and none was ever sent', async () => {
+    seed({ invoice: invoice() })
+
+    const { history } = await getInvoiceEmailHistory(INVOICE_ID)
+
+    expect(history?.crossCheck.map((row) => row.label)).toEqual(['Invoice emailed', 'First reminder', 'Second reminder'])
+  })
+
+  it('with weekly chasers on, chases private hire from 21 days unless its booking was cancelled', async () => {
+    vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-10-01')
+
+    seed({ invoice: invoice({ due_date: '2026-09-15' }), isPrivateHire: true })
+    vi.mocked(invoiceBookingCancelled).mockResolvedValueOnce(false)
+    expect((await getInvoiceEmailHistory(INVOICE_ID)).history?.nextReminder).toEqual({
+      line: 'Next automatic reminder: Monday 12 October (forecast)',
+      detail: "The weekly reminder, on today's run. Everything is checked again before it is sent.",
+    })
+
+    seed({ invoice: invoice({ due_date: '2026-09-15' }), isPrivateHire: true })
+    vi.mocked(invoiceBookingCancelled).mockResolvedValueOnce(true)
+    expect((await getInvoiceEmailHistory(INVOICE_ID)).history?.nextReminder).toEqual({
+      line: 'No automatic reminders: chase by hand',
+      detail: '27 days overdue. Its private booking was cancelled, so it is not chased: settle it with a credit note.',
+    })
+
+    // Unknown counts as cancelled: no forecast the line cannot vouch for.
+    seed({ invoice: invoice({ due_date: '2026-09-15' }), isPrivateHire: true })
+    vi.mocked(invoiceBookingCancelled).mockResolvedValueOnce('unknown')
+    expect((await getInvoiceEmailHistory(INVOICE_ID)).history?.nextReminder.line).toBe('No automatic reminders: chase by hand')
   })
 })

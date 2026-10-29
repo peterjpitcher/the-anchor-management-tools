@@ -6,14 +6,17 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 // Each reminder renders the invoice PDF in a headless browser. The job stops starting new sends
 // well inside this limit (see SEND_TIME_BUDGET_MS), because a send cut off part way is an
-// unknown outcome that ends that invoice's automatic reminders.
+// unknown outcome: a first or second reminder is then never retried, and a weekly chaser waits
+// a week.
 export const maxDuration = 300
 
 // Automatic invoice reminders, weekdays at 09:30 UTC (`vercel.json`). Customers are emailed
 // only once INVOICE_REMINDERS_GO_LIVE_DATE is set; until then the job marks invoices overdue
-// and sends the owner his summary, nothing else. The whole job lives in
+// and sends the owner his summary, nothing else. Weekly chasers until paid follow once
+// INVOICE_WEEKLY_REMINDERS_FROM is set as well. The whole job lives in
 // src/lib/invoices/reminder-job.ts; the schedule it follows is src/lib/invoices/reminder-rules.ts.
-// See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md (R2).
+// See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md (R2) and
+// tasks/plan-2026-10-29-invoice-weekly-chasers.md.
 export async function GET(request: Request) {
   const authResult = authorizeCronRequest(request)
 
@@ -23,12 +26,15 @@ export async function GET(request: Request) {
 
   // `?preview=true&go_live=YYYY-MM-DD` answers "what would a run send if reminders went live
   // from that date?" and does nothing else: no email, no record, no change. It is how the list
-  // for the owner's go-live check is produced. `as_of=YYYY-MM-DD` asks about another day.
+  // for the owner's go-live check is produced. `as_of=YYYY-MM-DD` asks about another day, and
+  // `weekly_from=YYYY-MM-DD` asks what the weekly chasers would add once
+  // INVOICE_WEEKLY_REMINDERS_FROM is set to that date.
   const url = new URL(request.url)
   if (url.searchParams.get('preview') === 'true') {
     const preview = await previewInvoiceReminders({
       goLiveDate: url.searchParams.get('go_live'),
       asOf: url.searchParams.get('as_of'),
+      weeklyFrom: url.searchParams.get('weekly_from'),
     })
     return NextResponse.json(preview.body, { status: preview.status })
   }

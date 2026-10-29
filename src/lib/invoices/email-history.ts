@@ -91,13 +91,23 @@ const KIND_LABELS: Record<InvoiceEmailHistoryKind, string> = {
   invoice: 'Invoice',
   reminder_first: 'First reminder',
   reminder_second: 'Second reminder',
+  reminder_weekly: 'Weekly reminder',
+  reminder_combined: 'Reminder for several invoices',
   reminder: 'Reminder',
   chase: 'Chase',
   receipt: 'Receipt',
   other: 'Email',
 }
 
-const RECORDED_KINDS = new Set<string>(['invoice', 'reminder_first', 'reminder_second', 'chase', 'receipt'])
+const RECORDED_KINDS = new Set<string>([
+  'invoice',
+  'reminder_first',
+  'reminder_second',
+  'reminder_weekly',
+  'reminder_combined',
+  'chase',
+  'receipt',
+])
 
 /**
  * The kind of an email saved before kinds were recorded, from its subject line. The old
@@ -210,7 +220,9 @@ export function toInvoiceEmailHistory(rows: InvoiceEmailRow[]): InvoiceEmailHist
 }
 
 function stageName(stage: ReminderStage): string {
-  return stage === 'first' ? 'first' : 'second'
+  if (stage === 'first') return 'first'
+  if (stage === 'second') return 'second'
+  return 'weekly'
 }
 
 const NOTHING_AUTOMATIC: Record<Extract<ReminderDecision, { action: 'needs_owner' }>['reason'], string> = {
@@ -219,6 +231,7 @@ const NOTHING_AUTOMATIC: Record<Extract<ReminderDecision, { action: 'needs_owner
   due_before_go_live: 'It fell due before automatic reminders were switched on.',
   overdue_21_days: 'Automatic reminders have finished.',
   first_window_missed: 'No first reminder was sent in its window.',
+  booking_cancelled: 'Its private booking was cancelled, so it waits for a credit note, not a reminder.',
 }
 
 /** Why no reminder is forecast, read from what the rules will say on the day after `from`. */
@@ -237,6 +250,10 @@ export interface NextReminderInput {
   goLiveDate: string | null
   /** London date of the client's latest invoice email, when known. */
   lastClientEmailDate: string | null
+  /** `INVOICE_WEEKLY_REMINDERS_FROM`, or null while weekly chasers are off. */
+  weeklyFrom?: string | null
+  /** London date of the client's latest weekly chaser or hand-sent chase, when known. */
+  lastClientChaserDate?: string | null
   /** True once today's run of the reminder job has finished. */
   todayRunDone: boolean
 }
@@ -253,7 +270,13 @@ export interface NextReminderInput {
  */
 export function describeNextReminder(input: NextReminderInput): NextReminderLine {
   const { invoice, today, goLiveDate } = input
-  const context = { today, goLiveDate, lastClientEmailDate: input.lastClientEmailDate }
+  const context: ReminderContext = {
+    today,
+    goLiveDate,
+    lastClientEmailDate: input.lastClientEmailDate,
+    weeklyFrom: input.weeklyFrom ?? null,
+    lastClientChaserDate: input.lastClientChaserDate ?? null,
+  }
   const decision = decideReminder(invoice, context)
 
   if (decision.action === 'none' && decision.reason !== 'not_overdue') {
@@ -276,13 +299,19 @@ export function describeNextReminder(input: NextReminderInput): NextReminderLine
     return { line: 'No automatic reminders: chase by hand', detail: `${describeNeedsOwner(decision)}.` }
   }
 
-  // An invoice that is not due yet is forecast from its due date: the rules look a fixed number
-  // of runs ahead, which would fall short on long payment terms.
-  const forecastFrom = decision.action === 'none' && invoice.dueDate > today ? invoice.dueDate : today
+  // The rules look a fixed number of runs ahead, which would fall short on long payment terms or
+  // a long hold. So an invoice that is not due yet is forecast from its due date, and a held one
+  // from the last day of its hold (reminders resume on the next run after it).
+  const holdRemaining = daysBetween(today, invoice.heldUntil)
+  const heldNow = Boolean(invoice.heldUntil) && holdRemaining !== null && holdRemaining >= 0
+  const forecastFrom = [
+    today,
+    decision.action === 'none' && invoice.dueDate > today ? invoice.dueDate : today,
+    heldNow && invoice.heldUntil ? invoice.heldUntil : today,
+  ].reduce((latest, date) => (date > latest ? date : latest))
   const forecast = forecastNextReminder(invoice, { ...context, today: forecastFrom })
 
-  const holdRemaining = daysBetween(today, invoice.heldUntil)
-  if (invoice.heldUntil && holdRemaining !== null && holdRemaining >= 0) {
+  if (heldNow && invoice.heldUntil) {
     return {
       line: `Reminders held until ${formatInvoiceDate(invoice.heldUntil)}`,
       detail: forecast

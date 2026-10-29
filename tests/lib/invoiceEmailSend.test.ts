@@ -391,3 +391,63 @@ describe('sendInvoiceEmail: sent is not the same as recorded', () => {
     expect(result.error).toBe('Domain is not verified')
   })
 })
+
+
+describe('sendInvoiceEmail: one email covering several invoices', () => {
+  const payable = { id: 'vendor-1', name: 'Golden Barrels Limited', paypal_payments_enabled: true }
+
+  it('names every invoice it covers, so each of their histories lists it', async () => {
+    await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body', undefined, undefined, {
+      emailKind: 'reminder_combined',
+      coversInvoiceIds: ['invoice-1', 'invoice-2'],
+    })
+
+    expect(sentPayload().metadata).toMatchObject({
+      email_kind: 'reminder_combined',
+      covers_invoice_ids: ['invoice-1', 'invoice-2'],
+    })
+    // Recorded once, against the first invoice.
+    expect(sentPayload().invoiceId).toBe('invoice-1')
+  })
+
+  it('adds no covers list to an ordinary email', async () => {
+    await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body')
+
+    expect(sentPayload().metadata).not.toHaveProperty('covers_invoice_ids')
+  })
+
+  it('uses the pay online P.S. it is given in place of the one for this invoice alone', async () => {
+    await sendInvoiceEmail(invoice({ vendor: payable }), 'accounts@example.com', 'Subject', 'Body', undefined, undefined, {
+      paymentLinkFooter: '\n\nP.S. Two links',
+    })
+
+    expect(sentPayload().text).toBe('Body\n\nP.S. Two links')
+  })
+
+  it('leaves the P.S. out when it is given an empty one', async () => {
+    await sendInvoiceEmail(invoice({ vendor: payable }), 'accounts@example.com', 'Subject', 'Body', undefined, undefined, {
+      paymentLinkFooter: '',
+    })
+
+    expect(sentPayload().text).toBe('Body')
+  })
+
+  it('still works out the P.S. for this invoice when none is given', async () => {
+    await sendInvoiceEmail(invoice({ vendor: payable }), 'accounts@example.com', 'Subject', 'Body')
+
+    expect(String(sentPayload().text)).toMatch(/^Body\n\nP\.S\. You can also pay this online by card or PayPal: https:\/\/management\.orangejelly\.co\.uk\/invoice-portal\//)
+  })
+
+  it('attaches every extra invoice alongside its own PDF', async () => {
+    const extra = { name: 'invoice-INV-003WG.pdf', contentType: 'application/pdf', buffer: Buffer.from('second-pdf') }
+
+    await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body', undefined, [extra], {
+      emailKind: 'reminder_combined',
+    })
+
+    expect(sentPayload().attachments).toEqual([
+      { name: 'invoice-INV-003WD.pdf', contentType: 'application/pdf', content: PDF_BYTES },
+      { name: 'invoice-INV-003WG.pdf', contentType: 'application/pdf', content: Buffer.from('second-pdf') },
+    ])
+  })
+})
