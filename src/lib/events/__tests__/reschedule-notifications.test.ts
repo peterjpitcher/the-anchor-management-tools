@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { assertCleanText } from '../../../../tests/mocks/emailRenderChecks'
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
@@ -16,7 +16,9 @@ vi.mock('@/lib/logger', () => ({
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createEventManageToken } from '@/lib/events/manage-booking'
 import { sendSMS } from '@/lib/twilio'
-import { dispatchEventRescheduleNotifications } from '../reschedule-notifications'
+import { dispatchEventPostponedNotifications, dispatchEventRescheduleNotifications, resolveRescheduledHoldExpiry } from '../reschedule-notifications'
+import { sendEventPostponedEmail, sendEventRescheduledEmail } from '@/lib/email/event-ticket-emails'
+import { logAuditEvent } from '@/app/actions/audit'
 
 type UpdateRecord = { table: string; payload: Record<string, unknown> }
 
@@ -33,8 +35,7 @@ function makeDb(bookings: Array<Record<string, unknown>>) {
       update: vi.fn((payload: Record<string, unknown>) => {
         updates.push({ table, payload })
         return {
-          in: vi.fn().mockReturnValue({
-            lt: vi.fn().mockResolvedValue({ error: null }),
+          eq: vi.fn().mockReturnValue({
             eq: vi.fn().mockResolvedValue({ error: null }),
           }),
         }
@@ -50,6 +51,8 @@ const PENDING_BOOKING = {
   customer_id: 'customer-1',
   seats: 2,
   status: 'pending_payment',
+  // A 15-minute website checkout hold, still live at the fixed clock below.
+  hold_expires_at: '2026-09-10T12:15:00.000Z',
   customers: {
     id: 'customer-1',
     first_name: 'Pat',
@@ -67,10 +70,57 @@ describe('event reschedule notifications', () => {
       expiresAt: '2026-09-23T18:00:00.000Z',
     })
     vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM1' } as Awaited<ReturnType<typeof sendSMS>>)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-10T12:00:00.000Z'))
   })
 
-  it('extends an unpaid hold to the London instant of the new start, not the server clock reading', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  // BK-140: a live unpaid hold gets 24 hours' grace after a move, not the whole run to the new
+  // start, and the booking, its hold row and its linked table booking all get the same value.
+  it('gives a live unpaid hold 24 hours of grace instead of holding the seats until the night', async () => {
     const { db, updates } = makeDb([PENDING_BOOKING])
+    vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await dispatchEventRescheduleNotifications({
+      eventId: 'event-1',
+      eventName: 'Quiz Night',
+      oldDate: '2026-09-16',
+      oldTime: '19:00',
+      newDate: '2026-09-23',
+      newTime: '19:00',
+      userId: 'user-1',
+    })
+
+    expect(updates).toEqual([
+      { table: 'bookings', payload: { hold_expires_at: '2026-09-11T12:00:00.000Z' } },
+      { table: 'booking_holds', payload: { expires_at: '2026-09-11T12:00:00.000Z' } },
+      { table: 'table_bookings', payload: { hold_expires_at: '2026-09-11T12:00:00.000Z' } },
+    ])
+  })
+
+  it('leaves a hold that has already lapsed alone', async () => {
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-09-10T11:45:00.000Z' }])
+    vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+    await dispatchEventRescheduleNotifications({
+      eventId: 'event-1',
+      eventName: 'Quiz Night',
+      oldDate: '2026-09-16',
+      oldTime: '19:00',
+      newDate: '2026-09-23',
+      newTime: '19:00',
+      userId: 'user-1',
+    })
+
+    expect(updates).toEqual([])
+  })
+
+  it('caps the grace at the London instant of the new start, not the server clock reading', async () => {
+    vi.setSystemTime(new Date('2026-09-23T09:00:00.000Z'))
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-09-23T09:15:00.000Z' }])
     vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
 
     await dispatchEventRescheduleNotifications({
@@ -88,6 +138,7 @@ describe('event reschedule notifications', () => {
     expect(updates).toEqual([
       { table: 'bookings', payload: { hold_expires_at: '2026-09-23T18:00:00.000Z' } },
       { table: 'booking_holds', payload: { expires_at: '2026-09-23T18:00:00.000Z' } },
+      { table: 'table_bookings', payload: { hold_expires_at: '2026-09-23T18:00:00.000Z' } },
     ])
   })
 
@@ -132,7 +183,8 @@ describe('event reschedule notifications', () => {
   })
 
   it('handles a new start just after midnight', async () => {
-    const { db, updates } = makeDb([PENDING_BOOKING])
+    vi.setSystemTime(new Date('2026-10-31T23:00:00.000Z'))
+    const { db, updates } = makeDb([{ ...PENDING_BOOKING, hold_expires_at: '2026-10-31T23:15:00.000Z' }])
     vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
 
     await dispatchEventRescheduleNotifications({
@@ -150,5 +202,90 @@ describe('event reschedule notifications', () => {
     expect(body).toContain('Sun 1 Nov at 12:15am')
     // 00:15 on 1 November 2026 is after the clocks went back, so London is on UTC.
     expect(updates[0].payload).toEqual({ hold_expires_at: '2026-11-01T00:15:00.000Z' })
+  })
+
+  it('shortens a hold that would outlast a night moved earlier', () => {
+    const now = Date.parse('2026-09-10T12:00:00.000Z')
+    expect(resolveRescheduledHoldExpiry('2026-09-20T12:00:00.000Z', '2026-09-12T18:00:00.000Z', now)).toBe('2026-09-12T18:00:00.000Z')
+    expect(resolveRescheduledHoldExpiry('2026-09-11T20:00:00.000Z', '2026-09-30T18:00:00.000Z', now)).toBeNull()
+    expect(resolveRescheduledHoldExpiry(null, '2026-09-30T18:00:00.000Z', now)).toBeNull()
+  })
+})
+
+// BK-089: every guest hears about a postponement, and only a send that went through counts.
+describe('event postponed notifications', () => {
+  function postponedDb(bookings: Array<Record<string, unknown>>) {
+    return {
+      from: vi.fn((table: string) => ({
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockReturnValue(table === 'events'
+            ? { maybeSingle: vi.fn().mockResolvedValue({ data: { date: '2026-11-20', time: '19:00', start_datetime: null, payment_mode: 'prepaid' }, error: null }) }
+            : { in: vi.fn().mockResolvedValue({ data: bookings, error: null }) }),
+        }),
+      })),
+    }
+  }
+  const guest = (id: string, mobile: string | null, smsStatus: string | null = 'active') => ({
+    id, status: 'confirmed', customers: { id: `customer-${id}`, first_name: 'Sam', mobile_number: mobile, sms_status: smsStatus },
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: 'SM1' } as Awaited<ReturnType<typeof sendSMS>>)
+  })
+
+  it('emails who it can, texts who it cannot email, and lists who neither reached', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(postponedDb([
+      guest('emailed', '+447700900001'),
+      guest('texted', '+447700900002'),
+      guest('nobody', null, null),
+    ]) as unknown as ReturnType<typeof createAdminClient>)
+    vi.mocked(sendEventPostponedEmail).mockImplementation(async (_db, input) =>
+      input.bookingId === 'emailed' ? { success: true, messageId: 'e1' } : { success: false, skipped: true })
+
+    const result = await dispatchEventPostponedNotifications({ eventId: 'event-1', eventName: 'Tinsel and Tipples', userId: 'user-1' })
+
+    expect(result).toEqual({ bookingsNotified: 2, totalBookingsAffected: 3, notReachedBookingIds: ['nobody'] })
+    expect(sendSMS).toHaveBeenCalledTimes(1)
+    const [to, body] = vi.mocked(sendSMS).mock.calls[0]
+    expect(to).toBe('+447700900002')
+    assertCleanText(body)
+    expect(body).toBe('The Anchor: Hi Sam, Tinsel and Tipples on Fri 20 Nov at 7pm has been postponed. Your booking carries over to the new date and we will let you know as soon as it is set. If the new date does not suit you, call 01753 682707 and we will refund you.')
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'postpone',
+      operation_status: 'failure',
+      additional_info: expect.objectContaining({ bookings_notified: 2, not_reached_booking_ids: ['nobody'] }),
+    }))
+  })
+
+  it('does not count a text that failed', async () => {
+    vi.mocked(createAdminClient).mockReturnValue(postponedDb([guest('texted', '+447700900002')]) as unknown as ReturnType<typeof createAdminClient>)
+    vi.mocked(sendEventPostponedEmail).mockResolvedValue({ success: false, skipped: true })
+    vi.mocked(sendSMS).mockResolvedValue({ success: false, error: 'quiet hours' } as Awaited<ReturnType<typeof sendSMS>>)
+    const result = await dispatchEventPostponedNotifications({ eventId: 'event-1', eventName: 'Quiz Night', userId: 'user-1' })
+    expect(result.bookingsNotified).toBe(0)
+    expect(result.notReachedBookingIds).toEqual(['texted'])
+  })
+})
+
+describe('event reschedule counts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(createEventManageToken).mockResolvedValue({ rawToken: 't', url: 'https://management.orangejelly.co.uk/g/t/manage-booking', expiresAt: '2026-09-23T18:00:00.000Z' })
+  })
+
+  it('counts an emailed guest as told and a failed text as not (BK-089)', async () => {
+    const confirmed = (id: string) => ({ ...PENDING_BOOKING, id, status: 'confirmed', hold_expires_at: null })
+    const { db } = makeDb([confirmed('emailed'), confirmed('failed-text')])
+    vi.mocked(createAdminClient).mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    vi.mocked(sendEventRescheduledEmail).mockImplementation(async (_db, input) =>
+      input.bookingId === 'emailed' ? { success: true } : { success: false, skipped: true })
+    vi.mocked(sendSMS).mockResolvedValue({ success: false, error: 'blocked' } as Awaited<ReturnType<typeof sendSMS>>)
+
+    const result = await dispatchEventRescheduleNotifications({
+      eventId: 'event-1', eventName: 'Quiz Night', oldDate: '2026-09-16', oldTime: '19:00', newDate: '2026-09-23', newTime: '19:00', userId: 'user-1',
+    })
+
+    expect(result).toEqual({ bookingsNotified: 1, totalBookingsAffected: 2, notReachedBookingIds: ['failed-text'] })
   })
 })

@@ -1,12 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import {
-  sendEventPaymentConfirmationSms,
-  sendEventPaymentManualReviewSms,
-} from '@/lib/events/event-payments'
-import {
-  sendEventPaymentConfirmationEmail,
-  sendEventPaymentManualReviewEmail,
-} from '@/lib/email/event-ticket-emails'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import { reconcileEventRefund } from '@/lib/events/refund-reconciliation'
 import { recordEventPayPalRefund } from '@/lib/events/paypal-webhook-refund'
 import { readPayPalRefundResource } from '@/lib/paypal-refund-resource'
@@ -177,34 +170,20 @@ export async function handleEventBookingCapture(
   let responseState = state
   let responseStatus = 200
 
-  if (state === 'confirmed') {
-    await sendEventPaymentConfirmationSms(supabase, {
+  // Email first, a text only when no email goes (BK-167, owner decision D14).
+  if (state === 'confirmed' || state === 'already_confirmed') {
+    await notifyEventPaymentOutcome(supabase, {
       bookingId,
-      eventName: 'your event',
-      seats: 1,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
-    })
-    await sendEventPaymentConfirmationEmail(supabase, {
-      bookingId,
+      outcome: 'confirmed',
       amount,
       currency,
       appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
-    })
-  } else if (state === 'already_confirmed') {
-    await sendEventPaymentConfirmationEmail(supabase, {
-      bookingId,
-      amount,
-      currency,
-      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+      // A repeat confirmation re-checks the email only: a text cannot be de-duplicated the same way.
+      textAllowed: state === 'confirmed',
     })
   } else {
     // manual_review, blocked, and anything unexpected all need a human, never a silent ack.
-    await sendEventPaymentManualReviewSms(supabase, { bookingId })
-    await sendEventPaymentManualReviewEmail(supabase, {
-      bookingId,
-      amount,
-      currency,
-    })
+    await notifyEventPaymentOutcome(supabase, { bookingId, outcome: 'manual_review', amount, currency })
     await recordManualReviewAudit(supabase, {
       bookingId,
       eventId,

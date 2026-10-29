@@ -40,9 +40,31 @@ export function expectedLongDate(isoDate: string): string {
   return `${WEEKDAYS[weekday - 1]} ${day} ${MONTHS[month - 1]} ${year}`
 }
 
+/**
+ * Wording that means a value was missing when the message was built (BK-221): a broken value, a
+ * zero amount in any form ("£0", "£0.00", "GBP 0"), a fallback that stands in for a time we did
+ * not have, a doubled deposit label, and a greeting that fell back to "there" with no "Hi".
+ * A real amount under a pound ("£0.50") is allowed.
+ */
+export const BROKEN_MESSAGE_PATTERNS: RegExp[] = [
+  /undefined|Invalid Date|NaN|\bnull\b/,
+  /£\s?0(?:\.0+)?(?![\d.])/,
+  /\bGBP\s?0(?:\.0+)?(?![\d.])/,
+  /your booking time/i,
+  /your event time/i,
+  /deposit of the deposit/i,
+  /(?:^|[:.!?]\s+)there,/i,
+]
+
+function expectNoBrokenValues(value: string): void {
+  for (const pattern of BROKEN_MESSAGE_PATTERNS) {
+    expect(value).not.toMatch(pattern)
+  }
+}
+
 export function assertCleanRender(email: { subject: string; html: string; text: string }): void {
   for (const part of [email.subject, email.html, email.text]) {
-    expect(part).not.toMatch(/undefined|Invalid Date|NaN|£0\.00|\bnull\b/)
+    expectNoBrokenValues(part)
     expectNoBannedDashes(part)
   }
   // The venue number, readable and dialable, and the sign-off every booking email carries.
@@ -53,6 +75,15 @@ export function assertCleanRender(email: { subject: string; html: string; text: 
 
 /** A text message body: no broken values, no banned dashes. */
 export function assertCleanText(body: string): void {
-  expect(body).not.toMatch(/undefined|Invalid Date|NaN|£0\.00|\bnull\b/)
+  expectNoBrokenValues(body)
   expectNoBannedDashes(body)
+}
+
+/**
+ * A text message body that must also stay in the GSM-7 alphabet: no curly quotes or other
+ * characters that switch the message to UCS-2 and cut each segment from 160 characters to 70.
+ */
+export function assertCleanGsmText(body: string): void {
+  assertCleanText(body)
+  expect(body).toMatch(/^[A-Za-z0-9 \n\r@£$¥!"#%&'()*+,\-./:;<=>?_¡¿ÄÅÆÇÉÑÖØÜßàäåæèéìñòöøùü§]*$/)
 }

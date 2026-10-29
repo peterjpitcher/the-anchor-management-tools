@@ -9,12 +9,26 @@ import { sendSMS } from '@/lib/twilio';
 import { buildEventCancelledSms, buildRefundNote } from '@/lib/sms/templates';
 import { processEventRefund, type EventRefundResult } from '@/lib/events/manage-booking';
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts';
+import { alertMoneyNeedsAPerson, formatPounds } from '@/lib/money-alerts';
 import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails';
 import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
+import {
+  AUDITED_EVENT_FIELDS,
+  assessEventChange,
+  EMPTY_EVENT_BOOKING_IMPACT,
+  EVENT_PAYMENT_MODE_LOCKED_MESSAGE,
+  describeSeatedMoveRefusal,
+  isSeatedBookingMode,
+  loadEventBookingImpact,
+  type EventBookingImpact,
+  type EventChangeSnapshot,
+  type EventPaymentModeValue,
+} from '@/lib/events/event-change-guard';
+import { resolveEventPaymentMode } from '@/lib/events/pricing';
 
 // Waitlist rows still open when an event is cancelled. These must be values the tables' status
 // checks allow (supabase/migrations/20260420000003_bookings_v05_foundations.sql): the cascade
@@ -43,6 +57,33 @@ function getSupabaseErrorMessage(error: unknown): string {
   } catch {
     return String(error);
   }
+}
+
+/**
+ * An event edit that would change something for guests already booked. The action returns the
+ * lines to the drawer, which shows them in a confirm dialog and saves again once a manager agrees
+ * (BK-026, BK-036).
+ */
+export class EventChangeNeedsConfirmationError extends Error {
+  constructor(public readonly confirmations: string[], public readonly impact: EventBookingImpact) {
+    super('Confirm this change before it is saved.')
+    this.name = 'EventChangeNeedsConfirmationError'
+  }
+}
+
+/** An event edit that may not be made at all, with the reason staff are shown. */
+export class EventChangeBlockedError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'EventChangeBlockedError'
+  }
+}
+
+export type UpdateEventOptions = {
+  /** A manager has read and confirmed the summary of who the change affects. */
+  confirmedChanges?: boolean
+  /** Set only by the Cancel event and Postpone event actions, which confirm first (D8). */
+  lifecycleAction?: boolean
 }
 
 export type CreateEventInput = {
@@ -627,7 +668,7 @@ export class EventService {
     return { ...savedEvent, marketingLinksWarning };
   }
 
-  static async updateEvent(id: string, input: UpdateEventInput) {
+  static async updateEvent(id: string, input: UpdateEventInput, options: UpdateEventOptions = {}) {
     const supabase = await createClient();
 
     const { data: currentEvent, error: currentEventError } = await supabase
@@ -650,7 +691,12 @@ export class EventService {
         payment_mode,
         booking_mode,
         seated_capacity,
-        standing_capacity
+        standing_capacity,
+        capacity,
+        end_time,
+        bookings_enabled,
+        booking_cutoff_at,
+        online_discount_ends_at
       `)
       .eq('id', id)
       .maybeSingle()
@@ -782,8 +828,63 @@ export class EventService {
       payment_mode: nextPaymentMode,
     })
 
+    // Who this change affects, and whether it may go ahead, needs a manager to confirm, or is
+    // refused (BK-026, BK-027, BK-036, BK-073; owner decisions D8 and D9). The counts are read
+    // only when a field that matters to booked guests changes.
+    const currentPaymentMode = resolveEventPaymentMode(currentEvent) as EventPaymentModeValue
+    const currentPrice = Number(currentEvent.price ?? 0)
+    const nextCapacity = nextBookingMode === 'general' && input.capacity !== undefined ? (input.capacity ?? null) : null
+    const nextEndTime = input.end_time === undefined ? undefined : input.end_time
+    const touchesGuests =
+      nextDate !== currentEvent.date ||
+      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
+      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5)) ||
+      nextStatus !== currentEvent.event_status ||
+      pricing.payment_mode !== currentPaymentMode ||
+      Number(pricing.price ?? 0) !== currentPrice ||
+      (nextCapacity !== null && nextCapacity !== currentEvent.capacity)
+    const impact = touchesGuests ? await loadEventBookingImpact(createAdminClient(), id) : EMPTY_EVENT_BOOKING_IMPACT
+    const assessment = assessEventChange({
+      current: {
+        date: currentEvent.date,
+        time: currentEvent.time,
+        end_time: currentEvent.end_time,
+        event_status: currentEvent.event_status,
+        payment_mode: currentPaymentMode,
+        price: currentPrice,
+        capacity: currentEvent.capacity,
+        booking_mode: currentBookingMode,
+        booking_cutoff_at: currentEvent.booking_cutoff_at,
+        online_discount_ends_at: currentEvent.online_discount_ends_at,
+      },
+      next: {
+        date: nextDate,
+        time: nextTime,
+        end_time: nextEndTime,
+        event_status: nextStatus,
+        payment_mode: pricing.payment_mode as EventPaymentModeValue,
+        price: Number(pricing.price ?? 0),
+        capacity: nextCapacity,
+      },
+      impact,
+      // BK-073: move_event_seated_bookings_v01 takes the tables and seats to the new time.
+      seatedBookingsMoveWithEvent: true,
+      lifecycleAction: options.lifecycleAction === true,
+    })
+    if (assessment.blockers.length > 0) {
+      throw new EventChangeBlockedError(assessment.blockers.join(' '))
+    }
+    if (assessment.confirmations.length > 0 && options.confirmedChanges !== true) {
+      throw new EventChangeNeedsConfirmationError(assessment.confirmations, impact)
+    }
+
+    // A night moved back from cancelled reopens for bookings. The cancellation closed booking_open
+    // and nothing opened it again, so every channel kept refusing (BK-035).
+    const reopensBookings = currentEvent.event_status === 'cancelled' && nextStatus !== 'cancelled'
+
     const eventData = {
       ...input,
+      ...(reopensBookings ? { booking_open: true } : {}),
       ...(requestedBookingMode !== undefined ? { booking_mode: requestedBookingMode } : {}),
       price: pricing.price,
       online_discount_type: pricing.online_discount_type,
@@ -793,25 +894,71 @@ export class EventService {
       slug, // might be undefined, handled by COALESCE in SQL
       ...(forcePromoSmsDisabled ? { promo_sms_enabled: false } : {})
     };
+    const faqs = input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace
 
-    // Execute RPC. The function is server-only (BK-105), so it runs through the service-role client; the updateEvent
-    // action has already checked events manage.
-    const { data: event, error } = await createAdminClient().rpc('update_event_transaction', {
-      p_event_id: id,
-      p_event_data: eventData,
-      p_faqs: input.faqs !== undefined ? input.faqs : null // null = preserve existing; array = replace
-    });
-
-    if (error) {
-      logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
+    const describeUpdateError = (error: unknown): Error => {
       const message = getSupabaseErrorMessage(error)
       if (message.includes('standing_capacity_below_bookings')) {
-        throw new Error('The standing ticket limit cannot be lower than the standing tickets already reserved.')
+        return new Error('The standing ticket limit cannot be lower than the standing tickets already reserved.')
       }
       if (message.includes('event_mode_has_active_bookings')) {
-        throw new Error('Cannot change booking mode while this event has active bookings.')
+        return new Error('Cannot change booking mode while this event has active bookings.')
       }
-      throw new Error('Failed to update event');
+      if (message.includes('event_payment_mode_locked')) {
+        return new EventChangeBlockedError(EVENT_PAYMENT_MODE_LOCKED_MESSAGE)
+      }
+      return new Error('Failed to update event')
+    }
+
+    // BK-073: a seated night's tables and communal seats move with it. One database call moves
+    // the event's date and time and every linked seat, then saves the rest of this edit through
+    // update_event_transaction, in one transaction: if any booking does not fit, or the rest of
+    // the edit is refused, nothing changes at all (review on PR 280).
+    const startMoves =
+      nextDate !== currentEvent.date ||
+      String(nextTime ?? '').slice(0, 5) !== String(currentEvent.time ?? '').slice(0, 5) ||
+      (nextEndTime !== undefined && String(nextEndTime ?? '').slice(0, 5) !== String(currentEvent.end_time ?? '').slice(0, 5))
+    const seatedMove = startMoves && impact.seatedBookings > 0 && isSeatedBookingMode(currentBookingMode)
+
+    let event: Record<string, any>
+    if (seatedMove) {
+      const { data: moveResult, error: moveError } = await createAdminClient().rpc('move_event_seated_bookings_v01', {
+        p_event_id: id,
+        p_new_date: nextDate,
+        p_new_time: String(nextTime ?? '').slice(0, 5),
+        ...(nextEndTime ? { p_new_end_time: String(nextEndTime).slice(0, 5) } : {}),
+        ...(typeof input.duration_minutes === 'number' ? { p_new_duration_minutes: input.duration_minutes } : {}),
+        p_event_data: eventData,
+        p_faqs: faqs,
+      })
+      if (moveError) {
+        logger.error('Moving an event with its seated bookings failed', {
+          error: new Error(getSupabaseErrorMessage(moveError)),
+          metadata: { eventId: id },
+        })
+        const described = describeUpdateError(moveError)
+        if (described.message !== 'Failed to update event') throw described
+        throw new EventChangeBlockedError('The seated bookings could not be moved to the new time, so nothing has changed. Try again, or ask for help moving them.')
+      }
+      const moved = (moveResult ?? {}) as { state?: string; reason?: unknown; bookings?: unknown; event?: Record<string, any> | null }
+      if (moved.state !== 'moved' || !moved.event) {
+        throw new EventChangeBlockedError(describeSeatedMoveRefusal(moved))
+      }
+      event = moved.event
+    } else {
+      // Execute RPC. The function is server-only (BK-105), so it runs through the service-role
+      // client; the updateEvent action has already checked events manage.
+      const { data: updated, error } = await createAdminClient().rpc('update_event_transaction', {
+        p_event_id: id,
+        p_event_data: eventData,
+        p_faqs: faqs,
+      });
+
+      if (error) {
+        logger.error('Update event transaction error', { error: error instanceof Error ? error : new Error(String(error)) });
+        throw describeUpdateError(error)
+      }
+      event = updated as Record<string, any>
     }
 
     const discountEvent = await updateEventOnlineDiscountFields(id, {
@@ -835,8 +982,16 @@ export class EventService {
       marketingLinksWarning = 'Event saved but marketing links failed to generate. You can retry from the event detail page.'
     }
 
+    const before: EventChangeSnapshot = {}
+    for (const field of AUDITED_EVENT_FIELDS) {
+      before[field] = (currentEvent as Record<string, unknown>)[field] ?? null
+    }
+
     return {
       ...savedEvent,
+      _before: before,
+      _impact: impact,
+      _warnings: assessment.warnings,
       _oldDate: currentEvent.date as string | null,
       _oldTime: currentEvent.time as string | null,
       _oldName: currentEvent.name as string | null,
@@ -1142,6 +1297,9 @@ export class EventService {
     let refundsProcessed = 0
     let refundsFailed = 0
     let customersNotified = 0
+    // Tickets paid at the bar, in cash or on the card terminal, cannot go back through PayPal; a
+    // person hands the money back and records it (BK-135). Listed in the job result and the alert.
+    const barRefundsOwed: EventCancellationResult['barRefundsOwed'] = []
 
     // 1. Fetch the bookings to cancel, and the payments to refund, before anything changes.
     // Both reads used to ignore their errors: a failed bookings read looked like "no bookings",
@@ -1162,19 +1320,51 @@ export class EventService {
     }
 
     const candidateIds = (bookingRows ?? []).map((b) => b.id)
-    let payments: Array<{ id: string; event_booking_id: string | null; amount: number | null; status: string | null }> = []
+    let payments: Array<{
+      id: string
+      event_booking_id: string | null
+      amount: number | null
+      status: string | null
+      payment_provider: string | null
+      payment_method: string | null
+    }> = []
+    // What has already gone back, by the payment it came from, so each payment is asked only for
+    // what it still holds (BK-136). Asking for the original amount after a partial refund made
+    // PayPal return the remainder, and the result read as a failed refund.
+    const refundedByPayment = new Map<string, number>()
+    const unattributedRefundsByBooking = new Map<string, number>()
     if (candidateIds.length > 0) {
-      const { data: paymentRows, error: paymentsError } = await db
-        .from('payments')
-        .select('id, event_booking_id, amount, status')
-        .in('event_booking_id', candidateIds)
-        .in('charge_type', ['prepaid_event', 'seat_increase'])
-        .in('status', ['succeeded', 'partially_refunded'])
+      const [{ data: paymentRows, error: paymentsError }, { data: refundRows, error: refundsError }] = await Promise.all([
+        db
+          .from('payments')
+          .select('id, event_booking_id, amount, status, payment_provider, payment_method')
+          .in('event_booking_id', candidateIds)
+          .in('charge_type', ['prepaid_event', 'seat_increase'])
+          .in('status', ['succeeded', 'partially_refunded']),
+        db
+          .from('payments')
+          .select('event_booking_id, amount, metadata')
+          .in('event_booking_id', candidateIds)
+          .eq('charge_type', 'refund')
+          .in('status', ['refunded', 'pending', 'succeeded']),
+      ])
 
       if (paymentsError) {
         throw new Error(`Could not read the payments for the cancelled event, so no booking was cancelled: ${paymentsError.message}`)
       }
+      if (refundsError) {
+        throw new Error(`Could not read the refunds for the cancelled event, so no booking was cancelled: ${refundsError.message}`)
+      }
       payments = paymentRows ?? []
+      for (const refund of refundRows ?? []) {
+        const amount = Math.max(0, Number(refund.amount ?? 0))
+        const source = (refund.metadata as Record<string, unknown> | null)?.['source_payment_id']
+        if (typeof source === 'string' && source) {
+          refundedByPayment.set(source, (refundedByPayment.get(source) ?? 0) + amount)
+        } else if (refund.event_booking_id) {
+          unattributedRefundsByBooking.set(refund.event_booking_id, (unattributedRefundsByBooking.get(refund.event_booking_id) ?? 0) + amount)
+        }
+      }
     }
 
     const paidBookingIds = new Set(payments.map((payment) => payment.event_booking_id).filter(Boolean))
@@ -1201,11 +1391,14 @@ export class EventService {
           .in('status', [...OPEN_WAITLIST_OFFER_STATUSES]),
         { table: 'waitlist_offers', what: 'Cancelling waitlist offers for the cancelled event', ids: { eventId } }
       )
-      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
+      return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, barRefundsOwed }
     }
 
-    // Track refund results per booking for SMS/email
-    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number }>()
+    // Track refund results per booking for SMS/email. amount and status are what PayPal returned;
+    // barAmount is money taken at the bar that a person hands back, kept apart so a guest who paid
+    // £80 online and £45 at the bar is not told to collect £125 at the bar (review finding on PR
+    // 277). partOfPayment is set when only the rest of a partly refunded payment went back.
+    const refundResults = new Map<string, { status: EventRefundResult['status']; amount: number; barAmount: number; partOfPayment: boolean }>()
 
     // 2. Cancel each booking, release its holds and tables, then refund it straight away, so a
     // failure part way through never leaves a cancelled booking that nobody will refund.
@@ -1265,14 +1458,33 @@ export class EventService {
         continue
       }
 
-      // 3. Refund this booking's payments.
+      // 3. Refund this booking's payments: what each still holds, never its original amount.
+      // Refunds recorded without a source payment come off the booking's payments in order.
+      let unattributed = unattributedRefundsByBooking.get(booking.id) ?? 0
       for (const payment of payments.filter((row) => row.event_booking_id === booking.id)) {
+        const paymentAmount = Math.max(0, Number(payment.amount ?? 0))
+        let stillHeld = Math.max(0, paymentAmount - (refundedByPayment.get(payment.id) ?? 0))
+        const fromUnattributed = Math.min(stillHeld, unattributed)
+        stillHeld = Math.round((stillHeld - fromUnattributed) * 100) / 100
+        unattributed -= fromUnattributed
+        const partOfPayment = stillHeld + 0.004 < paymentAmount
+        const existing = refundResults.get(booking.id) ?? { status: 'succeeded' as EventRefundResult['status'], amount: 0, barAmount: 0, partOfPayment: false }
+        existing.partOfPayment = existing.partOfPayment || partOfPayment
+        refundResults.set(booking.id, existing)
+        if (stillHeld <= 0) continue
+
+        if (payment.payment_provider === 'manual') {
+          barRefundsOwed.push({ bookingId: booking.id, paymentId: payment.id, amount: stillHeld, method: payment.payment_method ?? null })
+          existing.barAmount = Math.round((existing.barAmount + stillHeld) * 100) / 100
+          continue
+        }
+
         try {
           const refundResult = await processEventRefund(db, {
             bookingId: booking.id,
             customerId: customer?.id || '',
             eventId,
-            amount: Number(payment.amount ?? 0),
+            amount: stillHeld,
             reason: 'event_cancelled',
             sourcePaymentId: payment.id,
             // One refund per payment: a retried job replays it rather than refunding twice.
@@ -1286,20 +1498,18 @@ export class EventService {
               bookingId: booking.id,
               kind: 'refund_failed',
               reason: refundResult.reason ?? refundResult.status,
-              amount: Number(payment.amount ?? 0),
+              amount: stillHeld,
               source: 'whole event cancellation',
             })
           }
-          const existing: { status: EventRefundResult['status']; amount: number } =
-            refundResults.get(booking.id) ?? { status: 'succeeded', amount: 0 }
-          existing.amount += refundResult.amount
+          existing.amount = Math.round((existing.amount + refundResult.amount) * 100) / 100
           if (refundResult.status !== 'succeeded') {
             existing.status = refundResult.status
           }
-          refundResults.set(booking.id, existing)
         } catch (err) {
           refundsFailed++
-          refundResults.set(booking.id, { status: 'failed', amount: Math.max(0, Number(payment.amount || 0)) })
+          existing.status = 'failed'
+          existing.amount = Math.round((existing.amount + stillHeld) * 100) / 100
           logger.error('Failed to process refund during event cancellation', {
             error: err instanceof Error ? err : new Error(String(err)),
             metadata: { paymentId: payment.id, bookingId: booking.id, eventId }
@@ -1308,7 +1518,7 @@ export class EventService {
             bookingId: booking.id,
             kind: 'refund_failed',
             reason: err instanceof Error ? err.message.slice(0, 200) : 'the refund threw',
-            amount: Number(payment.amount ?? 0),
+            amount: stillHeld,
             source: 'whole event cancellation',
           })
         }
@@ -1317,8 +1527,13 @@ export class EventService {
 
     const uncancelledBookingIds = new Set(failedBookingIds)
 
-    // 4. Send cancellation SMS
+    if (barRefundsOwed.length > 0) {
+      await alertBarRefundsOwed(db, { eventId, eventName, owed: barRefundsOwed })
+    }
+
+    // 4. Tell each guest, by email and text
     const formattedDate = formatEventDateForSms(eventDate, eventTime)
+    const reachedBookingIds = new Set<string>()
 
     for (const booking of bookings) {
       if (uncancelledBookingIds.has(booking.id)) continue
@@ -1329,16 +1544,28 @@ export class EventService {
         sms_status: string | null
       }
       const refundResult = refundResults.get(booking.id)
+      const barAmount = refundResult?.barAmount ?? 0
+      // Paid only at the bar: the refund sentence is the bar one. Paid both ways: the PayPal
+      // sentence, then what is handed back at the bar.
+      const barOnly = barAmount > 0 && (refundResult?.amount ?? 0) <= 0
       // A booking with no payment row took no money, so it gets no refund sentence at all.
       // Passing 0 here is what told guests who had never paid "Refund amount: £0.00".
-      await sendEventBookingCancelledEmail(db, {
+      // Only a send that went through counts as telling the guest (BK-089): emails were never
+      // counted and failed texts were.
+      const emailResult = await sendEventBookingCancelledEmail(db, {
         bookingId: booking.id,
-        refundStatus: refundResult?.status ?? null,
-        refundAmount: refundResult?.amount ?? null,
+        refundStatus: barOnly ? 'bar_refund_due' : (refundResult?.status ?? null),
+        refundAmount: barOnly ? barAmount : (refundResult?.amount ?? null),
         currency: 'GBP',
         reason: 'event_cancelled',
-        paymentTaken: Boolean(refundResult)
+        paymentTaken: Boolean(refundResult),
+        refundIsRestOfPayment: refundResult?.partOfPayment === true,
+        ...(barAmount > 0 && !barOnly ? { barRefundAmount: barAmount } : {})
       })
+      if (emailResult?.success === true) reachedBookingIds.add(booking.id)
+      // An email held back because its send log could not be read may already have gone, so no
+      // text follows it either (the email sender fails closed with deferred: true).
+      if ((emailResult as { deferred?: boolean } | null | undefined)?.deferred === true) continue
 
       if (!customer?.sms_status || customer.sms_status !== 'active' || !customer.mobile_number) continue
 
@@ -1346,8 +1573,11 @@ export class EventService {
         const isPrepaid = !!refundResult
         const refundNote = buildRefundNote({
           isPrepaid,
-          refundSucceeded: refundResult?.status === 'succeeded',
-          refundAmount: refundResult?.amount ?? null
+          refundSucceeded: refundResult?.status === 'succeeded' || refundResult?.status === 'pending',
+          refundAmount: barOnly ? barAmount : (refundResult?.amount ?? null),
+          restOfPayment: refundResult?.partOfPayment === true,
+          returnedAtBar: barOnly,
+          ...(barAmount > 0 && !barOnly ? { barRefundAmount: barAmount } : {})
         })
 
         const smsBody = buildEventCancelledSms({
@@ -1357,7 +1587,7 @@ export class EventService {
           refundNote
         })
 
-        await sendSMS(customer.mobile_number, smsBody, {
+        const smsResult = await sendSMS(customer.mobile_number, smsBody, {
           customerId: customer.id,
           metadata: {
             template_key: 'event_cancelled',
@@ -1365,7 +1595,7 @@ export class EventService {
             event_booking_id: booking.id
           }
         })
-        customersNotified++
+        if (smsResult?.success === true) reachedBookingIds.add(booking.id)
       } catch (err) {
         logger.error('Failed to send cancellation SMS', {
           error: err instanceof Error ? err : new Error(String(err)),
@@ -1408,7 +1638,12 @@ export class EventService {
       })
     }
 
-    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified }
+    customersNotified = reachedBookingIds.size
+    const notReachedBookingIds = bookings
+      .map((booking) => booking.id)
+      .filter((id) => !uncancelledBookingIds.has(id) && !reachedBookingIds.has(id))
+
+    return { bookingsCancelled, bookingsFailed, failedBookingIds, refundsProcessed, refundsFailed, customersNotified, notReachedBookingIds, barRefundsOwed }
   }
 }
 
@@ -1419,7 +1654,43 @@ export interface EventCancellationResult {
   failedBookingIds: string[]
   refundsProcessed: number
   refundsFailed: number
+  /** Bookings whose guest an email or text really reached (BK-089). */
   customersNotified: number
+  /** Cancelled bookings no email or text reached, so staff must ring them (BK-089). */
+  notReachedBookingIds?: string[]
+  /** Tickets paid at the bar that a person must hand back (BK-135). Ids and amounts only. */
+  barRefundsOwed: Array<{ bookingId: string; paymentId: string; amount: number; method: string | null }>
+}
+
+/**
+ * One manager alert per cancelled event listing the bar payments to hand back (BK-135). Ids,
+ * amounts and methods only. Never throws.
+ */
+async function alertBarRefundsOwed(
+  db: ReturnType<typeof createAdminClient>,
+  input: { eventId: string; eventName: string; owed: EventCancellationResult['barRefundsOwed'] }
+): Promise<void> {
+  try {
+    const total = Math.round(input.owed.reduce((sum, row) => sum + row.amount, 0) * 100) / 100
+    const methodText = (method: string | null) => (method === 'card_terminal' ? 'card' : method === 'cash' ? 'cash' : 'at the bar')
+    await alertMoneyNeedsAPerson(db, {
+      domain: 'event_bookings',
+      bookingId: input.eventId,
+      kind: 'event_cancelled_bar_refunds',
+      title: `Cancelled event: ${formatPounds(total)} paid at the bar to hand back`,
+      summary: `${input.eventName || 'The cancelled event'} had ${input.owed.length} ${input.owed.length === 1 ? 'payment' : 'payments'} taken at the bar, in cash or on the card terminal. PayPal cannot return those, so hand each one back and record it with Record cash or card refund on the booking. The guests have been told we will be in touch about it.`,
+      path: `/events/${input.eventId}`,
+      context: Object.fromEntries(input.owed.map((row, index) => [
+        `Booking ${index + 1}`,
+        `${row.bookingId}: ${formatPounds(row.amount)} (${methodText(row.method)})`,
+      ])),
+    })
+  } catch (error) {
+    logger.error('Could not send the alert for bar payments owed on a cancelled event', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { eventId: input.eventId, count: input.owed.length },
+    })
+  }
 }
 
 /**

@@ -1,4 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
+import { assertCleanText } from '../../../tests/mocks/emailRenderChecks'
 
 /**
  * THE CANCELLATION TEXT MUST NEVER GO QUIET ABOUT A GUEST'S MONEY.
@@ -91,12 +92,15 @@ describe('cancellation SMS', () => {
     const body = await sendWith({ refunded: false, reason: 'seasonal_cutoff', cutoffDays: 7 })
     expect(body).toMatch(/fewer than 7 days before your booking, the deposit can't be refunded/i)
     expect(body).not.toMatch(/3 days/)
+    // BK-221: a Christmas booking with no refund due renders with no zero amount or gap.
+    assertCleanText(body)
   })
 
   it('says a deposit with no refund window was never refundable', async () => {
     const body = await sendWith({ refunded: false, reason: 'seasonal_cutoff', cutoffDays: 0 })
     expect(body).toMatch(/wasn't refundable/i)
     expect(body).not.toMatch(/\d+ days/)
+    assertCleanText(body)
   })
 
   it('still names no rule it cannot see when the cutoff is unknown', async () => {

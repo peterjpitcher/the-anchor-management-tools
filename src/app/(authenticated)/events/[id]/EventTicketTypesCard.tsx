@@ -27,6 +27,9 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
   const [draft, setDraft] = useState<DraftRow>(EMPTY)
   const [removeId, setRemoveId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // A change that affects booked guests comes back with lines to confirm, and runs again once a
+  // manager agrees (BK-036, BK-143).
+  const [confirmation, setConfirmation] = useState<{ lines: string[]; run: () => void } | null>(null)
   useEffect(() => setTypes(initialTicketTypes), [initialTicketTypes])
   const activeCount = types.filter(type => type.is_active).length
   const edit = (row?: EventTicketTypeRow) => {
@@ -34,7 +37,7 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
     setEditing(row?.id ?? 'new')
     setDraft(row ? { name: row.name, base_price: String(Number(row.base_price)), capacity: row.capacity == null ? '' : String(row.capacity), free: Number(row.base_price) === 0 } : EMPTY)
   }
-  const save = () => {
+  const save = (confirmed = false) => {
     if (!draft.name.trim()) { setError('Give this ticket a name'); return }
     const price = draft.free ? 0 : Number(draft.base_price)
     if (!draft.free && (!draft.base_price.trim() || !Number.isFinite(price) || price <= 0)) {
@@ -48,7 +51,8 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
         const values = { name: draft.name.trim(), base_price: price, capacity, is_free_ticket: draft.free }
         const result = editing === 'new'
           ? await createEventTicketType(eventId, { ...values, sort_order: types.reduce((max, row) => Math.max(max, row.sort_order), -1) + 1 })
-          : await updateEventTicketType(editing!, values)
+          : await updateEventTicketType(editing!, values, { confirmed })
+        if (result.confirmation) { setConfirmation({ lines: result.confirmation.lines, run: () => save(true) }); return }
         if (result.error || !result.data) { setError(result.error || 'Ticket could not be saved'); return }
         setTypes(current => editing === 'new' ? [...current, result.data!] : current.map(row => row.id === editing ? result.data! : row))
         setEditing(null)
@@ -57,19 +61,21 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
       } catch { setError('Ticket could not be saved. Please try again.') }
     })
   }
-  const toggle = (row: EventTicketTypeRow) => startTransition(async () => {
+  const toggle = (row: EventTicketTypeRow, confirmed = false) => startTransition(async () => {
     setError(null)
     try {
-      const result = await updateEventTicketType(row.id, { is_active: !row.is_active })
+      const result = await updateEventTicketType(row.id, { is_active: !row.is_active }, { confirmed })
+      if (result.confirmation) { setConfirmation({ lines: result.confirmation.lines, run: () => toggle(row, true) }); return }
       if (result.error || !result.data) { setError(result.error || 'Ticket could not be updated'); return }
       setTypes(current => current.map(type => type.id === row.id ? result.data! : type))
       router.refresh()
     } catch { setError('Ticket could not be updated. Please try again.') }
   })
-  const remove = () => startTransition(async () => {
+  const remove = (confirmed = false) => startTransition(async () => {
     if (!removeId) return
     try {
-      const result = await deleteEventTicketType(removeId)
+      const result = await deleteEventTicketType(removeId, { confirmed })
+      if (result.confirmation) { setConfirmation({ lines: result.confirmation.lines, run: () => remove(true) }); return }
       if (result.error) { setError(result.error); setRemoveId(null); return }
       setTypes(current => result.data ? current.map(type => type.id === removeId ? result.data! : type) : current.filter(type => type.id !== removeId))
       setRemoveId(null)
@@ -111,11 +117,21 @@ export function EventTicketTypesCard({ eventId, initialTicketTypes, canManage, a
         {allowMultiple && <Input label="Ticket capacity (blank to share the event capacity)" type="number" min="0" step="1" value={draft.capacity} onChange={event => setDraft(current => ({ ...current, capacity: event.target.value }))} />}
         <FormFooter>
           <Button type="button" variant="secondary" onClick={() => { setEditing(null); setError(null) }}>Cancel</Button>
-          <Button type="button" variant="primary" onClick={save} loading={pending}>{editing === 'new' ? 'Add Ticket Type' : 'Save Changes'}</Button>
+          <Button type="button" variant="primary" onClick={() => save()} loading={pending}>{editing === 'new' ? 'Add Ticket Type' : 'Save Changes'}</Button>
         </FormFooter>
       </div></Fieldset></div>}
       {error && <Alert tone="danger" size="sm">{error}</Alert>}
     </CardBody>
-    <ConfirmDialog open={removeId !== null} onClose={() => setRemoveId(null)} onConfirm={remove} title="Remove Ticket From Sale" message="Tickets already booked are kept for your records. This type will no longer be offered to new guests." confirmLabel="Remove From Sale" tone="danger" />
+    <ConfirmDialog open={removeId !== null && confirmation === null} onClose={() => setRemoveId(null)} onConfirm={() => remove()} title="Remove Ticket From Sale" message="Tickets already booked are kept for your records. This type will no longer be offered to new guests." confirmLabel="Remove From Sale" tone="danger" />
+    <ConfirmDialog
+      open={confirmation !== null}
+      onClose={() => { setConfirmation(null); setRemoveId(null) }}
+      onConfirm={() => { const next = confirmation; setConfirmation(null); next?.run() }}
+      title="Confirm Ticket Change"
+      message={<div className="space-y-2">{(confirmation?.lines ?? []).map(line => <p key={line}>{line}</p>)}</div>}
+      confirmLabel="Save Change"
+      cancelLabel="Keep As It Is"
+      tone="primary"
+    />
   </Card>
 }

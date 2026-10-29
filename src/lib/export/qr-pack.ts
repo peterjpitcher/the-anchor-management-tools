@@ -6,6 +6,7 @@ import QRCode from 'qrcode'
 import type { EventMarketingLink } from '@/services/event-marketing'
 import type { EventMarketingChannelConfig } from '@/lib/event-marketing-links'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { PUBLIC_EVENT_BASE } from '@/lib/events/public-event-link'
 
 /**
  * One options object for both formats.
@@ -109,7 +110,6 @@ function detailRows(event: BriefEvent): Array<[string, string]> {
   return rows.filter(([, value]) => value !== '')
 }
 
-const PUBLIC_EVENT_BASE = 'https://www.the-anchor.pub/events'
 
 /**
  * The designer's brief for one event.

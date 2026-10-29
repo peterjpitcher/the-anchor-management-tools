@@ -39,10 +39,14 @@ function db(rowsByTable: Record<string, unknown[]>, failingRead?: string) {
       }
     }
     chain.then = (resolve: (value: unknown) => unknown) => {
+      // The refunds read is the payments table filtered to refund rows (BK-136): its own rows.
+      const rowsKey = table === 'payments' && own.some((call) => call.method === 'eq' && call.args[0] === 'charge_type' && call.args[1] === 'refund')
+        ? 'refunds'
+        : table
       const isRead = !own.some((call) => call.method === 'update' || call.method === 'insert')
       const result = isRead && table === failingRead
         ? { data: null, error: { message: 'canceling statement due to statement timeout', code: '57014' } }
-        : { data: rowsByTable[table] ?? [], error: null }
+        : { data: rowsByTable[rowsKey] ?? [], error: null }
       return Promise.resolve(result).then(resolve)
     }
     return chain

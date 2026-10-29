@@ -3,6 +3,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 import type { ReactNode } from 'react'
 import { EventDrawer } from '../EventDrawer'
 import { updateEvent } from '@/app/actions/events'
+import { cancelEvent, getEventLifecycleImpact } from '@/app/actions/event-lifecycle'
 import type { Event } from '@/types/database'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
@@ -12,6 +13,12 @@ vi.mock('@/app/actions/event-checklist', () => ({
   toggleEventChecklistTask: vi.fn(),
 }))
 vi.mock('@/app/actions/event-content', () => ({ generateEventSeoContent: vi.fn() }))
+vi.mock('@/app/actions/event-lifecycle', () => ({
+  getEventLifecycleImpact: vi.fn(),
+  cancelEvent: vi.fn(),
+  postponeEvent: vi.fn(),
+  undoEventCancellation: vi.fn(),
+}))
 vi.mock('../EventImagePanel', () => ({ EventImagePanel: () => null }))
 vi.mock('@/components/features/events/KeywordStrategyCard', () => ({ KeywordStrategyCard: () => null }))
 vi.mock('@/components/features/events/FaqEditor', () => ({ FaqEditor: () => null }))
@@ -310,5 +317,80 @@ describe('EventDrawer physical seating controls', () => {
     const data = await submittedData()
     expect(data.get('capacity')).toBe('75')
     expect(data.get('booking_mode')).toBe(booking_mode)
+  })
+})
+
+// Release 16 of the customer bookings review (BK-026, BK-035, BK-036; owner decisions D8, D9, D11).
+describe('EventDrawer confirmations and cancelling', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function renderEvent(overrides: Partial<Event> = {}, seatsSold?: number) {
+    render(<EventDrawer open onClose={vi.fn()} onSave={vi.fn()} categories={[]} seatsSold={seatsSold} event={{
+      id: 'event-1', name: 'Quiz Night', date: '2026-09-25', time: '19:00',
+      capacity: 60, created_at: '2026-09-01T12:00:00Z', slug: 'quiz-night',
+      is_free: true, payment_mode: 'free', booking_mode: 'general', event_status: 'scheduled', ...overrides,
+    } as Event} />)
+  }
+
+  it('no longer offers Cancelled or Postponed as a plain status', () => {
+    renderEvent()
+    const status = screen.getByRole('combobox', { name: 'Status' })
+    expect(status.querySelector('option[value="cancelled"]')).toBeNull()
+    expect(status.querySelector('option[value="postponed"]')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Cancel Event' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Postpone Event' })).toBeInTheDocument()
+  })
+
+  it('still shows the status of an event that is already cancelled', () => {
+    renderEvent({ event_status: 'cancelled' })
+    expect(screen.getByRole('combobox', { name: 'Status' })).toHaveValue('cancelled')
+  })
+
+  it('shows the confirmation the server sends, and saves again confirmed only when a manager agrees', async () => {
+    vi.mocked(updateEvent)
+      .mockResolvedValueOnce({ error: 'Confirm this change before it is saved.', confirmation: { lines: ['3 bookings (7 seats) will be told the new date and time.'] } } as Awaited<ReturnType<typeof updateEvent>>)
+      .mockResolvedValueOnce({ error: 'Fixture stops after submission' })
+    renderEvent()
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(await screen.findByText('3 bookings (7 seats) will be told the new date and time.')).toBeInTheDocument()
+    expect(vi.mocked(updateEvent).mock.calls[0][1].has('confirmed_changes')).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm and Save' }))
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(updateEvent).mock.calls[1][1].get('confirmed_changes')).toBe('true')
+  })
+
+  it('shows the seats already sold beside the ticket limit and warns when the limit is lower', () => {
+    renderEvent({}, 12)
+    expect(screen.getByText('Already sold: 12')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Ticket limit' }), { target: { value: '10' } })
+    expect(screen.getByText(/Lower than the 12 already sold/)).toBeInTheDocument()
+  })
+
+  it('says the Accept bookings switch also stops text-reply bookings', () => {
+    renderEvent()
+    expect(screen.getByText('When off, the website hides the booking form and text replies cannot book. Staff can still add bookings.')).toBeInTheDocument()
+  })
+
+  it('cancels only after showing who is affected and what is refunded', async () => {
+    vi.mocked(getEventLifecycleImpact).mockResolvedValue({
+      success: true,
+      data: {
+        lines: ['3 bookings (7 seats) will be cancelled.', '1 booking was paid online, and £40.00 will be refunded in full.'],
+        impact: {} as never,
+        allowed: true,
+        blockedReason: null,
+        pendingCancellation: null,
+        cancellationNotQueued: false,
+      },
+    })
+    vi.mocked(cancelEvent).mockResolvedValue({ success: true, data: { scheduledFor: '2026-09-20T10:10:00Z', impact: {} as never } })
+    renderEvent()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Event' }))
+    expect(await screen.findByText('1 booking was paid online, and £40.00 will be refunded in full.')).toBeInTheDocument()
+    expect(cancelEvent).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel Event and Refund' }))
+    await waitFor(() => expect(cancelEvent).toHaveBeenCalledWith('event-1', { confirmed: true }))
   })
 })
