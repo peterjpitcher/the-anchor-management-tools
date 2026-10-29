@@ -1262,6 +1262,29 @@ describe('invoice reminders cron: weekly chasers', () => {
     ])
   })
 
+  it('waits a full week after a weekly email whose record could not be written, going by the email log', async () => {
+    // Thursday 8 October: a weekly email went (it is in the log) but the invoice column was never written.
+    vi.setSystemTime(new Date('2026-10-12T09:30:00.000Z'))
+    fakeDb({
+      invoices: [invoice(OLDER)],
+      emails: [
+        {
+          invoice_id: 'inv-1',
+          subject: 'Invoice INV-0101 is overdue',
+          status: 'sent',
+          metadata: { email_kind: 'reminder_weekly', invoice_number: 'INV-0101' },
+          created_at: '2026-10-08T09:30:00.000Z',
+          sent_at: '2026-10-08T09:30:04.000Z',
+        },
+      ],
+    })
+
+    await run()
+
+    // Monday 12 October: past the three quiet days, but only four days on.
+    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+  })
+
   it('counts a send with an unknown outcome as the week\'s email: kept, recorded, not retried that week', async () => {
     vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: false, uncertain: true, error: 'The request timed out' })
     const scenario = { invoices: [invoice(OLDER)] }

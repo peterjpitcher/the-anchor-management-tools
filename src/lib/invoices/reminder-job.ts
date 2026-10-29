@@ -114,6 +114,9 @@ const RECENT_EMAIL_LOOKBACK_DAYS = QUIET_DAYS + 1
 /** How far back to look for a client's latest weekly chaser or hand-sent chase. */
 const CHASER_LOOKBACK_DAYS = WEEKLY_GAP_DAYS + 1
 
+/** Logged emails that start a client's seven-day weekly clock. */
+const CHASER_EMAIL_KINDS = new Set(['chase', 'reminder_weekly', 'reminder_combined'])
+
 // The vendor columns are the ones the invoice PDF prints and the pay online line checks. The
 // reminder says "I've attached another copy", so the copy must match the original: the old job
 // left out the address, phone and VAT number.
@@ -644,10 +647,12 @@ export async function loadLastClientEmailDates(
 
 /**
  * The London date of the latest weekly chaser or hand-sent chase each client was sent, for any
- * of their invoices: the weekly column on every invoice of theirs, and the chases in the email
- * log over the last week. A weekly chaser waits a week after it, so a chase sent by hand counts
- * as that week's email. Throws when either cannot be read: guessing could mean a second chaser
- * in a week.
+ * of their invoices: the weekly column on every invoice of theirs, and the email log over the
+ * last week. A weekly chaser waits a week after it, so a chase sent by hand counts as that
+ * week's email. The log also carries the weekly and combined reminders themselves, so one whose
+ * column could not be written still holds the next back a full week. A combined reminder counts
+ * even when it held no weekly invoice: at worst that delays the next weekly email, never adds
+ * one. Throws when either cannot be read: guessing could mean a second chaser in a week.
  */
 export async function loadLastClientChaserDates(
   supabase: AdminClient,
@@ -699,7 +704,10 @@ export async function loadLastClientChaserDates(
     sent_at?: string | null
   }
   const chases = ((emails ?? []) as EmailRow[]).filter(
-    (row) => Boolean(row.invoice_id) && emailMetadata(row).email_kind === 'chase' && countsAsCustomerInvoiceEmail(row)
+    (row) =>
+      Boolean(row.invoice_id) &&
+      CHASER_EMAIL_KINDS.has(String(emailMetadata(row).email_kind ?? '')) &&
+      countsAsCustomerInvoiceEmail(row)
   )
   const chasedInvoiceIds = [...new Set(chases.flatMap((row) => row.invoice_id ?? []))]
   if (chasedInvoiceIds.length === 0) return latest
