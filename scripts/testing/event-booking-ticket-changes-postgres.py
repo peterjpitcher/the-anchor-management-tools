@@ -33,7 +33,7 @@ ATTENDEES_WRAPPER = ROOT / 'supabase/migrations/20260910075719_ticket_attendees_
 COMMUNAL_PAYMENT = ROOT / 'supabase/migrations/20261026135338_event_payment_confirm_communal_seats.sql'
 COLLECT = ROOT / 'supabase/migrations/20261027132851_event_collect_guest_details.sql'
 GUEST_PHONE = ROOT / 'supabase/migrations/20261027232730_event_guest_phone_and_details_to_follow.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261028150412_event_booking_ticket_changes.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029090400_event_booking_ticket_changes.sql'
 ROLLBACK = ROOT / 'tasks/event-booking-ticket-changes/rollback.sql'
 
 V09 = 'public.create_event_booking_v09(uuid,uuid,integer,text,text,integer,jsonb,jsonb,numeric)'
