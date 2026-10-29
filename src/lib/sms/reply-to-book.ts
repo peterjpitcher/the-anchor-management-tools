@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { onlineBookingClosedReason } from '@/lib/events/bookable'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { getAppUrl } from '@/lib/env'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
@@ -52,6 +53,10 @@ type EventRow = {
   name: string
   booking_mode: string | null
   start_datetime?: string | null
+  event_status?: string | null
+  booking_open?: boolean | null
+  bookings_enabled?: boolean | null
+  booking_cutoff_at?: string | null
 }
 
 type ReplyToBookOptions = {
@@ -588,7 +593,7 @@ export async function handleReplyToBook(
   // Load event name for response messages
   const { data: eventRow, error: eventError } = await db
     .from('events')
-    .select('id, name, booking_mode, start_datetime')
+    .select('id, name, booking_mode, start_datetime, event_status, booking_open, bookings_enabled, booking_cutoff_at')
     .eq('id', promo.event_id)
     .maybeSingle()
 
@@ -602,6 +607,12 @@ export async function handleReplyToBook(
   const event = eventRow as EventRow | null
   const eventName = event?.name ?? 'this event'
   const communal = event?.booking_mode === 'communal'
+
+  // Accept bookings off, online sales closed, or a postponed night: a text reply cannot book
+  // (BK-035, BK-089; owner decision D11). The database refuses it too.
+  if (event && onlineBookingClosedReason(event)) {
+    return { handled: true, response: `Sorry, bookings for ${eventName} have closed.` }
+  }
 
   if (capacityRow) {
     // A text booking asks for seats. On a shared-seating night the seats left are the seated

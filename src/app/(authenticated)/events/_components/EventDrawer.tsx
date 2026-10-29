@@ -10,6 +10,7 @@ import {
 import { Icon } from '@/ds/icons'
 import { createEvent, updateEvent } from '@/app/actions/events'
 import { EventNightNotice } from './EventNightNotice'
+import { EventLifecycleActions } from './EventLifecycleActions'
 import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event-checklist'
 import { generateEventSeoContent } from '@/app/actions/event-content'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
@@ -37,16 +38,27 @@ interface EventDrawerProps {
   event?: Event | null
   categories: EventCategory[]
   onSave: () => void
+  /** Seats already booked, shown beside the ticket limit (BK-036). */
+  seatsSold?: number
 }
 
 const STATUS_OPTIONS = [
   { value: 'scheduled', label: 'Scheduled' },
-  { value: 'cancelled', label: 'Cancelled' },
-  { value: 'postponed', label: 'Postponed' },
   { value: 'rescheduled', label: 'Rescheduled' },
   { value: 'sold_out', label: 'Sold Out' },
   { value: 'draft', label: 'Draft' },
 ]
+
+/**
+ * Cancelled and Postponed are not plain choices: they refund and message guests, so they go
+ * through Cancel event and Postpone event, which show who is affected first (BK-026, D8). An event
+ * already in one of them still shows it, and choosing another status reinstates it.
+ */
+export function statusOptionsFor(currentStatus: string | null | undefined): Array<{ value: string; label: string }> {
+  if (currentStatus === 'cancelled') return [{ value: 'cancelled', label: 'Cancelled' }, ...STATUS_OPTIONS]
+  if (currentStatus === 'postponed') return [{ value: 'postponed', label: 'Postponed' }, ...STATUS_OPTIONS]
+  return STATUS_OPTIONS
+}
 
 const BOOKING_MODE_OPTIONS = [
   { value: 'table', label: 'Table bookings' },
@@ -64,7 +76,7 @@ const PERFORMER_TYPE_OPTIONS = [
   { value: 'Organization', label: 'Organisation' },
 ]
 
-export function EventDrawer({ open, onClose, event, categories, onSave }: EventDrawerProps) {
+export function EventDrawer({ open, onClose, event, categories, onSave, seatsSold }: EventDrawerProps) {
   const router = useRouter()
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [validationAttempt, setValidationAttempt] = useState(0)
@@ -124,6 +136,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
   const [createdEventId, setCreatedEventId] = useState<string | null>(null)
   const [queuedImageCount, setQueuedImageCount] = useState(0)
   const [confirmCloseOpen, setConfirmCloseOpen] = useState(false)
+  // A change that affects booked guests comes back from the server with a summary to confirm.
+  const [changeConfirmation, setChangeConfirmation] = useState<string[] | null>(null)
   const imagePanelRef = useRef<EventImagePanelHandle>(null)
   const activeEventId = event?.id ?? createdEventId
 
@@ -371,8 +385,13 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
       return
     }
 
-    startTransition(async () => {
+    startTransition(() => submit(false))
+  }
+
+  async function submit(confirmedChanges: boolean) {
+    {
       const formData = new FormData()
+      if (confirmedChanges) formData.set('confirmed_changes', 'true')
       formData.set('name', name)
       formData.set('date', date)
       formData.set('time', time)
@@ -447,6 +466,12 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         ? await updateEvent(targetId, formData)
         : await createEvent(formData)
 
+      if ('confirmation' in result && result.confirmation) {
+        // Nothing was saved. The manager reads who it affects and saves again to go ahead.
+        setChangeConfirmation(result.confirmation.lines)
+        return
+      }
+
       if ('error' in result && result.error) {
         setFieldErrors(('fieldErrors' in result ? result.fieldErrors : undefined) ?? {})
         setValidationAttempt(attempt => attempt + 1)
@@ -458,6 +483,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         !targetId && 'data' in result ? (result.data as { id?: string } | undefined)?.id ?? null : null
 
       toast.success(targetId ? 'Event updated' : 'Event created')
+      const savedWarning = 'warning' in result ? (result as { warning?: string }).warning : undefined
+      if (savedWarning) toast.warning(savedWarning)
 
       // Refresh the list behind the drawer either way.
       onSave()
@@ -485,7 +512,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
         onClose()
         if (!existingPaid && paymentMode !== 'free') router.push(`/events/${targetId}?tab=tickets`)
       }
-    })
+    }
   }
 
   async function handleToggleChecklist(taskKey: string, completed: boolean) {
@@ -679,7 +706,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               </Field>
               <Select
                 label="Status"
-                options={STATUS_OPTIONS}
+                options={statusOptionsFor(event?.event_status)}
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
               />
@@ -714,6 +741,10 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
                 value={capacity}
                 onChange={(e) => setCapacity(e.target.value)}
                 placeholder="Unlimited"
+                hint={isEdit && seatsSold !== undefined ? `Already sold: ${seatsSold}` : undefined}
+                warning={isEdit && seatsSold !== undefined && capacity.trim() !== '' && Number(capacity) < seatsSold
+                  ? `Lower than the ${seatsSold} already sold, so this closes sales. Nobody already booked loses their place.`
+                  : undefined}
               />
             )}
             <EventImagePanel
@@ -835,11 +866,20 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
               checked={bookingsEnabled}
               onChange={setBookingsEnabled}
             />
-            <Switch
-              label="Promotional SMS"
-              checked={promoSmsEnabled}
-              onChange={setPromoSmsEnabled}
-            />
+            {/* BK-035, D11: the switch now applies to text replies as well as the website. */}
+            <p className="text-sm text-text-muted">When off, the website hides the booking form and text replies cannot book. Staff can still add bookings.</p>
+            <div className="flex flex-col gap-1">
+              <Switch
+                label="Promotional SMS"
+                checked={promoSmsEnabled}
+                onChange={setPromoSmsEnabled}
+              />
+              {/* BK-169: say what the switch reaches. Booking messages and the day-before
+                  reminder are service messages and go out either way (owner decision D14). */}
+              <p className="text-sm text-text-muted">
+                Also stops the review request the morning after. Booking messages and the day-before reminder still go out.
+              </p>
+            </div>
           </div>
           {/* BK-187: what the website tells guests while bookings are off. A paid night must not
               read as "just turn up", so staff are pointed at Ticket sales close instead. */}
@@ -1044,6 +1084,19 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           )}
         </FieldGroup>
 
+        {/* ── Cancel or postpone, only for existing events (BK-026, D8) ── */}
+        {isEdit && activeEventId && (
+          <FieldGroup title="Cancel or Postpone">
+            <EventLifecycleActions
+              eventId={activeEventId}
+              status={event?.event_status ?? 'scheduled'}
+              // Close the drawer: its form still holds the old status, and saving it would undo
+              // the cancellation or postponement.
+              onChanged={() => { onSave(); router.refresh(); onClose() }}
+            />
+          </FieldGroup>
+        )}
+
         {/* ── Footer actions ── */}
         <FormFooter className="border-t border-border pt-4">
           <Button variant="secondary" onClick={requestClose} disabled={isPending}>
@@ -1054,6 +1107,20 @@ export function EventDrawer({ open, onClose, event, categories, onSave }: EventD
           </Button>
         </FormFooter>
       </div>
+
+      <ConfirmDialog
+        open={changeConfirmation !== null}
+        onClose={() => setChangeConfirmation(null)}
+        onConfirm={() => {
+          setChangeConfirmation(null)
+          startTransition(() => submit(true))
+        }}
+        title="Confirm Changes for Booked Guests"
+        message={<div className="space-y-2">{(changeConfirmation ?? []).map((line) => <p key={line}>{line}</p>)}</div>}
+        confirmLabel="Confirm and Save"
+        cancelLabel="Keep Editing"
+        tone="primary"
+      />
 
       {/* Rendered inside the drawer so it stacks above it as a nested dialog. */}
       <ConfirmDialog

@@ -243,7 +243,8 @@ export function buildDepositConfirmedText(input: {
   const bookingMoment = formatLondonDateTime(input.booking.start_datetime)
   const christmasCourseSummary = describeChristmasCourseCounts(input.booking.christmas_course_counts)
 
-  const body = `The Anchor: ${input.firstName}! Deposit sorted, your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is locked in. See you then!${highChairSuffix}${outsideSuffix}${input.manageLink ? ` ${input.manageLink}` : ''}${christmasCourseSummary ? ` ${christmasCourseSummary}` : ''}`
+  // Calm and exact, as SSOT section 1 asks of money messages (BK-171, owner decision D15).
+  const body = `The Anchor: ${input.firstName}, we've received your deposit. Your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${input.manageLink ? ` ${input.manageLink}` : ''}${christmasCourseSummary ? ` ${christmasCourseSummary}` : ''}`
   return ensureReplyInstruction(body, supportPhone())
 }
 

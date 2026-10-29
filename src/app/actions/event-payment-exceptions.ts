@@ -8,8 +8,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
 import { processEventRefund } from '@/lib/events/manage-booking'
-import { sendEventPaymentConfirmationSms } from '@/lib/events/event-payments'
-import { sendEventBookingCancelledEmail, sendEventPaymentConfirmationEmail } from '@/lib/email/event-ticket-emails'
+import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
+import { sendEventBookingCancelledEmail } from '@/lib/email/event-ticket-emails'
 import { alertEventPaymentNeedsAPerson } from '@/lib/events/payment-alerts'
 import { describeEventPaymentExceptionReason } from '@/lib/events/payment-exception-reasons'
 import { getAppUrl } from '@/lib/env'
@@ -258,8 +258,15 @@ export async function resolveEventPaymentException(input: {
       await resolveOpenExceptions('confirmed')
       // The guest was told staff would check their booking: tell them it is confirmed.
       const appBaseUrl = getAppUrl()
-      await sendEventPaymentConfirmationSms(supabase, { bookingId: booking.id, eventName: 'your event', seats: Number(booking.seats ?? 1), appBaseUrl })
-      await sendEventPaymentConfirmationEmail(supabase, { bookingId: booking.id, amount: paid, currency: 'GBP', appBaseUrl })
+      // Email first, a text only when no email goes (BK-167, owner decision D14).
+      await notifyEventPaymentOutcome(supabase, {
+        bookingId: booking.id,
+        eventId: booking.event_id ?? null,
+        outcome: 'confirmed',
+        amount: paid,
+        currency: 'GBP',
+        appBaseUrl,
+      })
       await logAuditEvent({
         user_id: user?.id ?? undefined,
         user_email: user?.email ?? undefined,

@@ -36,6 +36,8 @@ export type TableManagePreviewResult = {
   is_outside_seating?: boolean
   can_cancel?: boolean
   can_edit?: boolean
+  /** True when this table is the table half of an event booking (BK-074): not changed here. */
+  event_linked?: boolean
 }
 
 export type TableManageUpdateResult = {
@@ -396,7 +398,7 @@ export async function getTableManagePreviewByRawToken(
 
   const { data: booking } = await supabase.from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, status, party_size, committed_party_size, special_requirements, booking_type, booking_purpose, start_datetime, end_datetime, is_outside_seating'
+      'id, customer_id, booking_reference, status, party_size, committed_party_size, special_requirements, booking_type, booking_purpose, start_datetime, end_datetime, is_outside_seating, event_booking_id'
     )
     .eq('id', tokenRow.table_booking_id)
     .maybeSingle()
@@ -419,7 +421,9 @@ export async function getTableManagePreviewByRawToken(
   }
 
   const now = new Date()
-  const canEdit = booking.status === 'confirmed' && now.getTime() < startAt.getTime()
+  // BK-074: the table half of an event booking is changed from the event, never from this link.
+  const eventLinked = Boolean(booking.event_booking_id)
+  const canEdit = booking.status === 'confirmed' && now.getTime() < startAt.getTime() && !eventLinked
   const canCancel = canEdit
 
   const assignment = await findTableAssignment(supabase, booking.id)
@@ -443,7 +447,8 @@ export async function getTableManagePreviewByRawToken(
     table_capacity: assignment?.table_capacity || null,
     is_outside_seating: booking.is_outside_seating === true,
     can_cancel: canCancel,
-    can_edit: canEdit
+    can_edit: canEdit,
+    event_linked: eventLinked
   }
 }
 
@@ -541,6 +546,15 @@ export async function updateTableBookingByRawToken(
   const bookingId = preview.table_booking_id
   const customerId = preview.customer_id
   const oldPartySize = Math.max(1, Number(preview.party_size || 1))
+
+  // The table half of an event booking is changed from the event, with its ticket (BK-074).
+  // Cancelling or resizing it here would leave a paid ticket live with no seat.
+  if (preview.event_linked) {
+    return {
+      state: 'blocked',
+      reason: 'event_linked'
+    }
+  }
 
   // committed_party_size should always be set (NOT NULL in the DB since the v05 migration).
   // If it arrives as null/undefined here the TypeScript type is telling us something unexpected

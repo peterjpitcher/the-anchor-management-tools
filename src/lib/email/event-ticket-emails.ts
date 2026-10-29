@@ -34,6 +34,9 @@ import {
 } from '@/lib/events/ticket-type-queries'
 import { logger } from '@/lib/logger'
 import { buildEventReminderEmailLines, type EventReminderDayWord } from '@/lib/events/event-reminder-message'
+import { resolvePublicEventLink } from '@/lib/events/public-event-link'
+import { requiresGuestDetails } from '@/lib/events/booking-questions'
+import { describeEventPlaces } from '@/lib/events/event-guest-texts'
 
 type EventEmailResult = {
   success: boolean
@@ -221,6 +224,8 @@ type EventTicketEmailContext = {
   /** "Arrive from 6:30pm for a 7pm start.", or null when the event carries no arrival time. */
   arrivalLine: string | null
   bookingUrl: string | null
+  /** Where the guest can book this event again: its booking link, else its website page (BK-173). */
+  rebookUrl: string | null
   seats: number
   attendeeNames: string[]
   /** Per-type lines, populated only for genuinely multi-type bookings (else empty, legacy display). */
@@ -234,6 +239,8 @@ type EventTicketEmailContext = {
   /** The seating this booking holds, not the event's mix. */
   seatingType: string | null
   isCashBingo: boolean
+  /** The event asks for each ticket's name and answers, which the booker can check from their link. */
+  guestDetailsRequired: boolean
 }
 
 const CASH_BINGO_PATTERN = /cash\s*bingo/i
@@ -263,8 +270,10 @@ async function loadEventTicketEmailContext(
         time,
         doors_time,
         booking_url,
+        slug,
         booking_mode,
         payment_mode,
+        collect_guest_details,
         price,
         price_per_seat,
         is_free,
@@ -334,6 +343,7 @@ async function loadEventTicketEmailContext(
     doorsTime: typeof event?.doors_time === 'string' ? event.doors_time : null,
     arrivalLine: buildEventArrivalLine({ doorsTime: event?.doors_time, startIso: eventStartIso }),
     bookingUrl: typeof event?.booking_url === 'string' && event.booking_url.trim() ? event.booking_url.trim() : null,
+    rebookUrl: resolvePublicEventLink(event),
     seats: Math.max(1, Number((booking as any).seats || 1)),
     attendeeNames: Array.isArray((booking as any).attendee_names)
       ? ((booking as any).attendee_names as unknown[])
@@ -349,6 +359,7 @@ async function loadEventTicketEmailContext(
       ? (booking as any).event_seating_type
       : null,
     isCashBingo: cashBingoCandidates.some((value) => CASH_BINGO_PATTERN.test(value)),
+    guestDetailsRequired: requiresGuestDetails(event ?? {}),
   }
 }
 
@@ -413,8 +424,10 @@ function buildPaymentLines(context: EventTicketEmailContext): string[] {
 /**
  * The cancellation and refund bands, for a booking with money in it.
  *
- * Recorded in SSOT section 7 and applied by `calculateRefundTier`: full 7 or more days before,
- * half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in full. Guest
+ * Recorded in SSOT section 7 and applied by `getEventRefundPolicy` in
+ * src/lib/events/manage-booking.ts, counting whole London calendar days (BK-111): full 7 or more
+ * days before, half 3 to 6 days before, none inside 3 days, and a night we cancel refunded in
+ * full. Guest
  * cancelling was removed from the manage-booking page, so the only route is the phone.
  */
 function buildCancellationTermsLines(): string[] {
@@ -422,6 +435,16 @@ function buildCancellationTermsLines(): string[] {
     `Need to cancel? Call ${GUEST_CONTACT.phoneDisplay}.`,
     'Give up your seats 7 or more days before the event and we refund in full. Between 3 and 6 days before, we refund half. Inside 3 days there is no refund. If we cancel the night, you get a full refund.',
   ]
+}
+
+/**
+ * BK-133: the booker can check or correct every guest's name and answers from their booking page.
+ * The answers themselves stay out of the email (ticket-setup plan: no sensitive answers in emails).
+ */
+const GUEST_DETAILS_CHECK_LINE = 'Check or update your guest details from your booking page.'
+
+function guestDetailsCheckLines(context: EventTicketEmailContext, manageLink: string | null): string[] {
+  return context.guestDetailsRequired && manageLink ? [GUEST_DETAILS_CHECK_LINE] : []
 }
 
 function buildTicketBreakdownText(context: EventTicketEmailContext): string | null {
@@ -503,6 +526,26 @@ async function hasSuccessfulEventEmail(
       metadata: { bookingId: input.bookingId, commType: input.commType },
     })
     return false
+  }
+}
+
+/**
+ * Whether this email already went, failing closed (BK-167): 'unknown' when the email log cannot
+ * be read. The email-first event messenger then sends nothing, not even the text fallback, and the
+ * caller's next run tries again: an unreadable log means "not now", never "not sent yet".
+ */
+async function readEventEmailSendState(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; commType: string }
+): Promise<'sent' | 'not_sent' | 'unknown'> {
+  try {
+    const sent = await hasSuccessfulEventEmail(supabase, { ...input, failClosed: true })
+    return sent ? 'sent' : 'not_sent'
+  } catch (error) {
+    logger.warn('Event email deferred: duplicate check unavailable', {
+      metadata: { ...input, error: error instanceof Error ? error.message : String(error) },
+    })
+    return 'unknown'
   }
 }
 
@@ -609,11 +652,9 @@ export async function sendEventBookingConfirmedEmail(
   const context = await loadEventTicketEmailContext(supabase, input.bookingId, { includeTicketLines: true })
   if (!context) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: 'event_booking_confirmed',
-  })
-  if (alreadySent) return { success: true, skipped: true }
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: 'event_booking_confirmed' })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
 
   const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
   const manageLink = manageResult?.url ?? null
@@ -628,6 +669,7 @@ export async function sendEventBookingConfirmedEmail(
     ...buildAttendanceLines(context),
     ...buildPaymentLines(context),
     `Booking reference: ${bookingReference(context.bookingId)}.`,
+    ...guestDetailsCheckLines(context, manageLink),
     `Need to change or cancel your booking? Call ${GUEST_CONTACT.phoneDisplay}.`,
   ]
 
@@ -841,6 +883,78 @@ export async function sendEventGuestDetailsRequestEmail(
   })
 }
 
+/**
+ * The reminder a few days before the night, when guest details are still missing (BK-132, owner
+ * decision D5: 3 days before). Sent once a booking, by the event-guest-details-reminders cron.
+ * The answers stay out of it; the booker adds or checks them from their booking page.
+ */
+export const EVENT_GUEST_DETAILS_REMINDER_COMM_TYPE = 'event_guest_details_reminder'
+
+export function buildEventGuestDetailsReminderLines(input: {
+  firstName: string
+  eventName: string
+  when: string
+  missingCount: number
+}): string[] {
+  const missing = input.missingCount === 1
+    ? '1 of your tickets still needs a guest name or answers'
+    : `${input.missingCount} of your tickets still need a guest name or answers`
+  return [
+    `Hi ${input.firstName},`,
+    `${missing} for ${input.eventName}${input.when}.`,
+    "Add them from your booking page before the night, so we can look after everyone.",
+    "We only use these details for this booking, and we delete them 90 days after the event.",
+  ]
+}
+
+export async function sendEventGuestDetailsReminderEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; missingCount: number; appBaseUrl?: string }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: EVENT_GUEST_DETAILS_REMINDER_COMM_TYPE })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  // Without the link the email cannot do its job; the caller texts it instead, or nobody.
+  if (!manageResult) return { success: false, skipped: true }
+
+  const missingCount = Math.max(1, Math.floor(Number(input.missingCount) || 1))
+  const body = [
+    ...buildEventGuestDetailsReminderLines({ firstName: context.firstName, eventName: context.eventName, when: whenSuffix(context), missingCount }),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+  ]
+  const heading = 'Guest details still needed'
+  const text = buildGuestEmailText([...body, '', `Add guest details here: ${manageResult.url}`])
+  const html = buildGuestEmailHtml({
+    title: heading,
+    preheader: `Add your guests' details for ${context.eventName}.`,
+    heading,
+    body,
+    cta: { href: manageResult.url, label: 'Add guest details' },
+    footNote: 'This is a service message about your booking.',
+  })
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: subjectWithDate(heading, context),
+    text,
+    html,
+    commType: EVENT_GUEST_DETAILS_REMINDER_COMM_TYPE,
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_guest_details_reminder_email',
+      missing_count: missingCount,
+      short_link_fallback: manageResult.shortened === false,
+    },
+  })
+}
+
 export async function sendEventPaymentConfirmationEmail(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -853,11 +967,9 @@ export async function sendEventPaymentConfirmationEmail(
   const context = await loadEventTicketEmailContext(supabase, input.bookingId, { includeTicketLines: true })
   if (!context) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: 'event_payment_confirmation',
-  })
-  if (alreadySent) return { success: true, skipped: true }
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: 'event_payment_confirmation' })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
 
   const seatWord = ticketWord(context.seats)
   // A comped booking is paid at zero. It has no payment sentence at all, rather than being told
@@ -878,6 +990,7 @@ export async function sendEventPaymentConfirmationEmail(
     ...buildAttendanceLines(context),
     ...(context.isCashBingo ? buildPaymentLines(context).filter((line) => !line.startsWith('Pay on the night')) : []),
     `Booking reference: ${bookingReference(context.bookingId)}.`,
+    ...guestDetailsCheckLines(context, manageLink),
     ...(amountText ? buildCancellationTermsLines() : [`Need to change or cancel your booking? Call ${GUEST_CONTACT.phoneDisplay}.`]),
   ]
 
@@ -929,11 +1042,9 @@ export async function sendEventPaymentManualReviewEmail(
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
   if (!context) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: 'event_payment_manual_review',
-  })
-  if (alreadySent) return { success: true, skipped: true }
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: 'event_payment_manual_review' })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
 
   const amountText = formatPositiveCurrency(input.amount ?? null, input.currency || 'GBP')
   const heading = 'Payment received'
@@ -977,37 +1088,37 @@ export async function sendEventPaymentExpiredEmail(
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
   if (!context) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: 'event_payment_expired',
-  })
-  if (alreadySent) return { success: true, skipped: true }
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: 'event_payment_expired' })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
 
-  const seatWord = ticketWord(context.seats)
-  const releaseVerb = context.seats === 1 ? 'has' : 'have'
-  const heading = 'Payment hold released'
+  // BK-173: a way back in. Every event has a website page, so the email links to it (or to the
+  // event's own booking link) rather than only saying to phone. Calm and exact (BK-171, D15).
+  const places = describeEventPlaces({ seats: context.seats, seatingType: context.seatingType, bookingMode: context.bookingMode })
+  const rebookUrl = context.rebookUrl
+  const heading = 'Your held places have been released'
   const body = [
     `Hi ${context.firstName},`,
-    `Your held ${seatWord} for ${context.eventName}${whenSuffix(context)} ${releaseVerb} been released, because payment was not completed in time.`,
-    context.bookingUrl
-      ? 'If you would still like to come, please rebook while tickets are available.'
-      : 'If you would still like to come, call us and we will check availability.',
+    `We've released the ${places} we were holding for ${context.eventName}${whenSuffix(context)}, as payment wasn't made in time.`,
+    rebookUrl
+      ? "If you'd still like to come, you can book again while tickets are available."
+      : `If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay} and we'll check what's left.`,
   ]
 
   return sendEmail({
     requireLog: true,
     to: context.email,
-    subject: subjectWithDate('Payment hold released', context),
+    subject: subjectWithDate('Held places released', context),
     text: buildGuestEmailText([
       ...body,
-      context.bookingUrl ? `Rebook here: ${context.bookingUrl}` : null,
+      rebookUrl ? `Book again here: ${rebookUrl}` : null,
     ]),
     html: buildGuestEmailHtml({
       title: heading,
-      preheader: `Your ${seatWord} for ${context.eventName} ${releaseVerb} been released.`,
+      preheader: `We've released the ${places} held for ${context.eventName}.`,
       heading,
       body,
-      cta: context.bookingUrl ? { href: context.bookingUrl, label: 'Rebook tickets' } : null,
+      cta: rebookUrl ? { href: rebookUrl, label: 'Book again' } : null,
       footNote: 'This is a service message about your booking.',
     }),
     commType: 'event_payment_expired',
@@ -1034,10 +1145,31 @@ function buildRefundEmailLine(input: {
   reason?: string | null
   /** True when money was actually taken for this booking. */
   paymentTaken?: boolean
+  /** Only the rest of a partly refunded payment goes back now (BK-136). */
+  refundIsRestOfPayment?: boolean
+  /** Paid partly at the bar: what a person hands back there (review finding on PR 277). */
+  barRefundAmount?: number | null
 }): string | null {
   const amountText = formatPositiveCurrency(input.refundAmount ?? null, input.currency || 'GBP')
+  const barText = formatPositiveCurrency(input.barRefundAmount ?? null, input.currency || 'GBP')
+
+  // Paid both online and at the bar: say which money goes back which way, never the whole sum
+  // as if it were all to collect at the bar.
+  if (amountText && barText && input.refundStatus !== 'bar_refund_due') {
+    const bar = `We'll hand back the ${barText} you paid at the bar.`
+    if (input.refundStatus === 'succeeded') return `We've refunded the ${amountText} you paid online. ${bar}`
+    if (input.refundStatus === 'pending') return `We're refunding the ${amountText} you paid online. ${bar}`
+    return `We'll be in touch about your refund of the ${amountText} you paid online. ${bar}`
+  }
 
   if (amountText) {
+    // Paid at the bar in cash or by card: PayPal cannot return it, a person does (BK-135).
+    if (input.refundStatus === 'bar_refund_due') {
+      return `You paid ${amountText} at the bar, so we'll be in touch to give it back.`
+    }
+    if (input.refundIsRestOfPayment && (input.refundStatus === 'succeeded' || input.refundStatus === 'pending')) {
+      return `The rest of your payment, ${amountText}, ${input.refundStatus === 'succeeded' ? 'has been refunded' : 'is being refunded'} to your original payment method.`
+    }
     if (input.refundStatus === 'succeeded') {
       return `A refund of ${amountText} has been issued to your original payment method.`
     }
@@ -1069,16 +1201,18 @@ export async function sendEventBookingCancelledEmail(
     reason?: 'guest_cancel' | 'staff_cancel' | 'event_cancelled' | string | null
     /** True when money was taken for this booking, so a refund sentence has something to say. */
     paymentTaken?: boolean
+    /** Part of the payment was refunded before, so this refund is the rest of it (BK-136). */
+    refundIsRestOfPayment?: boolean
+    /** Paid partly at the bar: what a person hands back, beside the PayPal refund. */
+    barRefundAmount?: number | null
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
   if (!context) return { success: false, skipped: true }
 
-  const alreadySent = await hasSuccessfulEventEmail(supabase, {
-    bookingId: input.bookingId,
-    commType: 'event_booking_cancelled',
-  })
-  if (alreadySent) return { success: true, skipped: true }
+  const sendState = await readEventEmailSendState(supabase, { bookingId: input.bookingId, commType: 'event_booking_cancelled' })
+  if (sendState === 'unknown') return { success: false, skipped: true, deferred: true }
+  if (sendState === 'sent') return { success: true, skipped: true }
 
   const seatWord = ticketWord(context.seats)
   const refundLine = buildRefundEmailLine(input)
@@ -1221,7 +1355,8 @@ export async function sendEventTicketTransferredEmail(
   const body = [
     `Hi ${context.firstName},`,
     `Your ${seatWord} ${haveWord} been moved from ${fromText} to ${toText}.`,
-    overpaymentText ? `The new night costs less, so we owe you ${overpaymentText} and will be in touch about your refund.` : null,
+    // A manager decides the refund from what was paid (owner decision D7, BK-028).
+    overpaymentText ? `The new night costs ${overpaymentText} less than you paid, and we will be in touch about the difference.` : null,
     ...buildAttendanceLines(context),
     `Booking reference: ${bookingReference(context.bookingId)}.`,
     `If the new night does not suit you, call ${GUEST_CONTACT.phoneDisplay}.`,
@@ -1260,6 +1395,86 @@ export async function sendEventTicketTransferredEmail(
       manage_link_included: Boolean(manageLink),
       short_link_fallback: manageResult?.shortened === false,
       overpayment: typeof input.overpayment === 'number' && input.overpayment > 0 ? input.overpayment : undefined,
+    },
+  })
+}
+
+export type EventTicketsChange =
+  | { kind: 'guests_removed'; count: number; refundToDecide: boolean }
+  | { kind: 'guests_added'; count: number; amountTaken: number }
+  | { kind: 'ticket_type_changed'; count: number; ticketTypeName: string | null; amountTaken: number; refundToDecide: boolean }
+
+/**
+ * The booker's updated confirmation after staff change the tickets on a booking (BK-023): guests
+ * taken off or added, or tickets moved to another type. A refund is never promised: when one may
+ * be owed, a manager decides it (owner decision D7), so the email says a manager will look at it.
+ */
+export async function sendEventBookingTicketsChangedEmail(
+  supabase: SupabaseClient<any, 'public', any>,
+  input: { bookingId: string; change: EventTicketsChange; appBaseUrl?: string }
+): Promise<EventEmailResult> {
+  const context = await loadEventTicketEmailContext(supabase, input.bookingId)
+  if (!context) return { success: false, skipped: true }
+
+  const { change } = input
+  const count = Math.max(1, change.count)
+  const changedWord = count === 1 ? 'ticket' : 'tickets'
+  const them = count === 1 ? 'it' : 'them'
+  const taken = 'amountTaken' in change ? formatPositiveCurrency(change.amountTaken) : null
+  let changeLine: string
+  if (change.kind === 'guests_removed') {
+    changeLine = `We have taken ${count} ${changedWord} off your booking.`
+  } else if (change.kind === 'guests_added') {
+    changeLine = `We have added ${count} ${changedWord} to your booking.`
+  } else {
+    changeLine = `We have changed ${count} ${changedWord} to ${change.ticketTypeName || 'a different ticket type'}.`
+  }
+  const moneyLine = 'refundToDecide' in change && change.refundToDecide
+    ? `A manager will look at a refund for ${them} and let you know.`
+    : taken
+      ? `We have taken ${taken} for ${them}.`
+      : null
+
+  const manageResult = await createManageLink(supabase, context, input.appBaseUrl)
+  const manageLink = manageResult?.url ?? null
+  const seatWord = ticketWord(context.seats)
+  const heading = 'Your booking has been updated'
+  const body = [
+    `Hi ${context.firstName},`,
+    `Your booking for ${context.eventName}${whenSuffix(context)} has been updated. You now have ${context.seats} ${seatWord}.`,
+    changeLine,
+    moneyLine,
+    ...buildAttendanceLines(context),
+    `Booking reference: ${bookingReference(context.bookingId)}.`,
+    `If anything here is not right, call ${GUEST_CONTACT.phoneDisplay}.`,
+  ]
+
+  return sendEmail({
+    requireLog: true,
+    to: context.email,
+    subject: subjectWithDate('Booking updated', context),
+    text: buildGuestEmailText([
+      ...body,
+      manageLink ? `Manage your booking here: ${manageLink}` : null,
+    ]),
+    html: buildGuestEmailHtml({
+      title: heading,
+      preheader: `You now have ${context.seats} ${seatWord} for ${context.eventName}.`,
+      heading,
+      body,
+      cta: manageLink ? { href: manageLink, label: 'Manage booking' } : null,
+      footNote: 'This is a service message about your booking.',
+    }),
+    commType: 'event_booking_tickets_changed',
+    customerId: context.customerId,
+    eventBookingId: context.bookingId,
+    metadata: {
+      template_key: 'event_booking_tickets_changed_email',
+      change: change.kind,
+      count,
+      amount_taken: taken ? ('amountTaken' in change ? change.amountTaken : null) : null,
+      refund_to_decide: 'refundToDecide' in change ? change.refundToDecide : false,
+      manage_link_included: Boolean(manageLink),
     },
   })
 }
@@ -1401,10 +1616,12 @@ export async function sendEventPostponedEmail(
   const heading = 'Your event has been postponed'
   // A refund is only on the table where money changed hands. A free night has nothing to refund,
   // and offering one invited a question nobody could answer.
-  const paidForTickets = context.paymentMode === 'prepaid'
+  // Owner decision D8: postponed tickets carry over to the new date, and anyone who paid can ask
+  // for a refund instead.
+  const paidForTickets = context.paymentMode === 'prepaid' && context.bookingStatus === 'confirmed'
   const nextStepsLine = paidForTickets
-    ? 'We will decide whether to hold your tickets for the new date, move them to another night, or refund you, and we will be in touch as soon as that is settled.'
-    : 'We will be in touch with the new date as soon as it is settled, and your place carries over to it.'
+    ? `Your tickets carry over to the new date, and we will let you know as soon as it is set. If the new date does not suit you, call ${GUEST_CONTACT.phoneDisplay} and we will refund you.`
+    : 'Your place carries over to the new date, and we will let you know as soon as it is set.'
 
   const body = [
     `Hi ${context.firstName},`,

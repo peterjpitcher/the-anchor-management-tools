@@ -206,10 +206,12 @@ function toSheetData(input: {
   tableName?: string | null
   /** Present only when the booking is genuinely multi-type — drives the per-type breakdown. */
   multiTypeItems?: BookingItemWithTypeRow[]
+  /** Every line the booking holds, at the price it was booked at (D9: price changes are for new sales). */
+  bookedItems?: BookingItemWithTypeRow[]
   /** This booking's rows in the payments ledger, which says what was actually paid (BK-030). */
   payments: DoorPaymentRow[]
 }): EventBookingSheetData {
-  const { event, booking, tableBooking, tableName, multiTypeItems, payments } = input
+  const { event, booking, tableBooking, tableName, multiTypeItems, bookedItems, payments } = input
   const seats = Math.max(1, Number(booking.seats || 1))
   const pricePerSeat = resolveEventPriceAmount(event)
   const paymentMode = resolveEventPaymentMode(event)
@@ -225,9 +227,16 @@ function toSheetData(input: {
     .join(' ')
     .trim()
 
+  // A pay-at-the-door guest owes the price they booked at, not whatever the ticket costs now
+  // (owner decision D9, BK-027). Their line holds that price; online-payment nights keep the full
+  // door price rule (EV-02), and a booking with no line falls back to the event price.
+  const bookedAtPrice = !breakdownLines && !isFree && paymentMode === 'cash_only' && bookedItems && bookedItems.length === 1
+    ? Number(bookedItems[0].unit_price)
+    : null
   const chargeAmount = breakdownLines && !isFree
     ? resolveBookingChargeAmount(multiTypeItems ?? [])
-    : pricePerSeat * seats
+    : bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? Number((bookedAtPrice * seats).toFixed(2)) : pricePerSeat * seats
+  const unitPriceShown = bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? bookedAtPrice : pricePerSeat
   // From the ledger, not the payment method: a lapsed hold on a prepaid night used to print
   // "Paid online" (BK-030, customer bookings review of 24 October 2026).
   const paymentMethod = doorPaymentLabel({ paymentMode, isFree, payments, amountDue: chargeAmount })
@@ -244,7 +253,7 @@ function toSheetData(input: {
   const price = isFree ? 'Free' : formatCurrency(chargeAmount)
   const priceNote = breakdownLines && !isFree
     ? `Event price: ${breakdownLines.map((line) => `${line.quantity} × ${line.typeName} at ${formatCurrency(line.unitPrice)}`).join(' · ')}`
-    : isFree ? 'Event price: Free' : `Event price: ${formatCurrency(pricePerSeat)} per person · ${seats} guests`
+    : isFree ? 'Event price: Free' : `Event price: ${formatCurrency(unitPriceShown)} per person · ${seats} guests`
 
   return {
     bookingRef: bookingRef(booking, tableBooking),
@@ -310,9 +319,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     // Per-type line items for genuinely multi-type bookings (one batched query).
     // Display-only — a failure here must never block the booking sheets.
     const multiTypeItemsByBooking = new Map<string, BookingItemWithTypeRow[]>()
+    let bookedItemsByBooking = new Map<string, BookingItemWithTypeRow[]>()
+    try {
+      bookedItemsByBooking = await loadBookingItemsWithTypes(admin, bookingIds)
+    } catch (itemsError) {
+      console.warn('Failed to load booked ticket lines for booking sheets:', itemsError)
+    }
     if (eventTicketTypesEnabled()) {
       try {
-        const itemsByBooking = await loadBookingItemsWithTypes(admin, bookingIds)
+        const itemsByBooking = bookedItemsByBooking
         if (itemsByBooking.size > 0) {
           const defaultTypeId = await getDefaultTicketTypeId(admin, eventId)
           for (const [bookingId, items] of itemsByBooking) {
@@ -387,6 +402,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         tableBooking,
         tableName: tableNamesByEventBooking.get(booking.id),
         multiTypeItems: multiTypeItemsByBooking.get(booking.id),
+        bookedItems: bookedItemsByBooking.get(booking.id),
         payments: paymentsByBooking.get(booking.id) ?? [],
       })
     })

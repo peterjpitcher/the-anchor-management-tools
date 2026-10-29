@@ -397,6 +397,9 @@ describe('Events actions', () => {
         _oldTime: '19:00:00',
         _oldName: 'Quiz Night',
         _oldStatus: 'scheduled',
+        _before: { name: 'Quiz Night', date: '2026-04-10', time: '19:00:00', slug: 'quiz-night' },
+        _impact: { activeBookings: 3 },
+        _warnings: [],
         marketingLinksWarning: null,
       })
 
@@ -413,6 +416,60 @@ describe('Events actions', () => {
         'event-1',
         { context: 'event_updated' },
       )
+      // BK-139: what changed is logged before and after, flagged when guests had booked.
+      expect(mockedLogAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+        operation_type: 'update',
+        old_values: { date: '2026-04-10', time: '19:00:00' },
+        new_values: { date: '2026-04-11', time: '20:00:00' },
+        additional_info: expect.objectContaining({ changed_after_first_booking: true, active_bookings: 3 }),
+      }))
+    })
+
+    function mockValidUpdate() {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+      mockedEventSchema.partial.mockReturnValue({
+        safeParse: vi.fn().mockReturnValue({ success: true, data: { name: 'Quiz Night', date: '2026-04-11', time: '20:00' } }),
+      })
+    }
+
+    // BK-026, BK-036: a change that affects booked guests is not saved until a manager confirms.
+    it('returns the summary to confirm, and saves nothing, when the change affects booked guests', async () => {
+      mockValidUpdate()
+      const needsConfirmation = Object.assign(new Error('Confirm this change before it is saved.'), {
+        name: 'EventChangeNeedsConfirmationError',
+        confirmations: ['3 bookings (6 seats) will be told the new date and time.'],
+      })
+      ;(EventService.updateEvent as Mock).mockRejectedValue(needsConfirmation)
+
+      const result = await updateEvent('event-1', buildFormData({ name: 'Quiz Night', date: '2026-04-11', time: '20:00' }))
+
+      expect(result).toEqual({
+        error: 'Confirm this change before it is saved.',
+        confirmation: { lines: ['3 bookings (6 seats) will be told the new date and time.'] },
+      })
+      expect(EventService.updateEvent).toHaveBeenCalledWith('event-1', expect.anything(), { confirmedChanges: false })
+      expect(mockedLogAuditEvent).not.toHaveBeenCalled()
+      expect(mockedSyncPubOpsEventCalendarByEventId).not.toHaveBeenCalled()
+    })
+
+    it('passes the manager confirmation through when the drawer sends it', async () => {
+      mockValidUpdate()
+      ;(EventService.updateEvent as Mock).mockRejectedValue(Object.assign(new Error('locked'), { name: 'EventChangeBlockedError' }))
+
+      const result = await updateEvent('event-1', buildFormData({ name: 'Quiz Night', confirmed_changes: 'true' }))
+
+      expect(EventService.updateEvent).toHaveBeenCalledWith('event-1', expect.anything(), { confirmedChanges: true })
+      expect(result).toEqual({ error: 'locked' })
+    })
+
+    it('shows the payment method lock when the database refuses the change', async () => {
+      mockValidUpdate()
+      ;(EventService.updateEvent as Mock).mockRejectedValue(new Error('event_payment_mode_locked'))
+
+      const result = await updateEvent('event-1', buildFormData({ name: 'Quiz Night' }))
+
+      expect('error' in result ? result.error : '').toContain('payment method is locked')
     })
   })
 

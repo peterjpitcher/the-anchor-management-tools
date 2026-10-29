@@ -193,3 +193,37 @@ export function bookerCanEditGuestDetails(input: {
   if (closes.length === 0) return false
   return Math.min(...closes) > now
 }
+
+/**
+ * Which guests and which questions a save changed (BK-133), for the audit row: ids only, never
+ * the names, numbers or answers themselves. A guest is "changed" when their name, mobile or any
+ * answer differs, or when they are new or gone.
+ */
+export function diffGuestDetails(
+  before: StoredEventAttendee[],
+  after: StoredEventAttendee[],
+): { guestIds: string[]; questionIds: string[] } {
+  const guestIds = new Set<string>()
+  const questionIds = new Set<string>()
+  const answersOf = (guest: StoredEventAttendee | undefined) =>
+    new Map((guest?.answers ?? []).map((answer) => [answer.question_id, answer.value?.trim() ?? '']))
+  const beforeById = new Map(before.map((guest) => [guest.id, guest]))
+  const afterById = new Map(after.map((guest) => [guest.id, guest]))
+
+  for (const id of new Set([...beforeById.keys(), ...afterById.keys()])) {
+    const old = beforeById.get(id)
+    const next = afterById.get(id)
+    if ((old?.name?.trim() ?? '') !== (next?.name?.trim() ?? '') || (old?.phone ?? '') !== (next?.phone ?? '')) {
+      guestIds.add(id)
+    }
+    const oldAnswers = answersOf(old)
+    const nextAnswers = answersOf(next)
+    for (const questionId of new Set([...oldAnswers.keys(), ...nextAnswers.keys()])) {
+      if ((oldAnswers.get(questionId) ?? '') !== (nextAnswers.get(questionId) ?? '')) {
+        guestIds.add(id)
+        questionIds.add(questionId)
+      }
+    }
+  }
+  return { guestIds: [...guestIds].sort(), questionIds: [...questionIds].sort() }
+}

@@ -23,6 +23,7 @@ vi.mock('@/lib/supabase/admin', () => ({
         select: () => builder,
         eq: () => builder,
         not: () => builder,
+        in: () => builder,
         single: async () => ({ data: { id: 'event-1', start_datetime: '2099-11-20T19:00:00Z', date: '2099-11-20', time: '19:00', booking_questions: state.previousQuestions }, error: null }),
         update: (values: Record<string, unknown>) => {
           state.updates.push(values)

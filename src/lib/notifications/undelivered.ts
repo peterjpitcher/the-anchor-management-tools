@@ -29,6 +29,8 @@ const REASON_LABELS: Record<string, string> = {
   link_expired: 'Email bounced; the link has expired',
   link_not_rebuildable: 'Email bounced; the link cannot be rebuilt',
   fallback_enqueue_failed: 'Email bounced; the text could not be queued',
+  no_channel: 'No usable email and no mobile that can take texts',
+  duplicate_check_unavailable: 'Not sent: the email log could not be read, so nothing was sent in case it had gone already',
   email_and_sms_failed: 'Email and text both failed',
 }
 
@@ -54,6 +56,11 @@ function bookingLink(metadata: Record<string, unknown> | null): UndeliveredGuest
   const tableBookingId = metadata?.table_booking_id
   if (typeof tableBookingId === 'string' && tableBookingId) {
     return { href: `/table-bookings/${tableBookingId}`, label: 'Table booking' }
+  }
+  // Event messages (BK-167): the event page lists the booking.
+  const eventId = metadata?.event_id
+  if (typeof metadata?.event_booking_id === 'string' && typeof eventId === 'string' && eventId) {
+    return { href: `/events/${eventId}`, label: 'Event booking' }
   }
   return null
 }
