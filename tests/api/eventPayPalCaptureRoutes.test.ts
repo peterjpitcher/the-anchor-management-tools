@@ -25,8 +25,8 @@ vi.mock('@/lib/events/event-payments', () => ({
 }))
 vi.mock('@/lib/events/payment-alerts', () => ({ alertEventPaymentNeedsAPerson: vi.fn().mockResolvedValue(undefined) }))
 vi.mock('@/lib/email/event-ticket-emails', () => ({
-  sendEventPaymentConfirmationEmail: vi.fn().mockResolvedValue(undefined),
-  sendEventPaymentManualReviewEmail: vi.fn().mockResolvedValue(undefined),
+  sendEventPaymentConfirmationEmail: vi.fn().mockResolvedValue({ success: true, messageId: 'email-1' }),
+  sendEventPaymentManualReviewEmail: vi.fn().mockResolvedValue({ success: true, messageId: 'email-2' }),
 }))
 
 import {
@@ -64,18 +64,40 @@ beforeEach(() => {
 })
 
 describe.each(routes)('$name', ({ capture, call }) => {
-  it('sends one confirmation text and one confirmation email for a new confirmation', async () => {
+  // BK-167, owner decision D14: email first, a text only when no email goes.
+  it('sends one confirmation email, and no text, for a new confirmation to a guest with an email', async () => {
     vi.mocked(capture).mockResolvedValueOnce({ state: 'confirmed', bookingId: BOOKING, amount: 80, currency: 'GBP', paymentId: 'payment-1' })
 
     const response = await call()
 
     expect(response.status).toBe(200)
     await expect(response.json()).resolves.toMatchObject({ success: true, state: 'confirmed', booking_id: BOOKING })
-    expect(sendEventPaymentConfirmationSms).toHaveBeenCalledTimes(1)
+    expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
     expect(sendEventPaymentConfirmationEmail).toHaveBeenCalledTimes(1)
     expect(sendEventPaymentManualReviewSms).not.toHaveBeenCalled()
     expect(sendEventPaymentManualReviewEmail).not.toHaveBeenCalled()
     expect(alertEventPaymentNeedsAPerson).not.toHaveBeenCalled()
+  })
+
+  it('texts the confirmation when the guest has no usable email', async () => {
+    vi.mocked(capture).mockResolvedValueOnce({ state: 'confirmed', bookingId: BOOKING, amount: 80, currency: 'GBP', paymentId: 'payment-1' })
+    vi.mocked(sendEventPaymentConfirmationEmail).mockResolvedValueOnce({ success: false, skipped: true })
+
+    const response = await call()
+
+    expect(response.status).toBe(200)
+    expect(sendEventPaymentConfirmationEmail).toHaveBeenCalledTimes(1)
+    expect(sendEventPaymentConfirmationSms).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends no text when the email duplicate check could not run', async () => {
+    vi.mocked(capture).mockResolvedValueOnce({ state: 'confirmed', bookingId: BOOKING, amount: 80, currency: 'GBP', paymentId: 'payment-1' })
+    vi.mocked(sendEventPaymentConfirmationEmail).mockResolvedValueOnce({ success: false, skipped: true, deferred: true })
+
+    const response = await call()
+
+    expect(response.status).toBe(200)
+    expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
   })
 
   it('sends no second text for a payment that was already confirmed', async () => {
@@ -88,14 +110,14 @@ describe.each(routes)('$name', ({ capture, call }) => {
     expect(sendEventPaymentConfirmationEmail).toHaveBeenCalledTimes(1)
   })
 
-  it('answers 202 and sends one manual review text and email when staff need to check', async () => {
+  it('answers 202 and sends one manual review email, and no text, when staff need to check', async () => {
     vi.mocked(capture).mockResolvedValueOnce({ state: 'manual_review', bookingId: BOOKING, amount: 80, currency: 'GBP', paymentId: 'payment-1', reason: 'capacity_unavailable_after_capture' })
 
     const response = await call()
 
     expect(response.status).toBe(202)
     await expect(response.json()).resolves.toMatchObject({ success: false, state: 'manual_review', booking_id: BOOKING })
-    expect(sendEventPaymentManualReviewSms).toHaveBeenCalledTimes(1)
+    expect(sendEventPaymentManualReviewSms).not.toHaveBeenCalled()
     expect(sendEventPaymentManualReviewEmail).toHaveBeenCalledTimes(1)
     expect(sendEventPaymentConfirmationSms).not.toHaveBeenCalled()
     expect(sendEventPaymentConfirmationEmail).not.toHaveBeenCalled()

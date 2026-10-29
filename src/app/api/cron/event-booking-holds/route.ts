@@ -7,25 +7,70 @@ import { sendSMS } from '@/lib/twilio'
 import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { sendEventPaymentExpiredEmail } from '@/lib/email/event-ticket-emails'
+import { sendEventMessageEmailFirst } from '@/lib/events/event-guest-notify'
+import { buildEventHoldReleasedText, formatEventTextWhen } from '@/lib/events/event-guest-texts'
+import { resolvePublicEventLink } from '@/lib/events/public-event-link'
+import { resolveEventStartIso } from '@/lib/events/event-when'
 import { findEventBookingsAwaitingPaymentDecision } from '@/lib/events/payment-awaiting-decision'
 import { withCronRun } from '@/lib/cron/run-recorder'
 
 // The 15-second project default is too tight for a run that expires a backlog (BK-212).
 export const maxDuration = 60
 
-function formatLondonDateTime(dateStr: string): string {
+/**
+ * The hold-released text, the fallback when no email goes. Only to a guest whose texts are on.
+ * Never throws: the messenger records a failure.
+ */
+async function sendEventHoldReleasedText(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string
+): Promise<{ success: boolean; code: string | null; logFailure: boolean; sid?: string | null }> {
+  const { data: bookingDetail, error } = await supabase
+    .from('bookings')
+    .select('id, seats, event_seating_type, customer_id, event_id, customers!inner(id, first_name, mobile_number, sms_status), events!inner(id, name, date, time, start_datetime, booking_url, slug, booking_mode)')
+    .eq('id', bookingId)
+    .maybeSingle()
+
+  if (error) return { success: false, code: 'safety_unavailable', logFailure: false }
+
+  // Supabase types infer arrays for joined relations; extract first element
+  const customerRaw = bookingDetail?.customers
+  const eventRaw = bookingDetail?.events
+  const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw
+  const event = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
+
+  if (customer?.sms_status !== 'active' || !customer?.mobile_number) {
+    return { success: false, code: null, logFailure: false }
+  }
+
+  const body = buildEventHoldReleasedText({
+    firstName: getSmartFirstName(customer.first_name),
+    eventName: event?.name || 'your event',
+    when: formatEventTextWhen(resolveEventStartIso(event)),
+    seats: Number(bookingDetail?.seats ?? 1),
+    seatingType: (bookingDetail as any)?.event_seating_type ?? null,
+    bookingMode: (event as any)?.booking_mode ?? null,
+    rebookLink: resolvePublicEventLink(event),
+  })
+
   try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12',
-    }).format(new Date(dateStr))
+    const result = await sendSMS(customer.mobile_number, body, {
+      customerId: customer.id,
+      metadata: {
+        template_key: 'event_hold_expired',
+        event_id: event?.id,
+        event_booking_id: bookingId,
+      },
+    })
+    const code = typeof result.code === 'string' ? result.code : null
+    return {
+      success: result.success === true,
+      code: result.success ? code : code ?? 'send_failed',
+      logFailure: result.logFailure === true || code === 'logging_failed',
+      sid: result.sid ?? null,
+    }
   } catch {
-    return 'the scheduled date'
+    return { success: false, code: 'unexpected_exception', logFailure: false }
   }
 }
 
@@ -142,52 +187,27 @@ async function expireEventBookingHolds(request: NextRequest) {
 
       result.expiredPaymentHolds += (expiredHolds || []).length
 
-      // Send SMS notifications to customers whose booking holds expired
+      // Tell each guest their held places went back on sale: email first, a text only when no
+      // email goes (BK-167, owner decision D14), with a way to book again (BK-173). A booking is
+      // expired once, so a deferred message is not retried here: it is listed as undelivered.
       for (const expiredBookingId of expiredBookingIds) {
         if (walkInIds.has(expiredBookingId)) continue
         try {
-          await sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId })
-
-          const { data: bookingDetail } = await supabase
-            .from('bookings')
-            .select('id, seats, customer_id, event_id, customers!inner(id, first_name, mobile_number, sms_status), events!inner(id, name, date, time, start_datetime, booking_url)')
-            .eq('id', expiredBookingId)
-            .maybeSingle()
-
-          // Supabase types infer arrays for joined relations; extract first element
-          const customerRaw = bookingDetail?.customers
-          const eventRaw = bookingDetail?.events
-          const customer = Array.isArray(customerRaw) ? customerRaw[0] : customerRaw
-          const event = Array.isArray(eventRaw) ? eventRaw[0] : eventRaw
-
-          if (
-            customer?.sms_status === 'active' &&
-            customer?.mobile_number
-          ) {
-            const firstName = getSmartFirstName(customer.first_name)
-            const eventDate = formatLondonDateTime(
-              event?.start_datetime || event?.date || ''
-            )
-            const bookingUrl = event?.booking_url || ''
-            const eventName = event?.name || 'your event'
-
-            const smsBody = `The Anchor: Hi ${firstName}, your held seats for ${eventName} on ${eventDate} have been released as payment wasn't completed in time.${bookingUrl ? ` If you'd still like to attend, please rebook at ${bookingUrl}.` : ''}`
-
-            await sendSMS(customer.mobile_number, smsBody, {
-              customerId: customer.id,
-              metadata: {
-                template_key: 'event_hold_expired',
-                event_id: event?.id,
-                event_booking_id: expiredBookingId,
-              },
-            }).catch((err) => {
-              // Non-fatal: log and continue
-              console.error('Failed to send hold expiry SMS:', err)
-            })
-          }
-        } catch (smsErr) {
+          await sendEventMessageEmailFirst({
+            templateKey: 'event_hold_expired',
+            bookingId: expiredBookingId,
+            eventId: (expiredBookings || []).find((row: any) => row.id === expiredBookingId)?.event_id ?? null,
+            email: () => sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId }),
+            text: () => sendEventHoldReleasedText(supabase, expiredBookingId),
+          })
+        } catch (messageError) {
           // Non-fatal: log and continue processing other bookings
-          console.error('Failed to load booking detail for hold expiry SMS:', smsErr)
+          logger.error('Failed to send the hold expiry message', {
+            metadata: {
+              bookingId: expiredBookingId,
+              error: messageError instanceof Error ? messageError.message : String(messageError),
+            },
+          })
         }
       }
 
