@@ -1,4 +1,4 @@
--- Rollback for 20261028150412_event_booking_ticket_changes.sql.
+-- Rollback for 20261029090400_event_booking_ticket_changes.sql.
 --
 -- The migration only adds event_booking_refund_requests, booking_items.price_paid_groups, the
 -- payments_manual_refund_claim_unique index and eleven functions; nothing existing was changed, so
