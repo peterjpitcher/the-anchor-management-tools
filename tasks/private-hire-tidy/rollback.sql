@@ -1,6 +1,6 @@
 -- Rollback for release 26 (private hire tidy). Drafted only; run by hand with the owner's go-ahead.
 --
--- 1. 20261029083000_private_hire_contract_terms.sql
+-- 1. 20261029091549_private_hire_contract_terms.sql
 --    Puts sync_customer_name_from_customers back exactly as production had it on 28 October 2026
 --    (md5(prosrc) 98d4cb3a39992dc5bf0df1181a99d7ce) and drops private_bookings.contract_terms.
 --    Dropping the column loses the contract terms recorded since the release: every contract
