@@ -120,3 +120,30 @@ describe('event door lists', () => {
     expect(notes).toEqual({ 'Paid Guest': null, 'Waiting Guest': 'Not paid yet: £90.00 due', 'Afterwards Guest': null })
   })
 })
+
+// Owner decision D9 (BK-027, BK-036): a price change applies to new sales only, so a guest who
+// booked a pay-on-the-door night at £10 is charged £10 on the door sheet after the price rises.
+describe('door sheet price for a pay-on-the-door booking', () => {
+  it('charges the price the guest booked at, not the price the ticket costs now', async () => {
+    const db = new FakeDb({
+      events: [{
+        id: EVENT_ID, name: 'Quiz night', date: '2099-11-20', time: '19:00', slug: 'quiz', performer_name: null, performer_type: null,
+        payment_mode: 'cash_only', is_free: false, price: 12, price_per_seat: 12, online_discount_type: null, online_discount_value: null,
+        online_discount_ends_at: null, booking_mode: 'general',
+      }],
+      bookings: [booking('b1', 'Early', 'confirmed'), booking('b2', 'Legacy', 'confirmed')],
+      booking_items: [{ id: 'i1', booking_id: 'b1', ticket_type_id: 't1', quantity: 2, unit_price: 10, attendee_names: [], ticket_type: { name: 'Standard', sort_order: 0 } }],
+      payments: [],
+      table_bookings: [],
+      booking_table_assignments: [],
+      event_communal_seat_allocations: [],
+      menu_dishes_with_costs: [],
+    })
+    vi.mocked(createAdminClient).mockReturnValue(db.asDb() as never)
+    await bookingSheets(request('booking-sheets'), context)
+    const byName = Object.fromEntries(captured.sheets.map((sheet) => [sheet.customerName, [sheet.price, sheet.priceNote]]))
+    expect(byName['Early Guest']).toEqual(['£20.00', 'Event price: £10.00 per person · 2 guests'])
+    // A booking with no line falls back to the event price, as before.
+    expect(byName['Legacy Guest']).toEqual(['£24.00', 'Event price: £12.00 per person · 2 guests'])
+  })
+})

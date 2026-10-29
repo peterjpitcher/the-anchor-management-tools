@@ -5668,6 +5668,32 @@ export type Database = {
           },
         ]
       }
+      event_slug_history: {
+        Row: {
+          event_id: string | null
+          old_slug: string
+          replaced_at: string
+        }
+        Insert: {
+          event_id?: string | null
+          old_slug: string
+          replaced_at?: string
+        }
+        Update: {
+          event_id?: string | null
+          old_slug?: string
+          replaced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_slug_history_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_ticket_transfers: {
         Row: {
           approved_by: string | null
@@ -12750,6 +12776,7 @@ export type Database = {
           contract_note: string | null
           contract_sent_at: string | null
           contract_sent_to: string | null
+          contract_terms: Json | null
           contract_version: number | null
           created_at: string
           created_by: string | null
@@ -12805,12 +12832,14 @@ export type Database = {
           paypal_deposit_order_id: string | null
           paypal_reconciliation_attempts: number
           paypal_reconciliation_last_error: string | null
+          portal_links_revoked_at: string | null
           post_event_outcome: string | null
           post_event_outcome_decided_at: string | null
           post_event_status: string | null
           receipt_version: number
           refund_due_amount: number | null
           refund_due_by: string | null
+          requested_space_id: string | null
           review_clicked_at: string | null
           review_processed_at: string | null
           review_sms_sent_at: string | null
@@ -12851,6 +12880,7 @@ export type Database = {
           contract_note?: string | null
           contract_sent_at?: string | null
           contract_sent_to?: string | null
+          contract_terms?: Json | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
@@ -12906,12 +12936,14 @@ export type Database = {
           paypal_deposit_order_id?: string | null
           paypal_reconciliation_attempts?: number
           paypal_reconciliation_last_error?: string | null
+          portal_links_revoked_at?: string | null
           post_event_outcome?: string | null
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
           refund_due_amount?: number | null
           refund_due_by?: string | null
+          requested_space_id?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -12952,6 +12984,7 @@ export type Database = {
           contract_note?: string | null
           contract_sent_at?: string | null
           contract_sent_to?: string | null
+          contract_terms?: Json | null
           contract_version?: number | null
           created_at?: string
           created_by?: string | null
@@ -13007,12 +13040,14 @@ export type Database = {
           paypal_deposit_order_id?: string | null
           paypal_reconciliation_attempts?: number
           paypal_reconciliation_last_error?: string | null
+          portal_links_revoked_at?: string | null
           post_event_outcome?: string | null
           post_event_outcome_decided_at?: string | null
           post_event_status?: string | null
           receipt_version?: number
           refund_due_amount?: number | null
           refund_due_by?: string | null
+          requested_space_id?: string | null
           review_clicked_at?: string | null
           review_processed_at?: string | null
           review_sms_sent_at?: string | null
@@ -13070,6 +13105,13 @@ export type Database = {
             columns: ["invoice_id"]
             isOneToOne: false
             referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "private_bookings_requested_space_id_fkey"
+            columns: ["requested_space_id"]
+            isOneToOne: false
+            referencedRelation: "venue_spaces"
             referencedColumns: ["id"]
           },
         ]
@@ -23495,6 +23537,18 @@ export type Database = {
           p_limit: number
           p_offset: number
           p_sort: string
+        }
+        Returns: Json
+      }
+      move_event_seated_bookings_v01: {
+        Args: {
+          p_event_data?: Json
+          p_event_id: string
+          p_faqs?: Json
+          p_new_date: string
+          p_new_duration_minutes?: number
+          p_new_end_time?: string
+          p_new_time: string
         }
         Returns: Json
       }

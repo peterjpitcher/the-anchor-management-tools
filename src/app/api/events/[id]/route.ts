@@ -1,4 +1,6 @@
 import { NextRequest } from 'next/server';
+import { onlineBookingClosedReason } from '@/lib/events/bookable'
+import { resolveMovedEventSlug } from '@/lib/events/slug-redirect'
 import { createAdminClient } from '@/lib/supabase/admin';
 import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/night-clashes';
 import { withApiAuth, createApiResponse, createErrorResponse } from '@/lib/api/auth';
@@ -89,7 +91,10 @@ export async function GET(
     }
 
     if (!event) {
-      return createErrorResponse('Event not found', 'NOT_FOUND', 404);
+      // BK-192: an old address still finds its event, or the next night in its series. Still a
+      // 404, so the live website keeps showing 'not found' until it reads moved_to and redirects.
+      const movedTo = isUUID ? null : await resolveMovedEventSlug(supabase, params.id);
+      return createErrorResponse('Event not found', 'NOT_FOUND', 404, movedTo ? { moved_to: movedTo } : undefined);
     }
 
     let category: EventCategoryRow | null = null;
@@ -299,6 +304,11 @@ export async function GET(
       accessibility_notes: event.accessibility_notes || null,
       bookings_enabled: (event.bookings_enabled ?? true) && !closedByWholePubHire.has(event.id),
       booking_cutoff_at: event.booking_cutoff_at ?? null,
+      // One answer to "can a guest book this online now?", the same rule the booking route and the
+      // database apply, so the website hides the form whenever AMS would refuse (BK-035, BK-089).
+      // The fields above stay as they were for the live website until it reads this.
+      bookable: !closedByWholePubHire.has(event.id) && onlineBookingClosedReason(event) === null,
+      booking_closed_reason: closedByWholePubHire.has(event.id) ? 'booking_closed' : onlineBookingClosedReason(event),
       shortDescription: event.short_description,
       longDescription: event.long_description,
       metaTitle: event.meta_title,

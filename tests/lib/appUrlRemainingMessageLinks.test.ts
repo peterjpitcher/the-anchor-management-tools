@@ -530,7 +530,7 @@ describe('event reschedule', () => {
       userId: 'user-1',
     })
 
-    expect(result).toEqual({ bookingsNotified: 1, totalBookingsAffected: 1 })
+    expect(result).toEqual({ bookingsNotified: 1, totalBookingsAffected: 1, notReachedBookingIds: [] })
 
     const texts = sentTexts()
     expect(texts).toHaveLength(1)

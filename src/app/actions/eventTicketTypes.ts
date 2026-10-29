@@ -7,8 +7,57 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { eventTicketTypesEnabled, type EventTicketTypeRow } from '@/lib/events/ticket-types'
+import { countActiveEventBookings, describeTicketPriceChange, EVENT_PAYMENT_MODE_LOCKED_MESSAGE } from '@/lib/events/event-change-guard'
+import { isPaymentModeLockedError } from '@/lib/events/event-change-refusal'
 
-export type TicketTypeActionResult = { success?: boolean; error?: string; data?: EventTicketTypeRow }
+/**
+ * `confirmation` comes back, with nothing saved, when the change affects guests already booked:
+ * the screen shows its lines and sends the change again with `confirmed` (BK-036, BK-143).
+ */
+export type TicketTypeActionResult = { success?: boolean; error?: string; data?: EventTicketTypeRow; confirmation?: { lines: string[] } }
+
+const currency = (amount: number) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+
+/** Seats booked on one ticket type across the event's active bookings. */
+async function seatsBookedOnType(db: ReturnType<typeof createAdminClient>, typeId: string): Promise<number> {
+  const { data, error } = await db
+    .from('booking_items')
+    .select('quantity, booking:bookings!inner(status, is_reminder_only)')
+    .eq('ticket_type_id', typeId)
+    .in('booking.status', ['confirmed', 'pending_payment'])
+  if (error) throw new Error(`Ticket sales could not be checked: ${error.message}`)
+  return (data ?? []).reduce((sum, row) => {
+    const booking = (Array.isArray(row.booking) ? row.booking[0] : row.booking) as { is_reminder_only?: boolean | null } | null
+    return booking?.is_reminder_only === true ? sum : sum + Math.max(0, Number(row.quantity ?? 0))
+  }, 0)
+}
+
+/**
+ * Taking the first ticket on sale off sale makes the next one the event's headline price
+ * (sync_event_ticket_price_v01), so staff are told what it becomes first (BK-143).
+ */
+async function describeFirstTypeLeavingSale(
+  db: ReturnType<typeof createAdminClient>,
+  eventId: string,
+  typeId: string,
+): Promise<string | null> {
+  const { data, error } = await db.from('event_ticket_types')
+    .select('id, name, base_price')
+    .eq('event_id', eventId).eq('is_active', true)
+    .order('sort_order').order('created_at').limit(2)
+  if (error) throw new Error(`Ticket types could not be checked: ${error.message}`)
+  if (!data || data[0]?.id !== typeId || !data[1]) return null
+  return `This is the first ticket on sale, so the event's headline price becomes ${currency(Number(data[1].base_price))}, the price of ${data[1].name}. Guests already booked on ${data[0].name ?? 'this ticket'} keep it.`
+}
+
+function changedValues(before: Record<string, unknown>, after: Record<string, unknown>): { old_values: Record<string, unknown>; new_values: Record<string, unknown> } | null {
+  const keys = Object.keys(after).filter(key => key !== 'updated_at' && String(before[key] ?? '') !== String(after[key] ?? ''))
+  if (keys.length === 0) return null
+  return {
+    old_values: Object.fromEntries(keys.map(key => [key, before[key] ?? null])),
+    new_values: Object.fromEntries(keys.map(key => [key, after[key] ?? null])),
+  }
+}
 
 const ticketTypeSchema = z.object({
   name: z.string().trim().min(1, 'Name is required').max(80),
@@ -128,7 +177,10 @@ export async function createEventTicketType(
       })
       .select('*')
       .single()
-    if (error) throw error
+    if (error) {
+      if (isPaymentModeLockedError(error)) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
+      throw error
+    }
 
     await logAuditEvent({
       user_id: auth.userId,
@@ -149,6 +201,7 @@ export async function createEventTicketType(
 export async function updateEventTicketType(
   typeId: string,
   input: Partial<z.input<typeof ticketTypeSchema>>,
+  options: { confirmed?: boolean } = {},
 ): Promise<TicketTypeActionResult> {
   try {
     const auth = await requireEventsManage()
@@ -160,7 +213,7 @@ export async function updateEventTicketType(
     const db = createAdminClient()
     const { data: existing, error: fetchError } = await db
       .from('event_ticket_types')
-      .select('event_id, capacity, is_active')
+      .select('event_id, name, base_price, capacity, is_active, sort_order, description')
       .eq('id', typeId)
       .single()
     if (fetchError || !existing) return { error: 'Ticket type not found' }
@@ -179,6 +232,34 @@ export async function updateEventTicketType(
       if (capacityError) return { error: capacityError }
     }
 
+    // What this change does to guests already booked, for a manager to confirm (BK-036, BK-143).
+    const confirmations: string[] = []
+    const priceChanges = parsed.data.base_price !== undefined && Number(parsed.data.base_price) !== Number(existing.base_price)
+    const leavesSale = parsed.data.is_active === false && existing.is_active
+    const capacityCut = parsed.data.capacity !== undefined && parsed.data.capacity !== null && (existing.capacity === null || parsed.data.capacity < Number(existing.capacity))
+    let bookedOnEvent = 0
+    try {
+      if (priceChanges || leavesSale || capacityCut) {
+        bookedOnEvent = (await countActiveEventBookings(db, existing.event_id)).bookings
+      }
+      if (priceChanges && bookedOnEvent > 0) confirmations.push(describeTicketPriceChange(bookedOnEvent))
+      if (leavesSale) {
+        const line = await describeFirstTypeLeavingSale(db, existing.event_id, typeId)
+        if (line) confirmations.push(line)
+      }
+      if (capacityCut) {
+        const sold = await seatsBookedOnType(db, typeId)
+        if (sold > Number(parsed.data.capacity)) {
+          confirmations.push(`${sold} ${sold === 1 ? 'ticket is' : 'tickets are'} already sold on ${existing.name}, so a limit of ${parsed.data.capacity} stops its sales. Nobody already booked loses their place.`)
+        }
+      }
+    } catch {
+      return { error: 'Existing bookings could not be checked. Your changes have not been saved.' }
+    }
+    if (confirmations.length > 0 && options.confirmed !== true) {
+      return { error: 'Confirm this change before it is saved.', confirmation: { lines: confirmations } }
+    }
+
     const { is_free_ticket: _freeConfirmation, ...update } = parsed.data
     const { data, error } = await db
       .from('event_ticket_types')
@@ -186,8 +267,13 @@ export async function updateEventTicketType(
       .eq('id', typeId)
       .select('*')
       .single()
-    if (error) throw error
+    if (error) {
+      if (isPaymentModeLockedError(error)) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
+      throw error
+    }
 
+    // Before and after values, so a dispute about a price can be answered from the log (BK-139).
+    const changes = changedValues(existing as Record<string, unknown>, update as Record<string, unknown>)
     await logAuditEvent({
       user_id: auth.userId,
       user_email: auth.userEmail,
@@ -195,11 +281,13 @@ export async function updateEventTicketType(
       resource_type: 'event_ticket_type',
       resource_id: typeId,
       operation_status: 'success',
-      additional_info: { eventId: existing.event_id },
+      ...(changes ?? {}),
+      additional_info: { eventId: existing.event_id, changed_after_first_booking: Boolean(changes) && bookedOnEvent > 0, confirmed_by_manager: options.confirmed === true },
     })
     revalidatePath(`/events/${existing.event_id}`)
     return { success: true, data: data as EventTicketTypeRow }
   } catch (error) {
+    if (isPaymentModeLockedError(error)) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
     return { error: error instanceof Error ? error.message : 'Failed to update ticket type' }
   }
 }
@@ -208,7 +296,7 @@ export async function updateEventTicketType(
  * Remove a ticket type. If it is referenced by any booking line it is
  * deactivated (kept for history); otherwise it is hard-deleted.
  */
-export async function deleteEventTicketType(typeId: string): Promise<TicketTypeActionResult> {
+export async function deleteEventTicketType(typeId: string, options: { confirmed?: boolean } = {}): Promise<TicketTypeActionResult> {
   try {
     const auth = await requireEventsManage()
     if ('error' in auth) return auth
@@ -216,7 +304,7 @@ export async function deleteEventTicketType(typeId: string): Promise<TicketTypeA
     const db = createAdminClient()
     const { data: existing } = await db
       .from('event_ticket_types')
-      .select('event_id, is_active')
+      .select('event_id, name, base_price, capacity, is_active')
       .eq('id', typeId)
       .single()
     if (!existing) return { error: 'Ticket type not found' }
@@ -225,6 +313,15 @@ export async function deleteEventTicketType(typeId: string): Promise<TicketTypeA
     const { count: activeCount, error: activeError } = await db.from('event_ticket_types').select('id', { count: 'exact', head: true }).eq('event_id', existing.event_id).eq('is_active', true)
     if (activeError) return { error: 'Ticket types could not be checked' }
     if (existing.is_active && (activeCount ?? 0) <= 1) return { error: 'Keep at least one ticket type on sale' }
+    if (existing.is_active && options.confirmed !== true) {
+      let line: string | null
+      try {
+        line = await describeFirstTypeLeavingSale(db, existing.event_id, typeId)
+      } catch {
+        return { error: 'Ticket types could not be checked' }
+      }
+      if (line) return { error: 'Confirm this change before it is saved.', confirmation: { lines: [line] } }
+    }
     const { count, error: countError } = await db
       .from('booking_items')
       .select('id', { count: 'exact', head: true })
@@ -248,11 +345,13 @@ export async function deleteEventTicketType(typeId: string): Promise<TicketTypeA
       resource_type: 'event_ticket_type',
       resource_id: typeId,
       operation_status: 'success',
+      old_values: { name: existing.name, base_price: existing.base_price, capacity: existing.capacity, is_active: existing.is_active },
       additional_info: { eventId: existing.event_id, deactivated: (count ?? 0) > 0 },
     })
     revalidatePath(`/events/${existing.event_id}`)
     return { success: true, data: retained }
   } catch (error) {
+    if (isPaymentModeLockedError(error)) return { error: EVENT_PAYMENT_MODE_LOCKED_MESSAGE }
     return { error: error instanceof Error ? error.message : 'Failed to remove ticket type' }
   }
 }

@@ -6,8 +6,7 @@ import { refundPayPalPayment } from '@/lib/paypal'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { logger } from '@/lib/logger'
 import {
-  bookingItemsAreMultiType,
-  getDefaultTicketTypeId,
+  bookingSeatsEditableDirectly,
   loadBookingItems
 } from '@/lib/events/ticket-type-queries'
 import { settleWrite } from '@/lib/supabase/settle-write'
@@ -60,10 +59,8 @@ export async function guestSeatChangeBlock(
   if (fromPreview) return fromPreview
   if (preview.booking_id && preview.event_id) {
     const items = await loadBookingItems(supabase, preview.booking_id)
-    if (items.length > 0) {
-      const defaultTypeId = await getDefaultTicketTypeId(supabase, preview.event_id)
-      if (bookingItemsAreMultiType(items, defaultTypeId)) return 'multi_ticket_type_booking'
-    }
+    // A single line on any type, the old default included, changes size with the booking (BK-143).
+    if (!bookingSeatsEditableDirectly(items)) return 'multi_ticket_type_booking'
   }
   return null
 }
@@ -269,9 +266,9 @@ export async function updateEventBookingSeatsById(
 
     try {
       const bookingItems = await loadBookingItems(supabase, input.bookingId)
-      if (bookingItems.length > 0 && bookingRow.event_id) {
-        const defaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
-        if (bookingItemsAreMultiType(bookingItems, defaultTypeId)) {
+      if (bookingRow.event_id) {
+        // A single line on any type changes size with the booking (BK-143).
+        if (!bookingSeatsEditableDirectly(bookingItems)) {
           return {
             state: 'blocked',
             reason: 'multi_ticket_type_booking',
