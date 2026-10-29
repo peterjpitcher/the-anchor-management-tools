@@ -17,6 +17,11 @@ import { sendBulkSms } from '@/lib/sms/bulk'
 import { ConsentService } from '@/services/consent'
 import { generatePhoneVariants } from '@/lib/utils'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
+import {
+  copyCustomerContactToBookings,
+  findUpcomingBookingsWithOldContact,
+  type BookingContactOffer,
+} from '@/services/private-bookings/contact-sync'
 
 // ---------------------------------------------------------------------------
 // Customer list filtering and search
@@ -404,6 +409,14 @@ export async function updateCustomer(id: string, formData: FormData) {
       }
     }
 
+    // BK-163: what the customer's phone and email were, so the upcoming private hires still
+    // carrying them can be offered an update once this saves.
+    const { data: before } = await createAdminClient()
+      .from('customers')
+      .select('mobile_e164, mobile_number, email')
+      .eq('id', id)
+      .maybeSingle()
+
     const customer = await CustomerService.updateCustomer(id, {
       ...validationResult.data,
       // An empty string reaches sanitizeEmail and becomes NULL, which is how a
@@ -431,11 +444,73 @@ export async function updateCustomer(id: string, formData: FormData) {
     revalidatePath('/customers')
     revalidatePath(`/customers/${id}`)
     revalidateTag('dashboard')
-    return { success: true, data: customer }
+
+    // Never fails the save: the customer is already updated.
+    let privateBookingsWithOldContact: BookingContactOffer[] = []
+    try {
+      if (before) {
+        privateBookingsWithOldContact = await findUpcomingBookingsWithOldContact(
+          id,
+          { phone: (before.mobile_e164 as string | null) || (before.mobile_number as string | null), email: before.email as string | null },
+          {
+            phone: (customer as { mobile_e164?: string | null; mobile_number?: string | null }).mobile_e164
+              || (customer as { mobile_number?: string | null }).mobile_number
+              || null,
+            email: (customer as { email?: string | null }).email ?? null,
+          },
+        )
+      }
+    } catch (lookupError) {
+      console.error('Could not check the customer\'s upcoming private bookings for old contact details:', lookupError)
+    }
+    return { success: true, data: customer, privateBookingsWithOldContact }
   } catch (error) {
     console.error('Unexpected error updating customer:', error)
     const message = error instanceof Error ? error.message : 'An unexpected error occurred'
     return { error: message }
+  }
+}
+
+/**
+ * Copy a customer's current phone and email onto the upcoming private hires that still carry the
+ * old ones (BK-163). Staff are offered this after changing the customer; nothing runs without it.
+ */
+export async function updateUpcomingPrivateBookingContacts(
+  customerId: string,
+  offers: BookingContactOffer[],
+): Promise<{ success?: boolean; error?: string; updated?: number }> {
+  try {
+    const context = await requireCustomerManageContext()
+    if ('error' in context) return { error: context.error }
+    const canEditBookings = await checkUserPermission('private_bookings', 'edit', context.user.id)
+      || await checkUserPermission('private_bookings', 'manage', context.user.id)
+    if (!canEditBookings) return { error: 'You do not have permission to update private bookings' }
+    // Only well-formed offers, and only the two contact fields: the browser sends these back.
+    const clean = (Array.isArray(offers) ? offers : [])
+      .filter((offer): offer is BookingContactOffer => typeof offer?.bookingId === 'string' && Array.isArray(offer.fields))
+      .map((offer) => ({
+        bookingId: offer.bookingId,
+        fields: offer.fields.filter((field) => field === 'contact_phone' || field === 'contact_email'),
+      }))
+      .filter((offer) => offer.fields.length > 0)
+      .slice(0, 50)
+    const ids = clean.map((offer) => offer.bookingId)
+    const { updated } = await copyCustomerContactToBookings({ customerId, offers: clean, performedBy: context.user.id })
+    await logAuditEvent({
+      user_id: context.user.id,
+      user_email: context.user.email,
+      operation_type: 'update',
+      resource_type: 'customer',
+      resource_id: customerId,
+      operation_status: 'success',
+      additional_info: { action: 'private_booking_contacts_updated', booking_ids: ids, updated },
+    })
+    revalidatePath('/private-bookings')
+    revalidatePath(`/customers/${customerId}`)
+    return { success: true, updated }
+  } catch (error) {
+    console.error('Unexpected error updating private booking contacts:', error)
+    return { error: error instanceof Error ? error.message : 'An unexpected error occurred' }
   }
 }
 

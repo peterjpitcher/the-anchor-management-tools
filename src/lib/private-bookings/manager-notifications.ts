@@ -31,8 +31,18 @@ export type PrivateBookingCreatedNotificationInput = {
     event_type?: NullableString
     hold_expiry?: NullableString
     created_at?: NullableString
+    end_time?: NullableString
   }
   createdVia?: string
+  /**
+   * What a website enquiry asked for beyond the booking itself (BK-188): the room, how many hours,
+   * and how the guest wants us to reply. They used to reach staff only inside the free-text notes.
+   */
+  enquiry?: {
+    roomName?: string | null
+    hireHours?: number | null
+    replyPreference?: string | null
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -119,6 +129,14 @@ export async function sendManagerPrivateBookingCreatedEmail(
   const createdVia = humanizeToken(input.createdVia || 'website')
   const bookingUrl = `${getAppUrl()}/private-bookings/${bookingId}`
   const subject = `New private booking enquiry: ${bookingReference}`
+  const enquiryRows: Array<[string, string]> = []
+  if (input.enquiry?.roomName?.trim()) enquiryRows.push(['Room asked for', input.enquiry.roomName.trim()])
+  if (typeof input.enquiry?.hireHours === 'number' && Number.isFinite(input.enquiry.hireHours) && input.enquiry.hireHours > 0) {
+    const hours = input.enquiry.hireHours
+    const until = booking.end_time ? ` (to ${formatTime12Hour(String(booking.end_time).slice(0, 5))})` : ''
+    enquiryRows.push(['Hire length', `${hours} hour${hours === 1 ? '' : 's'}${until}`])
+  }
+  if (input.enquiry?.replyPreference?.trim()) enquiryRows.push(['Reply by', humanizeToken(input.enquiry.replyPreference)])
 
   const rows = [
     `<li><strong>Booking:</strong> ${escapeHtml(bookingReference)}</li>`,
@@ -131,6 +149,7 @@ export async function sendManagerPrivateBookingCreatedEmail(
     `<li><strong>Event type:</strong> ${escapeHtml(booking.event_type?.trim() || 'Private event')}</li>`,
     `<li><strong>Phone:</strong> ${escapeHtml(booking.contact_phone?.trim() || 'Not provided')}</li>`,
     `<li><strong>Email:</strong> ${escapeHtml(booking.contact_email?.trim() || 'Not provided')}</li>`,
+    ...enquiryRows.map(([label, value]) => `<li><strong>${escapeHtml(label)}:</strong> ${escapeHtml(value)}</li>`),
     `<li><strong>Hold expiry:</strong> ${escapeHtml(formatDateTime(booking.hold_expiry))}</li>`,
     `<li><strong>Created:</strong> ${escapeHtml(createdAt)}</li>`,
     `<li><strong>Open booking:</strong> <a href="${escapeHtml(bookingUrl)}">${escapeHtml(bookingUrl)}</a></li>`
@@ -156,6 +175,7 @@ export async function sendManagerPrivateBookingCreatedEmail(
     `Event type: ${booking.event_type?.trim() || 'Private event'}`,
     `Phone: ${booking.contact_phone?.trim() || 'Not provided'}`,
     `Email: ${booking.contact_email?.trim() || 'Not provided'}`,
+    ...enquiryRows.map(([label, value]) => `${label}: ${value}`),
     `Hold expiry: ${formatDateTime(booking.hold_expiry)}`,
     `Created: ${createdAt}`,
     `Open booking: ${bookingUrl}`

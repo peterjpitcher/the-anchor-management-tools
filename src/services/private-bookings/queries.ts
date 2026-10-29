@@ -472,8 +472,22 @@ export async function getBookingById(id: string): Promise<PrivateBookingWithDeta
     (a, b) => new Date(b.performed_at).getTime() - new Date(a.performed_at).getTime()
   );
 
+  // BK-188: the room a website enquiry asked for, by name. Read on its own rather than embedded,
+  // so the booking's other reads of venue_spaces never meet a second foreign key.
+  let requestedSpaceName: string | null = null;
+  const requestedSpaceId = (bookingCore as { requested_space_id?: string | null }).requested_space_id;
+  if (requestedSpaceId) {
+    const { data: requestedSpace } = await supabase
+      .from('venue_spaces')
+      .select('id, name')
+      .eq('id', requestedSpaceId)
+      .maybeSingle();
+    requestedSpaceName = (requestedSpace?.name as string | null | undefined) ?? null;
+  }
+
   const bookingWithDetails: PrivateBookingWithDetails = {
     ...(bookingCore as PrivateBookingWithDetails),
+    requested_space_name: requestedSpaceName,
     items,
     calculated_total: calculatedTotal,
     deposit_status: depositStatus,

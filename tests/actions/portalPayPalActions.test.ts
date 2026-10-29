@@ -28,6 +28,12 @@ vi.mock('@/lib/private-bookings/booking-token', () => ({
   verifyBookingToken: vi.fn(),
 }))
 
+// The switch-off check (BK-204) is tested in tests/lib/private-bookings/portal-access.test.ts.
+vi.mock('@/lib/private-bookings/portal-access', async () => {
+  const token = await import('@/lib/private-bookings/booking-token')
+  return { verifyPortalAccess: vi.fn(async (value: string) => token.verifyBookingToken(value)) }
+})
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     info: vi.fn(),

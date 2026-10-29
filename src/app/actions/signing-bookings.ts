@@ -8,6 +8,13 @@ import { getTodayIsoDate, isValidIsoDate, whenLondonClockReaches } from '@/lib/d
 import { getErrorMessage } from '@/lib/errors'
 import { logger } from '@/lib/logger'
 import { markWaiverSent } from '@/lib/private-bookings/contract-lifecycle'
+import {
+  contractOutOfDate,
+  contractTermsOf,
+  type ContractOutOfDate,
+  type ContractTerms,
+  type ContractTermsItem,
+} from '@/lib/private-bookings/contract-terms'
 import { waiverIsOutstanding } from '@/lib/private-bookings/waiver-status'
 import {
   STAFF_RECORDED_ACCEPTANCE_METHODS,
@@ -55,6 +62,8 @@ export interface BookingSigningState {
   contractAcceptanceMethod: string | null
   /** May this person record, now, that the contract was signed on paper or confirmed in writing? */
   canRecordAcceptance: boolean
+  /** Set when the booking has changed since its contract was sent or accepted (BK-154). */
+  contractOutOfDate: ContractOutOfDate | null
 }
 
 interface BookingContractFacts {
@@ -63,6 +72,19 @@ interface BookingContractFacts {
   contract_sent_at?: string | null
   contract_accepted_at?: string | null
   contract_acceptance_method?: string | null
+  contract_terms?: unknown
+}
+
+/** The booking's contract terms as it stands now (contract-terms.ts). */
+async function readContractTermsNow(admin: ReturnType<typeof createAdminClient>, bookingId: string): Promise<ContractTerms | null> {
+  const { data, error } = await admin
+    .from('private_bookings')
+    .select('id, event_date, date_tbd, start_time, end_time, end_time_next_day, guest_count, discount_type, discount_amount, items:private_booking_items(space_id, quantity, unit_price, line_total, vat_rate, discount_type, discount_value)')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (error) throw new Error(`Could not read the booking: ${error.message}`)
+  if (!data) return null
+  return contractTermsOf(data, (data.items ?? []) as ContractTermsItem[])
 }
 
 /**
@@ -90,7 +112,7 @@ export async function getBookingSigningState(bookingId: string): Promise<ActionR
     const admin = createAdminClient()
     const { data: booking, error } = await admin
       .from('private_bookings')
-      .select('id, contact_email, outside_food, waiver_status, status, contract_version, contract_sent_at, contract_accepted_at, contract_acceptance_method, items:private_booking_items(item_type, package:catering_packages(id, name, requires_waiver))')
+      .select('id, contact_email, outside_food, waiver_status, status, contract_version, contract_sent_at, contract_accepted_at, contract_acceptance_method, contract_terms, event_date, date_tbd, start_time, end_time, end_time_next_day, guest_count, discount_type, discount_amount, items:private_booking_items(item_type, space_id, quantity, unit_price, line_total, vat_rate, discount_type, discount_value, package:catering_packages(id, name, requires_waiver))')
       .eq('id', bookingId)
       .maybeSingle()
     if (error) throw new Error(`Could not read the booking: ${error.message}`)
@@ -118,6 +140,7 @@ export async function getBookingSigningState(bookingId: string): Promise<ActionR
         contractAcceptedAt: contract.contract_accepted_at ?? null,
         contractAcceptanceMethod: contract.contract_acceptance_method ?? null,
         canRecordAcceptance,
+        contractOutOfDate: contractOutOfDate(booking, (booking.items ?? []) as ContractTermsItem[]),
       },
     }
   } catch (error) {
@@ -234,7 +257,7 @@ export async function recordContractAcceptedAnotherWay(
     const readBooking = async (): Promise<BookingContractFacts | null> => {
       const { data, error } = await admin
         .from('private_bookings')
-        .select('id, status, contract_version, contract_sent_at, contract_accepted_at, contract_acceptance_method')
+        .select('id, status, contract_version, contract_sent_at, contract_accepted_at, contract_acceptance_method, contract_terms')
         .eq('id', bookingId)
         .maybeSingle()
       if (error) throw new Error(`Could not read the booking: ${error.message}`)
@@ -255,12 +278,20 @@ export async function recordContractAcceptedAnotherWay(
     const refused = refusal(booking)
     if (refused) return { error: refused }
     const contractVersion = Number(booking?.contract_version ?? 0) || null
+    // A contract issued before the terms were kept has nothing to compare a later change with.
+    // The customer has now accepted it as the booking stands, so that becomes the record (BK-154).
+    const termsNow = booking?.contract_terms ? null : await readContractTermsNow(admin, bookingId)
 
     // Only a contract that is still unaccepted, on a booking that is still going ahead, in the
     // same statement: a signature or a deposit can land between the read above and this write.
     const { data: changed, error: updateError } = await admin
       .from('private_bookings')
-      .update({ contract_accepted_at: acceptedAt, contract_acceptance_method: method, updated_at: new Date().toISOString() })
+      .update({
+        contract_accepted_at: acceptedAt,
+        contract_acceptance_method: method,
+        ...(termsNow ? { contract_terms: termsNow } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', bookingId)
       .is('contract_accepted_at', null)
       // Written this way because a plain "not cancelled" test also drops a booking with no status.

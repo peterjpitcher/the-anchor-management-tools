@@ -1,5 +1,6 @@
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { contractTermsChanges, contractTermsOf, type ContractTermsItem } from '@/lib/private-bookings/contract-terms'
 import { quoteContentFingerprint, type QuoteContentForFingerprint } from './documents/quote-fingerprint'
 import type { SigningDocumentRow, SigningKind, SigningPartyRow } from './types'
 
@@ -146,6 +147,24 @@ async function markWaiverSigned(admin: AdminClient, document: SigningDocumentRow
 const acceptBookingContract: SigningCompletionHook = async (document) => {
   const admin = createAdminClient()
   if (document.context.includes_waiver === true) await markWaiverSigned(admin, document)
+  // The customer signed the terms this version named. If the booking's date, times, guests,
+  // rooms or price have moved since (BK-154, D25), this is not acceptance of the booking as it
+  // stands: it is left for staff, whom the booking page asks to send the next version. The signed
+  // copy itself stands, as every signed copy does.
+  if (document.context.contract_terms) {
+    const { data: current, error: readError } = await admin
+      .from('private_bookings')
+      .select('id, event_date, date_tbd, start_time, end_time, end_time_next_day, guest_count, discount_type, discount_amount, items:private_booking_items(space_id, quantity, unit_price, line_total, vat_rate, discount_type, discount_value)')
+      .eq('id', document.subject_id)
+      .maybeSingle()
+    if (readError) throw new Error(`Could not read the booking: ${readError.message}`)
+    if (!current) return
+    const changes = contractTermsChanges(
+      document.context.contract_terms,
+      contractTermsOf(current, (current.items ?? []) as ContractTermsItem[])
+    )
+    if (changes.length > 0) return
+  }
   const now = new Date().toISOString()
   // Accepted when it was signed, not when this ran: a retry days later must not move the time.
   const acceptedAt = document.completed_at ?? now

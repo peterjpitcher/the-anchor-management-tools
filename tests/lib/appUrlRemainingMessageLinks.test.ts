@@ -273,6 +273,7 @@ it('reads the app URL without its trailing slash', () => {
 describe('private booking guest portal link', () => {
   const BOOKING_ID = '7f3a2c10-4b5d-4e6f-8a9b-0c1d2e3f4a5b'
   const PORTAL_PREFIX = `${APP_URL}/booking-portal/`
+  const SHORT_PORTAL_LINK = 'https://l.the-anchor.pub/abc123'
 
   // A birthday party for 40 on Saturday 14 November 2026, 7pm to 11:30pm: a £250 deposit is due by
   // Thursday 8 October, and the event comes to £1,440.
@@ -305,7 +306,18 @@ describe('private booking guest portal link', () => {
 
   /** The guest's booking page, signed now: the token is fixed while the clock is. */
   function portalLink(): string {
-    return `${PORTAL_PREFIX}${generateBookingToken(BOOKING_ID)}`
+    // Ends 30 days after the event (BK-204).
+    return `${PORTAL_PREFIX}${generateBookingToken(BOOKING_ID, { eventDate: '2026-11-14', dateTbd: false })}`
+  }
+
+  /**
+   * The senders that can wait for it send the booking page as a short link (BK-172): the body
+   * carries no app link at all, and the one short link made points at this booking's page.
+   */
+  function expectShortPortalLinkOnly(body: string): void {
+    expect(appLinksIn(body)).toEqual([])
+    expect(body).toContain(SHORT_PORTAL_LINK)
+    expect(shortLinkDestinations()).toEqual([portalLink()])
   }
 
   /** The body carries exactly one app link, the booking page, and its token opens this booking. */
@@ -344,11 +356,11 @@ describe('private booking guest portal link', () => {
     expect(email.to).toBe('alex@example.com')
     expect(email.subject).toContain('Provisional booking hold: Birthday party on')
     expect(email.subject).toContain('14 November 2026')
-    expect(email.text).toContain(`Open your booking and pay the deposit: ${portalLink()}`)
+    expect(email.text).toContain(`Open your booking and pay the deposit: ${SHORT_PORTAL_LINK}`)
     expect(email.text).toContain('Deposit due: £250.00')
-    expect(email.html).toContain(`<a href="${portalLink()}"`)
-    expectPortalLinkOnly(email.text ?? '')
-    expectPortalLinkOnly(email.html ?? '')
+    expect(email.html).toContain(`<a href="${SHORT_PORTAL_LINK}"`)
+    expectShortPortalLinkOnly(email.text ?? '')
+    expectShortPortalLinkOnly(email.html ?? '')
     expectCleanEmail(email)
   })
 
@@ -400,21 +412,21 @@ describe('private booking guest portal link', () => {
       now: NOW,
     })
 
-    expect(context?.paymentLink).toBe(portalLink())
+    expect(context?.paymentLink).toBe(SHORT_PORTAL_LINK)
     const message = renderPrivateBookingMessage('deposit_request', context!)
     expect(message?.templateKey).toBe('private_booking_deposit_request')
 
     const text = message!.smsBody
     expect(text).toContain('£250')
-    expect(text.endsWith(` ${portalLink()}`)).toBe(true)
-    expectPortalLinkOnly(text)
+    expect(text.endsWith(` ${SHORT_PORTAL_LINK}`)).toBe(true)
+    expectShortPortalLinkOnly(text)
     assertCleanText(text)
     expectNoBadLinks(text)
 
     const email = message!.email!()
-    expect(email.text).toContain(`Pay the deposit by PayPal: ${portalLink()}`)
-    expectPortalLinkOnly(email.text)
-    expectPortalLinkOnly(email.html)
+    expect(email.text).toContain(`Pay the deposit by PayPal: ${SHORT_PORTAL_LINK}`)
+    expectShortPortalLinkOnly(email.text)
+    expectShortPortalLinkOnly(email.html)
     expectCleanEmail(email)
   })
 
@@ -432,9 +444,9 @@ describe('private booking guest portal link', () => {
     assertCleanText(message!.smsBody)
 
     const email = message!.email!()
-    expect(email.text).toContain(`Pay the deposit by PayPal: ${portalLink()}`)
-    expectPortalLinkOnly(email.text)
-    expectPortalLinkOnly(email.html)
+    expect(email.text).toContain(`Pay the deposit by PayPal: ${SHORT_PORTAL_LINK}`)
+    expectShortPortalLinkOnly(email.text)
+    expectShortPortalLinkOnly(email.html)
     expectCleanEmail(email)
   })
 })

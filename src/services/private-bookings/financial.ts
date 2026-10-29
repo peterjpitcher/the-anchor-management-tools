@@ -34,6 +34,11 @@ export type PrivateBookingPaidTotals = {
   total_paid: number
   has_open_dispute: boolean
   event_date: string | null
+  /**
+   * True while the date is still to be confirmed. event_date then holds a placeholder (the day
+   * the enquiry came in), not the event, so it must not decide how much notice was given (BK-157).
+   */
+  date_tbd: boolean
 }
 
 export type PrivateBookingCancellationOutcome = {
@@ -65,7 +70,7 @@ export async function getPrivateBookingPaidTotals(
 
   const { data: booking, error: bookingError } = await db
     .from('private_bookings')
-    .select('deposit_amount, deposit_paid_date, event_date, has_open_dispute')
+    .select('deposit_amount, deposit_paid_date, event_date, date_tbd, has_open_dispute')
     .eq('id', bookingId)
     .single()
 
@@ -89,6 +94,7 @@ export async function getPrivateBookingPaidTotals(
     total_paid: depositPaid + balancePaymentsTotal,
     has_open_dispute: booking.has_open_dispute === true,
     event_date: booking.event_date ?? null,
+    date_tbd: booking.date_tbd === true,
   }
 }
 
@@ -169,7 +175,11 @@ export async function getPrivateBookingCancellationOutcome(
     return { outcome: 'no_money', refund_amount: 0, retained_amount: 0, deposit_deduction: 0, max_retainable: 0 }
   }
 
-  const days = totals.event_date ? daysUntilEvent(totals.event_date) : 0
+  // A booking whose date is still to be confirmed has no event date yet, only a placeholder, so
+  // the guest is cancelling well ahead of any event: the 30-days-or-more rule applies (BK-157).
+  const days = totals.date_tbd
+    ? CANCELLATION_THRESHOLD_DAYS
+    : totals.event_date ? daysUntilEvent(totals.event_date) : 0
 
   if (days >= CANCELLATION_THRESHOLD_DAYS && totals.deposit_paid > 0) {
     // 30+ days: deposit refunded less 5% admin deduction
