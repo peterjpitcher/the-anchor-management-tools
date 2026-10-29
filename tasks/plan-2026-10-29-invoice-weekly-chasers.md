@@ -32,7 +32,7 @@ Accepted with the discovery's change list: first and second reminders unchanged;
 
 ## Pieces
 
-- [x] PR A: migration `20261029164104_invoice_weekly_reminder_column.sql` (`invoices.reminder_last_weekly_sent_at`, additive, nullable) and the generated types. Validated on a throwaway local Postgres 17.
+- [x] PR A: migration `20261029174100_invoice_weekly_reminder_column.sql` (APPLIED to production 29 October 2026, hash matches, types regenerated with no difference) (`invoices.reminder_last_weekly_sent_at`, additive, nullable) and the generated types. Validated on a throwaway local Postgres 17.
 - [x] PR B: rules (`reminder-rules.ts`), job (`reminder-job.ts`), wording (`email-copy.ts`), sender options (`microsoft-graph.ts`), summary, Emails panel (`email-history.ts`, `invoice-reminders.ts`), preview (`?weekly_from=`), switch (`release-switches.ts`, `.env.example`), tests.
 
 ## Release order
