@@ -908,7 +908,8 @@ describe('event guest emails', () => {
       assertCleanRender(sent)
       expect(sent.text).toContain(`Karaoke Night on ${expectedLongDate('2026-09-18')} at 8pm has been postponed.`)
       expect(sent.text).not.toContain('refund')
-      expect(sent.text).toContain('your place carries over to it')
+      // Owner decision D8: the booking carries over to the new date.
+      expect(sent.text).toContain('Your place carries over to the new date')
     })
 
     it('offers a paid guest the refund option', async () => {
@@ -918,7 +919,9 @@ describe('event guest emails', () => {
 
       const sent = lastSend()
       assertCleanRender(sent)
-      expect(sent.text).toContain('or refund you')
+      // Owner decision D8: tickets carry over, and a paid guest can ask for a refund instead.
+      expect(sent.text).toContain('Your tickets carry over to the new date')
+      expect(sent.text).toContain('call 01753 682707 and we will refund you')
     })
   })
 

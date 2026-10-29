@@ -72,6 +72,7 @@ import {
   loadBookingItemsWithBasePrices,
   getDefaultTicketTypeId,
   bookingItemsAreMultiType,
+  bookingSeatsEditableDirectly,
   decideTicketSelectionHandling,
 } from '@/lib/events/ticket-type-queries'
 import { normalizeAttendeeNames, MAX_ATTENDEE_NAME_LENGTH } from '@/lib/events/attendee-names'
@@ -85,6 +86,8 @@ import {
 import { prepareStaffEventBooking } from '@/lib/events/staff-booking-guest-details'
 import type { StoredEventAttendee } from '@/lib/events/booking-questions'
 import { jobQueue } from '@/lib/unified-job-queue'
+import { diffEventSnapshots, type EventChangeSnapshot } from '@/lib/events/event-change-guard'
+import { describeEventChangeRefusal } from '@/lib/events/event-change-refusal'
 
 export type EventBookingRow = {
   id: string
@@ -516,12 +519,27 @@ export async function updateEvent(id: string, formData: FormData) {
       return eventValidationFailure(validationResult.error);
     }
 
-    const eventResult = await EventService.updateEvent(id, validationResult.data as UpdateEventInput);
+    // Cancelling and postponing have their own confirm step (event-lifecycle.ts). Any other change
+    // that affects booked guests comes back with a summary for a manager to confirm, and is saved
+    // only when the drawer sends it again with confirmed_changes (BK-026, BK-036; D8, D9).
+    const confirmedChanges = formData.get('confirmed_changes') === 'true'
+    let eventResult: Awaited<ReturnType<typeof EventService.updateEvent>>
+    try {
+      eventResult = await EventService.updateEvent(id, validationResult.data as UpdateEventInput, { confirmedChanges })
+    } catch (error) {
+      const refusal = describeEventChangeRefusal(error)
+      if (refusal) return refusal
+      throw error
+    }
 
     // Extract old values and marketing warning returned by the service
-    const { _oldDate, _oldTime, _oldName, _oldStatus, marketingLinksWarning, ...event } = eventResult
+    const { _oldDate, _oldTime, _oldName, _oldStatus, _before, _impact, _warnings, marketingLinksWarning, ...event } = eventResult
     const warnings = marketingLinksWarning ? [marketingLinksWarning] : []
+    warnings.push(..._warnings)
 
+    // What changed, before and after, so a dispute about a price or a date can be answered from
+    // the log (BK-139). Flagged when the event already had bookings.
+    const changes = diffEventSnapshots(_before, event as EventChangeSnapshot)
     await logAuditEvent({
       user_id: user.id,
       user_email: user.email,
@@ -529,10 +547,14 @@ export async function updateEvent(id: string, formData: FormData) {
       resource_type: 'event',
       resource_id: event.id,
       operation_status: 'success',
+      ...(changes ?? {}),
       additional_info: {
         eventName: event.name,
         eventDate: event.date,
-        slug: event.slug
+        slug: event.slug,
+        changed_after_first_booking: Boolean(changes) && _impact.activeBookings > 0,
+        active_bookings: _impact.activeBookings,
+        confirmed_by_manager: confirmedChanges,
       }
     });
 
@@ -569,72 +591,8 @@ export async function updateEvent(id: string, formData: FormData) {
       }
     }
 
-    // Detect cancellation and queue the cascade.
-    const statusChangedToCancelled =
-      validationResult.data.event_status === 'cancelled' && _oldStatus !== 'cancelled'
-
-    if (statusChangedToCancelled) {
-      const enqueueResult = await jobQueue.enqueue(
-        'cancel_event_bookings',
-        {
-          eventId: id,
-          eventName: validationResult.data.name || _oldName || 'Event',
-          eventDate: _oldDate || validationResult.data.date || '',
-          eventTime: _oldTime || validationResult.data.time || '',
-          cancelledBy: user.id,
-        },
-        {
-          priority: 30,
-          maxAttempts: 3,
-          unique: `cancel_event_bookings:${id}`,
-        },
-      )
-
-      if (enqueueResult.success) {
-        await logAuditEvent({
-          user_id: user.id,
-          operation_type: 'cancel_event_queued',
-          resource_type: 'event',
-          resource_id: id,
-          operation_status: 'success',
-          additional_info: { job_id: enqueueResult.jobId ?? null },
-        })
-      } else {
-        logger.error('Failed to queue event cancellation cascade', {
-          metadata: { eventId: id, error: enqueueResult.error },
-        })
-        warnings.push('Event saved as cancelled, but booking cancellation could not be queued.')
-      }
-    }
-
-    const statusChangedToPostponed =
-      validationResult.data.event_status === 'postponed' && _oldStatus !== 'postponed'
-
-    if (statusChangedToPostponed && !dateChanged) {
-      const enqueueResult = await jobQueue.enqueue(
-        'send_event_postponed_notifications',
-        {
-          eventId: id,
-          eventName: validationResult.data.name || _oldName || 'your event',
-          userId: user.id,
-        },
-        {
-          priority: 25,
-          maxAttempts: 3,
-          unique: `event_postponed:${id}:${_oldStatus ?? ''}:postponed`,
-        },
-      )
-
-      if (!enqueueResult.success) {
-        logger.error('Failed to queue event postponed notifications', {
-          metadata: { eventId: id, error: enqueueResult.error },
-        })
-        warnings.push('Event saved as postponed, but postponed notifications could not be queued.')
-      }
-    }
-
     await syncPubOpsEventCalendarByEventId(createAdminClient(), id, {
-      context: statusChangedToCancelled ? 'event_cancelled' : 'event_updated',
+      context: 'event_updated',
     })
 
     revalidatePath('/events');
@@ -1338,9 +1296,9 @@ export async function updateEventManualBookingSeats(input: {
     // seats here would desync line items, charge and door lists.
     try {
       const bookingItems = await loadBookingItems(supabase, parsed.data.bookingId)
-      if (bookingItems.length > 0 && bookingRow.event_id) {
-        const defaultTypeId = await getDefaultTicketTypeId(supabase, bookingRow.event_id)
-        if (bookingItemsAreMultiType(bookingItems, defaultTypeId)) {
+      if (bookingRow.event_id) {
+        // A single line on any type changes size with the booking (BK-143).
+        if (!bookingSeatsEditableDirectly(bookingItems)) {
           return {
             error:
               'This booking has more than one ticket type, so the overall seat count cannot be edited. Use Change tickets instead.'

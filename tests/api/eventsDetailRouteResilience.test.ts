@@ -5,10 +5,13 @@ vi.mock('@/lib/api/auth', () => ({
     handler(req || new Request('http://localhost/api/events/test'), { id: 'key-1' })
   ),
   createApiResponse: vi.fn((data: unknown, status = 200) => Response.json({ success: true, data }, { status })),
-  createErrorResponse: vi.fn((message: string, code: string, status = 400) =>
-    Response.json({ success: false, error: { code, message } }, { status })
+  createErrorResponse: vi.fn((message: string, code: string, status = 400, details?: unknown) =>
+    Response.json({ success: false, error: { code, message, ...(details ? { details } : {}) } }, { status })
   ),
 }))
+
+const moved = vi.hoisted(() => ({ value: null as { slug: string; reason: string } | null }))
+vi.mock('@/lib/events/slug-redirect', () => ({ resolveMovedEventSlug: vi.fn(async () => moved.value) }))
 
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
@@ -174,6 +177,19 @@ describe('events detail route resilience', () => {
       announcement: 'Doors open at 8pm',
       last_call: null,
     })
+  })
+
+  // BK-192: an old address still answers 404, so the live website is unchanged, and says where
+  // the event lives now.
+  it('says where an old address moved to', async () => {
+    moved.value = { slug: 'pub-quiz-2026-11-04', reason: 'renamed' }
+    ;(createAdminClient as unknown as Mock).mockReturnValue(buildSupabaseMock({ eventFound: false }))
+    const response = await GET(new Request('http://localhost/api/events/quiz-night-2026-09-16') as any, {
+      params: Promise.resolve({ id: 'quiz-night-2026-09-16' }),
+    })
+    expect(response.status).toBe(404)
+    expect((await response.json()).error.details).toEqual({ moved_to: { slug: 'pub-quiz-2026-11-04', reason: 'renamed' } })
+    moved.value = null
   })
 
   it('returns 404 when event is not found', async () => {

@@ -17,6 +17,23 @@ export function buildEventRescheduledSms(payload: {
 }
 
 /**
+ * SMS sent when an event is postponed, to a guest the email cannot reach (BK-089). Owner decision
+ * D8: the booking carries over to the new date, and a guest who paid can ask for a refund.
+ */
+export function buildEventPostponedSms(payload: {
+  firstName: string | null | undefined
+  eventName: string
+  eventDate: string | null // Pre-formatted London datetime string
+  paidOnline: boolean
+  phoneDisplay: string
+}): string {
+  const name = getSmartFirstName(payload.firstName)
+  const when = payload.eventDate ? ` on ${payload.eventDate}` : ''
+  const refund = payload.paidOnline ? ` If the new date does not suit you, call ${payload.phoneDisplay} and we will refund you.` : ''
+  return `The Anchor: Hi ${name}, ${payload.eventName}${when} has been postponed. Your booking carries over to the new date and we will let you know as soon as it is set.${refund}`
+}
+
+/**
  * SMS sent to customers when an event is cancelled.
  */
 export function buildEventCancelledSms(payload: {
