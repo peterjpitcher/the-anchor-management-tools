@@ -15,7 +15,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261029083100_private_hire_portal_links_and_requested_room.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029091558_private_hire_portal_links_and_requested_room.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-tidy/rollback.sql'
 
 SETUP = """

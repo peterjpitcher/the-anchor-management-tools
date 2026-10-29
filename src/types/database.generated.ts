@@ -13066,13 +13066,6 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "private_bookings_requested_space_id_fkey"
-            columns: ["requested_space_id"]
-            isOneToOne: false
-            referencedRelation: "venue_spaces"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "private_bookings_cancellation_evidence_document_id_fkey"
             columns: ["cancellation_evidence_document_id"]
             isOneToOne: false

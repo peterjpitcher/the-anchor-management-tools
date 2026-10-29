@@ -39,7 +39,7 @@ ALTER TABLE public.private_bookings DROP COLUMN IF EXISTS contract_terms;
 
 COMMIT;
 
--- 2. 20261029083100_private_hire_portal_links_and_requested_room.sql
+-- 2. 20261029091558_private_hire_portal_links_and_requested_room.sql
 --    Drops the two columns. Switched-off booking links start working again until they expire,
 --    and the rooms website enquiries asked for are lost (the manager email still named them).
 --    Roll back the app code first.
