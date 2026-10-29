@@ -1,12 +1,13 @@
 /**
- * The three switches that keep new invoice email behaviour off until the owner turns it on.
+ * The switches that keep new invoice email behaviour off until the owner turns it on.
  *
  * Each one FAILS CLOSED: unset, empty or mistyped means off. Deploying this code therefore
  * starts no new customer email. They are read when an email is about to be sent, never cached.
  * On Vercel a changed environment variable only reaches a NEW deployment, so setting one means
  * redeploying before it takes effect.
  *
- * See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md, "Release switches".
+ * See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md, "Release switches", and
+ * tasks/plan-2026-10-29-invoice-weekly-chasers.md for the weekly chasers.
  */
 
 function readTrimmed(name: string): string | null {
@@ -49,4 +50,15 @@ export function invoiceRemindersGoLiveDate(): string | null {
  */
 export function invoicePayPalReceiptsFrom(): string | null {
   return readIsoDate('INVOICE_PAYPAL_RECEIPTS_FROM')
+}
+
+/**
+ * `INVOICE_WEEKLY_REMINDERS_FROM=YYYY-MM-DD`: from this London date an unpaid invoice is never
+ * left alone. Once the first and second reminders have run, the client is emailed every week
+ * until it is paid, voided or written off, one email per client covering all their unpaid
+ * invoices. Null means the schedule ends at 21 days, as before. It changes nothing while
+ * `INVOICE_REMINDERS_GO_LIVE_DATE` is unset: that one still switches every reminder off.
+ */
+export function invoiceWeeklyRemindersFrom(): string | null {
+  return readIsoDate('INVOICE_WEEKLY_REMINDERS_FROM')
 }

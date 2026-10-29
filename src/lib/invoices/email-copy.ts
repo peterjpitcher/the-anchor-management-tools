@@ -31,6 +31,10 @@ export type InvoiceEmailKind =
   | 'invoice'
   | 'reminder_first'
   | 'reminder_second'
+  /** A weekly chaser for one invoice, 21 or more days overdue. */
+  | 'reminder_weekly'
+  /** One automatic reminder covering several of a client's invoices, each attached. */
+  | 'reminder_combined'
   | 'chase'
   | 'receipt'
 
@@ -137,6 +141,14 @@ export function formatInvoiceMonth(value: string | null | undefined): string {
 /** The pay online line, added by the server after the sign-off. Receipts never carry it. */
 export function payOnlinePostscript(url: string): string {
   return `P.S. You can also pay this online by card or PayPal: ${url}`
+}
+
+/** The pay online line for an email covering several invoices: one link per invoice. */
+export function payOnlinePostscriptForSeveral(links: Array<{ invoiceNumber: string; url: string }>): string {
+  if (links.length === 1) {
+    return `P.S. You can also pay invoice ${links[0].invoiceNumber} online by card or PayPal: ${links[0].url}`
+  }
+  return ['P.S. You can also pay these online by card or PayPal:', ...links.map((link) => `${link.invoiceNumber}: ${link.url}`)].join('\n')
 }
 
 const BANK_LINE = 'The bank details are on the invoice.'
@@ -334,7 +346,10 @@ export function buildFirstReminderEmail(input: ReminderEmailInput): InvoiceEmail
   }
 }
 
-/** Second and last automatic reminder, 14 to 20 days overdue. After this the owner takes over. */
+/**
+ * Second automatic reminder, 14 to 20 days overdue. After this the owner takes over, or, with
+ * weekly chasers on, the weekly emails do.
+ */
 export function buildSecondReminderEmail(input: ReminderEmailInput): InvoiceEmailDraft {
   return {
     subject: `Invoice ${input.invoiceNumber}: still outstanding`,
@@ -342,6 +357,67 @@ export function buildSecondReminderEmail(input: ReminderEmailInput): InvoiceEmai
       invoiceGreeting(input.firstName),
       `Invoice ${input.invoiceNumber} still shows ${formatInvoiceMoney(input.balance)} to pay (it was due on ${formatInvoiceDate(input.dueDate)}). Could you let me know when it's likely to be paid, or if something on the invoice needs putting right?`,
       "If you've already paid, sorry, just let me know and I'll check.",
+    ]),
+  }
+}
+
+const WEEKLY_ASK = "Could you let me know when it will be paid? If something is holding it up, just reply and I'll do what I can to help."
+const WEEKLY_ASK_SEVERAL =
+  "Could you let me know when they will be paid? If something is holding them up, just reply and I'll do what I can to help."
+const WEEKLY_IGNORE = "If you've paid in the last few days, thank you, and please ignore this."
+
+/**
+ * The weekly chaser for one invoice, from 21 days overdue until it is paid (owner decision,
+ * 29 October 2026). It goes every week for as long as it takes, so it names the year: a chase
+ * in February about "Tuesday 8 December" would leave the reader to work out which December.
+ * The subject avoids "a quick reminder" and "still outstanding", which belong to the first
+ * and second reminders.
+ */
+export function buildWeeklyReminderEmail(input: ReminderEmailInput): InvoiceEmailDraft {
+  const paid = Number(input.paid) || 0
+  return {
+    subject: `Invoice ${input.invoiceNumber} is overdue`,
+    body: assemble([
+      invoiceGreeting(input.firstName),
+      `I'm writing again about invoice ${input.invoiceNumber}. It was due on ${formatInvoiceDate(input.dueDate, { withYear: true })} and ${formatInvoiceMoney(input.balance)} is still to pay. Another copy is attached.`,
+      paid > 0
+        ? `Thank you for the ${formatInvoiceMoney(paid)} already received. The ${formatInvoiceMoney(input.balance)} is what's left.`
+        : null,
+      WEEKLY_ASK,
+      WEEKLY_IGNORE,
+    ]),
+  }
+}
+
+export interface CombinedReminderEmailInput {
+  firstName?: string | null
+  /** Oldest due date first, as the job sends them. Every one is attached to the email. */
+  invoices: Array<{ invoiceNumber: string; balance: number; paid?: number; dueDate: string }>
+}
+
+/**
+ * One reminder covering several of a client's unpaid invoices, each attached (owner decision,
+ * 29 October 2026: "one weekly email listing them all, with each one attached"). Used whenever
+ * a run has more than one invoice due a reminder for the same client, whatever their stages.
+ */
+export function buildCombinedReminderEmail(input: CombinedReminderEmailInput): InvoiceEmailDraft {
+  const total = input.invoices.reduce((sum, invoice) => sum + (Number(invoice.balance) || 0), 0)
+  const somePaid = input.invoices.some((invoice) => (Number(invoice.paid) || 0) > 0)
+  return {
+    subject: `Overdue invoices from Orange Jelly: ${formatInvoiceMoney(total)} to pay`,
+    body: assemble([
+      invoiceGreeting(input.firstName),
+      "I'm writing again about these invoices, which are overdue. Copies are attached.",
+      [
+        ...input.invoices.map(
+          (invoice) =>
+            `${invoice.invoiceNumber}: ${formatInvoiceMoney(invoice.balance)}, due ${formatInvoiceDate(invoice.dueDate, { withYear: true })}`
+        ),
+        `Total to pay: ${formatInvoiceMoney(total)}`,
+      ].join('\n'),
+      somePaid ? "Thank you for the payments already received. The amounts above are what's left." : null,
+      WEEKLY_ASK_SEVERAL,
+      WEEKLY_IGNORE,
     ]),
   }
 }

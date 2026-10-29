@@ -81,7 +81,7 @@ function asText(value: unknown): string | null {
 }
 
 function isStage(value: unknown): value is ReminderStage {
-  return value === 'first' || value === 'second'
+  return value === 'first' || value === 'second' || value === 'weekly'
 }
 
 function isDelivery(value: unknown): value is SummaryDelivery {
@@ -204,7 +204,9 @@ interface ReminderSummary {
 }
 
 function stageLabel(stage: ReminderStage): string {
-  return stage === 'first' ? 'first reminder' : 'second reminder'
+  if (stage === 'first') return 'first reminder'
+  if (stage === 'second') return 'second reminder'
+  return 'weekly reminder'
 }
 
 function invoiceLabel(invoiceNumber: string | null, clientName: string | null): string {

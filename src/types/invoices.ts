@@ -56,6 +56,8 @@ export interface Invoice {
   /** When each automatic reminder was accepted for sending. The lasting record of the stage. */
   reminder_first_sent_at?: string | null
   reminder_second_sent_at?: string | null
+  /** When the latest weekly chaser listing this invoice went, or was attempted with an unknown outcome. */
+  reminder_last_weekly_sent_at?: string | null
   /** Generated column. Use this rather than `status` for payment questions. */
   payment_state?: 'unpaid' | 'part_paid' | 'paid'
   is_fixed_price?: boolean

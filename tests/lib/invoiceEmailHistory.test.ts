@@ -349,4 +349,62 @@ describe('describeNextReminder', () => {
       expect(`${line} ${detail ?? ''}`).not.toMatch(/undefined|Invalid Date|NaN|\bnull\b/)
     }
   })
+
+  describe('with weekly chasers on (owner decision, 29 October 2026)', () => {
+    const weekly = (overrides: Partial<NextReminderInput> = {}): NextReminderInput =>
+      input({ weeklyFrom: '2026-10-01', goLiveDate: '2026-09-01', ...overrides })
+
+    it('names the weekly reminder that follows the second', () => {
+      const next = describeNextReminder(
+        weekly({ invoice: invoice({ firstReminderDate: '2026-10-01', secondReminderDate: '2026-10-09', dueDate: '2026-09-25' }) })
+      )
+
+      expect(next).toEqual({
+        line: 'Next automatic reminder: Friday 16 October (forecast)',
+        detail: 'The weekly reminder. Everything is checked again before it is sent.',
+      })
+    })
+
+    it('keeps chasing an invoice 21 days overdue instead of handing it over', () => {
+      expect(describeNextReminder(weekly({ invoice: invoice({ dueDate: '2026-09-21' }) }))).toEqual({
+        line: 'Next automatic reminder: Tuesday 13 October (forecast)',
+        detail: 'The weekly reminder. Everything is checked again before it is sent.',
+      })
+    })
+
+    it('forecasts past a hold of any length, from the day it ends', () => {
+      // Held to Thursday 31 December: the next run is Friday 1 January, bank holiday or not.
+      expect(describeNextReminder(weekly({ invoice: invoice({ heldUntil: '2026-12-31' }) }))).toEqual({
+        line: 'Reminders held until Thursday 31 December',
+        detail: 'After that, the weekly reminder is forecast for Friday 1 January.',
+      })
+    })
+
+    it('says why a cancelled booking\'s invoice is not chased', () => {
+      expect(
+        describeNextReminder(weekly({ invoice: invoice({ dueDate: '2026-09-21', isPrivateHire: true, bookingCancelled: true }) }))
+      ).toEqual({
+        line: 'No automatic reminders: chase by hand',
+        detail: '21 days overdue. Its private booking was cancelled, so it is not chased: settle it with a credit note.',
+      })
+    })
+  })
+})
+
+describe('the weekly and combined reminders in the history', () => {
+  it('lists each by name, as recorded', () => {
+    const history = toInvoiceEmailHistory([
+      row({ id: 'weekly', subject: 'Invoice INV-0101 is overdue', metadata: { email_kind: 'reminder_weekly', invoice_number: 'INV-0101' } }),
+      row({
+        id: 'combined',
+        subject: 'Overdue invoices from Orange Jelly: £2,400.00 to pay',
+        metadata: { email_kind: 'reminder_combined', invoice_number: 'INV-0101', covers_invoice_ids: ['inv-1', 'inv-2'] },
+      }),
+    ])
+
+    expect(history.map((entry) => [entry.id, entry.kindLabel, entry.kindInferred])).toEqual([
+      ['weekly', 'Weekly reminder', false],
+      ['combined', 'Reminder for several invoices', false],
+    ])
+  })
 })
