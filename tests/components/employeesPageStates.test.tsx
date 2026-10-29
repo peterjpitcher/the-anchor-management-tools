@@ -108,7 +108,7 @@ describe('employees pages on the page contract', () => {
     render(<HealthRecordsTab employeeId="e1" healthRecord={null} canEdit />)
     render(<EmergencyContactsTab employeeId="e1" contacts={[]} canEdit />)
     render(<EmployeeRecentChanges employeeId="e1" />)
-    expect(await screen.findByText('No changes yet')).toBeInTheDocument()
+    expect(await screen.findByText('No changes in the last 30 days')).toBeInTheDocument()
     expect(screen.getByText('No emergency contacts yet')).toBeInTheDocument()
   })
 
