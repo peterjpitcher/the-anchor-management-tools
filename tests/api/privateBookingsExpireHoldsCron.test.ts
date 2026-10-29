@@ -40,6 +40,10 @@ vi.mock('@/services/private-bookings', () => ({
   finalizeDepositPayment: vi.fn(async () => ({ success: true })),
 }))
 
+vi.mock('@/lib/cron/alerting', () => ({
+  reportCronFailure: vi.fn(async () => true),
+}))
+
 vi.mock('@/lib/money-alerts', () => ({
   alertMoneyNeedsAPerson: vi.fn(async () => ({ sent: true, duplicate: false })),
   formatPounds: (amount: number) => `£${amount.toFixed(2)}`,
@@ -51,6 +55,7 @@ import { getPayPalOrder, isPayPalOrderNotFoundError } from '@/lib/paypal'
 import { sendPrivateBookingMessage } from '@/lib/private-bookings/messenger'
 import { finalizeDepositPayment } from '@/services/private-bookings'
 import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
+import { reportCronFailure } from '@/lib/cron/alerting'
 import { GET } from '@/app/api/cron/private-bookings-expire-holds/route'
 
 // 07:00 in London on Wednesday 21 October 2026, an hour after the job's 06:00 UTC slot.
@@ -295,5 +300,52 @@ describe('private bookings expire-holds cron', () => {
     expect(queue.live.status).toBe('pending')
     // A text being sent right now is left to its sender.
     expect(queue.sending.status).toBe('approved')
+  })
+  // BK-155: each booking is cancelled and its guest told together, not every booking first.
+  it('tells each guest straight after cancelling that booking, before the next is cancelled', async () => {
+    seed([draft('booking-a'), draft('booking-b')])
+    const statusOfOtherWhenTold: Record<string, string> = {}
+    vi.mocked(sendPrivateBookingMessage).mockImplementation(async (input: any) => {
+      const other = input.booking.id === 'booking-a' ? 'booking-b' : 'booking-a'
+      statusOfOtherWhenTold[input.booking.id] = bookingRow(other).status
+      return { success: true, sent: true, channel: 'email' } as any
+    })
+
+    const { body } = await run()
+
+    expect(body.cancelled).toBe(2)
+    // When the first guest was told, the second booking had not been cancelled yet.
+    expect(statusOfOtherWhenTold['booking-a']).toBe('draft')
+    expect(statusOfOtherWhenTold['booking-b']).toBe('cancelled')
+    expect(reportCronFailure).not.toHaveBeenCalled()
+    expect(logger.warn).toHaveBeenCalledWith('private-bookings-expire-holds: cancelled expired holds', expect.anything())
+  })
+
+  it('alerts a person when a guest could not be told, naming the booking only', async () => {
+    seed([draft('booking-untold')])
+    vi.mocked(sendPrivateBookingMessage).mockResolvedValueOnce({ success: false, sent: false, error: 'provider down' } as any)
+
+    const { body } = await run()
+
+    expect(body.cancelled).toBe(1)
+    expect(body.results[0]).toMatchObject({ id: 'booking-untold', smsSent: false, problems: ['guest not told: provider down'] })
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
+    const [cron, error, context] = vi.mocked(reportCronFailure).mock.calls[0]
+    expect(cron).toBe('private-bookings-expire-holds')
+    expect((error as Error).message).toContain('1 lapsed private hire hold could not be fully tidied')
+    expect(JSON.stringify(context)).toContain('booking-untold')
+    // No guest details go into the alert.
+    expect(JSON.stringify(context)).not.toContain('alex@example.com')
+    expect(JSON.stringify(context)).not.toContain('+447700900123')
+  })
+
+  it('alerts a person when sending the message throws', async () => {
+    seed([draft('booking-throws')])
+    vi.mocked(sendPrivateBookingMessage).mockRejectedValueOnce(new Error('boom'))
+
+    const { body } = await run()
+
+    expect(body.results[0].problems).toEqual(['guest not told: the message could not be sent'])
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
   })
 })

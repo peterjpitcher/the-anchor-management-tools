@@ -125,6 +125,14 @@ export interface PrivateBooking {
   contract_sent_at?: string
   contract_sent_to?: string
   contract_accepted_at?: string
+  /** The terms the contract last sent named (contract-terms.ts, BK-154). */
+  contract_terms?: unknown
+  /** The room a website enquiry asked for (BK-188). It does not hold the room. */
+  requested_space_id?: string | null
+  /** Its name, filled in by getBookingById. */
+  requested_space_name?: string | null
+  /** Booking page links issued before this are switched off (BK-204). */
+  portal_links_revoked_at?: string | null
   contract_acceptance_method?: string
   // Enquiry intake (SOP pack §9)
   layout?: BookingLayout

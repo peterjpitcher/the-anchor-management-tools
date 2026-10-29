@@ -23,6 +23,8 @@ import {
   type CustomerEmailBlock,
 } from '@/app/actions/emailSuppressionActions'
 import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
+import { UpdateBookingContactsModal } from '@/components/features/customers/UpdateBookingContactsModal'
+import type { BookingContactOffer } from '@/services/private-bookings/contact-sync'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout, PageLoading, toast, Icon } from '@/ds'
 import { Card, CardBody, CardHeader, FormFooter } from '@/ds'
@@ -293,6 +295,8 @@ export default function CustomerViewPage() {
   const canEmailCustomer = hasPermission('messages', 'send_transactional') || hasPermission('messages', 'manage')
 
   const [customer, setCustomer] = useState<Customer | null>(null)
+  // BK-163: upcoming private hires still carrying the phone or email just changed on the customer.
+  const [bookingsWithOldContact, setBookingsWithOldContact] = useState<BookingContactOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [togglingWhatsAppSetting, setTogglingWhatsAppSetting] = useState(false)
@@ -737,6 +741,7 @@ export default function CustomerViewPage() {
 
       toast.success('Customer updated successfully')
       setIsEditingCustomer(false)
+      setBookingsWithOldContact(result.privateBookingsWithOldContact ?? [])
       await loadData()
     } catch (error) {
       console.error('Error updating customer:', error)
@@ -1853,6 +1858,12 @@ export default function CustomerViewPage() {
             onCancel={() => setIsEditingCustomer(false)}
           />
         </Modal>
+
+        <UpdateBookingContactsModal
+          customerId={customer?.id ?? null}
+          offers={bookingsWithOldContact}
+          onClose={() => setBookingsWithOldContact([])}
+        />
 
         <Modal
           open={isEmailingCustomer}

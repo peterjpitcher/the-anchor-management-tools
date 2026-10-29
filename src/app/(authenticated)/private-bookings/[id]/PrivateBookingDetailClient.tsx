@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { formatDateFull, formatTime12Hour, formatDateTime12Hour, getTodayIsoDate, toLondonDateTimeLocalValue, parseLondonDateTimeLocalToIso } from "@/lib/dateUtils";
 import { isBookingDateTbd } from "@/lib/private-bookings/tbd-detection";
 import { paperworkWarning } from "@/lib/private-bookings/paperwork";
+import { contractOutOfDate, type ContractTermsItem } from "@/lib/private-bookings/contract-terms";
 import { DATE_TBD_NOTE } from "@/services/private-bookings/types";
 import {
   DndContext,
@@ -43,6 +44,7 @@ import {
   captureDepositPayment,
   resendCalendarInvite,
   getBookingPortalLink,
+  revokeBookingPortalLinks,
   sendDepositPaymentLink,
   editPrivateBookingPayment,
   getCancellationPreview,
@@ -1803,6 +1805,9 @@ export default function PrivateBookingDetailClient({
   const [depositWaiveConfirmed, setDepositWaiveConfirmed] = useState(false);
   // Share portal link state
   const [isCopyingLink, setIsCopyingLink] = useState(false);
+  // BK-204: switch off every booking page link the guest has had, and copy a new one.
+  const [showRevokeLinksModal, setShowRevokeLinksModal] = useState(false);
+  const [revokingLinks, setRevokingLinks] = useState(false);
   // SOP workflow panels: bump to force suppliers/deductions/complaints reloads
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const refreshWorkflow = useCallback(() => {
@@ -2274,6 +2279,31 @@ export default function PrivateBookingDetailClient({
     }
   }, [bookingId, isCopyingLink]);
 
+  const handleRevokePortalLinks = useCallback(async () => {
+    if (!bookingId || revokingLinks) return;
+    setRevokingLinks(true);
+    try {
+      const result = await revokeBookingPortalLinks(bookingId);
+      if (!result.success) {
+        toast.error(result.error || 'The old links could not be switched off');
+        return;
+      }
+      setShowRevokeLinksModal(false);
+      if (!result.url) {
+        toast.error(result.error || 'The old links are off, but a new one could not be made');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(result.url);
+        toast.success('Old links switched off. A new link is copied, ready to send to the guest');
+      } catch {
+        toast.success(`Old links switched off. New link: ${result.url}`);
+      }
+    } finally {
+      setRevokingLinks(false);
+    }
+  }, [bookingId, revokingLinks]);
+
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     if (!canEdit || isReordering || !bookingId) {
       return;
@@ -2407,7 +2437,15 @@ export default function PrivateBookingDetailClient({
   const isDateTbd = isBookingDateTbd(booking);
   // Contract or food agreement still unsigned with the event 14 days away or less. A warning
   // only: the signing panel lower down has the actions.
-  const paperwork = paperworkWarning({ ...booking, date_tbd: isDateTbd }, getTodayIsoDate());
+  // BK-154: a contract sent or accepted before the booking changed no longer says what it says.
+  const contractStale = contractOutOfDate(
+    { ...booking, date_tbd: isDateTbd },
+    items as unknown as ContractTermsItem[],
+  );
+  const paperwork = paperworkWarning(
+    { ...booking, date_tbd: isDateTbd, contract_out_of_date: contractStale !== null },
+    getTodayIsoDate(),
+  );
   const internalNotesForDisplay = booking.internal_notes
     ? booking.internal_notes
         .split('\n')
@@ -2619,6 +2657,12 @@ export default function PrivateBookingDetailClient({
                 disabled={isCopyingLink}
               >
                 Share Link
+              </DropdownItem>
+              <DropdownItem
+                icon={<Icon name="link" size={16} />}
+                onClick={() => setShowRevokeLinksModal(true)}
+              >
+                Switch Off Old Links
               </DropdownItem>
               <DropdownItem
                 icon={<Icon name="externalLink" size={16} />}
@@ -2859,6 +2903,20 @@ export default function PrivateBookingDetailClient({
                       </span>
                     ),
                   },
+                  // BK-188: the room a website enquiry asked for. It holds nothing: staff add the
+                  // room to the booking when it is agreed.
+                  ...(booking.requested_space_name
+                    ? [{
+                        key: 'requested_space',
+                        label: 'Room Asked For',
+                        value: (
+                          <span className="flex items-center">
+                            <Icon name="home" size={20} className="text-text-subtle mr-2" />
+                            {booking.requested_space_name}
+                          </span>
+                        ),
+                      }]
+                    : []),
                   {
                     key: 'event_type',
                     label: 'Event Type',
@@ -3519,7 +3577,10 @@ export default function PrivateBookingDetailClient({
           )}
 
           {/* Signatures: where the contract and waiver have got to. Sent with Email Contract below. */}
-          <BookingSigningPanel bookingId={bookingId} refreshKey={booking.contract_sent_at ?? null} />
+          <BookingSigningPanel
+            bookingId={bookingId}
+            refreshKey={`${booking.contract_sent_at ?? ''}|${contractStale ? contractStale.changes.join(',') : 'current'}`}
+          />
           <BookingSuppliersPanel bookingId={bookingId} />
 
           {/* Quick Actions Card. Sending a message is the Messages tab, so it has no button here. */}
@@ -3606,6 +3667,15 @@ export default function PrivateBookingDetailClient({
                             ? 'Deposit applied to the invoice.'
                             : 'Deposit held separately.'}
                         </p>
+                        {/* BK-154: the invoice reference names the event date and the due date
+                            follows it, so a moved date leaves both behind. */}
+                        {contractStale?.changes.includes('date') && (
+                          <p className="mt-1 text-xs text-warning-fg">
+                            The date has changed since the contract was sent. The invoice still
+                            shows the old date in its reference and due date: cancel it and invoice
+                            again to reissue it.
+                          </p>
+                        )}
                         <div className="mt-2 flex flex-wrap gap-3">
                           <Link
                             href={`/invoices/${booking.invoice_id}`}
@@ -3888,6 +3958,35 @@ export default function PrivateBookingDetailClient({
             rows={3}
             disabled={cancellingInvoice}
           />
+        </div>
+      </Modal>
+
+      <Modal
+        open={showRevokeLinksModal}
+        onClose={() => {
+          if (!revokingLinks) setShowRevokeLinksModal(false);
+        }}
+        title="Switch Off Old Links"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowRevokeLinksModal(false)} disabled={revokingLinks}>
+              Keep Them
+            </Button>
+            <Button variant="danger" onClick={handleRevokePortalLinks} loading={revokingLinks}>
+              Switch Off and Copy New Link
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text">
+            Every booking page link sent for this booking stops working, in every email and text
+            already sent. Use this when a link has been forwarded to someone who should not see
+            the booking.
+          </p>
+          <p className="text-sm text-text">
+            A new link is copied for you to send to the guest. Nothing is sent automatically.
+          </p>
         </div>
       </Modal>
 

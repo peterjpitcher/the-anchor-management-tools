@@ -614,6 +614,8 @@ describe('who may email a contract, and for which bookings', () => {
     expect(state.generatePdf).not.toHaveBeenCalled()
     // The booking does not say anything was sent.
     expect(savedBooking()).toMatchObject({ waiver_status: 'required', contract_sent_at: null, contract_sent_to: null })
+    // A refused send mints no contract version (BK-158).
+    expect(savedBooking().contract_version).toBe(0)
     expect(waiverAudit()).toHaveLength(0)
   })
 
@@ -631,5 +633,72 @@ describe('who may email a contract, and for which bookings', () => {
     expect(await sendBookingContract('44444444-4444-4444-8444-444444444444')).toEqual({ error: 'Booking not found' })
     expect(state.sendEmail).not.toHaveBeenCalled()
     expect(documents()).toHaveLength(0)
+  })
+})
+
+// BK-154, D25: the terms a contract names are kept, so a later change shows it as out of date.
+describe('the terms the contract names', () => {
+  const TERMS_NOW = {
+    v: 1,
+    event_date: '2026-12-05',
+    start_time: '18:00',
+    end_time: '23:00',
+    end_time_next_day: false,
+    guest_count: 40,
+    space_ids: [],
+    total: 0,
+  }
+
+  it('keeps them on the booking and with the signing request', async () => {
+    expect((await sendBookingContract(BOOKING)).success).toBe(true)
+
+    expect(savedBooking().contract_terms).toEqual(TERMS_NOW)
+    expect((documentOfKind('private_booking_contract').context as Row).contract_terms).toEqual(TERMS_NOW)
+  })
+
+  it('replaces an acceptance of older terms, so the new version is signed and recorded, and keeps the old one on the audit trail', async () => {
+    const oldTerms = { ...TERMS_NOW, guest_count: 30 }
+    seed(bookingRow({
+      contract_version: 1,
+      contract_sent_at: '2026-10-01T10:00:00.000Z',
+      contract_accepted_at: '2026-10-02T10:00:00.000Z',
+      contract_acceptance_method: 'e_signature',
+      contract_terms: oldTerms,
+    }))
+
+    expect((await sendBookingContract(BOOKING)).success).toBe(true)
+
+    expect(savedBooking()).toMatchObject({ contract_version: 2, contract_accepted_at: null, contract_acceptance_method: null, contract_terms: TERMS_NOW })
+    expect(db.rows('private_booking_audit').filter((row) => row.action === 'contract_acceptance_replaced')).toEqual([
+      expect.objectContaining({
+        booking_id: BOOKING,
+        performed_by: STAFF,
+        metadata: expect.objectContaining({
+          changes: ['guest numbers'],
+          replaced_by_version: 2,
+          accepted_at: '2026-10-02T10:00:00.000Z',
+          acceptance_method: 'e_signature',
+          previous_terms: oldTerms,
+        }),
+      }),
+    ])
+  })
+
+  it.each([
+    ['the terms are unchanged', TERMS_NOW],
+    ['the contract was sent before terms were kept', null],
+  ])('leaves an acceptance alone when %s', async (_label, terms) => {
+    seed(bookingRow({
+      contract_version: 1,
+      contract_sent_at: '2026-10-01T10:00:00.000Z',
+      contract_accepted_at: '2026-10-02T10:00:00.000Z',
+      contract_acceptance_method: 'e_signature',
+      contract_terms: terms,
+    }))
+
+    expect((await sendBookingContract(BOOKING)).success).toBe(true)
+
+    expect(savedBooking()).toMatchObject({ contract_accepted_at: '2026-10-02T10:00:00.000Z', contract_acceptance_method: 'e_signature' })
+    expect(db.rows('private_booking_audit').some((row) => row.action === 'contract_acceptance_replaced')).toBe(false)
   })
 })

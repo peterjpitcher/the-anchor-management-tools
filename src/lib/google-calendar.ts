@@ -1,10 +1,12 @@
 import { google } from 'googleapis'
-import { addDays, addHours } from 'date-fns'
+import { addHours } from 'date-fns'
 import { formatInTimeZone, fromZonedTime } from 'date-fns-tz'
 import type { PrivateBooking } from '@/types/private-bookings'
 import { getErrorMessage, getErrorCode, getErrorDetails } from '@/lib/errors'
 import { formatCalendarIdForLog, getSharedOperationsCalendarId } from '@/lib/google-calendar-targets'
 import { logger } from '@/lib/logger'
+import { shiftIsoDate } from '@/lib/dateUtils'
+import { resolveAccessTimes } from '@/lib/private-bookings/access-times'
 
 // Initialize the calendar API
 const calendar = google.calendar('v3')
@@ -228,36 +230,126 @@ function normalizeTime(time: string): string {
   return `${hour}:${minute}:${second}`
 }
 
-function combineDateAndTime(date: string, time: string, nextDay = false): Date {
+/**
+ * The instant a London wall-clock time is reached on a date, or on the next date for a time after
+ * midnight. The next day is found on the calendar first and only then turned into an instant: adding
+ * 24 hours to the instant put a 02:00 finish an hour early on the night the clocks go back and an
+ * hour late on the night they go forward, on the UTC server only (BK-209).
+ */
+export function combineDateAndTime(date: string, time: string, nextDay = false): Date {
   if (!date || !time) throw new Error('Date and time are required')
-  const [year, month, day] = date.split('-')
+  const [year, month, day] = date.slice(0, 10).split('-')
   const normalizedDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
-  const normalizedTime = normalizeTime(time)
-  const localDateTime = `${normalizedDate}T${normalizedTime}`
-  const zoned = fromZonedTime(localDateTime, CALENDAR_TIME_ZONE)
-  return nextDay ? addDays(zoned, 1) : zoned
+  const calendarDate = nextDay ? shiftIsoDate(normalizedDate, 1) : normalizedDate
+  if (!calendarDate) throw new Error(`Not a calendar date: ${date}`)
+  return fromZonedTime(`${calendarDate}T${normalizeTime(time)}`, CALENDAR_TIME_ZONE)
 }
 
 function formatForCalendar(date: Date): string {
   return formatInTimeZone(date, CALENDAR_TIME_ZONE, RFC3339_FORMAT)
 }
 
-// Format booking details for calendar description
-function formatBookingDetails(booking: PrivateBooking): string {
+/** The calendar's deposit line, from what the booking really holds (BK-156). */
+export function describeCalendarDeposit(booking: Pick<PrivateBooking, 'deposit_amount' | 'deposit_paid_date' | 'deposit_waived' | 'deposit_confirmed_at'>): string {
+  if (booking.deposit_paid_date) return 'Deposit: paid'
+  if (booking.deposit_waived === true) return 'Deposit: waived'
+  const amount = Number(booking.deposit_amount ?? 0)
+  if (!Number.isFinite(amount) || amount <= 0) return 'Deposit: none'
+  const pounds = `£${Number.isInteger(amount) ? amount.toFixed(0) : amount.toFixed(2)}`
+  // A new booking's deposit waits for staff to confirm it (owner decision, 11 September 2026).
+  if (booking.deposit_confirmed_at === null) return `Deposit: ${pounds}, to be confirmed`
+  return `Deposit: ${pounds} due`
+}
+
+function clock(time: string | null | undefined): string | null {
+  if (!time) return null
+  const match = /^(\d{1,2}):(\d{2})/.exec(time)
+  return match ? `${match[1].padStart(2, '0')}:${match[2]}` : null
+}
+
+/** "18:00 to 23:30", with the day named when the finish is after midnight. */
+function describeTimes(booking: PrivateBooking): string | null {
+  const start = clock(booking.start_time)
+  if (!start) return null
+  const end = clock(booking.end_time)
+  if (!end) return `Times: from ${start}`
+  return `Times: ${start} to ${end}${booking.end_time_next_day ? ' (next day)' : ''}`
+}
+
+function describeAccess(booking: PrivateBooking): string | null {
+  const access = resolveAccessTimes(booking)
+  const label = (window: { time: string | null; isDefault: boolean; dayOffset: number }): string | null => {
+    if (!window.time) return null
+    const day = window.dayOffset > 0 ? ' (next day)' : window.dayOffset < 0 ? ' (day before)' : ''
+    return `${window.time}${day}${window.isDefault ? ' (standard hour)' : ''}`
+  }
+  const setup = label(access.setup)
+  const cleardown = label(access.cleardown)
+  if (!setup && !cleardown) return null
+  return `Access: setup from ${setup ?? 'to be confirmed'}, cleared by ${cleardown ?? 'to be confirmed'}`
+}
+
+/** A website enquiry that gave no time is held at 12:00; it is not a lunchtime booking (BK-156). */
+function isTimelessEnquiry(booking: PrivateBooking): boolean {
+  return booking.source === 'website' && clock(booking.start_time) === '12:00' && !booking.end_time
+}
+
+/**
+ * The calendar description: who, how many, which rooms, the times with setup and cleardown, and
+ * the deposit as the booking holds it (BK-156). It said "Deposit Required (£250)" for every
+ * unpaid booking, waived or not, and named no room.
+ */
+export function formatBookingDetails(booking: PrivateBooking, rooms: string[] = []): string {
   const details = [
     `Customer: ${booking.customer_name}`,
     booking.contact_phone ? `Phone: ${booking.contact_phone}` : '',
     booking.contact_email ? `Email: ${booking.contact_email}` : '',
     booking.guest_count ? `Guests: ${booking.guest_count}` : '',
     booking.event_type ? `Type: ${booking.event_type}` : '',
+    rooms.length > 0 ? `Rooms: ${rooms.join(', ')}` : 'Rooms: none booked yet',
+    isTimelessEnquiry(booking) ? 'Enquiry, time not given' : describeTimes(booking) ?? '',
+    isTimelessEnquiry(booking) ? '' : describeAccess(booking) ?? '',
     '',
     `Booking Status: ${booking.status}`,
-    booking.deposit_paid_date ? '✓ Deposit Paid' : '⚠️ Deposit Required (£250)',
+    describeCalendarDeposit(booking),
     '',
     'View booking: ' + process.env.NEXT_PUBLIC_APP_URL + '/private-bookings/' + booking.id
   ].filter(Boolean).join('\n')
 
   return details
+}
+
+/**
+ * The deposit, access times and rooms as stored now. Callers pass bookings read with different
+ * column lists, and a missing deposit_waived must not read as "not waived". If the read fails
+ * the booking is described as passed.
+ */
+async function readCalendarFacts(booking: PrivateBooking): Promise<{ booking: PrivateBooking; rooms: string[] }> {
+  try {
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const { data, error } = await createAdminClient()
+      .from('private_bookings')
+      .select('id, deposit_amount, deposit_paid_date, deposit_waived, deposit_confirmed_at, setup_date, setup_time, cleardown_time, source, items:private_booking_items(space_id, display_order, space:venue_spaces(name))')
+      .eq('id', booking.id)
+      .maybeSingle()
+    if (error || !data) throw new Error(error?.message ?? 'booking not found')
+    const { items, ...facts } = data as Record<string, unknown> & {
+      items?: Array<{ space_id: string | null; space: { name?: string | null } | Array<{ name?: string | null }> | null }> | null
+    }
+    const rooms = Array.from(new Set(
+      (items ?? [])
+        .filter((item) => item.space_id)
+        .map((item) => (Array.isArray(item.space) ? item.space[0]?.name : item.space?.name)?.trim())
+        .filter((name): name is string => Boolean(name)),
+    ))
+    return { booking: { ...booking, ...(facts as Partial<PrivateBooking>) }, rooms }
+  } catch (error) {
+    logger.error('Google Calendar: could not read the booking\'s rooms and deposit; describing it as passed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { bookingId: booking.id },
+    })
+    return { booking, rooms: [] }
+  }
 }
 
 // Create or update calendar event
@@ -308,9 +400,10 @@ export async function syncCalendarEvent(booking: PrivateBooking): Promise<string
     const startDateTime = formatForCalendar(startUtc)
     const endDateTime = formatForCalendar(endUtc)
 
+    const facts = await readCalendarFacts(booking)
     const event = {
       summary: formatEventTitle(booking),
-      description: formatBookingDetails(booking),
+      description: formatBookingDetails(facts.booking, facts.rooms),
       start: {
         dateTime: startDateTime,
         timeZone: CALENDAR_TIME_ZONE,

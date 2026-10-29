@@ -37,6 +37,7 @@ import {
   reviewRequestMessage,
 } from '@/lib/private-bookings/messages'
 import { isBookingDateTbd } from '@/lib/private-bookings/tbd-detection'
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link'
 import { formatDateInLondon, londonVisitAtIso } from '@/lib/dateUtils'
 import { daysUntilHoldExpiry } from '@/lib/private-bookings/hold-deadline'
 import {
@@ -705,6 +706,8 @@ export async function GET(request: Request) {
               holdExpiry: holdExpiryReadable,
             })
 
+            // Short, and ending 30 days after the event (BK-172, BK-204).
+            const depositPageLink = await privateBookingPortalLink(booking)
             const result = await sendPrivateBookingMessage({
               sms: {
                 booking_id: booking.id,
@@ -719,6 +722,7 @@ export async function GET(request: Request) {
               booking,
               email: () => buildDepositReminderEmail({
                 booking,
+                paymentLink: depositPageLink,
                 firstName: booking.customer_first_name,
                 stage: '7day',
                 depositAmount,
@@ -798,6 +802,8 @@ export async function GET(request: Request) {
             })
 
             // Waits for approval, as it always has; Send Now chooses the channel.
+            // Short, and ending 30 days after the event (BK-172, BK-204).
+            const depositPageLink = await privateBookingPortalLink(booking)
             const result = await sendPrivateBookingMessage({
               sms: {
                 booking_id: booking.id,
@@ -812,6 +818,7 @@ export async function GET(request: Request) {
               booking,
               email: () => buildDepositReminderEmail({
                 booking,
+                paymentLink: depositPageLink,
                 firstName: booking.customer_first_name,
                 stage: '3day',
                 depositAmount,
@@ -888,6 +895,8 @@ export async function GET(request: Request) {
               holdExpiry: holdExpiryReadable,
             })
 
+            // Short, and ending 30 days after the event (BK-172, BK-204).
+            const depositPageLink = await privateBookingPortalLink(booking)
             const result = await sendPrivateBookingMessage({
               sms: {
                 booking_id: booking.id,
@@ -902,6 +911,7 @@ export async function GET(request: Request) {
               booking,
               email: () => buildDepositReminderEmail({
                 booking,
+                paymentLink: depositPageLink,
                 firstName: booking.customer_first_name,
                 stage: '1day',
                 depositAmount,

@@ -42,6 +42,7 @@ function signingState(overrides: Partial<BookingSigningState> = {}): BookingSign
     contractAcceptedAt: null,
     contractAcceptanceMethod: null,
     canRecordAcceptance: true,
+    contractOutOfDate: null,
     ...overrides,
   }
 }

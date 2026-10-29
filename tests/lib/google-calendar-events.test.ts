@@ -349,3 +349,23 @@ describe('google calendar event booking aggregate helpers', () => {
     expect(warn).toHaveBeenCalled()
   })
 })
+
+// BK-209: a finish after midnight on the nights the clocks change.
+describe('an event that finishes after midnight', () => {
+  it.each([
+    // Clocks go back at 02:00 BST on 25 October 2026: 02:00 that morning is GMT.
+    ['2026-10-24', '2026-10-25T02:00:00.000Z'],
+    // Clocks go forward at 01:00 GMT on 28 March 2027: 02:00 that morning is BST.
+    ['2027-03-27', '2027-03-28T01:00:00.000Z'],
+    ['2026-06-15', '2026-06-16T01:00:00.000Z'],
+  ])('ends at 02:00 London time on the next day for an event on %s', (date, expectedEnd) => {
+    const entry = buildPubOpsEventCalendarEntry({
+      event: { ...baseEvent, date, time: '20:00:00', end_time: '02:00:00' },
+      bookings: [],
+      appBaseUrl: 'https://app.the-anchor.pub',
+      now,
+    })
+    if (entry.shouldDelete) throw new Error('Expected active calendar entry')
+    expect(new Date(entry.requestBody.end.dateTime).toISOString()).toBe(expectedEnd)
+  })
+})

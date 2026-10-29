@@ -54,6 +54,8 @@ import {
 
 /* ---------- Toast helper (re-use existing) ---------- */
 import { toast } from '@/ds'
+import { UpdateBookingContactsModal } from '@/components/features/customers/UpdateBookingContactsModal'
+import type { BookingContactOffer } from '@/services/private-bookings/contact-sync'
 import { CUSTOMERS_BACK_LABEL, CUSTOMERS_NAV } from '../_shared/nav'
 import { CONTACT_CHANNEL_TONE } from '../_shared/status-ui'
 
@@ -95,6 +97,8 @@ export default function CustomersClient({
   const pathname = usePathname()
 
   const [customers, setCustomers] = useState<Customer[]>(initialData.customers)
+  // BK-163: the upcoming hires still on a customer's old details, offered after an edit here.
+  const [contactOffer, setContactOffer] = useState<{ customerId: string | null; offers: BookingContactOffer[] }>({ customerId: null, offers: [] })
   const [totalCount, setTotalCount] = useState(initialData.totalCount)
   const [smsActiveCount, setSmsActiveCount] = useState(initialData.smsActiveCount)
   const [smsDeactivatedCount, setSmsDeactivatedCount] = useState(initialData.smsDeactivatedCount)
@@ -250,6 +254,11 @@ export default function CustomersClient({
           toast.error(typeof result.error === 'string' ? result.error : 'Failed to update customer'); return
         }
         toast.success('Customer updated successfully')
+        // BK-163: offer, here, to update the upcoming hires still on the old details.
+        setContactOffer({
+          customerId: editingCustomer.id,
+          offers: 'privateBookingsWithOldContact' in result ? result.privateBookingsWithOldContact ?? [] : [],
+        })
         setEditingCustomer(null); setShowForm(false); refreshCurrentPage()
       } catch { toast.error('Failed to update customer') }
     },
@@ -706,6 +715,11 @@ export default function CustomersClient({
         confirmLabel="Delete"
         tone="danger"
         onConfirm={confirmDelete}
+      />
+      <UpdateBookingContactsModal
+        customerId={contactOffer.customerId}
+        offers={contactOffer.offers}
+        onClose={() => setContactOffer({ customerId: null, offers: [] })}
       />
     </PageLayout>
   )

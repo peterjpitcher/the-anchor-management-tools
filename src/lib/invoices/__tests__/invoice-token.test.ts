@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { generateInvoiceToken, verifyInvoiceToken } from '../invoice-token'
-import { generateBookingToken } from '@/lib/private-bookings/booking-token'
+import { generateBookingToken, verifyBookingToken } from '@/lib/private-bookings/booking-token'
 
 const INVOICE_ID = '7f06990b-7636-4d72-b610-460168da18ec'
 
@@ -51,10 +51,12 @@ describe('invoice portal token', () => {
   })
 
   it('refuses a booking portal token, so one cannot be replayed as the other', () => {
-    // Same secret, same length, different signed prefix.
+    // Same secret, different signed prefix. Booking links carry their issue time since
+    // 28 October 2026 (BK-204), so they are longer too.
     const bookingToken = generateBookingToken(INVOICE_ID)
-    expect(bookingToken).toHaveLength(88)
+    expect(bookingToken).toHaveLength(99)
     expect(verifyInvoiceToken(bookingToken)).toBeNull()
+    expect(verifyBookingToken(generateInvoiceToken(INVOICE_ID))).toBeNull()
   })
 
   it('rejects malformed input rather than throwing', () => {
