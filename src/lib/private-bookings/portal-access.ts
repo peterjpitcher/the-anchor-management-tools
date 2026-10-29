@@ -24,7 +24,7 @@ export async function verifyPortalAccess(token: string): Promise<string | null> 
     .eq('id', verified.bookingId)
     .maybeSingle()
   if (error) {
-    // Until migration 20261029083100 is applied the column does not exist. The link then works as
+    // Until migration 20261029091558 is applied the column does not exist. The link then works as
     // it always has (signature and expiry), rather than every guest's link failing.
     if (/portal_links_revoked_at/.test(error.message ?? '')) return verified.bookingId
     throw new Error(`Could not check the booking link: ${error.message}`)
