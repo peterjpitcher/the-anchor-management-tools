@@ -20,7 +20,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261029083000_private_hire_contract_terms.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261029091549_private_hire_contract_terms.sql'
 ROLLBACK = ROOT / 'tasks/private-hire-tidy/rollback.sql'
 # md5(prosrc) in production on 28 October 2026.
 PRODUCTION_MD5 = '98d4cb3a39992dc5bf0df1181a99d7ce'
