@@ -15,7 +15,7 @@
 DROP TRIGGER IF EXISTS trg_record_event_slug_history ON public.events;
 DROP FUNCTION IF EXISTS public.record_event_slug_history_v01();
 DROP TABLE IF EXISTS public.event_slug_history;
-DROP FUNCTION IF EXISTS public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer);
+DROP FUNCTION IF EXISTS public.move_event_seated_bookings_v01(uuid, date, text, time without time zone, integer, jsonb, jsonb);
 
 -- ── Part 2: 20261029083002_event_bookable_rules ─────────────────────────────────────────────────
 -- Each replacement is put back to production's passage, newest step first, wherever it is found.

@@ -43,6 +43,8 @@ export type EventLifecycleImpactResult =
         blockedReason: string | null
         /** A cancellation still waiting to run, which can be undone. */
         pendingCancellation: { jobId: string; scheduledFor: string } | null
+        /** The event is cancelled but its refunds and messages were never queued, so Cancel event can finish it. */
+        cancellationNotQueued: boolean
       }
     }
 
@@ -93,6 +95,24 @@ async function findPendingCancellation(eventId: string): Promise<{ jobId: string
   }
 }
 
+/**
+ * Whether this event's cancellation cascade is waiting, running or has run. False for a cancelled
+ * event whose job could not be queued (or was stopped), which staff can then queue again
+ * (review on PR 280). The cascade is safe to repeat: it acts only on bookings still live, each
+ * refund carries its payment's idempotency key, and the cancellation email is sent once.
+ */
+async function cancellationCascadeExists(eventId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient()
+    .from('jobs')
+    .select('id')
+    .eq('type', 'cancel_event_bookings')
+    .in('status', ['pending', 'processing', 'completed'])
+    .contains('payload', { eventId })
+    .limit(1)
+  if (error) throw new Error(`Could not check for this event's cancellation: ${error.message}`)
+  return (data ?? []).length > 0
+}
+
 function refundBlock(action: LifecycleAction, impact: EventBookingImpact, mayRefund: boolean): string | null {
   if (action !== 'cancel' || impact.paidBookings === 0 || mayRefund) return null
   return 'This cancellation refunds money, so a named manager must confirm it. Ask a manager to cancel the event from their own login.'
@@ -107,6 +127,11 @@ export async function getEventLifecycleImpact(eventId: string, action: Lifecycle
     const impact = await loadEventBookingImpact(createAdminClient(), eventId)
     const blockedReason = refundBlock(action, impact, actor.mayRefund)
     const pending = action === 'cancel' ? await findPendingCancellation(eventId) : null
+    let cancellationNotQueued = false
+    if (action === 'cancel' && !pending) {
+      const event = await loadEventRow(eventId)
+      cancellationNotQueued = event?.event_status === 'cancelled' && !(await cancellationCascadeExists(eventId))
+    }
     return {
       success: true,
       data: {
@@ -115,6 +140,7 @@ export async function getEventLifecycleImpact(eventId: string, action: Lifecycle
         allowed: blockedReason === null,
         blockedReason,
         pendingCancellation: pending ? { jobId: pending.jobId, scheduledFor: pending.scheduledFor } : null,
+        cancellationNotQueued,
       },
     }
   } catch (error) {
@@ -147,18 +173,23 @@ export async function cancelEvent(
     if ('error' in actor) return actor
     const event = await loadEventRow(eventId)
     if (!event) return { error: 'Event not found.' }
-    if (event.event_status === 'cancelled') return { error: 'This event is already cancelled.' }
+    // Already cancelled: refused, unless its refunds and messages were never queued (the queue was
+    // down), in which case this queues them now. Repeating the cascade is safe.
+    const retrying = event.event_status === 'cancelled'
+    if (retrying && (await cancellationCascadeExists(eventId))) return { error: 'This event is already cancelled.' }
 
     const impact = await loadEventBookingImpact(createAdminClient(), eventId)
     const blockedReason = refundBlock('cancel', impact, actor.mayRefund)
     if (blockedReason) return { error: blockedReason }
 
-    try {
-      await EventService.updateEvent(eventId, { event_status: 'cancelled' }, { lifecycleAction: true, confirmedChanges: true })
-    } catch (error) {
-      const refusal = describeEventChangeRefusal(error)
-      if (refusal) return { error: refusal.error }
-      throw error
+    if (!retrying) {
+      try {
+        await EventService.updateEvent(eventId, { event_status: 'cancelled' }, { lifecycleAction: true, confirmedChanges: true })
+      } catch (error) {
+        const refusal = describeEventChangeRefusal(error)
+        if (refusal) return { error: refusal.error }
+        throw error
+      }
     }
 
     const scheduledFor = new Date(Date.now() + EVENT_CANCELLATION_DELAY_MS).toISOString()
@@ -170,7 +201,8 @@ export async function cancelEvent(
         eventDate: event.date || '',
         eventTime: event.time || '',
         cancelledBy: actor.userId,
-        previousStatus: event.event_status || 'scheduled',
+        // On a retry the status before the cancellation is no longer known; undo reinstates it as scheduled.
+        previousStatus: retrying ? 'scheduled' : event.event_status || 'scheduled',
       },
       {
         priority: 30,
@@ -183,7 +215,7 @@ export async function cancelEvent(
     await logAuditEvent({
       user_id: actor.userId,
       user_email: actor.email ?? undefined,
-      operation_type: 'cancel_event_queued',
+      operation_type: retrying ? 'cancel_event_requeued' : 'cancel_event_queued',
       resource_type: 'event',
       resource_id: eventId,
       operation_status: enqueueResult.success ? 'success' : 'failure',
@@ -193,6 +225,7 @@ export async function cancelEvent(
       additional_info: {
         job_id: enqueueResult.jobId ?? null,
         scheduled_for: scheduledFor,
+        retry_after_failed_queue: retrying,
         confirmed_by_manager: true,
         active_bookings: impact.activeBookings,
         active_seats: impact.activeSeats,

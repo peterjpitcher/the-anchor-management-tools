@@ -27,6 +27,8 @@ type Pending = { action: 'cancel' | 'postpone'; lines: string[]; allowed: boolea
 export function EventLifecycleActions({ eventId, status, onChanged }: EventLifecycleActionsProps) {
   const [pending, setPending] = useState<Pending | null>(null)
   const [undoUntil, setUndoUntil] = useState<string | null>(null)
+  // A cancelled event whose refunds and messages never got queued: Cancel event finishes it.
+  const [notQueued, setNotQueued] = useState(false)
   const [busy, startTransition] = useTransition()
   const [error, setError] = useState<string | null>(null)
 
@@ -45,7 +47,12 @@ export function EventLifecycleActions({ eventId, status, onChanged }: EventLifec
       const result = await getEventLifecycleImpact(eventId, 'cancel')
       if ('error' in result) { setError(result.error); return }
       setUndoUntil(result.data.pendingCancellation?.scheduledFor ?? null)
-      if (!result.data.pendingCancellation) setError('Too late to undo: refunds and messages have already started.')
+      setNotQueued(result.data.cancellationNotQueued)
+      if (result.data.cancellationNotQueued) {
+        setError('The refunds and messages for this cancellation were never queued, so nobody has been refunded or told yet. Finish cancelling to send them.')
+      } else if (!result.data.pendingCancellation) {
+        setError('Too late to undo: refunds and messages have already started.')
+      }
     })
   }
 
@@ -60,6 +67,7 @@ export function EventLifecycleActions({ eventId, status, onChanged }: EventLifec
     if (action === 'cancel') {
       const scheduledFor = (result.data as { scheduledFor?: string } | undefined)?.scheduledFor ?? null
       setUndoUntil(scheduledFor)
+      setNotQueued(false)
       toast.success('Event cancelled. Refunds and messages start in 10 minutes.')
     } else {
       toast.success('Event postponed. Guests are being told.')
@@ -89,7 +97,9 @@ export function EventLifecycleActions({ eventId, status, onChanged }: EventLifec
           <div className="flex flex-wrap gap-2">
             {undoUntil
               ? <Button type="button" variant="secondary" onClick={undo} loading={busy}>Undo Cancellation</Button>
-              : <Button type="button" variant="secondary" onClick={checkUndo} loading={busy}>Check Whether It Can Be Undone</Button>}
+              : notQueued
+                ? <Button type="button" variant="danger" onClick={() => open('cancel')} loading={busy}>Finish Cancelling</Button>
+                : <Button type="button" variant="secondary" onClick={checkUndo} loading={busy}>Check Whether It Can Be Undone</Button>}
           </div>
         </div>
       ) : (
