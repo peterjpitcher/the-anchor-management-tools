@@ -37,7 +37,7 @@ const NOW = new Date('2026-10-28T10:00:00.000Z')
 const DAY = 24 * 60 * 60 * 1000
 
 function expiryOf(token: string): number {
-  return Number.parseInt(token.slice(56, 64), 16) * 1000
+  return Number.parseInt(token.slice(59, 67), 16) * 1000
 }
 
 beforeEach(() => {
@@ -58,10 +58,10 @@ afterEach(() => {
 describe('how long a booking page link lasts', () => {
   it('ends at midnight, London time, at the end of the 30th day after the event', () => {
     const token = generateBookingToken(BOOKING, { eventDate: '2026-12-05' })
-    expect(token).toHaveLength(96)
+    expect(token).toHaveLength(99)
     // 4 January 2027 is the 30th day after 5 December; it ends at 00:00 GMT on 5 January.
     expect(new Date(expiryOf(token)).toISOString()).toBe('2027-01-05T00:00:00.000Z')
-    expect(readBookingToken(token)).toEqual({ bookingId: BOOKING, issuedAt: Math.floor(NOW.getTime() / 1000) })
+    expect(readBookingToken(token)).toEqual({ bookingId: BOOKING, issuedAt: NOW.getTime() })
   })
 
   it('ends at London midnight in summer time too', () => {
@@ -94,7 +94,7 @@ describe('how long a booking page link lasts', () => {
 
   it('refuses a link whose issue time or expiry was edited', () => {
     const token = generateBookingToken(BOOKING, { eventDate: '2026-12-05' })
-    const edited = `${token.slice(0, 48)}00000001${token.slice(56)}`
+    const edited = `${token.slice(0, 48)}00000000001${token.slice(59)}`
     expect(verifyBookingToken(edited)).toBeNull()
   })
 
@@ -117,10 +117,41 @@ describe('switching off a booking\'s old links', () => {
     const old = generateBookingToken(BOOKING)
     vi.setSystemTime(new Date(NOW.getTime() + 60_000))
     state.booking = { id: BOOKING, portal_links_revoked_at: new Date().toISOString() }
+    vi.setSystemTime(new Date(NOW.getTime() + 61_000))
     const fresh = generateBookingToken(BOOKING)
 
     expect(await verifyPortalAccess(old)).toBeNull()
     expect(await verifyPortalAccess(fresh)).toBe(BOOKING)
+  })
+
+  it('refuses a link issued earlier in the same second as the switch-off', async () => {
+    vi.setSystemTime(new Date('2026-10-28T10:00:00.100Z'))
+    const leaked = generateBookingToken(BOOKING)
+    state.booking = { id: BOOKING, portal_links_revoked_at: '2026-10-28T10:00:00.900Z' }
+
+    expect(await verifyPortalAccess(leaked)).toBeNull()
+  })
+
+  it('refuses a link issued in the very millisecond of the switch-off', async () => {
+    vi.setSystemTime(new Date('2026-10-28T10:00:00.900Z'))
+    const sameMoment = generateBookingToken(BOOKING)
+    state.booking = { id: BOOKING, portal_links_revoked_at: '2026-10-28T10:00:00.900Z' }
+
+    expect(await verifyPortalAccess(sameMoment)).toBeNull()
+  })
+
+  it('issues the replacement strictly after the switch-off: it works, and differs from the old link', async () => {
+    vi.setSystemTime(new Date('2026-10-28T10:00:00.900Z'))
+    const old = generateBookingToken(BOOKING)
+    const revokedAt = '2026-10-28T10:00:00.900Z'
+    state.booking = { id: BOOKING, portal_links_revoked_at: revokedAt }
+    // The clock has not moved: the replacement is made in the same millisecond.
+    const replacement = generateBookingToken(BOOKING, { issuedAfterMs: Date.parse(revokedAt) })
+
+    expect(replacement).not.toBe(old)
+    expect(readBookingToken(replacement)?.issuedAt).toBe(Date.parse(revokedAt) + 1)
+    expect(await verifyPortalAccess(replacement)).toBe(BOOKING)
+    expect(await verifyPortalAccess(old)).toBeNull()
   })
 
   it('refuses a link from before issue times were kept once any switch-off happened', async () => {
@@ -132,7 +163,7 @@ describe('switching off a booking\'s old links', () => {
   })
 
   it('refuses a tampered link without reading the booking', async () => {
-    expect(await verifyPortalAccess('x'.repeat(96))).toBeNull()
+    expect(await verifyPortalAccess('x'.repeat(99))).toBeNull()
   })
 
   it('works as before until the column exists, rather than failing every link', async () => {
@@ -167,7 +198,7 @@ describe('the short booking page link', () => {
     const url = await privateBookingPortalLink({ id: BOOKING, customer_id: null, event_date: '2026-12-05' })
 
     expect(url?.startsWith(`${getAppUrl()}/booking-portal/`)).toBe(true)
-    expect(url?.split('/booking-portal/')[1]).toHaveLength(96)
+    expect(url?.split('/booking-portal/')[1]).toHaveLength(99)
     expect(logger.warn).toHaveBeenCalledWith('Private booking page link sent in full', {
       metadata: { privateBookingId: BOOKING, link: 'full_url' },
     })

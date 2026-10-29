@@ -153,6 +153,7 @@ vi.mock('@/services/private-bookings', async () => {
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { privateBookingPortalLink } from '@/lib/private-bookings/portal-link'
 import { logAuditEvent } from '@/app/actions/audit'
 import { hireNightWarning } from '@/services/private-bookings/night-clashes'
 import { PrivateBookingService, updateBalancePayment, deleteBalancePayment, updateDeposit, updateDepositAmount, deleteDeposit } from '@/services/private-bookings'
@@ -324,6 +325,9 @@ describe('privateBookingActions', () => {
       const result = await revokeBookingPortalLinks(BOOKING_UUID)
 
       expect(result).toEqual({ success: true, url: `https://l.the-anchor.pub/short-${BOOKING_UUID}` })
+      // The replacement is issued strictly after the switch-off it follows.
+      const revokedAt = (writes[0].payload as { portal_links_revoked_at: string }).portal_links_revoked_at
+      expect(vi.mocked(privateBookingPortalLink).mock.calls.at(-1)?.[1]).toEqual({ issuedAfterMs: Date.parse(revokedAt) })
       expect(writes[0]).toMatchObject({ table: 'private_bookings', op: 'update', payload: { portal_links_revoked_at: expect.any(String) } })
       expect(writes[1]).toMatchObject({
         table: 'private_booking_audit',

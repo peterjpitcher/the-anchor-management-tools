@@ -54,7 +54,7 @@ describe('invoice portal token', () => {
     // Same secret, different signed prefix. Booking links carry their issue time since
     // 28 October 2026 (BK-204), so they are longer too.
     const bookingToken = generateBookingToken(INVOICE_ID)
-    expect(bookingToken).toHaveLength(96)
+    expect(bookingToken).toHaveLength(99)
     expect(verifyInvoiceToken(bookingToken)).toBeNull()
     expect(verifyBookingToken(generateInvoiceToken(INVOICE_ID))).toBeNull()
   })

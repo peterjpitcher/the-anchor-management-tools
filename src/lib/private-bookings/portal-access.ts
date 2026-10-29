@@ -33,9 +33,9 @@ export async function verifyPortalAccess(token: string): Promise<string | null> 
 
   const revokedAt = data.portal_links_revoked_at ? Date.parse(data.portal_links_revoked_at as string) : null
   if (revokedAt !== null && Number.isFinite(revokedAt)) {
-    // Whole seconds, as the link carries them: a link issued in the same second as the switch-off
-    // is the new one staff are sending.
-    if (verified.issuedAt === null || verified.issuedAt < Math.floor(revokedAt / 1000)) return null
+    // To the millisecond, as the link carries it. A link issued at or before the switch-off is
+    // refused; the replacement is issued strictly after it (generateBookingToken, issuedAfterMs).
+    if (verified.issuedAt === null || verified.issuedAt <= revokedAt) return null
   }
   return verified.bookingId
 }
