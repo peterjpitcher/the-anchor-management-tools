@@ -635,6 +635,20 @@ describe('reply-to-book outcomes (BK-034)', () => {
     expect(result).toEqual({ handled: true, response: 'Sorry, bookings for Quiz Night have closed.' })
   })
 
+  // BK-035, BK-089 (owner decision D11): Accept bookings off, a passed sales close time or a
+  // postponed night close text-reply booking before any booking is attempted.
+  it.each([
+    ['Accept bookings is off', { bookings_enabled: false }],
+    ['online sales have closed', { booking_cutoff_at: new Date(Date.now() - 60_000).toISOString() }],
+    ['the night is postponed', { event_status: 'postponed' }],
+  ])('says bookings have closed, and books nothing, when %s', async (_label, flags) => {
+    const db = buildDbMock({ eventData: { ...EVENT_ROW, ...flags } })
+    mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+    const result = await handleReplyToBook(PHONE, '2')
+    expect(result).toEqual({ handled: true, response: 'Sorry, bookings for Quiz Night have closed.' })
+    expect(mockCreateBooking).not.toHaveBeenCalled()
+  })
+
   it('flags any other refusal for a person and tells the guest so, instead of going silent', async () => {
     const db = buildDbMock({ eventData: { ...EVENT_ROW, start_datetime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() } })
     mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)

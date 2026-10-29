@@ -44,14 +44,6 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     label: 'Event and table booking hold expiry',
   },
   {
-    jobName: 'event-waitlist-offers',
-    path: '/api/cron/event-waitlist-offers',
-    intervalMinutes: 5,
-    maxDurationSeconds: 60,
-    recording: 'hourly',
-    label: 'Event waitlist offers',
-  },
-  {
     jobName: 'event-paypal-reconciliation',
     path: '/api/cron/event-paypal-reconciliation',
     intervalMinutes: 15,
@@ -82,6 +74,14 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     maxDurationSeconds: 300,
     recording: 'own',
     label: 'Event and table guest reminders and review asks',
+  },
+  {
+    jobName: 'event-guest-details-reminders',
+    path: '/api/cron/event-guest-details-reminders',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 120,
+    recording: 'every_run',
+    label: 'Event guest details reminders',
   },
   {
     jobName: 'private-bookings-expire-holds',

@@ -85,6 +85,6 @@ describe('skipPendingPaymentSms', () => {
   it('ignores the flag on a staff-made booking: the link still goes by text when no email could', async () => {
     await EventBookingService.createBooking({ ...base, source: 'admin', supabaseClient: client() as never })
     expect(twilio.sendSMS).toHaveBeenCalledOnce()
-    expect(twilio.sendSMS.mock.calls[0][1]).toContain('Pay here: https://example.com/pay')
+    expect(twilio.sendSMS.mock.calls[0][1]).toContain('Pay here to confirm: https://example.com/pay')
   })
 })

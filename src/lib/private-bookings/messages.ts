@@ -39,7 +39,7 @@ export function privateBookingCreatedMessage(input: {
     ? `${money(input.depositAmount)} deposit secures it by ${input.holdExpiry}.`
     : `${money(input.depositAmount)} deposit secures it.`
   return cap(
-    `Hi ${name(input.customerFirstName)}, your date at The Anchor on ${input.eventDate} is penciled in. ${securesPart} We'll be in touch with next steps.`
+    `Hi ${name(input.customerFirstName)}, your date at The Anchor on ${input.eventDate} is pencilled in. ${securesPart} We'll be in touch with next steps.`
   )
 }
 
@@ -78,7 +78,8 @@ export function depositReminder7DayMessage(input: {
     ? `expires in ${input.daysRemaining} days, on ${input.holdExpiry}`
     : `expires in ${input.daysRemaining} days`
   return cap(
-    `Hi ${name(input.customerFirstName)}, quick nudge. Your hold on ${input.eventDate} ${expiresPart}. ${money(input.depositAmount)} deposit and the date's yours.`
+    // Calm and exact, as SSOT section 1 asks of money messages (BK-171, owner decision D15).
+    `Hi ${name(input.customerFirstName)}, a reminder that your hold on ${input.eventDate} ${expiresPart}. Pay the ${money(input.depositAmount)} deposit to keep the date.`
   )
 }
 

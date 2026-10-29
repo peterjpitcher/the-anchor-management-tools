@@ -60,6 +60,25 @@ describe('Ticket setup', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Edit Standard' }))
     fireEvent.click(screen.getByLabelText('Free ticket'))
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('standard', expect.objectContaining({ base_price: 0, is_free_ticket: true })))
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('standard', expect.objectContaining({ base_price: 0, is_free_ticket: true }), { confirmed: false }))
+  })
+  // BK-036: a price change on a booked night is saved only after a manager confirms the summary.
+  it('asks for confirmation before a price change reaches booked guests, then saves it confirmed', async () => {
+    mocks.update
+      .mockResolvedValueOnce({ error: 'Confirm this change before it is saved.', confirmation: { lines: ['2 bookings already made keep the price they booked at. The new price applies to new sales only.'] } })
+      .mockResolvedValueOnce({ success: true, data: { ...type, base_price: 50 } })
+    render(<EventTicketTypesCard eventId="event" initialTicketTypes={[type]} canManage event={event} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Standard' }))
+    fireEvent.change(screen.getByLabelText('Full ticket price (£)'), { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    expect(await screen.findByText(/keep the price they booked at/)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Save Change' }))
+    await waitFor(() => expect(mocks.update).toHaveBeenLastCalledWith('standard', expect.objectContaining({ base_price: 50 }), { confirmed: true }))
+  })
+  // D9: the payment method is locked once anyone has booked.
+  it('locks the payment method once the event has bookings', () => {
+    render(<EventTicketSettings event={event} canManage activeBookingCount={3} />)
+    expect(screen.getByLabelText('Payment method')).toBeDisabled()
+    expect(screen.getByText(/Locked because 3 bookings have been made/)).toBeInTheDocument()
   })
 })

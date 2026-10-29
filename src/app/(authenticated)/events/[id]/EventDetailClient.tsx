@@ -36,19 +36,21 @@ import type { EventMarketingMessage } from '@/app/actions/event-marketing-messag
 import type { EventCategory } from '@/types/event-categories'
 import {
   getEventById,
+  decideNoEventRefund,
   getEventBookings,
   updateEventManualBookingSeats,
   cancelEventManualBooking,
   getEventBookingRefundInfo,
   markEventBookingPaidManually,
   getEventBookingDoorCharge,
-  transferEventBooking,
   deleteEvent,
 } from '@/app/actions/events'
 import {
   regenerateEventMarketingLinks,
 } from '@/app/actions/event-marketing-links'
 import { EventTicketTypesCard } from './EventTicketTypesCard'
+import { EventChangesAfterBookingCard } from './EventChangesAfterBookingCard'
+import { EventGuestsNotReachedCard } from './EventGuestsNotReachedCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
 import { EventAttendeesEditor } from './EventAttendeesEditor'
 import { EventGuestAnswersCard } from './EventGuestAnswersCard'
@@ -60,6 +62,9 @@ import type { EventTicketTypeRow } from '@/lib/events/ticket-types'
 import { EventDrawer } from '@/app/(authenticated)/events/_components/EventDrawer'
 import { AddManualBookingForm } from './AddManualBookingForm'
 import { RefundBookingDialog } from './RefundBookingDialog'
+import { TransferBookingDialog, type TransferTarget } from './TransferBookingDialog'
+import { ChangeTicketsDialog } from './ChangeTicketsDialog'
+import type { RefundRequestForDialog } from './RefundBookingDialog'
 import { PaidNeedsActionCard } from './PaidNeedsActionCard'
 import { EventOutcomesCard } from './EventOutcomesCard'
 import { EventNightNotice } from '../_components/EventNightNotice'
@@ -228,6 +233,11 @@ export default function EventDetailClient({
 
   // Row action dialogs
   const [refundingBooking, setRefundingBooking] = useState<EventBookingRow | null>(null)
+  // A waiting refund request a manager is deciding (owner decision D7).
+  const [refundingRequest, setRefundingRequest] = useState<RefundRequestForDialog | null>(null)
+  const [noRefundTarget, setNoRefundTarget] = useState<{ booking: EventBookingRow; request: RefundRequestForDialog } | null>(null)
+  const [noRefundNote, setNoRefundNote] = useState('')
+  const [changeTicketsBooking, setChangeTicketsBooking] = useState<EventBookingRow | null>(null)
   const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
   const [compReason, setCompReason] = useState('')
@@ -253,6 +263,8 @@ export default function EventDetailClient({
   const [cancelRefundAmount, setCancelRefundAmount] = useState('')
   const [transferringBookingId, setTransferringBookingId] = useState<string | null>(null)
   const [transferTargetEventId, setTransferTargetEventId] = useState('')
+  // The move itself asks the new night's questions first (BK-028).
+  const [transferTarget, setTransferTarget] = useState<TransferTarget | null>(null)
 
   /* ---- Derived data ---- */
 
@@ -478,25 +490,15 @@ export default function EventDetailClient({
 
   const handleTransferBooking = useCallback(() => {
     if (!transferringBookingId || !transferTargetEventId.trim()) return
-    startTransition(async () => {
-      const result = await transferEventBooking({
-        bookingId: transferringBookingId,
-        targetEventId: transferTargetEventId.trim()
-      })
-      if ('error' in result) {
-        toast.error(result.error)
-        return
-      }
-      if (result.data.state === 'blocked') {
-        toast.error(formatStatusLabel(result.data.reason || 'Transfer blocked'))
-        return
-      }
-      toast.success('Booking transferred')
-      setTransferringBookingId(null)
-      setTransferTargetEventId('')
-      await refreshBookings()
+    const targetEvent = transferEvents.find((candidate) => candidate.id === transferTargetEventId.trim())
+    setTransferTarget({
+      bookingId: transferringBookingId,
+      targetEventId: transferTargetEventId.trim(),
+      targetLabel: targetEvent
+        ? `${targetEvent.name} on ${formatDateInLondon(targetEvent.date)}${targetEvent.time ? ` ${formatTime12Hour(targetEvent.time)}` : ''}`
+        : 'the new night',
     })
-  }, [transferringBookingId, transferTargetEventId, refreshBookings])
+  }, [transferringBookingId, transferTargetEventId, transferEvents])
 
   /* ---- Marketing links ---- */
 
@@ -618,6 +620,8 @@ export default function EventDetailClient({
         <div className={`flex-1 min-w-0 ${isPending ? 'opacity-50 pointer-events-none' : ''}`}>
           {activeTab === 'overview' && (
             <div className="flex flex-col gap-6">
+              <EventGuestsNotReachedCard eventId={event.id} bookings={bookings} />
+              <EventChangesAfterBookingCard eventId={event.id} />
               <OverviewTab
                 event={event}
                 statusBadges={
@@ -681,7 +685,19 @@ export default function EventDetailClient({
                   setCompReason('')
                   setCompBookingId(bookingId)
                 }}
-                onRefundBooking={setRefundingBooking}
+                onRefundBooking={(booking) => {
+                  setRefundingRequest(null)
+                  setRefundingBooking(booking)
+                }}
+                onDecideRefund={(booking, request) => {
+                  setRefundingRequest(request)
+                  setRefundingBooking(booking)
+                }}
+                onNoRefund={(booking, request) => {
+                  setNoRefundNote('')
+                  setNoRefundTarget({ booking, request })
+                }}
+                onChangeTickets={setChangeTicketsBooking}
                 onEditNames={setAddDetailsBooking}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
@@ -718,7 +734,7 @@ export default function EventDetailClient({
                 allowMultiple={allowMultipleTicketTypes}
                 event={event as TicketSettingsEvent}
               />
-              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} />
+              <EventTicketSettings key={JSON.stringify([event.id, event.payment_mode, event.online_discount_type, event.online_discount_value, event.online_discount_ends_at, event.booking_questions, event.collect_guest_details])} event={event as TicketSettingsEvent} canManage={permissions.canManage} activeBookingCount={activeBookings.filter(booking => booking.is_reminder_only !== true).length} />
             </div>
           )}
 
@@ -874,10 +890,69 @@ export default function EventDetailClient({
         tone="primary"
       />
 
+      {/* Take guests off, add guests or change a ticket type (BK-023) */}
+      <ChangeTicketsDialog
+        booking={changeTicketsBooking}
+        onClose={() => setChangeTicketsBooking(null)}
+        onDone={refreshBookings}
+      />
+
+      {/* A manager decides no refund is due on a waiting request (D7) */}
+      <ConfirmDialog
+        open={noRefundTarget !== null}
+        onClose={() => setNoRefundTarget(null)}
+        onConfirm={async () => {
+          if (!noRefundTarget) return
+          const result = await decideNoEventRefund({
+            bookingId: noRefundTarget.booking.id,
+            requestId: noRefundTarget.request.id,
+            note: noRefundNote.trim(),
+          })
+          if ('error' in result) throw new Error(result.error)
+          toast.success('Recorded: no refund.')
+          setNoRefundTarget(null)
+          await refreshBookings()
+        }}
+        title="No refund"
+        tone="primary"
+        confirmLabel="Record no refund"
+        message={
+          <div className="space-y-3">
+            <p className="text-sm text-text">
+              {noRefundTarget
+                ? `${noRefundTarget.request.label}: up to ${formatCurrency(noRefundTarget.request.amount)} could have been refunded. Say why no refund is due.`
+                : null}
+            </p>
+            <Textarea
+              label="Reason"
+              value={noRefundNote}
+              maxLength={500}
+              onChange={(event) => setNoRefundNote(event.target.value)}
+            />
+          </div>
+        }
+      />
+
+      {/* Move a booking to another night (BK-028) */}
+      <TransferBookingDialog
+        target={transferTarget}
+        onClose={() => setTransferTarget(null)}
+        onDone={async () => {
+          setTransferTarget(null)
+          setTransferringBookingId(null)
+          setTransferTargetEventId('')
+          await refreshBookings()
+        }}
+      />
+
       {/* After-the-fact refund dialog */}
       <RefundBookingDialog
         booking={refundingBooking}
-        onClose={() => setRefundingBooking(null)}
+        refundRequest={refundingRequest}
+        onClose={() => {
+          setRefundingBooking(null)
+          setRefundingRequest(null)
+        }}
         onDone={refreshBookings}
       />
 
@@ -909,6 +984,7 @@ export default function EventDetailClient({
           event={event}
           categories={categories}
           onSave={handleDrawerSave}
+          seatsSold={totalSeats}
         />
       )}
     </PageLayout>
@@ -1126,6 +1202,9 @@ function AttendeesTab({
   onMarkPaid,
   onRequestComp,
   onRefundBooking,
+  onDecideRefund,
+  onNoRefund,
+  onChangeTickets,
   onEditNames,
   transferringBookingId,
   transferTargetEventId,
@@ -1161,6 +1240,9 @@ function AttendeesTab({
   onMarkPaid: (id: string, method: 'cash' | 'card_terminal') => void
   onRequestComp: (id: string) => void
   onRefundBooking: (booking: EventBookingRow) => void
+  onDecideRefund: (booking: EventBookingRow, request: RefundRequestForDialog) => void
+  onNoRefund: (booking: EventBookingRow, request: RefundRequestForDialog) => void
+  onChangeTickets: (booking: EventBookingRow) => void
   onEditNames: (booking: EventBookingRow) => void
   transferringBookingId: string | null
   transferTargetEventId: string
@@ -1282,11 +1364,36 @@ function AttendeesTab({
       )
     }
 
+    // Refunds waiting for a manager after staff changed the booking (owner decision D7). They stay
+    // on screen until a manager refunds them or records no refund.
+    const refundRequests = booking.refund_requests ?? []
+    const refundRequestControls = refundRequests.length > 0 ? (
+      <div className="flex w-full flex-col gap-1">
+        {refundRequests.map((request) => (
+          <div key={request.id} className="flex flex-wrap items-center gap-1">
+            <Badge tone="warning">Refund to decide: up to {formatCurrency(request.amount)}</Badge>
+            <span className="text-xs text-text-muted">{request.label}</span>
+            <Button size="sm" variant="ghost" onClick={() => onDecideRefund(booking, request)}>
+              Refund…
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => onNoRefund(booking, request)}>
+              No refund
+            </Button>
+          </div>
+        ))}
+      </div>
+    ) : null
+
     if (isCancelled) {
-      return canShowRefund ? (
-        <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
-          Refund…
-        </Button>
+      return canShowRefund || refundRequestControls ? (
+        <div className="flex flex-wrap items-center gap-1">
+          {refundRequestControls}
+          {canShowRefund && (
+            <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
+              Refund…
+            </Button>
+          )}
+        </div>
       ) : null
     }
 
@@ -1341,6 +1448,11 @@ function AttendeesTab({
             Add Guest Details
           </Button>
         )}
+        {booking.status === 'confirmed' && booking.is_reminder_only !== true && (
+          <Button size="sm" variant="ghost" onClick={() => onChangeTickets(booking)}>
+            Change Tickets
+          </Button>
+        )}
         {booking.status === 'confirmed' && (
           <Button
             size="sm"
@@ -1363,6 +1475,7 @@ function AttendeesTab({
         >
           Cancel Booking
         </Button>
+        {refundRequestControls}
       </div>
     )
   }

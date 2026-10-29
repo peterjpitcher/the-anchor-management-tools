@@ -247,6 +247,23 @@ export function shiftIsoDate(isoDate: string, days: number): string | null {
   return utcMsToIsoDate(ms + days * MS_PER_DAY)
 }
 
+/**
+ * Whole London calendar days from today to the London date of `instant`: 0 on the day itself,
+ * 7 on the same weekday a week before. Returns null when `instant` is not a real time.
+ *
+ * Refund bands promise whole days ("7 or more days before"), so the count is of calendar dates
+ * on the London clock, never elapsed hours: the evening a week before a 19:00 event is still 7
+ * days, and a clock change does not move the band. Table deposits and event tickets share it.
+ */
+export function londonCalendarDaysUntil(instant: Date | string, now: Date = new Date()): number | null {
+  const target = typeof instant === 'string' ? new Date(instant) : instant
+  if (!(target instanceof Date) || !Number.isFinite(target.getTime())) return null
+  const targetMs = isoDateToUtcMs(toLocalIsoDate(target))
+  const todayMs = isoDateToUtcMs(toLocalIsoDate(now))
+  if (targetMs === null || todayMs === null) return null
+  return Math.round((targetMs - todayMs) / MS_PER_DAY)
+}
+
 const LONDON_WALL_CLOCK = new Intl.DateTimeFormat('en-GB', {
   timeZone: LONDON_TIMEZONE,
   year: 'numeric',
