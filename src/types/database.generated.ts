@@ -7049,6 +7049,7 @@ export type Database = {
           paypal_reconciliation_last_error: string | null
           reference: string | null
           reminder_first_sent_at: string | null
+          reminder_last_weekly_sent_at: string | null
           reminder_second_sent_at: string | null
           reminders_held_until: string | null
           sent_at: string | null
@@ -7080,6 +7081,7 @@ export type Database = {
           paypal_reconciliation_last_error?: string | null
           reference?: string | null
           reminder_first_sent_at?: string | null
+          reminder_last_weekly_sent_at?: string | null
           reminder_second_sent_at?: string | null
           reminders_held_until?: string | null
           sent_at?: string | null
@@ -7111,6 +7113,7 @@ export type Database = {
           paypal_reconciliation_last_error?: string | null
           reference?: string | null
           reminder_first_sent_at?: string | null
+          reminder_last_weekly_sent_at?: string | null
           reminder_second_sent_at?: string | null
           reminders_held_until?: string | null
           sent_at?: string | null
@@ -24480,6 +24483,7 @@ export type Database = {
           paypal_reconciliation_last_error: string | null
           reference: string | null
           reminder_first_sent_at: string | null
+          reminder_last_weekly_sent_at: string | null
           reminder_second_sent_at: string | null
           reminders_held_until: string | null
           sent_at: string | null
