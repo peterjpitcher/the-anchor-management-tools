@@ -22,7 +22,9 @@ import {
   getCustomerEmailBlock,
   type CustomerEmailBlock,
 } from '@/app/actions/emailSuppressionActions'
-import { updateCustomer as updateCustomerAction, updateCustomerNotes, updateUpcomingPrivateBookingContacts } from '@/app/actions/customers'
+import { updateCustomer as updateCustomerAction, updateCustomerNotes } from '@/app/actions/customers'
+import { UpdateBookingContactsModal } from '@/components/features/customers/UpdateBookingContactsModal'
+import type { BookingContactOffer } from '@/services/private-bookings/contact-sync'
 import { getCustomerLabelAssignments, getCustomerLabels, type CustomerLabel, type CustomerLabelAssignment } from '@/app/actions/customer-labels'
 import { PageLayout, PageLoading, toast, Icon } from '@/ds'
 import { Card, CardBody, CardHeader, FormFooter } from '@/ds'
@@ -294,8 +296,7 @@ export default function CustomerViewPage() {
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   // BK-163: upcoming private hires still carrying the phone or email just changed on the customer.
-  const [bookingsWithOldContact, setBookingsWithOldContact] = useState<string[]>([])
-  const [updatingBookingContacts, setUpdatingBookingContacts] = useState(false)
+  const [bookingsWithOldContact, setBookingsWithOldContact] = useState<BookingContactOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [togglingSmsSetting, setTogglingSmsSetting] = useState(false)
   const [togglingWhatsAppSetting, setTogglingWhatsAppSetting] = useState(false)
@@ -1858,57 +1859,11 @@ export default function CustomerViewPage() {
           />
         </Modal>
 
-        <Modal
-          open={bookingsWithOldContact.length > 0}
-          onClose={() => {
-            if (updatingBookingContacts) return
-            setBookingsWithOldContact([])
-          }}
-          title="Update Upcoming Private Bookings?"
-          footer={
-            <>
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() => setBookingsWithOldContact([])}
-                disabled={updatingBookingContacts}
-              >
-                Leave Them
-              </Button>
-              <Button
-                variant="primary"
-                type="button"
-                loading={updatingBookingContacts}
-                onClick={async () => {
-                  if (!customer) return
-                  setUpdatingBookingContacts(true)
-                  try {
-                    const result = await updateUpcomingPrivateBookingContacts(customer.id, bookingsWithOldContact)
-                    if (result.error) {
-                      toast.error(result.error)
-                      return
-                    }
-                    toast.success(
-                      result.updated === 1 ? '1 private booking updated' : `${result.updated ?? 0} private bookings updated`,
-                    )
-                    setBookingsWithOldContact([])
-                  } finally {
-                    setUpdatingBookingContacts(false)
-                  }
-                }}
-              >
-                Update Bookings
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm text-text">
-            {bookingsWithOldContact.length === 1
-              ? 'One upcoming private booking still has the old phone number or email address, so its texts and emails would keep going there.'
-              : `${bookingsWithOldContact.length} upcoming private bookings still have the old phone number or email address, so their texts and emails would keep going there.`}{' '}
-            Update them to the new details?
-          </p>
-        </Modal>
+        <UpdateBookingContactsModal
+          customerId={customer?.id ?? null}
+          offers={bookingsWithOldContact}
+          onClose={() => setBookingsWithOldContact([])}
+        />
 
         <Modal
           open={isEmailingCustomer}
