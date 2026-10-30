@@ -1,11 +1,10 @@
 import { GuestButton, GuestIntro, GuestShell } from '@/components/features/guest'
 import { sanitizeFeedbackSource } from '@/app/api/feedback/source'
+import { GOOGLE_REVIEW_URL } from '@/lib/feedback/google-review-url'
 
 export const metadata = {
   title: 'How was your visit? - The Anchor',
 }
-
-const GOOGLE_REVIEW_URL = 'https://g.page/r/CXmhY3UO3834EBM/review'
 
 interface FeedbackLandingPageProps {
   searchParams: Promise<{ src?: string }>
@@ -24,16 +23,16 @@ export default async function FeedbackLandingPage({ searchParams }: FeedbackLand
       <GuestIntro
         script="Stanwell Moor Village"
         title="How was your visit with us?"
-        lead="It only takes a moment to let us know how we did."
+        lead="Good or bad, we'd like to hear about it. It only takes a moment."
       />
 
       <div className="flex w-full flex-col gap-3">
         <GuestButton as="a" href={GOOGLE_REVIEW_URL} variant="primary" size="lg" fullWidth>
-          I enjoyed my visit
+          Leave a Google review
         </GuestButton>
 
         <GuestButton as="link" href={tellUsHref} variant="outline" size="lg" fullWidth>
-          It could have been better
+          Tell us privately instead
         </GuestButton>
       </div>
     </GuestShell>
