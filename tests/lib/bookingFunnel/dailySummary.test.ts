@@ -130,10 +130,106 @@ describe('buildDailyFunnelEmail', () => {
     expect(email.text).toContain('- Table bookings: Refused, no security check token: the check never loaded or was not finished. 1 time.')
     expect(email.text).toContain('- Table searches: 3.')
     expect(email.text).toContain('- Could not check (the guest was asked to try again or ring): 1.')
-    expect(email.text).toContain(
-      '- Event booking form: opened 2, submit pressed 1, blocked before sending 1 (no security token 1), sent 0.',
-    )
+    expect(email.text).toContain('- Event booking form: opened 2, submit pressed 1, sent 0.')
+    expect(email.text).toContain('- Event booking form: the security check stalled or failed on 1 visit.')
     expect(email.text).toContain('https://management.example/table-bookings/reports')
+  })
+
+  describe('only says turned away when someone was', () => {
+    // The numbers from the email of 31 October 2026, which was headed "turned away" with nobody refused.
+    const form = (step: string, count: number, reason: string | null = null) => ({ form: 'event_booking', step, reason, count })
+    const friday = (overrides: Partial<DailyFunnelSummary> = {}): DailyFunnelSummary => ({
+      date: '2026-10-30',
+      refusals: [],
+      refusedTotal: 0,
+      failedTotal: 0,
+      availability: { searches: 25, noTables: 0, couldNotCheck: 0 },
+      forms: [form('opened', 22), form('submit_pressed', 3), form('blocked', 7, 'no_security_token'), form('sent', 3)],
+      truncated: false,
+      readError: null,
+      ...overrides,
+    })
+
+    it('names a stalled security check as what it is, and still sends', () => {
+      const summary = friday()
+      const email = buildDailyFunnelEmail(summary, null)
+
+      expect(summaryNeedsSending(summary)).toBe(true)
+      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check stalled or failed on 7 visits')
+      for (const part of [email.subject, email.html, email.text]) {
+        expect(part).not.toMatch(/turned away|blocked before sending/i)
+        expect(part).not.toMatch(/undefined|NaN|Invalid Date|null/)
+        expect(part).not.toContain(String.fromCharCode(8212))
+      }
+      expect(email.text).toContain('No booking was refused or failed on Friday 30 October.')
+      expect(email.text).toContain('- Event booking form: opened 22, submit pressed 3, sent 3.')
+      expect(email.text).toContain(
+        '- Event booking form: the security check stalled or failed on 7 visits. This counts even if nobody presses book: a guest may still book once the check finishes, and a robot counts the same as a person. A guest held up is shown a warning and our phone number.',
+      )
+    })
+
+    it('says one visit in the singular', () => {
+      const email = buildDailyFunnelEmail(friday({ forms: [form('blocked', 1, 'no_security_token')] }), null)
+
+      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check stalled or failed on 1 visit')
+    })
+
+    it('does not call a missing detail turned away', () => {
+      const email = buildDailyFunnelEmail(friday({ forms: [form('blocked', 2, 'missing_fields')] }), null)
+
+      expect(email.subject).toBe('No website bookings refused on Friday 30 October: a detail was missing or wrong 2 times')
+      expect(email.text).not.toMatch(/turned away/i)
+      expect(email.text).toContain('- Event booking form: a detail was missing or wrong, so it was not sent. 2 times.')
+    })
+
+    it('keeps turned away when a refusal sits beside a stalled check, and shows both', () => {
+      const email = buildDailyFunnelEmail(
+        friday({ refusals: [{ route: 'api/event-bookings', stage: 'refused', reason: 'no_table', upstreamCode: 'no_table', count: 1 }], refusedTotal: 1 }),
+        null,
+      )
+
+      expect(email.subject).toBe('Website bookings turned away on Friday 30 October: 1 refused')
+      expect(email.text).toContain('What the website turned away on Friday 30 October.')
+      expect(email.text).toContain('the security check stalled or failed on 7 visits')
+    })
+
+    it.each([
+      ['network', 'the booking was lost on the way to us. 1 time.'],
+      ['server_refused', 'the booking system said no. 1 time.'],
+      ['a_new_reason', 'not sent, reason a_new_reason. 1 time.'],
+      [null, 'not sent, no reason recorded. 1 time.'],
+    ])('treats a form stopped for %s as turned away, never played down', (reason, line) => {
+      const email = buildDailyFunnelEmail(friday({ forms: [form('blocked', 1, reason)] }), null)
+
+      expect(email.subject).toBe('Website bookings turned away on Friday 30 October: 1 form not sent')
+      expect(email.text).toContain(`- Event booking form: ${line}`)
+    })
+
+    it('does not count a form the booking system refused a second time', () => {
+      const email = buildDailyFunnelEmail(
+        friday({
+          refusals: [{ route: 'api/event-bookings', stage: 'refused', reason: 'no_table', upstreamCode: 'no_table', count: 4 }],
+          refusedTotal: 4,
+          forms: [form('submit_pressed', 4), form('blocked', 4, 'server_refused')],
+        }),
+        null,
+      )
+
+      expect(email.subject).toBe('Website bookings turned away on Friday 30 October: 4 refused')
+    })
+
+    it.each([
+      ['truncated', { truncated: true }],
+      ['could not be read', { readError: 'No API key that can make bookings was found, so nothing could be counted.' }],
+    ])('never promises nobody was refused when the day %s', (_label, overrides) => {
+      const email = buildDailyFunnelEmail(friday(overrides), null)
+
+      expect(email.subject).toBe('Website bookings summary for Friday 30 October is incomplete: see inside')
+      for (const part of [email.subject, email.html, email.text]) {
+        expect(part).not.toMatch(/No website bookings refused|No booking was refused/)
+      }
+      expect(email.text).toContain('- None counted, but this count is incomplete.')
+    })
   })
 
   it('escapes what it prints', () => {
