@@ -18,8 +18,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 /**
  * Daily: what the website turned away yesterday (BK-101, customer bookings review of 24 October
  * 2026). Owner decision D17: website refusals go to the manager inbox as one summary a day, not
- * one email each. Sent only when something was turned away; one email per London day however
- * often this is called. Codes and counts only.
+ * one email each. Sent only when something was turned away or held up; one email per London day
+ * however often this is called. Codes and counts only.
  */
 
 export const dynamic = 'force-dynamic'
