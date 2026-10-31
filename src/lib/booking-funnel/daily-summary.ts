@@ -8,9 +8,11 @@ import type { createAdminClient } from '@/lib/supabase/admin'
  * of 24 October 2026). Owner decision D17: website refusals go to the manager inbox as ONE email
  * a day, not one each. Built from booking_funnel_events for one London day.
  *
- * It is sent only when something was turned away: a refusal, a failure, an availability check
- * that could not be worked out, or a booking form blocked before it could send. Codes and counts
- * only; booking_funnel_events holds no guest details, so neither does this.
+ * It is sent only when something was turned away or held up: a refusal, a failure, an availability
+ * check that could not be worked out, or a booking form stopped before it could send. A form held
+ * up by the security check or a missing detail is not called turned away, because nobody was
+ * refused (see HELD_UP_REASONS). Codes and counts only; booking_funnel_events holds no guest
+ * details, so neither does this.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -152,7 +154,7 @@ export async function loadDailyFunnelSummary(supabase: AdminClient, date: string
   return summary
 }
 
-/** Something was turned away, so the summary goes out. A quiet day sends nothing. */
+/** Something was turned away or held up, so the summary goes out. A quiet day sends nothing. */
 export function summaryNeedsSending(summary: DailyFunnelSummary): boolean {
   const formsBlocked = summary.forms.filter((line) => line.step === 'blocked').reduce((sum, line) => sum + line.count, 0)
   return (
@@ -199,9 +201,16 @@ const FORM_LABELS: Record<string, string> = { event_booking: 'Event booking form
 const STEP_LABELS: Record<string, string> = {
   opened: 'opened',
   submit_pressed: 'submit pressed',
-  blocked: 'blocked before sending',
   sent: 'sent',
 }
+
+/**
+ * Form stops that are not a booking being turned away: the security check had not finished, which
+ * the website counts once a visit whether or not anyone pressed book, or a detail was missing. Any
+ * other reason, including one this code does not know, counts as turned away rather than being
+ * played down.
+ */
+const HELD_UP_REASONS = new Set(['no_security_token', 'missing_fields'])
 
 function describeRefusal(line: RefusalLine): string {
   const where = ROUTE_LABELS[line.route] ?? line.route
@@ -211,20 +220,38 @@ function describeRefusal(line: RefusalLine): string {
   return `${where}: ${kind}, ${why}${code}. ${line.count} time${line.count === 1 ? '' : 's'}.`
 }
 
+function describeFormStop(reason: string | null, count: number): string {
+  const times = `${count} time${count === 1 ? '' : 's'}`
+  switch (reason) {
+    case 'no_security_token':
+      return (
+        `the security check stalled or failed on ${count} visit${count === 1 ? '' : 's'}. This counts even if nobody presses book: ` +
+        'a guest may still book once the check finishes, and a robot counts the same as a person. A guest held up is shown a warning and our phone number.'
+      )
+    case 'missing_fields':
+      return `a detail was missing or wrong, so it was not sent. ${times}.`
+    case 'server_refused':
+      return `the booking system said no. ${times}.`
+    case 'network':
+      return `the booking was lost on the way to us. ${times}.`
+    default:
+      return `not sent, ${reason ? `reason ${reason}` : 'no reason recorded'}. ${times}.`
+  }
+}
+
 function describeForms(forms: FormLine[]): string[] {
   const byForm = new Map<string, FormLine[]>()
   for (const line of forms) byForm.set(line.form, [...(byForm.get(line.form) ?? []), line])
-  return [...byForm.entries()].map(([form, lines]) => {
+  return [...byForm.entries()].flatMap(([form, lines]) => {
+    const label = FORM_LABELS[form] ?? form
     const totals = new Map<string, number>()
-    const blockedReasons: string[] = []
+    const stops: string[] = []
     for (const line of lines) {
       totals.set(line.step, (totals.get(line.step) ?? 0) + line.count)
-      if (line.step === 'blocked' && line.reason) blockedReasons.push(`${line.reason.replace(/_/g, ' ')} ${line.count}`)
+      if (line.step === 'blocked') stops.push(`${label}: ${describeFormStop(line.reason, line.count)}`)
     }
-    const parts = ['opened', 'submit_pressed', 'blocked', 'sent'].map(
-      (step) => `${STEP_LABELS[step]} ${totals.get(step) ?? 0}${step === 'blocked' && blockedReasons.length > 0 ? ` (${blockedReasons.join(', ')})` : ''}`,
-    )
-    return `${FORM_LABELS[form] ?? form}: ${parts.join(', ')}.`
+    const parts = ['opened', 'submit_pressed', 'sent'].map((step) => `${STEP_LABELS[step]} ${totals.get(step) ?? 0}`)
+    return [`${label}: ${parts.join(', ')}.`, ...stops]
   })
 }
 
@@ -238,15 +265,41 @@ export function buildDailyFunnelEmail(summary: DailyFunnelSummary, reportsUrl: s
   if (summary.availability.couldNotCheck > 0) {
     counts.push(`${summary.availability.couldNotCheck} availability check${summary.availability.couldNotCheck === 1 ? '' : 's'} failed`)
   }
-  const subject = `Website bookings turned away on ${day}: ${counts.length > 0 ? counts.join(', ') : 'see inside'}`
 
-  const intro =
-    `What the website turned away on ${day}. Refused means the guest was told why and could try again or ring; ` +
-    'failed means something broke on our side, or the website and the management app disagreed about the rules, and a ' +
-    'failure also sent its own alert at the time.'
+  const formStops = (matches: (reason: string | null) => boolean) =>
+    summary.forms.filter((line) => line.step === 'blocked' && matches(line.reason)).reduce((sum, line) => sum + line.count, 0)
+  const formsNotSent = formStops((reason) => !HELD_UP_REASONS.has(reason ?? ''))
+  // Only when nothing above counted it: a form the booking system refused is already in the refused total.
+  if (counts.length === 0 && formsNotSent > 0) counts.push(`${formsNotSent} form${formsNotSent === 1 ? '' : 's'} not sent`)
+
+  // An incomplete summary cannot promise nobody was refused, so that wording needs a complete day.
+  const incomplete = summary.truncated || Boolean(summary.readError)
+  let subject: string
+  let intro: string
+  if (counts.length > 0) {
+    subject = `Website bookings turned away on ${day}: ${counts.join(', ')}`
+    intro =
+      `What the website turned away on ${day}. Refused means the guest was told why and could try again or ring; ` +
+      'failed means something broke on our side, or the website and the management app disagreed about the rules, and a ' +
+      'failure also sent its own alert at the time.'
+  } else if (incomplete) {
+    subject = `Website bookings summary for ${day} is incomplete: see inside`
+    intro = `The summary of website bookings on ${day} could not be completed, so it cannot say whether anyone was turned away.`
+  } else {
+    const stalled = formStops((reason) => reason === 'no_security_token')
+    const missing = formStops((reason) => reason === 'missing_fields')
+    const heldUp = [
+      ...(stalled > 0 ? [`security check stalled or failed on ${stalled} visit${stalled === 1 ? '' : 's'}`] : []),
+      ...(missing > 0 ? [`a detail was missing or wrong ${missing} time${missing === 1 ? '' : 's'}`] : []),
+    ]
+    subject = `No website bookings refused on ${day}${heldUp.length > 0 ? `: ${heldUp.join(', ')}` : ''}`
+    intro =
+      `No booking was refused or failed on ${day}. This email went out because a booking form was held up, ` +
+      'which can stop a guest booking online. The details are under Booking forms.'
+  }
 
   const refusalLines = summary.refusals.map(describeRefusal)
-  if (refusalLines.length === 0) refusalLines.push('No booking was refused or failed.')
+  if (refusalLines.length === 0) refusalLines.push(incomplete ? 'None counted, but this count is incomplete.' : 'No booking was refused or failed.')
   if (summary.truncated) refusalLines.push(`More than ${ROW_LIMIT * MAX_PAGES} were recorded; only the first ${ROW_LIMIT * MAX_PAGES} are counted here.`)
 
   const availabilityLines = [
