@@ -42,6 +42,13 @@ export function CampaignStatusBadge({ status }: { status: MarketingCampaignStatu
   return <Badge tone={CAMPAIGN_STATUS_TONES[status]}>{CAMPAIGN_STATUS_LABELS[status]}</Badge>
 }
 
+/** Marks a lifecycle campaign, which keeps sending on its send days until paused or cancelled. */
+const LIFECYCLE_KIND_TONE: BadgeTone = 'info'
+
+export function LifecycleBadge() {
+  return <Badge tone={LIFECYCLE_KIND_TONE}>Return visit</Badge>
+}
+
 // ---------------------------------------------------------------------------
 // The campaign send switch (Settings)
 // ---------------------------------------------------------------------------
@@ -92,6 +99,9 @@ export const SKIP_REASON_LABELS: Record<MarketingSkipReason, string> = {
   not_eligible: 'Not marked eligible',
   campaign_cancelled: 'Campaign cancelled',
   already_booked: 'Already booked for this event',
+  booked_since_selection: 'Booked a table since being picked',
+  holdout: 'Control group, sent nothing',
+  venue_closed: 'Kitchen closed too much of the next month',
 }
 
 export function skipReasonLabel(reason: MarketingSkipReason | null): string {

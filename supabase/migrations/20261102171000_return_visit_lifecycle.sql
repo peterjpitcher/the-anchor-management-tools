@@ -58,7 +58,7 @@ alter table public.marketing_campaign_recipients
   add constraint marketing_campaign_recipients_skip_reason_check check (
     skip_reason is null or skip_reason = any (array[
       'unsubscribed', 'suppressed', 'do_not_contact', 'frequency_cap', 'not_eligible',
-      'campaign_cancelled', 'already_booked', 'booked_since_selection', 'holdout'
+      'campaign_cancelled', 'already_booked', 'booked_since_selection', 'holdout', 'venue_closed'
     ])
   );
 
@@ -237,7 +237,12 @@ grant execute on function public.get_table_return_visit_audience(jsonb, date) to
 
 -- 6. Promotion. One-off campaigns unchanged apart from saying they are one-off; lifecycle
 --    campaigns add the day's audience once per London send day after promote_at_local.
-create or replace function public.promote_due_marketing_campaigns()
+--    p_include_lifecycle is the cron's closure gate: the app reads the kitchen's hours for the
+--    next 30 days and passes false when a voucher would mostly expire while it is closed, or
+--    when it cannot read them. The default keeps a caller that sends no argument working.
+drop function if exists public.promote_due_marketing_campaigns();
+
+create function public.promote_due_marketing_campaigns(p_include_lifecycle boolean default true)
 returns table(promoted_campaign_id uuid, promoted_recipients integer)
 language plpgsql
 security definer
@@ -313,7 +318,8 @@ BEGIN
 
   FOR v_campaign IN
     SELECT * FROM public.marketing_campaigns
-    WHERE kind = 'lifecycle'
+    WHERE p_include_lifecycle
+      AND kind = 'lifecycle'
       AND status = 'sending'
       AND last_promoted_on IS DISTINCT FROM v_today
       AND extract(isodow FROM v_today)::smallint = ANY (send_days)
@@ -368,8 +374,8 @@ BEGIN
 END;
 $function$;
 
-revoke all on function public.promote_due_marketing_campaigns() from public, anon, authenticated;
-grant execute on function public.promote_due_marketing_campaigns() to service_role;
+revoke all on function public.promote_due_marketing_campaigns(boolean) from public, anon, authenticated;
+grant execute on function public.promote_due_marketing_campaigns(boolean) to service_role;
 
 -- 7. Completion: a lifecycle campaign never completes on its own; it is paused or cancelled.
 create or replace function public.complete_finished_marketing_campaigns()

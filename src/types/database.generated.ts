@@ -23776,7 +23776,7 @@ export type Database = {
         }[]
       }
       promote_due_marketing_campaigns: {
-        Args: never
+        Args: { p_include_lifecycle?: boolean }
         Returns: {
           promoted_campaign_id: string
           promoted_recipients: number

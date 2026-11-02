@@ -257,10 +257,20 @@ INSERT INTO marketing_campaigns (id, name, status, kind, audience, cooldown_days
                                  text=True, capture_output=True)
             check(f"{str('marketing_campaigns_lifecycle_fields' in err.stderr).lower()}", 'a lifecycle campaign without its rules is refused')
 
+            # The closure gate: with lifecycle switched off, a one-off still promotes and no
+            # lifecycle campaign adds anyone.
+            sql("SELECT * FROM promote_due_marketing_campaigns(false);")
+            check(f"(SELECT count(*) = 0 FROM marketing_campaign_recipients r JOIN marketing_campaigns c ON c.id = r.campaign_id WHERE c.kind = 'lifecycle')",
+                  'with the closure gate shut, no lifecycle campaign adds anyone')
+            check(f"(SELECT last_promoted_on IS NULL FROM marketing_campaigns WHERE id = {T1})", 'a gated day does not count as promoted')
+            check(f"(SELECT status = 'sending' FROM marketing_campaigns WHERE id = {ONE_OFF})", 'a one-off campaign still promotes while the gate is shut')
+            sql(f"UPDATE marketing_campaigns SET status = 'scheduled' WHERE id = {ONE_OFF}; DELETE FROM marketing_campaign_recipients WHERE campaign_id = {ONE_OFF};")
+
             # Only T1 should take this audience; OTHER must lose every guest to the 30-day rule.
             sql(f"UPDATE marketing_campaigns SET last_promoted_on = london_today() WHERE id = {OTHER};")
             sql("SELECT * FROM promote_due_marketing_campaigns();")
             check(f"(SELECT status = 'sending' FROM marketing_campaigns WHERE id = {ONE_OFF})", 'a one-off campaign still promotes as before')
+            check("(SELECT count(*) = 1 FROM pg_proc WHERE proname = 'promote_due_marketing_campaigns')", 'one promote function remains, taking the gate')
             check(f"(SELECT count(*) = 5 FROM marketing_campaign_recipients WHERE campaign_id = {T1})", 'touch 1 adds the day''s five guests')
             check(f"(SELECT last_promoted_on = london_today() FROM marketing_campaigns WHERE id = {T1})", 'touch 1 records the day it promoted')
             check(f"""(SELECT bool_and((status = 'skipped' AND skip_reason = 'holdout') =

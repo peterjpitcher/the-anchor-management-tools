@@ -87,7 +87,9 @@ describe('money paid outside the till for a cash-up day', () => {
 
     const result = await getCashupDayMoneyAction('2026-10-10')
 
-    expect(result.data?.vouchersRedeemed).toEqual({ count: 2, amount: 10.12 })
+    expect(result.success).toBe(true)
+    if (!result.success) return
+    expect(result.data.vouchersRedeemed).toEqual({ count: 2, amount: 10.12 })
   })
 
   function hireDay(hire: Record<string, unknown>, online: Array<Record<string, unknown>> = []) {
