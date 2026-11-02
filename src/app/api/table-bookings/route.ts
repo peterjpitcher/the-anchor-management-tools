@@ -22,6 +22,7 @@ import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
 import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
+import { INVALID_EMAIL_CODE, INVALID_EMAIL_MESSAGE, INVALID_PHONE_CODE, INVALID_PHONE_MESSAGE, isOnlyEmailInvalid } from '@/lib/bookings/contact-refusals'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { recordTableBookingMarketingConversion } from '@/lib/email/marketing/table-booking-conversion'
 import {
@@ -530,6 +531,9 @@ export async function POST(request: NextRequest) {
       : replayOnly ? null : body
     const parsed = CreateTableBookingSchema.safeParse(candidate)
     if (!parsed.success) {
+      if (isOnlyEmailInvalid(parsed.error.issues)) {
+        return createErrorResponse(INVALID_EMAIL_MESSAGE, INVALID_EMAIL_CODE, 400, { issues: parsed.error.issues })
+      }
       return createErrorResponse(
         parsed.error.issues[0]?.message || 'Invalid table booking payload',
         'VALIDATION_ERROR',
@@ -554,7 +558,7 @@ export async function POST(request: NextRequest) {
         defaultCountryCode: payload.default_country_code
       })
     } catch {
-      return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
+      return createErrorResponse(INVALID_PHONE_MESSAGE, INVALID_PHONE_CODE, 400)
     }
 
     // A landline or non-UK number cannot take our texts, so without an email the guest would get

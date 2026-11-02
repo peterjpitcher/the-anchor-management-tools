@@ -162,6 +162,39 @@ describe('weekly insights delivery', () => {
     expect(buildReport).toHaveBeenCalledTimes(1)
   })
 
+  describe('sends only a week with something to act on (owner, 2 November 2026)', () => {
+    const quiet = (options: Parameters<typeof buildFixtureReport>[0] = {}): InsightsReport => {
+      const report = buildFixtureReport(options)
+      return { ...report, summary: { ...report.summary, counts: { ...report.summary.counts, red: 0 } } }
+    }
+
+    it('sends nothing for a week with no action, and does not build it again that day', async () => {
+      buildReport.mockImplementation(async (now: Date) => quiet({ now }))
+      expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'nothing_to_act_on' })
+      expect(send).not.toHaveBeenCalled()
+      expect(reportRows()).toHaveLength(0)
+      expect(db.rows.cron_job_runs.filter(row => row.run_key === 'quiet:2026-09-25')).toHaveLength(1)
+
+      date = new Date('2026-09-25T06:00:00Z')
+      expect(await run()).toMatchObject({ success: true, sent: 0, skipped: 'nothing_to_act_on' })
+      expect(buildReport).toHaveBeenCalledTimes(1)
+      expect(send).not.toHaveBeenCalled()
+    })
+
+    it('still sends a week with no action when a section could not be read', async () => {
+      buildReport.mockImplementation(async (now: Date) => quiet({ now, notChecked: ['cashing_up' as SectionKey] }))
+      date = new Date('2026-09-25T08:00:00Z') // 09:00 BST
+      expect(await run()).toMatchObject({ success: true, sent: 1, notCheckedSections: ['cashing_up'] })
+    })
+
+    it('fails the run, sending nothing, when the quiet week cannot be recorded', async () => {
+      buildReport.mockImplementation(async (now: Date) => quiet({ now }))
+      db.failures.push({ table: 'cron_job_runs', operation: 'insert', matches: payload => payload.run_key === 'quiet:2026-09-25' })
+      expect(await run()).toMatchObject({ success: false, sent: 0 })
+      expect(send).not.toHaveBeenCalled()
+    })
+  })
+
   it('holds the report back while a section is not checked, then sends it from 09:00 naming the sections', async () => {
     buildReport.mockImplementation(async (now: Date) => buildFixtureReport({ now, notChecked: ['cashing_up' as SectionKey] }))
     const held = await run()

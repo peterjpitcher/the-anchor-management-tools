@@ -941,8 +941,8 @@ async function severalPaymentFooter(invoices: InvoiceWithDetails[]): Promise<str
 }
 
 /**
- * Records a weekly chaser whose outcome is unknown as sent, so the next one goes a week from now
- * and never sooner. A failure here is only logged: this week's claim still blocks a repeat.
+ * Records a weekly chaser whose outcome is unknown as sent, so the next one goes the next Monday
+ * and never twice in a week. A failure here is only logged: this week's claim still blocks a repeat.
  */
 async function recordWeeklyAttempt(supabase: AdminClient, invoiceId: string, atIso: string): Promise<void> {
   try {
@@ -1480,8 +1480,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
         // At most one reminder per client per run.
         if (doneVendors.has(candidate.vendorId)) continue
 
-        // Decided again with what this run has learned: an earlier send to the same client, or
-        // a fresh look at their recent emails.
+        // Decided again with what this run has learned: an earlier send to the same client.
         try {
           candidate.decision = decide(candidate, context)
         } catch {
@@ -1689,7 +1688,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
       console.error('[invoice-reminders] The daily summary could not be sent:', summaryError)
       await reportCronFailure(
         INVOICE_REMINDERS_JOB,
-        new Error(`The daily summary could not be sent: ${summaryError}. Its content is saved on the run record and will be carried into the next summary`),
+        new Error(`The daily summary could not be sent: ${summaryError}. Its content is saved on the run record, and its problems will be carried into the next summary`),
         { run: today, reminders_sent: context.sent.length, problems: context.problems.length }
       )
     }
@@ -1944,8 +1943,7 @@ export async function previewInvoiceReminders(input: {
           needsYou.push({ ...line(), why: 'No email address on the client record or its contacts: chase by hand' })
           continue
         }
-        // The client's other invoices are reported as waiting for this reason, which says more
-        // than "recent email" would.
+        // The client's other invoices are reported as waiting for this reason.
         doneVendors.add(candidate.vendorId)
         wouldSend.push({ ...line(), reminder: stageWord(decision.stage), has_address: true })
       }

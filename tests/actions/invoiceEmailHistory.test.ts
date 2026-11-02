@@ -96,8 +96,8 @@ function seed(scenario: Scenario): Query[] {
   const answer = (query: Query): { data: unknown; error: { message: string } | null } => {
     switch (query.table) {
       case 'invoices':
-        // The invoice itself is read by id. The other reads belong to the "recent emails to
-        // this client" lookup, which finds nothing here.
+        // The invoice itself is read by id. The other reads belong to the weekly chaser lookup
+        // for this client, which finds nothing here.
         return { data: has(query, 'eq', 'id') ? scenario.invoice : [], error: null }
       case 'email_messages':
         // A reminder that covered several invoices, saved against another one.

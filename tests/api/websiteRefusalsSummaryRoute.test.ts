@@ -70,19 +70,32 @@ describe('GET /api/cron/website-refusals-summary', () => {
     expect(maxDuration).toBe(60)
   })
 
-  it('emails the manager inbox once for yesterday when something was turned away', async () => {
-    seed([{ occurred_at: '2026-10-25T10:00:00.000Z', stage: 'refused', route: 'api/table-bookings', reason_code: 'OUTSIDE_HOURS' }])
+  it('emails the manager inbox once for yesterday when something failed', async () => {
+    seed([
+      { occurred_at: '2026-10-25T10:00:00.000Z', stage: 'failed', route: 'api/table-bookings', reason_code: 'UPSTREAM_NOT_OK' },
+      { occurred_at: '2026-10-25T11:00:00.000Z', stage: 'refused', route: 'api/table-bookings', reason_code: 'OUTSIDE_HOURS' },
+    ])
 
     const first = await GET(request())
     const second = await GET(request())
 
-    expect(await first.json()).toMatchObject({ success: true, date: '2026-10-25', refused: 1, emailed: true })
+    expect(await first.json()).toMatchObject({ success: true, date: '2026-10-25', refused: 1, failed: 1, emailed: true })
     expect(await second.json()).toMatchObject({ emailed: false, alert: 'already_sent' })
     expect(sendEmail).toHaveBeenCalledTimes(1)
     const [options] = sendEmail.mock.calls[0] as unknown as [{ to: string; subject: string }]
     expect(options.to).toBe('manager@the-anchor.pub')
-    expect(options.subject).toBe('Website bookings turned away on Sunday 25 October: 1 refused')
+    expect(options.subject).toBe('Website bookings turned away on Sunday 25 October: 1 refused, 1 failed')
     expect(db.rows('cron_job_runs').map((row) => row.status)).toEqual(['completed', 'completed'])
+  })
+
+  it('sends nothing when the only refusals are ordinary ones', async () => {
+    // Owner, 2 November 2026: no email unless there is a problem.
+    seed([{ occurred_at: '2026-10-25T10:00:00.000Z', stage: 'refused', route: 'api/table-bookings', reason_code: 'OUTSIDE_HOURS' }])
+
+    const response = await GET(request())
+
+    expect(await response.json()).toMatchObject({ refused: 1, emailed: false })
+    expect(sendEmail).not.toHaveBeenCalled()
   })
 
   it('sends nothing on a quiet day', async () => {
