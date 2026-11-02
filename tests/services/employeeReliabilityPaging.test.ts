@@ -17,6 +17,7 @@ import {
   getTeamReliabilityLeaderboard,
   recordHolidayReliabilityEvents,
 } from '@/services/employee-reliability'
+import { clearLeaveTypeCache } from '@/lib/leave/leave-types'
 
 type Call = { method: string; args: unknown[] }
 type Result = { data: unknown; error: { message: string } | null }
@@ -73,6 +74,7 @@ function reliabilityEvent(index: number, employeeId: string, eventType = 'shift_
 }
 
 beforeEach(() => {
+  clearLeaveTypeCache()
   adminFromMock.mockReset()
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date('2026-11-02T12:00:00Z'))
@@ -165,6 +167,8 @@ describe('holiday notice is counted in London days (FF-58)', () => {
           return Promise.resolve({ error: null })
         },
         insert: () => Promise.resolve({ error: null }),
+        // The recorder reads the leave types to decide whether late notice counts.
+        select: () => Promise.resolve({ data: [{ code: 'holiday', counts_in_reliability: true }], error: null }),
       }),
     }
 
@@ -179,6 +183,7 @@ describe('holiday notice is counted in London days (FF-58)', () => {
         status: 'approved',
         created_at: '2026-09-30T23:30:00Z',
         reviewed_at: '2026-10-01T09:00:00Z',
+        leave_type: 'holiday',
       },
       source: 'test',
       includeLate: true,
@@ -188,5 +193,6 @@ describe('holiday notice is counted in London days (FF-58)', () => {
     const late = upserts.find((row) => row.event_type === 'late_holiday')
     expect(late).toBeDefined()
     expect(late?.notice_days).toBe(14)
+    expect(late?.score_eligible).toBe(true)
   })
 })

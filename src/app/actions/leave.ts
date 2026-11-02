@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import {
   eachIsoDateInRange,
-  formatDateDdMmmmYyyy,
+  formatDate,
   formatTime12Hour,
   getTodayIsoDate,
   isValidIsoDate,
@@ -49,6 +49,15 @@ export type LeaveRequest = {
   holiday_year: number;
   created_at: string;
   updated_at: string;
+  /**
+   * leave_types.code: 'holiday', or 'unavailable' for days someone cannot work that are not
+   * holiday. Present wherever the row is read with every column (getLeaveRequests,
+   * getLeaveRequestById), and on the requests the approval, booking and date-change paths build
+   * for reliability scoring. The delete and cancel paths leave it out.
+   */
+  leave_type?: string;
+  /** 'agreed_at_hire' for time off a new starter listed at onboarding. */
+  leave_origin?: 'normal_request' | 'agreed_at_hire' | 'migration';
 };
 
 const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -70,6 +79,18 @@ const UpdateLeaveDatesSchema = z.object({
   endDate: z.string().refine(isValidIsoDate, 'End date must be a valid date'),
 });
 
+/**
+ * A plain message for leave input that failed validation. The raw Zod text (a JSON list of
+ * issues) used to reach the toast, for example for a note over 500 characters. Used by the
+ * staff portal request form, the rota's Book Holiday and the employee Holidays tab.
+ */
+function leaveInputError(error: z.ZodError): string {
+  const field = error.issues[0]?.path[0];
+  if (field === 'note') return 'Keep the note to 500 characters.';
+  if (field === 'startDate' || field === 'endDate') return 'Choose valid start and end dates.';
+  return 'Check the holiday details and try again.';
+}
+
 type UpdateLeaveDatesRpcResult = {
   success?: boolean;
   error?: string;
@@ -86,13 +107,16 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return false;
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('employees')
     .select('employee_id')
     .eq('employee_id', employeeId)
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
+  // A failed read already refuses (no record, no access); log it so a refusal caused by the
+  // database is visible on our side rather than looking like a permissions problem.
+  if (error) console.error('[leave] Failed to check the employee record for self-service:', error);
   return Boolean(data);
 }
 
@@ -125,7 +149,7 @@ async function leaveEmploymentRefusal(employeeId: string, endDate: string): Prom
     && employee.employment_end_date
     && endDate > employee.employment_end_date
   ) {
-    return `Holiday cannot run past ${formatDateDdMmmmYyyy(employee.employment_end_date)}, the last working day before leaving.`;
+    return `Holiday cannot run past ${formatDate(employee.employment_end_date)}, the last working day before leaving.`;
   }
   return null;
 }
@@ -199,7 +223,7 @@ function mapLeaveConflicts(rows: unknown): LeaveShiftConflict[] {
 function describeLeaveConflict(conflict: LeaveShiftConflict): string {
   const times = `${formatTime12Hour(conflict.startTime)} to ${formatTime12Hour(conflict.endTime)}`;
   const label = conflict.shiftName || conflict.department || 'shift';
-  return `${formatDateDdMmmmYyyy(conflict.shiftDate)}, ${times}, ${label}`;
+  return `${formatDate(conflict.shiftDate)}, ${times}, ${label}`;
 }
 
 function buildLeaveConflictError(conflicts: LeaveShiftConflict[]): string {
@@ -215,7 +239,7 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   { success: true; data: LeaveRequest } | { success: false; error: string }
 > {
   const parsed = SubmitLeaveSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) return { success: false, error: leaveInputError(parsed.error) };
 
   const { startDate, endDate, employeeId, note } = parsed.data;
 
@@ -250,7 +274,13 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     getRotaSettings(),
   ]);
 
-  const { data: overlapping } = overlappingRes;
+  const { data: overlapping, error: overlappingError } = overlappingRes;
+  // A failed check used to read as "no overlap", so the request was saved over leave already
+  // there. It now refuses, as the other leave writes do.
+  if (overlappingError) {
+    console.error('[leave] Failed to check for overlapping leave before a new request:', overlappingError);
+    return { success: false, error: 'Could not save this holiday request. Please try again.' };
+  }
   if (overlapping && overlapping.length > 0) {
     return { success: false, error: 'You already have a leave request covering some of these dates' };
   }
@@ -273,7 +303,11 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     .select('*')
     .single();
 
-  if (reqError) return { success: false, error: reqError.message };
+  if (reqError) {
+    // Postgres text, shown on the staff portal and the rota: log it, say it plainly.
+    console.error('[leave] Failed to save leave request:', { code: reqError.code, message: reqError.message });
+    return { success: false, error: 'Could not save this holiday request. Please try again.' };
+  }
 
   // Expand leave days immediately (used for rota overlay even while pending)
   const dayRows = eachIsoDateInRange(startDate, endDate).map(leaveDate => ({
@@ -282,9 +316,20 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
     leave_date: leaveDate,
   }));
 
-  // Use ON CONFLICT DO NOTHING — employee may already have a day from another request
+  // Use ON CONFLICT DO NOTHING: employee may already have a day from another request
   const { error: leaveDaysError } = await supabase.from('leave_days').upsert(dayRows, { onConflict: 'employee_id,leave_date', ignoreDuplicates: true });
-  if (leaveDaysError) return { success: false, error: leaveDaysError.message };
+  if (leaveDaysError) {
+    // The request itself is saved by now, so asking for it again would only clash with it.
+    console.error('[leave] Failed to add leave days for a new request:', {
+      requestId: request.id,
+      code: leaveDaysError.code,
+      message: leaveDaysError.message,
+    });
+    return {
+      success: false,
+      error: 'The request was saved, but its dates could not be added to the rota. Ask a manager to check it.',
+    };
+  }
 
   // Send confirmation email to employee
   const { data: employee } = await supabase
@@ -360,11 +405,21 @@ export async function reviewLeaveRequest(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, status, start_date, end_date, employee_id, note, created_at, employees(email_address, first_name, preferred_name)')
+    .select('id, status, start_date, end_date, employee_id, note, created_at, leave_type, leave_origin, employees(email_address, first_name, preferred_name)')
     .eq('id', requestId)
     .single();
 
-  if (fetchError || !request) return { success: false, error: 'Request not found' };
+  // PGRST116 is .single() finding no row. Any other error is the database, not a missing request.
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    console.error('[leave] Failed to load the leave request to review:', fetchError);
+    return {
+      success: false,
+      error: decision === 'approved'
+        ? 'Could not approve this holiday. Please try again.'
+        : 'Could not decline this holiday. Please try again.',
+    };
+  }
+  if (!request) return { success: false, error: 'Request not found' };
   if (request.status !== 'pending') return { success: false, error: 'Request is not pending' };
 
   const reviewedAt = new Date().toISOString();
@@ -387,7 +442,11 @@ export async function reviewLeaveRequest(
       p_reviewed_at: reviewedAt,
     });
 
-    if (guardError) return { success: false, error: guardError.message };
+    if (guardError) {
+      // The function raises nothing of its own, so any error here is Postgres text.
+      console.error('[leave] Approving leave request failed:', { code: guardError.code, message: guardError.message });
+      return { success: false, error: 'Could not approve this holiday. Please try again.' };
+    }
 
     const guard = guardData as LeaveGuardResult | null;
     if (!guard) return { success: false, error: 'Could not approve this holiday' };
@@ -415,14 +474,28 @@ export async function reviewLeaveRequest(
       .select('id')
       .maybeSingle();
 
-    if (error) return { success: false, error: error.message };
+    if (error) {
+      console.error('[leave] Declining leave request failed:', { code: error.code, message: error.message });
+      return { success: false, error: 'Could not decline this holiday. Please try again.' };
+    }
     if (!reviewedRow) return { success: false, error: 'Request was already reviewed' };
   }
 
   // If declined, remove the pending leave_days
   if (decision === 'declined') {
     const { error: deleteDaysError } = await supabase.from('leave_days').delete().eq('request_id', requestId);
-    if (deleteDaysError) return { success: false, error: deleteDaysError.message };
+    if (deleteDaysError) {
+      // The request is declined by now, so it cannot be declined again to retry.
+      console.error('[leave] Failed to clear leave days for a declined request:', {
+        requestId,
+        code: deleteDaysError.code,
+        message: deleteDaysError.message,
+      });
+      return {
+        success: false,
+        error: 'The request was declined, but its dates could not be cleared from the rota. Refresh the page to check.',
+      };
+    }
   }
 
   // Send decision email to employee
@@ -478,6 +551,10 @@ export async function reviewLeaveRequest(
     holiday_year: 0,
     created_at: request.created_at,
     updated_at: reviewedAt,
+    // Reliability scoring needs both: days someone cannot work are not holiday, and time off
+    // agreed at hire is never late notice.
+    leave_type: request.leave_type ?? DEFAULT_LEAVE_TYPE,
+    leave_origin: request.leave_origin as LeaveRequest['leave_origin'],
   };
 
   if (decision === 'approved') {
@@ -507,7 +584,7 @@ export async function reviewLeaveRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Book approved holiday directly (manager flow — skips pending review)
+// Book approved holiday directly (manager flow, skips pending review)
 // ---------------------------------------------------------------------------
 
 export async function bookApprovedHoliday(input: {
@@ -520,7 +597,7 @@ export async function bookApprovedHoliday(input: {
   { success: false; error: string; conflicts?: LeaveShiftConflict[] }
 > {
   const parsed = SubmitLeaveSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) return { success: false, error: leaveInputError(parsed.error) };
 
   const canCreate = await checkUserPermission('leave', 'create');
   if (!canCreate) return { success: false, error: 'Permission denied' };
@@ -556,7 +633,12 @@ export async function bookApprovedHoliday(input: {
     p_booked_at: bookedAt,
   });
 
-  if (guardError) return { success: false, error: guardError.message };
+  if (guardError) {
+    // The function raises nothing of its own, so any error here is Postgres text: log it, and
+    // tell the rota and the Holidays tab plainly.
+    console.error('[leave] Booking approved holiday failed:', { code: guardError.code, message: guardError.message });
+    return { success: false, error: 'Could not book this holiday. Please try again.' };
+  }
 
   const guard = guardData as LeaveGuardResult | null;
   if (!guard) return { success: false, error: 'Could not book this holiday' };
@@ -587,6 +669,9 @@ export async function bookApprovedHoliday(input: {
     holiday_year: holidayYear,
     created_at: bookedAt,
     updated_at: bookedAt,
+    // book_approved_leave_with_rota_guard writes neither column, so the row takes the defaults.
+    leave_type: DEFAULT_LEAVE_TYPE,
+    leave_origin: 'normal_request',
   };
 
   const dayRows = (guard.leave_dates ?? eachIsoDateInRange(startDate, endDate)).map(leaveDate => ({
@@ -651,7 +736,12 @@ export async function getLeaveRequests(filters?: {
   if (filters?.holidayYear) query = query.eq('holiday_year', filters.holidayYear);
 
   const { data, error } = await query;
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    // Shown on the staff portal, the rota leave manager and the employee Holidays tab, so it is
+    // worded for all three. Postgres text used to reach them.
+    console.error('[leave] Failed to load leave requests:', { code: error.code, message: error.message });
+    return { success: false, error: 'The holiday requests could not be loaded. Refresh the page to try again.' };
+  }
   return { success: true, data: (data ?? []) as LeaveRequest[] };
 }
 
@@ -679,7 +769,13 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
     getAllowanceConsumingTypes(supabase),
   ]);
 
-  if (paySettingRes.error) return { success: false, error: paySettingRes.error.message };
+  if (paySettingRes.error) {
+    console.error('[leave] Failed to load holiday allowance:', {
+      code: paySettingRes.error.code,
+      message: paySettingRes.error.message,
+    });
+    return { success: false, error: 'The holiday allowance could not be loaded. Refresh the page to try again.' };
+  }
 
   const paySetting = paySettingRes.data as EmployeeLeaveSettings | null;
   const { defaultHolidayDays, holidayYearStartMonth, holidayYearStartDay } = rotaSettings;
@@ -701,7 +797,10 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
     .gte('leave_date', startDate)
     .lte('leave_date', endDate);
 
-  if (dayRowsError) return { success: false, error: dayRowsError.message };
+  if (dayRowsError) {
+    console.error('[leave] Failed to load holiday usage:', { code: dayRowsError.code, message: dayRowsError.message });
+    return { success: false, error: 'The holiday totals could not be loaded. Refresh the page to try again.' };
+  }
 
   type DayRow = {
     leave_date: string;
@@ -748,7 +847,11 @@ export async function getLeaveRequestById(
     .eq('id', requestId)
     .single();
 
-  if (error || !data) return { success: false, error: error?.message ?? 'Not found' };
+  if (error && error.code !== 'PGRST116') {
+    console.error('[leave] Failed to load leave request:', { code: error.code, message: error.message });
+    return { success: false, error: 'The holiday request could not be loaded. Refresh the page to try again.' };
+  }
+  if (!data) return { success: false, error: 'Request not found' };
   return { success: true, data: data as LeaveRequest };
 }
 
@@ -763,7 +866,7 @@ export async function deleteLeaveRequest(
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const parsedRequestId = z.string().uuid().safeParse(requestId);
-  if (!parsedRequestId.success) return { success: false, error: parsedRequestId.error.message };
+  if (!parsedRequestId.success) return { success: false, error: 'Request not found' };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -775,8 +878,9 @@ export async function deleteLeaveRequest(
     .select('id, employee_id, start_date, end_date, note, status, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
     .single();
   if (error || !deletedRequest) {
-    if (error?.code === 'PGRST116') return { success: false, error: 'Request not found' };
-    return { success: false, error: error?.message ?? 'Request not found' };
+    if (!error || error.code === 'PGRST116') return { success: false, error: 'Request not found' };
+    console.error('[leave] Deleting leave request failed:', { code: error.code, message: error.message });
+    return { success: false, error: 'Could not delete this holiday request. Please try again.' };
   }
 
   void logAuditEvent({
@@ -805,7 +909,7 @@ export async function cancelOwnLeaveRequest(
   requestId: string,
 ): Promise<{ success: true } | { success: false; error: string }> {
   const parsedRequestId = z.string().uuid().safeParse(requestId);
-  if (!parsedRequestId.success) return { success: false, error: parsedRequestId.error.message };
+  if (!parsedRequestId.success) return { success: false, error: 'Only pending holiday requests can be cancelled' };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -818,7 +922,13 @@ export async function cancelOwnLeaveRequest(
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
 
-  if (employeeError) return { success: false, error: employeeError.message };
+  if (employeeError) {
+    console.error('[leave] Failed to load the employee for a cancellation:', {
+      code: employeeError.code,
+      message: employeeError.message,
+    });
+    return { success: false, error: 'Could not cancel this holiday request. Please try again.' };
+  }
   if (!employee?.employee_id) {
     return { success: false, error: 'Your account is not linked to an active employee profile' };
   }
@@ -832,7 +942,10 @@ export async function cancelOwnLeaveRequest(
     .select('id, employee_id, start_date, end_date, note, status, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
     .maybeSingle();
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    console.error('[leave] Cancelling leave request failed:', { code: error.code, message: error.message });
+    return { success: false, error: 'Could not cancel this holiday request. Please try again.' };
+  }
   if (!deletedRequest) {
     return { success: false, error: 'Only pending holiday requests can be cancelled' };
   }
@@ -862,7 +975,7 @@ export async function cancelOwnLeaveRequest(
 }
 
 // ---------------------------------------------------------------------------
-// Update leave request date range (manager) — regenerates leave_days
+// Update leave request date range (manager): regenerates leave_days
 // ---------------------------------------------------------------------------
 
 export async function updateLeaveRequestDates(
@@ -874,7 +987,12 @@ export async function updateLeaveRequestDates(
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const parsed = UpdateLeaveDatesSchema.safeParse({ requestId, startDate, endDate });
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) {
+    return {
+      success: false,
+      error: parsed.error.issues[0]?.path[0] === 'requestId' ? 'Request not found' : leaveInputError(parsed.error),
+    };
+  }
 
   const {
     requestId: parsedRequestId,
@@ -891,10 +1009,15 @@ export async function updateLeaveRequestDates(
 
   const { data: request, error: fetchError } = await supabase
     .from('leave_requests')
-    .select('id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at')
+    .select('id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at, leave_type, leave_origin')
     .eq('id', parsedRequestId)
     .single();
-  if (fetchError || !request) return { success: false, error: 'Request not found' };
+  // PGRST116 is .single() finding no row. Any other error is the database, not a missing request.
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    console.error('[leave] Failed to load the leave request to change its dates:', fetchError);
+    return { success: false, error: 'Could not change these dates. Please try again.' };
+  }
+  if (!request) return { success: false, error: 'Request not found' };
   if (request.status === 'declined') {
     return { success: false, error: 'Declined holiday requests cannot be edited' };
   }
@@ -907,7 +1030,13 @@ export async function updateLeaveRequestDates(
     .neq('status', 'declined')
     .lte('start_date', parsedEndDate)
     .gte('end_date', parsedStartDate);
-  if (overlappingError) return { success: false, error: overlappingError.message };
+  if (overlappingError) {
+    console.error('[leave] Failed to check for overlapping leave:', {
+      code: overlappingError.code,
+      message: overlappingError.message,
+    });
+    return { success: false, error: 'Could not change these dates. Please try again.' };
+  }
   if (overlapping && overlapping.length > 0) {
     return { success: false, error: 'Employee already has leave covering some of these dates' };
   }
@@ -933,7 +1062,10 @@ export async function updateLeaveRequestDates(
     p_holiday_year: holidayYear,
   });
 
-  if (rpcError) return { success: false, error: rpcError.message };
+  if (rpcError) {
+    console.error('[leave] Updating leave dates failed:', { code: rpcError.code, message: rpcError.message });
+    return { success: false, error: 'Could not change these dates. Please try again.' };
+  }
 
   const rpcResult = rpcData as UpdateLeaveDatesRpcResult | null;
   if (!rpcResult?.success) {
@@ -1028,7 +1160,10 @@ export async function getEmployeeLeaveDays(employeeId: string): Promise<
     .eq('employee_id', employeeId)
     .order('leave_date', { ascending: true });
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    console.error('[leave] Failed to load leave days:', { code: error.code, message: error.message });
+    return { success: false, error: 'The holiday totals could not be loaded. Refresh the page to try again.' };
+  }
 
   type Row = {
     request_id: string;

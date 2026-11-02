@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Input } from '@/ds';
-import { StepFooter } from './StepParts';
+import { StepFooter, thrownStepError } from './StepParts';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 import {
   ACCOUNT_NUMBER_MESSAGE,
@@ -150,7 +150,7 @@ export default function FinancialStep({ token, initialData, saved = false, onSuc
         setGlobalError(Object.keys(serverErrors).length > 0 ? CHECK_FIELDS_MESSAGE : (result.error || 'Failed to save. Please try again.'));
       }
     } catch (caught) {
-      setGlobalError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
+      setGlobalError(thrownStepError('Saving financial details', caught));
     } finally {
       setLoading(false);
     }

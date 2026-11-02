@@ -36,6 +36,7 @@ import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatPhoneForStorage } from '@/lib/utils'
 import { RIGHT_TO_WORK_ACCEPT, RIGHT_TO_WORK_TYPE_MESSAGE, isAllowedRightToWorkType } from '@/lib/employees/document-rules'
+import { HEALTH_CONDITION_FIELDS, HEALTH_QUESTIONS } from '@/lib/employees/health-questions'
 
 type EmployeeStatus = 'Active' | 'Former' | 'Onboarding'
 
@@ -532,8 +533,9 @@ export default function NewEmployeeOnboardingClient() {
                 })
 
               if (uploadResult.error) {
+                // Storage's own text stays in the console; the summary says what happened.
                 console.error('[NewEmployeeOnboarding] Right to work document upload failed', uploadResult.error)
-                followUpErrors.push(`Right to work document: ${uploadResult.error.message || 'the upload failed'}`)
+                followUpErrors.push('Right to work document: it could not be uploaded')
               } else {
                 rtwForm.append('photo_storage_path', signedUpload.path)
               }
@@ -782,15 +784,18 @@ export default function NewEmployeeOnboardingClient() {
     {
       id: 'health',
       label: 'Health Information',
+      // Every question is worded from lib/employees/health-questions.ts, as the starter's own
+      // onboarding form and the staff health form and tab are, so each column is entered and read
+      // against the same question.
       content: (
         <div className="space-y-6">
           <Card>
             <CardHeader title="Doctor" />
             <CardBody className="grid gap-4 sm:grid-cols-2">
-              <Field label="Doctor's Name">
+              <Field label={HEALTH_QUESTIONS.doctor_name}>
                 <Input value={state.health.doctor_name} onChange={(e) => updateHealth('doctor_name', e.target.value)} />
               </Field>
-              <Field label="Doctor's Address" className="sm:col-span-2">
+              <Field label={HEALTH_QUESTIONS.doctor_address} className="sm:col-span-2">
                 <Textarea value={state.health.doctor_address} onChange={(e) => updateHealth('doctor_address', e.target.value)} rows={2} />
               </Field>
             </CardBody>
@@ -799,7 +804,7 @@ export default function NewEmployeeOnboardingClient() {
           <Card>
             <CardHeader title="Health Questionnaire" />
             <CardBody className="space-y-4">
-              <Fieldset legend="Do you have any allergies?">
+              <Fieldset legend={HEALTH_QUESTIONS.has_allergies}>
                 <div className="flex flex-wrap gap-6">
                   <Radio
                     name="has_allergies"
@@ -819,7 +824,7 @@ export default function NewEmployeeOnboardingClient() {
               </Fieldset>
 
               {state.health.has_allergies && (
-                <Field label="If yes, please specify">
+                <Field label={HEALTH_QUESTIONS.allergies}>
                   <Textarea value={state.health.allergies} onChange={(e) => updateHealth('allergies', e.target.value)} rows={2} />
                 </Field>
               )}
@@ -827,16 +832,16 @@ export default function NewEmployeeOnboardingClient() {
               <Checkbox
                 checked={state.health.had_absence_over_2_weeks_last_3_years}
                 onChange={(checked) => updateHealth('had_absence_over_2_weeks_last_3_years', checked)}
-                label="In the past 3 years, been off work for 2+ weeks due to illness/accident?"
+                label={HEALTH_QUESTIONS.had_absence_over_2_weeks_last_3_years}
               />
               <Checkbox
                 checked={state.health.had_outpatient_treatment_over_3_months_last_3_years}
                 onChange={(checked) => updateHealth('had_outpatient_treatment_over_3_months_last_3_years', checked)}
-                label="In the past 3 years, attended outpatient treatment for 3+ months?"
+                label={HEALTH_QUESTIONS.had_outpatient_treatment_over_3_months_last_3_years}
               />
 
               {(state.health.had_absence_over_2_weeks_last_3_years || state.health.had_outpatient_treatment_over_3_months_last_3_years) && (
-                <Field label="If yes to either, please provide details">
+                <Field label={HEALTH_QUESTIONS.absence_or_treatment_details}>
                   <Textarea
                     value={state.health.absence_or_treatment_details}
                     onChange={(e) => updateHealth('absence_or_treatment_details', e.target.value)}
@@ -851,10 +856,10 @@ export default function NewEmployeeOnboardingClient() {
           <Card>
             <CardHeader title="Medical History" />
             <CardBody className="space-y-4">
-              <Field label="Illness history">
+              <Field label={HEALTH_QUESTIONS.illness_history}>
                 <Textarea value={state.health.illness_history} onChange={(e) => updateHealth('illness_history', e.target.value)} rows={3} />
               </Field>
-              <Field label="Recent treatment">
+              <Field label={HEALTH_QUESTIONS.recent_treatment}>
                 <Textarea value={state.health.recent_treatment} onChange={(e) => updateHealth('recent_treatment', e.target.value)} rows={3} />
               </Field>
             </CardBody>
@@ -863,12 +868,14 @@ export default function NewEmployeeOnboardingClient() {
           <Card>
             <CardHeader title="Medical Conditions" subtitle="Tick if applicable" />
             <CardBody className="grid gap-4 sm:grid-cols-2">
-              <Checkbox checked={state.health.has_diabetes} onChange={(checked) => updateHealth('has_diabetes', checked)} label="Diabetes" />
-              <Checkbox checked={state.health.has_epilepsy} onChange={(checked) => updateHealth('has_epilepsy', checked)} label="Epilepsy / Fits / Blackouts" />
-              <Checkbox checked={state.health.has_skin_condition} onChange={(checked) => updateHealth('has_skin_condition', checked)} label="Eczema / Dermatitis / Skin Disease" />
-              <Checkbox checked={state.health.has_depressive_illness} onChange={(checked) => updateHealth('has_depressive_illness', checked)} label="Depressive Illness" />
-              <Checkbox checked={state.health.has_bowel_problems} onChange={(checked) => updateHealth('has_bowel_problems', checked)} label="Bowel Problems" />
-              <Checkbox checked={state.health.has_ear_problems} onChange={(checked) => updateHealth('has_ear_problems', checked)} label="Ear Problems" />
+              {HEALTH_CONDITION_FIELDS.map((field) => (
+                <Checkbox
+                  key={field}
+                  checked={state.health[field]}
+                  onChange={(checked) => updateHealth(field, checked)}
+                  label={HEALTH_QUESTIONS[field]}
+                />
+              ))}
             </CardBody>
           </Card>
 
@@ -878,22 +885,22 @@ export default function NewEmployeeOnboardingClient() {
               <Checkbox
                 checked={state.health.is_registered_disabled}
                 onChange={(checked) => updateHealth('is_registered_disabled', checked)}
-                label="Registered disabled?"
+                label={HEALTH_QUESTIONS.is_registered_disabled}
               />
 
               {state.health.is_registered_disabled && (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Registration number">
+                  <Field label={HEALTH_QUESTIONS.disability_reg_number}>
                     <Input value={state.health.disability_reg_number} onChange={(e) => updateHealth('disability_reg_number', e.target.value)} />
                   </Field>
-                  <Field label="Expiry">
+                  <Field label={HEALTH_QUESTIONS.disability_reg_expiry_date}>
                     <Input
                       type="date"
                       value={state.health.disability_reg_expiry_date}
                       onChange={(e) => updateHealth('disability_reg_expiry_date', e.target.value)}
                     />
                   </Field>
-                  <Field label="Details" className="sm:col-span-2">
+                  <Field label={HEALTH_QUESTIONS.disability_details} className="sm:col-span-2">
                     <Textarea value={state.health.disability_details} onChange={(e) => updateHealth('disability_details', e.target.value)} rows={3} />
                   </Field>
                 </div>

@@ -14,7 +14,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(),
 }))
 
-vi.mock('@/components/providers/SupabaseProvider', () => ({ useSupabase: () => ({}) }))
+// The browser upload of a right to work scan goes straight to storage with the signed token.
+const uploadToSignedUrl = vi.hoisted(() => vi.fn())
+vi.mock('@/components/providers/SupabaseProvider', () => ({
+  useSupabase: () => ({ storage: { from: () => ({ uploadToSignedUrl }) } }),
+}))
 
 vi.mock('@/app/actions/employeeActions', () => ({
   addEmployee: vi.fn(),
@@ -43,8 +47,11 @@ import { toast } from '@/ds'
 import {
   addEmergencyContact,
   addEmployee,
+  addEmployeeAttachment,
+  createRightToWorkDocumentUploadUrl,
   deleteEmployee,
   getRightToWorkPhotoUrl,
+  upsertRightToWork,
 } from '@/app/actions/employeeActions'
 import EmergencyContactsTab from '@/components/features/employees/EmergencyContactsTab'
 import EmployeeForm from '@/components/features/employees/EmployeeForm'
@@ -53,6 +60,7 @@ import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
 import AddEmployeeAttachmentForm from '@/components/features/employees/AddEmployeeAttachmentForm'
 import NewEmployeeOnboardingClient from '@/app/(authenticated)/employees/new/NewEmployeeOnboardingClient'
+import { HEALTH_CONDITION_FIELDS, HEALTH_QUESTIONS, type HealthQuestionField } from '@/lib/employees/health-questions'
 import type { ActionFormState } from '@/types/actions'
 import type { AttachmentCategory, Employee, EmployeeEmergencyContact, EmployeeRightToWork } from '@/types/database'
 
@@ -304,6 +312,34 @@ describe('AddEmployeeAttachmentForm (FF-31)', () => {
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'cat-2' } })
     expect(screen.queryByText(/emailed to the employee/)).toBeNull()
   })
+
+  function uploadContract() {
+    const { container } = render(<AddEmployeeAttachmentForm employeeId="e1" categories={categories} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.4'], 'contract.pdf', { type: 'application/pdf' })] } })
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'cat-1' } })
+    fireEvent.submit(container.querySelector('form')!)
+  }
+
+  it('warns, and does not report success, when the email may or may not have gone (correctness#5)', async () => {
+    const message = 'Attachment uploaded. We did not hear back from the email service, so the email to the employee may have gone. Check with them before sending it again.'
+    ;(addEmployeeAttachment as Mock).mockResolvedValue({ type: 'success', message, email: { status: 'uncertain' } })
+
+    uploadContract()
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(message, expect.anything()))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
+
+  it('warns when the email was not sent', async () => {
+    const message = 'Attachment uploaded, but the email to the employee may not have been sent (email sending is switched off at the moment). Check with them, or send it another way.'
+    ;(addEmployeeAttachment as Mock).mockResolvedValue({ type: 'success', message, email: { status: 'failed', reason: 'email sending is switched off at the moment' } })
+
+    uploadContract()
+
+    await waitFor(() => expect(toast.warning).toHaveBeenCalledWith(message, expect.anything()))
+    expect(toast.success).not.toHaveBeenCalled()
+  })
 })
 
 describe('NewEmployeeOnboardingClient (FF-26, FF-27, FF-30)', () => {
@@ -377,6 +413,30 @@ describe('NewEmployeeOnboardingClient (FF-26, FF-27, FF-30)', () => {
     expect(addEmployee).not.toHaveBeenCalled()
   })
 
+  it('says the scan could not be uploaded, without storage\'s own text (security#4)', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ;(addEmployee as Mock).mockResolvedValue({ type: 'success', message: 'Employee created successfully.', employeeId: 'employee-9' })
+    ;(createRightToWorkDocumentUploadUrl as Mock).mockResolvedValue({ type: 'success', path: 'employee-9/rtw_1_passport.pdf', token: 'token' })
+    uploadToSignedUrl.mockResolvedValue({ data: null, error: { name: 'StorageUnknownError', message: 'Failed to fetch' } })
+    ;(upsertRightToWork as Mock).mockResolvedValue({ type: 'success', message: 'Right to work information saved successfully.' })
+
+    const { container } = render(<NewEmployeeOnboardingClient />)
+    fillRequired()
+    fireEvent.click(screen.getByRole('tab', { name: 'Right to Work' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /right to work/i }))
+    fireEvent.change(screen.getByLabelText(/Document type/), { target: { value: 'Passport' } })
+    fireEvent.change(screen.getByLabelText(/Verification date/), { target: { value: '2026-11-02' } })
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.4'], 'passport.pdf', { type: 'application/pdf' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Employee' }))
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/employees/employee-9'))
+    const summary = (toast.error as Mock).mock.calls[0][0] as string
+    expect(summary).toContain('Right to work document: it could not be uploaded')
+    expect(summary).not.toContain('Failed to fetch')
+  })
+
   it('has no hand-ticked agreement box, and points to Send for Signature', () => {
     render(<NewEmployeeOnboardingClient />)
     fireEvent.click(screen.getByRole('tab', { name: 'Agreement & Setup' }))
@@ -391,7 +451,33 @@ describe('NewEmployeeOnboardingClient (FF-26, FF-27, FF-30)', () => {
     expect(screen.getAllByLabelText('Address')).toHaveLength(2)
 
     fireEvent.click(screen.getByRole('tab', { name: 'Health Information' }))
-    expect(screen.getByLabelText('Illness history')).toBeInTheDocument()
-    expect(screen.getByLabelText('Recent treatment')).toBeInTheDocument()
+    expect(screen.getByLabelText(HEALTH_QUESTIONS.illness_history)).toBeInTheDocument()
+    expect(screen.getByLabelText(HEALTH_QUESTIONS.recent_treatment)).toBeInTheDocument()
+  })
+
+  // The staff New Employee flow asked the health questions in its own wording ("Ear Problems",
+  // "Registered disabled?"), a third version beside the starter's form and the staff health form,
+  // so the same column was entered against one question and read against another.
+  it('asks every health question in the shared wording, including the follow-ups', () => {
+    render(<NewEmployeeOnboardingClient />)
+    fireEvent.click(screen.getByRole('tab', { name: 'Health Information' }))
+
+    // The follow-up questions only show once the question before them is answered yes.
+    fireEvent.click(screen.getByRole('radio', { name: 'Yes' }))
+    fireEvent.click(screen.getByLabelText(HEALTH_QUESTIONS.had_absence_over_2_weeks_last_3_years))
+    fireEvent.click(screen.getByLabelText(HEALTH_QUESTIONS.is_registered_disabled))
+
+    const fields = Object.keys(HEALTH_QUESTIONS) as HealthQuestionField[]
+    for (const field of fields.filter((f) => f !== 'has_allergies')) {
+      expect(screen.getByLabelText(HEALTH_QUESTIONS[field])).toBeInTheDocument()
+    }
+    // A yes/no pair under one legend, so it names the group rather than one control.
+    expect(screen.getByRole('group', { name: HEALTH_QUESTIONS.has_allergies })).toBeInTheDocument()
+    for (const field of HEALTH_CONDITION_FIELDS) {
+      expect(screen.getByRole('checkbox', { name: HEALTH_QUESTIONS[field] })).toBeInTheDocument()
+    }
+    for (const oldWording of ['Ear Problems', 'Registered disabled?', 'Epilepsy / Fits / Blackouts', 'If yes, please specify']) {
+      expect(screen.queryByText(oldWording)).toBeNull()
+    }
   })
 })

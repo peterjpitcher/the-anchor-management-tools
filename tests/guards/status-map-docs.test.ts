@@ -74,6 +74,8 @@ const NOT_STATUS_ELSEWHERE: Record<string, string> = {
   PREORDER_SELECTION_COURSE_LABELS: 'menu course names',
   CONTENT_GAP_LABELS: 'calendar filter names',
   ONLINE_INCOME_SOURCE_LABELS: 'online income kinds (table deposit, tickets, parking)',
+  LEAVE_TYPE_LABELS: 'leave kinds (holiday, cannot work), not a status',
+  ONBOARDING_LEAVE_ORIGIN_LABEL: 'where a leave request came from',
 }
 
 const STATUS_NAME = /(_TONES?|_CLASSES|_LABELS?)$|Tones?$/

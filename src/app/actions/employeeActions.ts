@@ -21,10 +21,12 @@ import {
   rightToWorkDownloadName,
   rightToWorkStoragePath,
 } from '@/lib/employees/document-rules';
+import { documentLinkFailedMessage } from '@/lib/employees/document-link-messages';
 // Import services and schemas
 import {
   EmployeeService,
   EmployeeServiceError,
+  LoginLeftMovedError,
   employeeSchema,
   noteSchema,
   addAttachmentSchema,
@@ -53,14 +55,35 @@ function employeeConstraintMessage(error: PostgrestError): string {
 }
 
 /**
+ * True when the database refused the data itself: a constraint (class 23) or a bad value (class
+ * 22). Anything else with a code, such as a dropped connection (code ''), a timeout or a PostgREST
+ * fault, is not the person's input, and used to tell them "Invalid data provided".
+ */
+function isDataRejection(error: unknown): error is PostgrestError {
+  return isPostgrestError(error) && /^2[23]/.test(String(error.code ?? ''));
+}
+
+/**
  * The message a failed employee save shows. A service refusal is written for the person saving
- * and is shown as it is; it used to arrive as "Database error". A database error is mapped to
- * plain words; anything else is a fault, so it gets the fallback.
+ * and is shown as it is; it used to arrive as "Database error". Data the database refused is
+ * mapped to plain words; anything else is a fault, so it gets the fallback.
  */
 function employeeActionErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof EmployeeServiceError) return error.message;
-  if (isPostgrestError(error)) return employeeConstraintMessage(error);
+  if (isDataRejection(error)) return employeeConstraintMessage(error);
   return fallback;
+}
+
+/**
+ * An error laid out field by field for the server log, so a Postgres error does not log as {}.
+ * `details` is left out: a duplicate email there reads "Key (email_address)=(...) already exists."
+ */
+function errorFields(error: unknown): Record<string, unknown> {
+  if (error && typeof error === 'object') {
+    const { name, code, message, hint } = error as Record<string, unknown>;
+    return { name, code, message, hint };
+  }
+  return { message: String(error) };
 }
 
 /**
@@ -159,11 +182,27 @@ async function normaliseToBuffer(data: unknown): Promise<Buffer> {
  * What happened to the email an attachment category can send on upload. The upload screen
  * shows it: a failed email used to reach only the server log while the page said the upload
  * had gone fine, so nobody knew the employee never got their payslip or contract.
+ *
+ * 'uncertain' is its own outcome: the email service was asked and never answered, so the email
+ * may well have arrived. Staff are told to check before sending it again, never that it failed.
  */
 type AttachmentEmailOutcome =
   | { status: 'not_required' }
   | { status: 'sent'; recipient: string }
-  | { status: 'failed'; reason: string };
+  | { status: 'failed'; reason: string }
+  | { status: 'uncertain' };
+
+/** Why the email did not go, in words for the person uploading. Never the provider's own text. */
+function attachmentEmailFailureReason(code: string | undefined): string {
+  switch (code) {
+    case 'email_suspended':
+      return 'email sending is switched off at the moment';
+    case 'recipient_suppressed':
+      return 'emails to their address are blocked after an earlier bounce or complaint, so check the address on their record';
+    default:
+      return 'the email service did not accept it';
+  }
+}
 
 async function maybeSendEmployeeAttachmentEmail(params: {
   adminClient: ReturnType<typeof createAdminClient>;
@@ -261,6 +300,7 @@ async function maybeSendEmployeeAttachmentEmail(params: {
         file_name: fileName,
         file_size_bytes: fileSizeBytes,
         mime_type: mimeType,
+        ...(emailResult.uncertain ? { send_outcome_uncertain: true } : {}),
       }
     });
   } catch (auditError) {
@@ -273,14 +313,13 @@ async function maybeSendEmployeeAttachmentEmail(params: {
   // The provider's own text goes to the log and the audit row above, never into the toast.
   console.error('[employee attachment] Email send failed:', {
     code: emailResult.code,
+    uncertain: emailResult.uncertain === true,
     error: emailResult.error,
   });
-  return {
-    status: 'failed',
-    reason: emailResult.code === 'email_suspended'
-      ? 'email sending is switched off at the moment'
-      : 'the email service did not accept it',
-  };
+  if (emailResult.uncertain) {
+    return { status: 'uncertain' };
+  }
+  return { status: 'failed', reason: attachmentEmailFailureReason(emailResult.code) };
 }
 
 // Helper to clean form data (moved from original actions)
@@ -538,7 +577,10 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
           ...(preferredNameWarning ? { warning: true, followUpError: `Preferred name: ${preferredNameWarning}` } : {}),
       };
     } catch (error: unknown) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : getErrorMessage(error);
+        // The error's own text used to be the fallback, so a non-database fault showed as raw
+        // text. It stays in the server log.
+        console.error('Error adding employee:', errorFields(error));
+        const message = employeeActionErrorMessage(error, 'The employee could not be added. Please try again.');
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
             ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -602,14 +644,24 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
     const userInfo = await getCurrentUser();
 
+    // A login that also opens the management app moves with a new email address only for
+    // someone who can manage user roles, or for the person themselves (see login-email.ts). The
+    // service has no signed-in user, so the answer is worked out here and passed in.
+    const canManageRoles = userInfo.user_id
+        ? await checkUserPermission('users', 'manage_roles', userInfo.user_id)
+        : false;
+
     try {
       // preferred_name and the PIN are outside employeeSchema, so they travel as extras in the
       // same write. Separate writes after it could fail and report a save that had happened.
-      const { updatedEmployee, oldEmployee, onboardingLinks } = await EmployeeService.updateEmployee(employeeId, result.data, {
+      const { updatedEmployee, oldEmployee, onboardingLinks, loginEmail } = await EmployeeService.updateEmployee(employeeId, result.data, {
           ...(preferredNameSubmitted ? { preferred_name: preferredName } : {}),
           ...(timeclockPin
               ? { timeclock_pin_hash: hashTimeclockPin(timeclockPin), timeclock_pin_updated_at: new Date().toISOString() }
               : {}),
+      }, {
+          editorUserId: userInfo.user_id ?? null,
+          canManageRoles,
       });
 
       const changedFields: string[] = [];
@@ -653,6 +705,22 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           });
       }
 
+      // The login moved with the new email address. Both addresses are kept here and only here:
+      // the message below and the server log do not carry them.
+      if (loginEmail) {
+          await logAuditEvent({
+              ...(userInfo.user_id && { user_id: userInfo.user_id }),
+              ...(userInfo.user_email && { user_email: userInfo.user_email }),
+              operation_type: 'update_login_email',
+              resource_type: 'employee',
+              resource_id: employeeId,
+              operation_status: 'success',
+              old_values: { login_email: loginEmail.previous },
+              new_values: { login_email: loginEmail.current },
+              additional_info: { reason: 'employee_email_changed' }
+          });
+      }
+
       revalidatePath(`/employees`);
       revalidatePath(`/employees/${employeeId}`);
       if (onboardingLinks && 'failed' in onboardingLinks) {
@@ -668,7 +736,9 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           ? 'Employee updated. They are now Active and their onboarding link has been closed.'
           : onboardingLinks
               ? 'Employee updated. They are now Active.'
-              : 'Employee updated successfully.';
+              : loginEmail
+                  ? 'Employee updated. They now sign in with their new email address.'
+                  : 'Employee updated successfully.';
       return { type: 'success', message, employeeId };
     } catch (error: unknown) {
         // A preferred-name clash only reaches here if someone claimed the name between
@@ -687,6 +757,22 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
             old_values: undefined, // oldEmployee could be large, only log new_values from action
             new_values: result.data
         });
+        // The save reported a failure, but the login had already moved and was left on the new
+        // address. That move happened, so it gets the same row the success path writes, marked
+        // as having no confirmed save. The addresses stay in the audit row, as they do there.
+        if (error instanceof LoginLeftMovedError) {
+            await logAuditEvent({
+                ...(userInfo.user_id && { user_id: userInfo.user_id }),
+                ...(userInfo.user_email && { user_email: userInfo.user_email }),
+                operation_type: 'update_login_email',
+                resource_type: 'employee',
+                resource_id: employeeId,
+                operation_status: 'success',
+                old_values: { login_email: error.loginEmail.previous },
+                new_values: { login_email: error.loginEmail.current },
+                additional_info: { reason: 'employee_email_changed', record_save_unconfirmed: true }
+            });
+        }
         return { type: 'error', message };
     }
 }
@@ -804,6 +890,7 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
       revalidatePath(`/employees/${notePayload.employee_id}`);
       return { type: 'success', message: 'Note added successfully.' };
     } catch (error: unknown) {
+      console.error('Error adding employee note:', errorFields(error));
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
           ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -816,7 +903,13 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
               source: 'employee_note',
           }
       }).catch(() => {});
-      return { type: 'error', message: `Database error: ${getErrorMessage(error)}` };
+      // The database's own text stays in the log and the audit row above.
+      return {
+          type: 'error',
+          message: isPostgrestError(error) && error.code === '23503'
+              ? 'This employee no longer exists, so the note was not saved. Refresh the page.'
+              : employeeActionErrorMessage(error, 'The note could not be saved. Please try again.'),
+      };
     }
 }
 
@@ -859,7 +952,15 @@ export async function createRightToWorkDocumentUploadUrl(
     .createSignedUploadUrl(uniqueFileName, { upsert: false })
 
   if (error || !data?.token) {
-    return { type: 'error', message: error?.message || 'Failed to create signed upload URL.' }
+    // Storage's own text goes to the log, never to the person uploading.
+    console.error('[employee right to work] Could not create the signed upload link:', {
+      name: error?.name,
+      status: error?.status,
+      statusCode: error?.statusCode,
+      message: error?.message,
+      hasToken: Boolean(data?.token),
+    })
+    return { type: 'error', message: 'We could not prepare the upload. Please try again.' }
   }
 
   return { type: 'success', path: data.path, token: data.token }
@@ -950,7 +1051,9 @@ export async function addEmployeeAttachment(
     ? `Attachment uploaded and emailed to ${email.recipient}.`
     : email.status === 'failed'
       ? `Attachment uploaded, but the email to the employee may not have been sent (${email.reason}). Check with them, or send it another way.`
-      : 'Attachment uploaded.';
+      : email.status === 'uncertain'
+        ? 'Attachment uploaded. We did not hear back from the email service, so the email to the employee may have gone. Check with them before sending it again.'
+        : 'Attachment uploaded.';
   return { type: 'success', message, email };
 }
 
@@ -1001,7 +1104,7 @@ export async function getAttachmentSignedUrl(
   } catch (error: unknown) {
     // Storage's own text (for example "Object not found") goes to the log, not the toast.
     console.error('Error creating signed URL:', error);
-    return { url: null, error: 'Could not open the document. Please try again.' };
+    return { url: null, error: documentLinkFailedMessage(options.download) };
   }
 }
 
@@ -1093,7 +1196,7 @@ export async function addEmergencyContact(
     };
   } catch (error: unknown) {
     console.error('Error adding emergency contact:', error);
-    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not add emergency contact.';
+    const message = employeeActionErrorMessage(error, 'The emergency contact could not be added. Please try again.');
     return {
       type: 'error',
       message,
@@ -1139,7 +1242,7 @@ export async function updateEmergencyContact(
     return { type: 'success', message: 'Emergency contact updated successfully.' };
   } catch (error: unknown) {
     console.error('Error updating emergency contact:', error);
-    const message = employeeActionErrorMessage(error, 'Database error: Could not update emergency contact.');
+    const message = employeeActionErrorMessage(error, 'The emergency contact could not be updated. Please try again.');
     return { type: 'error', message };
   }
 }
@@ -1177,7 +1280,7 @@ export async function deleteEmergencyContact(
     return { type: 'success', message: 'Emergency contact deleted.' };
   } catch (error: unknown) {
     console.error('Error deleting emergency contact:', error);
-    const message = employeeActionErrorMessage(error, 'Database error: Could not delete emergency contact.');
+    const message = employeeActionErrorMessage(error, 'The emergency contact could not be deleted. Please try again.');
     return { type: 'error', message };
   }
 }
@@ -1229,7 +1332,7 @@ export async function upsertFinancialDetails(
     };
   } catch (error: unknown) {
     console.error('Error upserting financial details:', error);
-    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save financial details.';
+    const message = employeeActionErrorMessage(error, 'The financial details could not be saved. Please try again.');
     return {
       type: 'error',
       message,
@@ -1324,7 +1427,7 @@ export async function upsertHealthRecord(
     };
   } catch (error: unknown) {
     console.error('Error upserting health record:', error);
-    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not save health record.';
+    const message = employeeActionErrorMessage(error, 'The health record could not be saved. Please try again.');
     return {
       type: 'error',
       message,
@@ -1418,9 +1521,10 @@ export async function upsertRightToWork(
     };
   } catch (error: unknown) {
     console.error('Error upserting right to work:', error);
+    // The fallback used to be the error's own text, which for a direct upload carried storage's.
     return {
       type: 'error',
-      message: employeeActionErrorMessage(error, getErrorMessage(error)),
+      message: employeeActionErrorMessage(error, 'The right to work details could not be saved. Please try again.'),
     };
   }
 }
@@ -1473,11 +1577,11 @@ export async function getRightToWorkPhotoUrl(
       });
     }
 
-    return { url, error: url ? null : 'Could not open the document. Please try again.' };
+    return { url, error: url ? null : documentLinkFailedMessage(options.download) };
   } catch (error: unknown) {
     // Storage's own text (for example "Object not found") goes to the log, not the toast.
     console.error('Error creating signed URL for right to work photo:', error);
-    return { url: null, error: 'Could not open the document. Please try again.' };
+    return { url: null, error: documentLinkFailedMessage(options.download) };
   }
 }
 
@@ -1543,8 +1647,13 @@ export async function updateOnboardingChecklist(
     revalidatePath(`/employees/${employeeId}`);
     return { success: true };
   } catch (error: unknown) {
-    console.error('Error updating onboarding checklist:', error);
-    return { error: getErrorMessage(error) };
+    console.error('Error updating onboarding checklist:', errorFields(error));
+    // A service refusal (the signed agreement) is shown as written; database text never is.
+    return {
+      error: isPostgrestError(error) && error.code === '23503'
+        ? 'This employee no longer exists, so the checklist was not updated. Refresh the page.'
+        : employeeActionErrorMessage(error, 'The checklist could not be updated. Please try again.'),
+    };
   }
 }
 

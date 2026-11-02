@@ -347,6 +347,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         status={employee.status}
         employmentStartDate={employee.employment_start_date}
         employmentEndDate={employee.employment_end_date ?? null}
+        separationShiftPolicy={employee.separation_shift_policy ?? null}
         canEdit={permissions.canEdit}
         canDelete={permissions.canDelete}
       />

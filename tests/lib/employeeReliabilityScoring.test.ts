@@ -104,6 +104,34 @@ describe('calculateBusinessReliabilityScore', () => {
     expect(score.score).toBe(90);
   });
 
+  // Days someone cannot work (a leave type with counts_in_reliability false) and time off agreed
+  // at hire are recorded as information only. score_eligible was never read here, so in
+  // production an 'unavailable' request's late_holiday and holiday_conflict still lowered a score.
+  it('neither counts nor penalises leave events that are not score-eligible', () => {
+    const accepted = Array.from({ length: 5 }, () => event('shift_accepted'));
+    const score = calculateBusinessReliabilityScore([
+      ...accepted,
+      event('late_holiday', { published_at: null, notice_days: 2, score_eligible: false }),
+      event('holiday_conflict', { published_at: null, impacted_shift_count: 2, score_eligible: false }),
+    ]);
+
+    expect(score.counts.lateHolidays).toBe(0);
+    expect(score.counts.holidayConflicts).toBe(0);
+    expect(score.components.holidayNoticeImpact).toBe(10);
+    expect(score.score).toBe(calculateBusinessReliabilityScore(accepted).score);
+  });
+
+  it('still penalises a score-eligible late holiday beside one that is not', () => {
+    const score = calculateBusinessReliabilityScore([
+      ...Array.from({ length: 5 }, () => event('shift_accepted')),
+      event('late_holiday', { published_at: null, notice_days: 2 }),
+      event('late_holiday', { published_at: null, notice_days: 2, score_eligible: false }),
+    ]);
+
+    expect(score.counts.lateHolidays).toBe(1);
+    expect(score.components.holidayNoticeImpact).toBe(6);
+  });
+
   it('marks employees with fewer than five eligible signals as low sample', () => {
     const score = calculateBusinessReliabilityScore([
       event('shift_accepted'),

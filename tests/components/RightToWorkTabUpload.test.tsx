@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
+import { createRightToWorkDocumentUploadUrl, upsertRightToWork } from '@/app/actions/employeeActions'
 import type { EmployeeRightToWork } from '@/types/database'
 
 vi.mock('@/app/actions/employeeActions', () => ({
@@ -11,8 +12,10 @@ vi.mock('@/app/actions/employeeActions', () => ({
   upsertRightToWork: vi.fn(),
 }))
 
+// The browser upload goes straight to storage with the signed token.
+const uploadToSignedUrl = vi.hoisted(() => vi.fn())
 vi.mock('@/components/providers/SupabaseProvider', () => ({
-  useSupabase: () => ({}),
+  useSupabase: () => ({ storage: { from: () => ({ uploadToSignedUrl }) } }),
 }))
 
 // jsdom loads no Tailwind, so give it the two rules that decide whether the file input can
@@ -72,6 +75,62 @@ describe('RightToWorkTab document photo', () => {
 
     expect(screen.getByText(/passport-scan\.pdf\./)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Document Photo/ })).toHaveTextContent('Choose Another File')
+  })
+})
+
+// security#4 and siblings#6: a failed upload showed storage's own text ("Failed to fetch", a
+// gateway error) in the form. It now says what happened in plain words; the detail stays in the log.
+describe('RightToWorkTab when the scan upload fails', () => {
+  function attachScanAndSave() {
+    const { container } = render(
+      <RightToWorkTab
+        employeeId="00000000-0000-4000-8000-000000000001"
+        rightToWork={null}
+        canEdit
+        canViewDocuments
+      />,
+    )
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(input, { target: { files: [new File(['%PDF-1.4'], 'passport-scan.pdf', { type: 'application/pdf' })] } })
+    fireEvent.submit(container.querySelector('form')!)
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('says the document could not be uploaded, not the storage error, and saves nothing', async () => {
+    ;(createRightToWorkDocumentUploadUrl as Mock).mockResolvedValue({ type: 'success', path: 'e1/rtw_1_passport-scan.pdf', token: 'token' })
+    uploadToSignedUrl.mockResolvedValue({ data: null, error: { name: 'StorageUnknownError', message: 'Failed to fetch' } })
+
+    attachScanAndSave()
+
+    expect(await screen.findByText('The document could not be uploaded. Please try again.')).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+    expect(upsertRightToWork).not.toHaveBeenCalled()
+  })
+
+  it('shows the action\'s own plain message when the upload cannot be prepared', async () => {
+    ;(createRightToWorkDocumentUploadUrl as Mock).mockResolvedValue({ type: 'error', message: 'We could not prepare the upload. Please try again.' })
+
+    attachScanAndSave()
+
+    expect(await screen.findByText('We could not prepare the upload. Please try again.')).toBeInTheDocument()
+    expect(uploadToSignedUrl).not.toHaveBeenCalled()
+  })
+
+  it('shows a fixed message when the save itself throws', async () => {
+    ;(createRightToWorkDocumentUploadUrl as Mock).mockRejectedValue(new Error('upstream connect error or disconnect/reset before headers'))
+
+    attachScanAndSave()
+
+    expect(await screen.findByText('The right to work details could not be saved. Please try again.')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText(/upstream connect error/)).toBeNull())
   })
 })
 

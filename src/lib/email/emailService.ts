@@ -75,9 +75,11 @@ type EmailProvider = 'graph' | 'resend';
 
 /**
  * Machine-readable reason for a refused send, for callers that must treat it differently from
- * a provider failure. 'email_suspended': an emergency kill switch is on and nothing was sent.
+ * a provider failure. 'email_suspended': an emergency kill switch is on. 'recipient_suppressed':
+ * the address is on the suppression list (an earlier bounce or complaint). Both are definite:
+ * the provider was never asked, so nothing was sent.
  */
-export type EmailSendCode = 'email_suspended';
+export type EmailSendCode = 'email_suspended' | 'recipient_suppressed';
 
 type EmailSendResult = {
   success: boolean;
@@ -254,9 +256,10 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
       return {
         success: false,
         error: logError instanceof Error ? logError.message : error,
+        code: 'recipient_suppressed',
       }
     }
-    return { success: false, error };
+    return { success: false, error, code: 'recipient_suppressed' };
   }
 
   const provider = options.provider ?? getEmailProvider();

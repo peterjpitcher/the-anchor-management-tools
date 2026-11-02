@@ -3,6 +3,17 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
 import { normalizePersonName } from '@/lib/names';
 import { isSigningOwnedChecklistField } from '@/lib/employees/checklist-rules';
+import {
+  APP_LOGIN_CHECK_FAILED,
+  APP_LOGIN_EMAIL_REFUSAL,
+  NO_LOGIN_MOVE_AUTHORITY,
+  ONBOARDING_LOGIN_EMAIL_REFUSAL,
+  isLoginEmailTakenError,
+  loginEmailChange,
+  mayMoveAnyLogin,
+  normaliseLoginEmail,
+  type LoginMoveAuthority,
+} from '@/lib/employees/login-email';
 import { z } from 'zod';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
 import { countAllowanceDays, getHolidayYear, getHolidayYearBounds } from '@/lib/leave/working-days';
@@ -197,6 +208,18 @@ async function enrichNotesWithAuthors(
  */
 type OnboardingLinksClosed = { closed: number } | { failed: true } | null;
 
+/** A login moved to the record's new email address: the addresses it had before and has now. */
+type LoginEmailMoved = { authUserId: string; previous: string; current: string };
+
+/**
+ * The parts of a database error that are safe to log. `details` is left out: a unique or check
+ * violation puts the row's own values there (the duplicate email address, the failing row), and
+ * those are personal data.
+ */
+function databaseErrorForLog(error: { code?: string; message?: string; hint?: string | null }) {
+  return { code: error.code, message: error.message, hint: error.hint };
+}
+
 const phoneNumberSchema = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
   z.union([
@@ -224,6 +247,25 @@ export class EmployeeServiceError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'EmployeeServiceError';
+  }
+}
+
+/** The addresses a login had before a move and has now. */
+type LoginEmailAddresses = { previous: string; current: string };
+
+/**
+ * A save that reported a failure after the login had already moved to the new email address,
+ * and left it there. Without the addresses the action could only audit a failed update, so
+ * nothing recorded that the login moved. They are for that audit row only: the message and the
+ * log lines never carry them.
+ */
+export class LoginLeftMovedError extends EmployeeServiceError {
+  readonly loginEmail: LoginEmailAddresses;
+
+  constructor(message: string, loginEmail: LoginEmailAddresses) {
+    super(message);
+    this.name = 'LoginLeftMovedError';
+    this.loginEmail = loginEmail;
   }
 }
 
@@ -633,7 +675,7 @@ export class EmployeeService {
     });
 
     if (error) {
-      console.error('Create employee transaction error:', error);
+      console.error('Create employee transaction error:', databaseErrorForLog(error));
       // Handle unique constraint violations gracefully if needed, though server action can parse message
       throw error; // Let server action handle the error mapping
     }
@@ -657,7 +699,10 @@ export class EmployeeService {
     // The preferred name and the PIN hash go in the same write as everything else. They used to
     // be separate writes after it, so a failure there reported the whole save as failed when
     // the main change had already gone through.
-    extras: EmployeeUpdateExtras = {}
+    extras: EmployeeUpdateExtras = {},
+    // Who is saving, for moving a login that also opens the management app (see login-email.ts).
+    // Left out, such a login is never moved.
+    loginAuthority: LoginMoveAuthority = NO_LOGIN_MOVE_AUTHORITY
   ) {
     const adminClient = createAdminClient();
 
@@ -686,6 +731,19 @@ export class EmployeeService {
       );
     }
 
+    // A new email address takes the login with it, or is refused, before anything is written
+    // (see login-email.ts). A login that cannot move refuses the whole save.
+    const loginChange = loginEmailChange(oldEmployee, updateData.email_address);
+    if (loginChange.action === 'refuse') {
+      throw new EmployeeServiceError(ONBOARDING_LOGIN_EMAIL_REFUSAL);
+    }
+    if (loginChange.action === 'move') {
+      await EmployeeService.assertMayMoveLogin(adminClient, employeeId, loginChange.authUserId, loginAuthority);
+    }
+    const movedLogin = loginChange.action === 'move'
+      ? await EmployeeService.moveLoginEmail(adminClient, employeeId, loginChange.authUserId, updateData.email_address)
+      : null;
+
     const normalizedUpdate = {
       ...updateData,
       ...extras,
@@ -700,12 +758,14 @@ export class EmployeeService {
       .select('*')
       .maybeSingle();
 
-    if (error) {
-      console.error('Update employee error:', error);
-      throw error;
-    }
-
-    if (!updatedEmployee) {
+    if (error || !updatedEmployee) {
+      if (error) console.error('Update employee error:', databaseErrorForLog(error));
+      // An error does not prove the write missed (the connection can drop after it committed),
+      // so the login only goes back once the record is seen without the new address.
+      if (movedLogin) {
+        await EmployeeService.undoLoginMoveIfRecordUnsaved(adminClient, employeeId, movedLogin);
+      }
+      if (error) throw error;
       throw new Error('Employee not found or failed to update.');
     }
 
@@ -762,7 +822,281 @@ export class EmployeeService {
       updatedEmployee: stripServerOnlyEmployeeFields(updatedEmployee),
       oldEmployee: stripServerOnlyEmployeeFields(oldEmployee),
       onboardingLinks,
+      // For the action's audit row only: the addresses never go into a message or a log line.
+      loginEmail: movedLogin ? { previous: movedLogin.previous, current: movedLogin.current } : null,
     };
+  }
+
+  /**
+   * Moves the employee's login to the record's new email address, or refuses the save. Returns
+   * what it moved, or null when the login already had that address. Confirmed as it moves, so
+   * Supabase sends nobody an email about it.
+   */
+  private static async moveLoginEmail(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    authUserId: string,
+    newEmail: string
+  ): Promise<LoginEmailMoved | null> {
+    const { data, error: readError } = await adminClient.auth.admin.getUserById(authUserId);
+    const previous = data?.user?.email ?? null;
+    if (readError || !previous) {
+      console.error('[EmployeeService] Could not read the login before moving its email:', {
+        employeeId,
+        code: readError?.code,
+        status: readError?.status,
+        message: readError?.message,
+      });
+      throw new EmployeeServiceError(
+        'We could not check their login, so the new email address was not saved. Please try again.'
+      );
+    }
+
+    if (normaliseLoginEmail(previous) === normaliseLoginEmail(newEmail)) {
+      return null;
+    }
+
+    const { error: moveError } = await adminClient.auth.admin.updateUserById(authUserId, {
+      email: newEmail,
+      email_confirm: true,
+    });
+    if (moveError) {
+      console.error('[EmployeeService] Could not move the login to the new email address:', {
+        employeeId,
+        code: moveError.code,
+        status: moveError.status,
+        message: moveError.message,
+      });
+      if (isLoginEmailTakenError(moveError)) {
+        throw new EmployeeServiceError(
+          'That email address already has its own login, so it cannot be used for this employee. Nothing was changed.'
+        );
+      }
+
+      // A 50x or a dropped connection does not prove the move missed: Supabase can apply it and
+      // still report an error. Refusing then would leave the login on the new address while the
+      // record keeps the old one, so the login is read again first.
+      const loginNow = await EmployeeService.rereadLoginEmail(adminClient, employeeId, authUserId);
+      if (loginNow === null) {
+        console.error('[EmployeeService] Could not confirm whether the login moved to the new email address, so the save was refused:', {
+          employeeId,
+          authUserId,
+        });
+        throw new EmployeeServiceError(
+          'We could not confirm whether their login moved to the new email address, so the changes were not saved. Please save again. If this keeps happening, tell an administrator.'
+        );
+      }
+      if (normaliseLoginEmail(loginNow) !== normaliseLoginEmail(newEmail)) {
+        throw new EmployeeServiceError(
+          'Their login could not be moved to the new email address, so nothing was saved. Please try again.'
+        );
+      }
+      console.error('[EmployeeService] The login move reported an error but the login holds the new email address, so the save went on.', {
+        employeeId,
+        authUserId,
+      });
+    }
+
+    await EmployeeService.syncProfileEmail(adminClient, employeeId, authUserId, newEmail);
+    return { authUserId, previous, current: newEmail };
+  }
+
+  /**
+   * Reads the login's email address again after Supabase reported an error on changing it. A 50x
+   * or a dropped connection (AuthRetryableFetchError) can still have applied the change, so the
+   * error alone does not say which address the login holds. Null when it cannot be read; the
+   * failure is logged here, without the address.
+   */
+  private static async rereadLoginEmail(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    authUserId: string
+  ): Promise<string | null> {
+    try {
+      const { data, error } = await adminClient.auth.admin.getUserById(authUserId);
+      const email = data?.user?.email ?? null;
+      if (error || !email) {
+        console.error('[EmployeeService] Could not read the login again to see which email address it holds:', {
+          employeeId,
+          authUserId,
+          code: error?.code,
+          status: error?.status,
+          message: error?.message,
+        });
+        return null;
+      }
+      return email;
+    } catch (readError) {
+      console.error('[EmployeeService] Could not read the login again to see which email address it holds:', {
+        employeeId,
+        authUserId,
+        message: readError instanceof Error ? readError.message : String(readError),
+      });
+      return null;
+    }
+  }
+
+  /**
+   * Refuses the save, before anything is written, when the login also opens the management app
+   * and the editor may not move it (see login-email.ts). Fails closed: if the roles cannot be
+   * read, the login is treated as one that needs a role manager.
+   */
+  private static async assertMayMoveLogin(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    authUserId: string,
+    authority: LoginMoveAuthority
+  ): Promise<void> {
+    if (mayMoveAnyLogin(authority, authUserId)) return;
+
+    const { data: roles, error: rolesError } = await adminClient
+      .from('user_roles')
+      .select('role_id')
+      .eq('user_id', authUserId);
+
+    if (rolesError || !Array.isArray(roles)) {
+      console.error('[EmployeeService] Could not read the login\'s roles before moving its email:', {
+        employeeId,
+        code: rolesError?.code,
+        message: rolesError?.message,
+      });
+      throw new EmployeeServiceError(APP_LOGIN_CHECK_FAILED);
+    }
+
+    if (roles.length > 0) {
+      throw new EmployeeServiceError(APP_LOGIN_EMAIL_REFUSAL);
+    }
+  }
+
+  /**
+   * The GDPR lookup finds a staff login by profiles.email, so it follows the login. Best effort:
+   * the login itself has already moved, so a failure here is logged and the save goes on.
+   */
+  private static async syncProfileEmail(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    authUserId: string,
+    email: string
+  ): Promise<void> {
+    try {
+      const { error: profileError } = await adminClient
+        .from('profiles')
+        .update({ email })
+        .eq('id', authUserId);
+      if (profileError) {
+        console.error('[EmployeeService] The login moved but its profile email could not be updated:', {
+          employeeId,
+          authUserId,
+          code: profileError.code,
+          message: profileError.message,
+        });
+      }
+    } catch (profileError) {
+      console.error('[EmployeeService] The login moved but its profile email could not be updated:', {
+        employeeId,
+        authUserId,
+        message: profileError instanceof Error ? profileError.message : String(profileError),
+      });
+    }
+  }
+
+  /**
+   * After the record write reported a failure, reads the record again: a write can commit and
+   * still report an error when the connection drops. The login goes back to its old address only
+   * when the record does not hold the new one. If the read fails too, nothing is undone, because
+   * putting the login back on a record that did save would make them disagree. Whenever the login
+   * is left on the new address, the error says so and carries both addresses for the audit row.
+   */
+  private static async undoLoginMoveIfRecordUnsaved(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    moved: LoginEmailMoved
+  ): Promise<void> {
+    const { data: current, error: readError } = await adminClient
+      .from('employees')
+      .select('email_address')
+      .eq('employee_id', employeeId)
+      .maybeSingle();
+
+    if (readError) {
+      console.error('[EmployeeService] CRITICAL: Employee save reported a failure after their login moved, and the record could not be read again. The login was left on the new address, so the login and the record may disagree:', {
+        employeeId,
+        authUserId: moved.authUserId,
+        code: readError.code,
+        message: readError.message,
+      });
+      throw new LoginLeftMovedError(
+        'We could not tell whether the changes were saved, but they now sign in with their new email address. Please refresh the page and check the record before saving again. If it still shows the old email address, tell an administrator.',
+        { previous: moved.previous, current: moved.current }
+      );
+    }
+
+    if (current && normaliseLoginEmail(current.email_address) === normaliseLoginEmail(moved.current)) {
+      // The write went through after all (it is one row, so all of it did), and the login is
+      // already where it belongs.
+      console.error('[EmployeeService] Employee save reported a failure but the record holds the new email address; the login was left on it.', {
+        employeeId,
+        authUserId: moved.authUserId,
+      });
+      throw new LoginLeftMovedError(
+        'The changes were saved and they now sign in with their new email address, but the save reported a problem. Please refresh the page to check the record before saving again.',
+        { previous: moved.previous, current: moved.current }
+      );
+    }
+
+    await EmployeeService.restoreLoginEmail(adminClient, employeeId, moved);
+  }
+
+  /**
+   * Puts the login back on the address it had, after the record itself could not be saved. If
+   * even that fails the login and the record now disagree, so staff are told to get help. A
+   * failed put-back is checked first: a 50x or a dropped connection can still have applied it,
+   * and then nothing disagrees.
+   */
+  private static async restoreLoginEmail(
+    adminClient: ReturnType<typeof createAdminClient>,
+    employeeId: string,
+    moved: LoginEmailMoved
+  ): Promise<void> {
+    const { error: restoreError } = await adminClient.auth.admin.updateUserById(moved.authUserId, {
+      email: moved.previous,
+      email_confirm: true,
+    });
+    if (restoreError) {
+      const loginNow = await EmployeeService.rereadLoginEmail(adminClient, employeeId, moved.authUserId);
+      const restoredAfterAll = loginNow !== null && normaliseLoginEmail(loginNow) === normaliseLoginEmail(moved.previous);
+      if (!restoredAfterAll) {
+        // Only a read showing the new address confirms where the login is. A failed read, or any
+        // other address, leaves it unknown, and staff are told to check before saving again.
+        const stillOnNewAddress = loginNow !== null && normaliseLoginEmail(loginNow) === normaliseLoginEmail(moved.current);
+        console.error('[EmployeeService] CRITICAL: Employee save failed after their login moved, and the login could not be put back:', {
+          employeeId,
+          authUserId: moved.authUserId,
+          code: restoreError.code,
+          status: restoreError.status,
+          message: restoreError.message,
+          loginAddressConfirmed: stillOnNewAddress,
+        });
+        throw new LoginLeftMovedError(
+          stillOnNewAddress
+            ? 'The changes were not saved, but their login had already moved to the new email address and could not be moved back, so they now sign in with the new address. Please tell an administrator before saving again.'
+            : 'The changes were not saved, but their login had already moved to the new email address. We tried to move it back and could not confirm which email address it now uses. Please tell an administrator, and check which address they sign in with before saving again.',
+          { previous: moved.previous, current: moved.current }
+        );
+      }
+      console.error('[EmployeeService] Putting the login back reported an error, but the login holds its old address again.', {
+        employeeId,
+        authUserId: moved.authUserId,
+        code: restoreError.code,
+        status: restoreError.status,
+        message: restoreError.message,
+      });
+    }
+    await EmployeeService.syncProfileEmail(adminClient, employeeId, moved.authUserId, moved.previous);
+    console.error('[EmployeeService] Employee save failed after their login moved; the login was put back on its old address.', {
+      employeeId,
+      authUserId: moved.authUserId,
+    });
   }
 
   /**

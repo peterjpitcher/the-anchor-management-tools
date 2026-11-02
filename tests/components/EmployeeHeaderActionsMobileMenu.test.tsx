@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -10,6 +13,7 @@ import { EmployeeHeaderActions } from '@/app/(authenticated)/employees/[employee
 
 const previewMock = vi.hoisted(() => vi.fn())
 const beginMock = vi.hoisted(() => vi.fn())
+const cancelMock = vi.hoisted(() => vi.fn())
 const resendMock = vi.hoisted(() => vi.fn())
 const revokeMock = vi.hoisted(() => vi.fn())
 const deleteMock = vi.hoisted(() => vi.fn())
@@ -17,6 +21,7 @@ const deleteMock = vi.hoisted(() => vi.fn())
 vi.mock('@/app/actions/employeeSeparation', () => ({
   getEmployeeSeparationPreview: previewMock,
   beginEmployeeSeparation: beginMock,
+  cancelEmployeeSeparation: cancelMock,
 }))
 
 vi.mock('@/app/actions/employeeInvite', () => ({
@@ -148,6 +153,42 @@ describe('employee header "More" menu on a phone', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Mark as Former' }))
 
     await waitFor(() => expect(revokeMock).toHaveBeenCalledWith(EMPLOYEE_ID))
+  })
+
+  // The page passes the stored separation_shift_policy through the header, so Cancel Separation
+  // names the shifts that policy released. Without it the dialog fell back to wording true under
+  // either policy, and never said the shifts up to the last day are still theirs.
+  it('names the shifts the stored policy released in the Cancel Separation dialog', async () => {
+    cancelMock.mockResolvedValue({ success: true, message: 'Separation cancelled.' })
+    const user = userEvent.setup()
+    render(
+      <EmployeeHeaderActions
+        employeeId={EMPLOYEE_ID}
+        employeeName="Sam Example"
+        status="Started Separation"
+        employmentStartDate="2026-01-01"
+        employmentEndDate={null}
+        separationShiftPolicy="work_remaining"
+        canEdit
+        canDelete
+      />,
+    )
+
+    await chooseFromMobileMenu(user, 'Cancel Separation')
+
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel Separation' })
+    expect(within(dialog).getByText(/kept their shifts up to the last working day, which are still theirs/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Any shifts released when the separation started stay open/)).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Separation' }))
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith(EMPLOYEE_ID))
+  })
+
+  it('is given the stored shift policy by the employee page', () => {
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+    const employeePage = readFileSync(resolve(repoRoot, 'src/app/(authenticated)/employees/[employee_id]/page.tsx'), 'utf8')
+
+    expect(employeePage).toContain('separationShiftPolicy={employee.separation_shift_policy ?? null}')
   })
 
   it('opens the Delete Employee dialog from the header and still submits the delete form', async () => {

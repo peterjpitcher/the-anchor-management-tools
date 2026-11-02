@@ -101,7 +101,8 @@ export async function GET(request: NextRequest) {
             record: `${appUrl}/employees/${entry.employeeId}`,
             reason: entry.warning,
           })),
-          outcome: 'Each person not finalised stays in Started Separation and is tried again tomorrow. Clear what is named, or mark them as Former from their record.',
+          // "On notice", as the app shows the stored Started Separation status.
+          outcome: 'Each person not finalised stays on notice and is tried again tomorrow. Clear what is named, or mark them as Former from their record.',
         },
       );
     } catch (alertError) {

@@ -22,6 +22,7 @@ import {
   toast,
 } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { employmentStatusLabel } from '@/app/(authenticated)/employees/_shared/status-ui';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
 
@@ -50,6 +51,11 @@ type FormField = {
   checkboxLabel?: string;
   /** Shown and sent, but not editable here (it is changed by an action on the employee page). */
   readOnly?: boolean;
+  /**
+   * Read-only fields only: the words shown in place of the stored value (On Notice for Started
+   * Separation). The input then has no name, and the stored value goes in a hidden input instead.
+   */
+  displayValue?: string;
 }
 
 /**
@@ -60,7 +66,7 @@ type FormField = {
 function statusLockedHint(status: Employee['status']): string {
   switch (status) {
     case 'Started Separation':
-      return 'This employee is part-way through a separation. Use Cancel Separation or Mark as Former on their page to change it.';
+      return 'This employee is on notice. Use Cancel Separation or Mark as Former on their page to change it.';
     case 'Former':
       return 'Former employees cannot be changed back here.';
     default:
@@ -114,7 +120,16 @@ export default function EmployeeForm({
         { name: 'job_title', label: 'Job Title', type: 'text', required: true, defaultValue: employee?.job_title },
         statusEditable
           ? { name: 'status', label: 'Status', type: 'select', required: true, options: statusOptions, defaultValue: employee?.status || 'Active' }
-          : { name: 'status', label: 'Status', type: 'text', readOnly: true, defaultValue: employee?.status, hint: statusLockedHint(employee?.status ?? 'Active') },
+          : {
+              name: 'status',
+              label: 'Status',
+              type: 'text',
+              readOnly: true,
+              defaultValue: employee?.status,
+              // The words the employee page uses ("On Notice"); the stored value is still what is sent.
+              displayValue: employmentStatusLabel(employee?.status ?? 'Active'),
+              hint: statusLockedHint(employee?.status ?? 'Active'),
+            },
         { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
         {
           name: 'employment_end_date',
@@ -234,12 +249,13 @@ export default function EmployeeForm({
         />
       );
     }
+    const showsLabel = field.readOnly && field.displayValue !== undefined;
     return (
       <Input
         type={field.type}
-        name={field.name}
+        name={showsLabel ? undefined : field.name}
         id={field.name}
-        defaultValue={field.defaultValue || ''}
+        defaultValue={(showsLabel ? field.displayValue : field.defaultValue) || ''}
         required={field.required}
         readOnly={field.readOnly}
         error={error}
@@ -256,6 +272,13 @@ export default function EmployeeForm({
       {/* An unticked checkbox sends nothing, so the hidden "false" goes first and a ticked box
           overrides it. It sits outside the field so it does not steal the label. */}
       <input type="hidden" name="keyholder_status" value="false" />
+      {/* The read-only status shows the words staff use (On Notice), so the stored value it
+          stands for is sent from here. updateEmployee reads status from the form. */}
+      {formSteps.flatMap((step) => step.fields)
+        .filter((field) => field.readOnly && field.displayValue !== undefined)
+        .map((field) => (
+          <input key={field.name} type="hidden" name={field.name} value={field.defaultValue ?? ''} />
+        ))}
 
       {/* Progress Indicator */}
       {isMobile && (

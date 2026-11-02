@@ -77,6 +77,15 @@ function countItems(score: ReliabilityScoreBreakdown) {
   ];
 }
 
+// Only these two leave events can be left out of the score. A late holiday or a rota clash on days
+// someone cannot work (not holiday), or on time off agreed at hire, is listed but not penalised,
+// so it is marked here; otherwise a manager would read it as a mark against them.
+const UNSCORED_LEAVE_EVENT_TYPES = new Set<EmployeeReliabilityEvent['event_type']>(['late_holiday', 'holiday_conflict']);
+
+function isUnscoredLeaveEvent(event: EmployeeReliabilityEvent): boolean {
+  return UNSCORED_LEAVE_EVENT_TYPES.has(event.event_type) && !event.score_eligible;
+}
+
 function eventDetail(event: EmployeeReliabilityEvent): string {
   const details: string[] = [];
 
@@ -144,6 +153,9 @@ export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabil
               <li key={event.id} className="px-pad-card py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={reliabilityEventTone(event.event_type)}>{eventTypeLabel(event.event_type)}</Badge>
+                  {isUnscoredLeaveEvent(event) && (
+                    <span className="text-xs text-text-muted">Not scored</span>
+                  )}
                   <p className="text-sm font-medium text-text">{formatDateTime(event.event_at)}</p>
                 </div>
                 {eventDetail(event) && (

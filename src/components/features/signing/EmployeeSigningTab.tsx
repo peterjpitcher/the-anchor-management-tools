@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Dropdown, DropdownItem, Input, Modal, Textarea, toast } from '@/ds'
 import { sendEmploymentAgreement, sendStaffTemplateDocument, type SendResult } from '@/app/actions/signing-staff'
 import type { SigningDocumentSummary } from '@/lib/signing/service'
+import { failedDeliveryToasts } from './delivery-outcome'
 import { SignaturePanel } from './SignaturePanel'
 
 type StaffKind = 'employment_agreement' | 'terms_variation' | 'deduction_consent' | 'working_time_opt_out' | 'guardian_consent'
@@ -80,13 +81,15 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
     setError(null)
   }
 
-  const reportSent = (result: SendResult): void => {
-    const failed = result.deliveries.filter((delivery) => delivery.email_status === 'failed')
-    const noEmail = result.deliveries.filter((delivery) => delivery.email_status === 'none')
-    if (failed.length > 0) {
-      toast.error(`Created, but the email to ${failed.map((delivery) => delivery.name).join(', ')} failed. Use "Send new link" or "Sign in person".`)
-    } else if (noEmail.length > 0) {
-      toast.success('Created. There is no email address, so use "Sign in person".')
+  const reportSent = (result: SendResult, sentKind: StaffKind): void => {
+    // Only an email the provider definitely refused is called not sent. One we did not hear back
+    // about may have reached them, and a new link would cancel the one they may be holding. The
+    // toast names the document as the send menu does, as the other signing panels do.
+    const problems = failedDeliveryToasts(result.deliveries, { noun: KIND_COPY[sentKind].menu })
+    for (const problem of problems) toast[problem.kind](problem.message)
+    if (problems.length > 0) return
+    if (result.deliveries.some((delivery) => delivery.email_status === 'none')) {
+      toast.success('Created. There is no email address, so use "Sign in Person".')
     } else {
       toast.success('Sent for signature.')
     }
@@ -94,6 +97,7 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
 
   const send = (): void => {
     if (!kind) return
+    const sentKind = kind
     setError(null)
     startTransition(async () => {
       const guardian = { guardianName: guardianName.trim(), guardianEmail: guardianEmail.trim() }
@@ -107,11 +111,20 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
               : kind === 'working_time_opt_out'
                 ? await sendStaffTemplateDocument({ kind, employeeId })
                 : await sendStaffTemplateDocument({ kind, employeeId, ...guardian })
+      if (result.mayHaveGone && result.error) {
+        // It stopped after the request may have been created and emailed. Left open, the Send
+        // button invites a second request, which cancels the link they may be holding. The
+        // details are kept for a resend once staff have checked.
+        toast.warning(result.error)
+        setKind(null)
+        router.refresh()
+        return
+      }
       if (result.error || !result.data) {
         setError(result.error ?? 'Could not send the document.')
         return
       }
-      reportSent(result.data)
+      reportSent(result.data, sentKind)
       setKind(null)
       setChangeSummary('')
       setEffectiveDate('')
@@ -167,7 +180,7 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
 
       {!hasEmail && !closedReason ? (
         <Alert tone="info">
-          There is no email address on this record, so nothing can be emailed. Send the document, then use &quot;Sign in person&quot;.
+          There is no email address on this record, so nothing can be emailed. Send the document, then use &quot;Sign in Person&quot;.
         </Alert>
       ) : null}
 

@@ -487,7 +487,7 @@ describe('employee invite status transitions', () => {
                     auth_user_id: null,
                     email_address: 'employee@example.com',
                     status: 'Started Separation',
-                    employment_end_date: '2099-05-15',
+                    employment_end_date: '2099-05-05',
                   },
                   error: null,
                 }),
@@ -504,7 +504,7 @@ describe('employee invite status transitions', () => {
     const result = await revokeEmployeeAccess('employee-1')
 
     expect(result.success).toBe(false)
-    expect(result.error).toBe('Their last working day is 15 May 2099. They can be marked as Former from that day.')
+    expect(result.error).toBe('Their last working day is 5 May 2099. They can be marked as Former from that day.')
     expect(employeeUpdate).not.toHaveBeenCalled()
   })
 })

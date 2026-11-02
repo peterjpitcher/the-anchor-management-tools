@@ -13,6 +13,7 @@ import {
 } from '@/app/actions/employeeSeparation';
 import { Alert, Badge, Button, ConfirmDialog, Empty, Fieldset, Input, Modal, PageLoading, Radio, SubHeading, Textarea, toast } from '@/ds';
 import { formatDateFull, formatDateInLondon, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import { separationCancelRotaSentence, separationCancelledToast } from '@/lib/employees/separation-cancel-copy';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { SEPARATION_SHIFT_DECISION_TONES } from '@/app/(authenticated)/employees/_shared/status-ui';
 import { ROTA_WEEK_PUBLISH_LABEL, ROTA_WEEK_PUBLISH_TONE } from '@/app/(authenticated)/rota/_shared/status-ui';
@@ -25,7 +26,16 @@ interface EmployeeStatusActionsProps {
   employmentStartDate: string | null;
   /** The recorded last working day. Mark as Former is refused by the server until it is reached. */
   employmentEndDate: string | null;
+  /**
+   * The shift policy chosen when the separation started (separation_shift_policy), so the Cancel
+   * Separation dialog can say which shifts were released. Without it the dialog says only what is
+   * true under either policy.
+   */
+  separationShiftPolicy?: string | null;
 }
+
+/** Warnings say what to check before doing anything again, so they stay up long enough to read. */
+const WARNING_TOAST = { duration: 10000 };
 
 function departmentLabel(department: string | null | undefined): string {
   if (!department) return 'No department';
@@ -50,6 +60,7 @@ export function useEmployeeStatusActions({
   canEdit,
   employmentStartDate,
   employmentEndDate,
+  separationShiftPolicy = null,
 }: EmployeeStatusActionsProps): { actions: EmployeeHeaderAction[]; dialogs: ReactNode } {
   const router = useRouter();
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -99,11 +110,20 @@ export function useEmployeeStatusActions({
       const result = await resendInvite(employeeId);
       if (result.type === 'success') {
         toast.success(result.message || 'Invite resent.');
+      } else if (result.type === 'warning') {
+        // It may have gone (an email we could not confirm), so it is not offered as a failure to
+        // retry: the message says what to check first.
+        toast.warning(result.message, WARNING_TOAST);
       } else {
         toast.error(result.message || 'Failed to resend invite.');
       }
     } catch {
-      toast.error('Failed to resend invite.');
+      // No answer from the server, which may have sent the email before the request failed, so
+      // this is not offered as a failure to retry either.
+      toast.warning(
+        'We could not tell whether the invite was resent. Check with them before sending it again.',
+        WARNING_TOAST,
+      );
     } finally {
       setLoading(false);
     }
@@ -151,7 +171,8 @@ export function useEmployeeStatusActions({
         setSeparationNote('');
         setShiftPolicy(null);
         if (result.warning) {
-          toast.warning(result.warning);
+          // The separation email did not go, or may have gone: the message says which.
+          toast.warning(result.warning, WARNING_TOAST);
         } else {
           toast.success(
             `Separation started. ${result.retainedShiftCount} shift${result.retainedShiftCount === 1 ? '' : 's'} retained and ${result.releasedShiftCount} released.`,
@@ -174,7 +195,8 @@ export function useEmployeeStatusActions({
     try {
       const result = await cancelEmployeeSeparation(employeeId);
       if (result.success) {
-        toast.success('Separation cancelled. They stay on as Active. Add them back to their rota templates and shifts.');
+        // The server's message names the shifts released under the stored policy.
+        toast.success(result.message || separationCancelledToast(separationShiftPolicy));
         router.refresh();
       } else {
         toast.error(result.error || 'Failed to cancel the separation.');
@@ -400,6 +422,12 @@ export function useEmployeeStatusActions({
             </Alert>
           )}
 
+          {/* begin_employee_separation clears their template assignments under both choices and
+              keeps no list of them, so a cancelled separation cannot put them back. */}
+          <Alert tone="warning" size="sm">
+            Starting the separation takes them off every rota template straight away, whichever option you choose, so rota weeks built from the templates show their usual shifts as open. Cancelling the separation later does not put them back on the templates.
+          </Alert>
+
           {leaveAfterEndDate.length > 0 && (
             <Alert tone="warning" size="sm">
               There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. Cancel {leaveAfterEndDate.length === 1 ? 'it' : 'them'} separately before finalising the employee.
@@ -440,7 +468,7 @@ export function useEmployeeStatusActions({
         onClose={() => setShowConfirm(null)}
         onConfirm={handleCancelSeparation}
         title="Cancel Separation"
-        message="This keeps them on as Active and clears their last working day. Starting the separation released their shifts and took them off every rota template. Neither comes back on its own: reassign the shifts and add them back to their templates."
+        message={`This keeps them on as Active and clears their last working day. ${separationCancelRotaSentence(separationShiftPolicy)}`}
         confirmLabel="Cancel Separation"
         cancelLabel="Keep Separation"
         tone="primary"

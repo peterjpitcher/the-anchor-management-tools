@@ -17,6 +17,7 @@ import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/app/actions/audit'
 import {
   addEmployeeRateOverride,
+  getEmployeePaySettings,
   getEmployeeRateOverrides,
   updateEmployeeRateOverride,
   upsertEmployeePaySettings,
@@ -205,6 +206,41 @@ describe('getEmployeeRateOverrides', () => {
     const result = await getEmployeeRateOverrides(EMPLOYEE_ID)
 
     expect(result).toEqual({ success: false, error: 'The rate overrides could not be loaded. Refresh the page to try again.' })
+  })
+})
+
+// siblings#5: the pay settings read is shown on the Pay and Holidays tabs, and its error wins
+// over the plain rate overrides one, so its Postgres text still reached both tabs.
+describe('getEmployeePaySettings', () => {
+  function settingsReadFails(error: { code: string; message: string }) {
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn(() => ({
+        select: () => ({ eq: () => ({ single: vi.fn().mockResolvedValue({ data: null, error }) }) }),
+      })),
+    })
+  }
+
+  it('shows a plain message, not Postgres text, when the pay settings cannot be read', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    settingsReadFails({ code: '57014', message: 'canceling statement due to statement timeout' })
+
+    const result = await getEmployeePaySettings(EMPLOYEE_ID)
+
+    expect(result).toEqual({
+      success: false,
+      error: 'The pay and holiday allowance settings could not be loaded. Refresh the page to try again.',
+    })
+    expect(consoleError).toHaveBeenCalledWith('[pay settings] Failed to load pay settings:', {
+      code: '57014',
+      message: 'canceling statement due to statement timeout',
+    })
+    consoleError.mockRestore()
+  })
+
+  it('still treats no settings row as no settings', async () => {
+    settingsReadFails({ code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' })
+
+    expect(await getEmployeePaySettings(EMPLOYEE_ID)).toEqual({ success: true, data: null })
   })
 })
 

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Field, Input } from '@/ds';
-import { StepFooter } from './StepParts';
+import { StepFooter, thrownStepError } from './StepParts';
 import { createEmployeeAccount } from '@/app/actions/employeeInvite';
 import { PASSWORD_MIN_LENGTH, passwordError } from '@/lib/employees/password-rule';
 
@@ -63,7 +63,7 @@ export default function CreateAccountStep({
         setError(result.error || 'Failed to create account.');
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to create account.');
+      setError(thrownStepError('Creating the account', caught));
     } finally {
       setLoading(false);
     }

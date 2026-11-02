@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeDb, type FakeDb } from '../helpers/fakeSupabaseDb'
 
 const mocks = vi.hoisted(() => ({
@@ -247,11 +247,15 @@ describe('policies', () => {
     mocks.sendTemplate
       .mockResolvedValueOnce(delivered('Sam Example'))
       .mockRejectedValueOnce(new Error('pdf failed'))
-      .mockResolvedValueOnce({ documentId: 'doc-3', version: 1, deliveries: [{ partyId: 'p3', name: 'Alex Unknown', email: 'a@example.com', email_status: 'failed', error: 'mailbox unavailable' }] })
+      .mockResolvedValueOnce({ documentId: 'doc-3', version: 1, deliveries: [{ partyId: 'p3', name: 'Alex Unknown', email: 'a@example.com', email_status: 'failed', error: 'mailbox unavailable', uncertain: false }] })
     const result = await sendPolicyAcknowledgements({ slug: 'allergens', employeeIds: [ADULT, MINOR, NO_DOB] })
     expect(result.data?.sent).toBe(1)
-    expect(result.data?.failed.map((failure) => failure.name)).toEqual(['Robin Young', 'Alex Unknown'])
-    expect(result.data?.failed[1].reason).toContain('mailbox unavailable')
+    // The PDF failure created nothing; the email failure created the request, so it is reported
+    // apart, in plain words, without the provider's text.
+    expect(result.data?.failed.map((failure) => failure.name)).toEqual(['Robin Young'])
+    expect(result.data?.emailNotConfirmed.map((entry) => entry.name)).toEqual(['Alex Unknown'])
+    expect(result.data?.emailNotConfirmed[0].reason).not.toContain('mailbox unavailable')
+    expect(result.data?.emailNotConfirmed[0].reason).toBe('Created, but the email was not sent. Use Send Again, or they can confirm it in person.')
     expect(mocks.sendTemplate).toHaveBeenCalledTimes(3)
     expect(mocks.sendTemplate.mock.calls[0][0]).toMatchObject({ kind: 'policy_acknowledgement', slug: 'allergens', seriesKey: 'policy:allergens', subjectId: ADULT })
   })
@@ -268,5 +272,101 @@ describe('policies', () => {
     expect((await sendPolicyAcknowledgements({ slug: 'allergens', employeeIds: ids })).error).toBeTruthy()
     expect((await sendPolicyAcknowledgements({ slug: 'allergens', employeeIds: [] })).error).toContain('at least one')
     expect(mocks.sendTemplate).not.toHaveBeenCalled()
+  })
+})
+
+// A one-off send that stopped once its request had been created said "Something went wrong.
+// Please try again.", which invites a second request (cancelling the link they may hold) and a
+// second email. createSigningRequest emails the link before it writes the "sent" event, and the
+// action writes the audit row after that, so a plain error there may come after the email went.
+describe('a one-off send that stops part way', () => {
+  const MAY_HAVE_GONE = 'The request may have been created and the email may have gone. Check the Signing tab before sending again.'
+  let consoleError: ReturnType<typeof vi.spyOn>
+
+  beforeEach(() => {
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  afterEach(() => {
+    consoleError.mockRestore()
+  })
+
+  /** The request the send wrote, as createSigningRequest files it. */
+  function created(id: string, seriesKey: string, sentAt = new Date().toISOString()): void {
+    db.rows('signing_documents').push({ id, subject_type: 'employee', subject_id: ADULT, series_key: seriesKey, status: 'sent', sent_at: sentAt })
+  }
+
+  const TERMS = { kind: 'terms_variation', employeeId: ADULT, changeSummary: 'Your hourly rate goes up to £12.71.', effectiveDate: '2026-11-01' } as const
+
+  it('the worker agreement: says it may have gone when the request was created before the failure', async () => {
+    mocks.createRequest.mockImplementation(async () => {
+      created('doc-new', 'employment_agreement')
+      throw new Error('Could not write signing event sent: canceling statement due to statement timeout')
+    })
+
+    const result = await sendEmploymentAgreement({ employeeId: ADULT })
+
+    expect(result).toEqual({ error: MAY_HAVE_GONE, mayHaveGone: true })
+    expect(JSON.stringify(result)).not.toContain('statement timeout')
+    expect(consoleError).toHaveBeenCalledWith(
+      '[staff signing] Failed after the request was created; the email may have gone:',
+      expect.objectContaining({ message: expect.stringContaining('statement timeout') }),
+    )
+  })
+
+  it('the worker agreement: says it may have gone when the send cannot be recorded afterwards', async () => {
+    mocks.createRequest.mockImplementation(async () => {
+      created('doc-new', 'employment_agreement')
+      return delivered('Sam Example')
+    })
+    mocks.audit.mockRejectedValue(new Error('audit offline'))
+
+    expect(await sendEmploymentAgreement({ employeeId: ADULT })).toEqual({ error: MAY_HAVE_GONE, mayHaveGone: true })
+  })
+
+  it('the worker agreement: a failure before any request was written may be tried again', async () => {
+    mocks.createRequest.mockRejectedValue(new Error('Could not store the document: storage offline'))
+
+    expect(await sendEmploymentAgreement({ employeeId: ADULT })).toEqual({ error: 'Something went wrong. Please try again.' })
+  })
+
+  it('a template document: says it may have gone when the request was created before the failure', async () => {
+    mocks.sendTemplate.mockImplementation(async () => {
+      created('doc-new', 'terms_variation')
+      throw new Error('Could not write signing event sent: timeout')
+    })
+
+    const result = await sendStaffTemplateDocument(TERMS)
+
+    expect(result).toEqual({ error: MAY_HAVE_GONE, mayHaveGone: true })
+    expect(JSON.stringify(result)).not.toContain('timeout')
+  })
+
+  it('a template document: does not count a request from before this send, or one in another series', async () => {
+    created('doc-old', 'terms_variation', '2026-01-01T09:00:00.000Z')
+    created('doc-other', 'deduction_consent')
+    mocks.sendTemplate.mockRejectedValue(new Error('Could not store the document: storage offline'))
+
+    expect(await sendStaffTemplateDocument(TERMS)).toEqual({ error: 'Something went wrong. Please try again.' })
+  })
+
+  it('a template document: says it may have gone when it cannot tell whether the request was created', async () => {
+    mocks.sendTemplate.mockImplementation(async () => {
+      db.failNext({ table: 'signing_documents', operation: 'select', message: 'permission denied for table signing_documents' })
+      throw new Error('Could not write signing event sent: timeout')
+    })
+
+    expect(await sendStaffTemplateDocument(TERMS)).toEqual({ error: MAY_HAVE_GONE, mayHaveGone: true })
+    expect(consoleError).toHaveBeenCalledWith(
+      '[staff signing] Could not check whether the request was created:',
+      expect.objectContaining({ message: 'permission denied for table signing_documents' }),
+    )
+  })
+
+  it('a template document: a refusal before anything is written is passed on as it is', async () => {
+    created('doc-other', 'terms_variation')
+    mocks.sendTemplate.mockRejectedValue(new SigningError('template_incomplete', 'The "Change to your terms" template is not finished.'))
+
+    expect(await sendStaffTemplateDocument(TERMS)).toEqual({ error: 'The "Change to your terms" template is not finished.' })
   })
 })

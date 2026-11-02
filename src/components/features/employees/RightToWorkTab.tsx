@@ -152,8 +152,9 @@ export default function RightToWorkTab({
             })
 
           if (uploadResult.error) {
+            // Storage's own text ("Failed to fetch", a gateway error) stays in the console.
             console.error('Right to work document upload failed:', uploadResult.error)
-            setState({ type: 'error', message: uploadResult.error.message || 'Failed to upload document photo.' })
+            setState({ type: 'error', message: 'The document could not be uploaded. Please try again.' })
             return
           }
 
@@ -169,10 +170,7 @@ export default function RightToWorkTab({
         }
       } catch (error) {
         console.error('Right to work save failed:', error)
-        setState({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Failed to save right to work information.',
-        })
+        setState({ type: 'error', message: 'The right to work details could not be saved. Please try again.' })
       }
     })
   }

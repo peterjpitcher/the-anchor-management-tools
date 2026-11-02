@@ -139,20 +139,20 @@ describe('finalizeEmployeeSeparation refusals name the dates', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'This employee still has rota shifts on 05 November 2026, 06 November 2026. Reassign or cancel those shifts before marking them as Former.',
+      error: 'This employee still has rota shifts on 5 November 2026, 6 November 2026. Reassign or cancel those shifts before marking them as Former.',
       code: 'future_rota_shifts',
     })
     expect(deleteUser).not.toHaveBeenCalled()
   })
 
   it('names the leave in the way, approved or still waiting for a decision', async () => {
-    const { client } = adminClientFor({ futureLeave: [{ leave_date: '2026-11-10' }] })
+    const { client } = adminClientFor({ futureLeave: [{ leave_date: '2026-11-09' }] })
 
     const result = await finalizeEmployeeSeparation(EMPLOYEE_ID, { adminClient: client, todayIso: TODAY })
 
     expect(result).toEqual({
       success: false,
-      error: 'This employee still has leave booked on 10 November 2026 (approved or waiting for a decision). Cancel or decline that leave before marking them as Former.',
+      error: 'This employee still has leave booked on 9 November 2026 (approved or waiting for a decision). Cancel or decline that leave before marking them as Former.',
       code: 'future_booked_leave',
     })
   })

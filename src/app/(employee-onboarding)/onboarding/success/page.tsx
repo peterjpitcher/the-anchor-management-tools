@@ -1,4 +1,5 @@
 import { getAppUrl } from '@/lib/env';
+import { createClient } from '@/lib/supabase/server';
 import { Alert, Card, CardBody, CardHeader, LinkButton } from '@/ds';
 import { StandalonePageHeader, StandaloneShell } from '@/components/shells/StandaloneShell';
 import { FinishedSignOutButton } from '../[token]/_components/OnboardingAccess';
@@ -7,10 +8,30 @@ interface OnboardingSuccessPageProps {
   searchParams?: Promise<{ type?: string }>;
 }
 
+/**
+ * Whether this browser has a session, read on the server. The page is public and can be reloaded
+ * or reopened after Sign Out, so it must not say "you are signed in" on the strength of having
+ * been reached. Anything that goes wrong reading it counts as not signed in.
+ */
+async function hasSessionOnThisDevice(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.getUser();
+    return !error && Boolean(data.user);
+  } catch (error) {
+    console.error('[onboarding success] Could not read the session:', {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
+}
+
 export default async function OnboardingSuccessPage({ searchParams }: OnboardingSuccessPageProps) {
   const params = await searchParams;
   const isPortalAccess = params?.type === 'portal_access';
   const appUrl = getAppUrl();
+  // Portal setup never signs the browser in, so there is nothing of theirs to sign out.
+  const signedIn = isPortalAccess ? false : await hasSessionOnThisDevice();
 
   return (
     <StandaloneShell label={isPortalAccess ? 'Staff Portal Setup' : 'Employee Onboarding'}>
@@ -44,8 +65,9 @@ export default async function OnboardingSuccessPage({ searchParams }: Onboarding
       </Card>
 
       {/* Only an onboarding link signs the browser in (createEmployeeAccount). Setting up portal
-          access does not, so offering Sign Out there would end whoever else is signed in. */}
-      {isPortalAccess ? null : (
+          access does not, so offering Sign Out there would end whoever else is signed in. With no
+          session (signed out already, or the page reopened later) there is nothing to say. */}
+      {!signedIn ? null : (
         <Card>
           <CardHeader title="Using a Shared Device?" />
           <CardBody className="space-y-3">

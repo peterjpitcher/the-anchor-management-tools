@@ -67,8 +67,11 @@ type Row = Record<string, any>
 
 const db: Record<string, Row[]> = {}
 let sessionUserId: string | null = null
+/** Tables whose single-row reads fail, for the paths that must say "could not read". */
+const failingReads = new Set<string>()
 
 function reset() {
+  failingReads.clear()
   for (const key of Object.keys(db)) delete db[key]
   db.employees = []
   db.employee_invite_tokens = []
@@ -141,7 +144,9 @@ function builder(table: string) {
     lte: () => api,
     limit: () => api,
     order: () => api,
-    maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
+    maybeSingle: async () => (failingReads.has(table)
+      ? { data: null, error: { code: 'PGRST000', message: `${table} read failed` } }
+      : { data: run()[0] ?? null, error: null }),
     single: async () => {
       const rows = run()
       return rows[0] ? { data: rows[0], error: null } : { data: null, error: { message: 'not found' } }
@@ -307,10 +312,6 @@ const adminClient = {
       createUser: async ({ email }: { email: string }) => ({
         data: { user: { id: `auth-${email}` } }, error: null,
       }),
-      // A login keeps the address it was made with, whatever the employee record says later.
-      getUserById: async (id: string) => ({
-        data: { user: { id, email: id.replace(/^auth-/, '') } }, error: null,
-      }),
       deleteUser: async () => ({ error: null }),
     },
   },
@@ -350,6 +351,7 @@ import {
 import { logAuditEvent } from '@/app/actions/audit'
 import { getLocalIsoDateDaysAhead, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
 import { sendOnboardingCompleteEmail } from '@/lib/email/employee-invite-emails'
+import { InviteEmailSendError } from '@/lib/employees/invite-email-failure'
 
 const PASSWORD = 'a-good-long-password'
 const DOB = '1990-05-01'
@@ -488,22 +490,32 @@ describe('employee onboarding journey', () => {
     expect((await getOnboardingSnapshot(token)).success).toBe(true)
   })
 
-  it('signs in with the login\'s own address after staff correct the email on the record', async () => {
-    const token = await invite('typo@exmaple.com')
+  // The employee edit refuses an email change on an Onboarding starter who has a login, and moves
+  // the login for current staff, so the record and the login never disagree. Should they ever, the
+  // link must not let in whoever holds the old address: sign in uses the address the page shows,
+  // and fails. Signing in with the login's own address (FF-63) let the old address in for good.
+  it('signs in with the record\'s own address, and fails closed if the login was left at another one', async () => {
+    const token = await invite('old@example.com')
     await createEmployeeAccount(token, PASSWORD)
     sessionUserId = null
-    // Staff correct the address and resend: the record and the new link say the right address,
-    // but the login was made with the old one.
-    db.employees[0].email_address = 'right@example.com'
-    db.employee_invite_tokens.find(t => t.token === token)!.email = 'right@example.com'
+    db.employees[0].email_address = 'new@example.com'
+    db.employee_invite_tokens.find(t => t.token === token)!.email = 'new@example.com'
 
+    // Only the address a login was made with can sign in.
+    const logins = new Set(db.employees.map(e => e.auth_user_id).filter(Boolean))
     authSignInMock.mockImplementation(async (email: string) => {
+      if (!logins.has(`auth-${email}`)) throw new Error('Invalid email or password')
       sessionUserId = `auth-${email}`
       return { success: true, userId: sessionUserId }
     })
-    expect(await signInToOnboarding(token, PASSWORD)).toEqual({ success: true })
-    expect(authSignInMock).toHaveBeenCalledWith('typo@exmaple.com', PASSWORD)
-    expect((await getOnboardingSnapshot(token)).success).toBe(true)
+
+    const result = await signInToOnboarding(token, PASSWORD)
+
+    expect(authSignInMock).toHaveBeenCalledTimes(1)
+    expect(authSignInMock).toHaveBeenCalledWith('new@example.com', PASSWORD)
+    expect(result.success).toBe(false)
+    expect(sessionUserId).toBeNull()
+    expect((await getOnboardingSnapshot(token)).success).toBe(false)
   })
 
   it('tells a starter plainly when the sign-in password is wrong', async () => {
@@ -749,7 +761,9 @@ describe('employee onboarding journey', () => {
     await saveOnboardingTimeOff(token, 'none', [], 1)
     await fillTheMiddleOfTheFlow(token)
     await acknowledgeRightToWorkNotice(token)
-    vi.mocked(sendOnboardingCompleteEmail).mockRejectedValueOnce(new Error('Resend 503'))
+    vi.mocked(sendOnboardingCompleteEmail).mockRejectedValueOnce(
+      new InviteEmailSendError('The from address is not verified (403)'),
+    )
 
     // The starter's completion stands: the email is for the manager.
     expect(await submitOnboardingProfile(token)).toEqual({ success: true })
@@ -757,12 +771,70 @@ describe('employee onboarding journey', () => {
 
     expect(db.employee_notes).toHaveLength(1)
     expect(db.employee_notes[0]).toMatchObject({ employee_id: db.employees[0].employee_id, created_by_user_id: null })
-    expect(db.employee_notes[0].note_text).toMatch(/did not send \(Resend 503\)/)
+    // Plain words on the record staff read; the provider's own text only in the audit row.
+    expect(db.employee_notes[0].note_text).toBe(
+      'Onboarding completed, but the email telling the manager did not send because the email service did not accept it. ' +
+      'Check their booked time off and arrange their right to work check before their first shift.',
+    )
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'onboarding_complete_email',
       operation_status: 'failure',
-      error_message: 'Resend 503',
+      error_message: 'The from address is not verified (403)',
+      additional_info: expect.objectContaining({ email_outcome: 'not_sent' }),
     }))
+  })
+
+  it('says the manager email may have gone, not that it did not send, when the email service gave no answer', async () => {
+    const token = await invite('emailunknown@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    vi.mocked(sendOnboardingCompleteEmail).mockRejectedValueOnce(
+      new InviteEmailSendError('Resend 503', { uncertain: true }),
+    )
+
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+
+    expect(db.employee_notes[0].note_text).toBe(
+      'Onboarding completed. We sent the email telling the manager, but we did not hear back from the email service, so it may have gone. ' +
+      'Check their booked time off and arrange their right to work check before their first shift.',
+    )
+    expect(db.employee_notes[0].note_text).not.toContain('Resend 503')
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'onboarding_complete_email',
+      error_message: 'Resend 503',
+      additional_info: expect.objectContaining({ email_outcome: 'uncertain' }),
+    }))
+  })
+
+  // FF-64: a right to work record that cannot be read must reach the manager as "could not read",
+  // never as "still to check", which would hide a check already recorded.
+  it('tells the manager the right to work record could not be read when that read fails, and logs it', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const token = await invite('rtwfails@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    failingReads.add('employee_right_to_work')
+
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+
+    expect(vi.mocked(sendOnboardingCompleteEmail).mock.calls[0][0]).toMatchObject({
+      rightToWorkCheckedOn: null,
+      rightToWorkUnknown: true,
+      // The other reads still worked, so they are reported as facts.
+      timeOffAnswer: 'none',
+      ageUnknown: false,
+    })
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[onboarding] Failed to read the right to work for the completion email:',
+      { code: 'PGRST000', message: 'employee_right_to_work read failed' },
+    )
+    errorSpy.mockRestore()
   })
   it('keeps the stored bank details when the masks come back unchanged, and refuses an edited mask', async () => {
     const token = await invite('masks@example.com')

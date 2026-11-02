@@ -9,6 +9,7 @@ import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
 import { getHolidayYear } from '@/lib/leave/working-days';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
+import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -108,8 +109,10 @@ export default async function MyLeavePage() {
                           {formatDate(req.start_date)}
                           {req.start_date !== req.end_date && ` – ${formatDate(req.end_date)}`}
                         </p>
+                        {/* Days they said they cannot work are not holiday and are not counted in
+                            the holiday taken above, so each request says which it is. */}
                         <p className="text-xs text-text-muted mt-0.5">
-                          {days} day{days !== 1 ? 's' : ''}
+                          {leaveTypeLabel(req.leave_type)} · {days} day{days !== 1 ? 's' : ''}
                         </p>
                         {req.note && (
                           <p className="text-xs text-text-muted italic mt-0.5">&ldquo;{req.note}&rdquo;</p>

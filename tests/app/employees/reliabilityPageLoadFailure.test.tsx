@@ -119,6 +119,39 @@ describe('/employees/reliability when the leaderboard cannot be read', () => {
     )
   })
 
+  // A late holiday only counts for leave types that count in reliability, so the page needs
+  // leave_types to score it. Without them it says it could not load, rather than showing a score
+  // that may carry a penalty for days someone cannot work.
+  it('shows the same alert, not a score without the leave rules, when leave_types cannot be read', async () => {
+    tables({
+      employees: { data: [EMPLOYEE], error: null },
+      employee_reliability_events: {
+        data: [{
+          id: 'event-1',
+          employee_id: EMPLOYEE.employee_id,
+          event_type: 'late_holiday',
+          event_at: new Date().toISOString(),
+          source: 'holiday_approval',
+          idempotency_key: 'late_holiday:leave-1',
+          leave_request_id: '10000000-0000-4000-8000-000000000002',
+          impacted_shift_count: 0,
+          score_eligible: true,
+          created_at: new Date().toISOString(),
+        }],
+        error: null,
+      },
+      leave_types: { data: null, error: { message: 'permission denied for table leave_types' } },
+    })
+
+    await renderPage()
+
+    expectFailureShown()
+    expect(consoleError).toHaveBeenCalledWith(
+      '[employeeReliability] failed to read leave types for scoring',
+      expect.objectContaining({ message: expect.stringContaining('leave_types') }),
+    )
+  })
+
   it('still shows Empty when the read works and there really is nobody', async () => {
     tables({ employees: { data: [], error: null } })
 

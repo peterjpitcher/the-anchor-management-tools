@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Alert, Button, Field, Input } from '@/ds'
 import { AuthCard, AuthLink } from '@/app/auth/_components/AuthCard'
 import { signInToOnboarding } from '@/app/actions/employeeInvite'
-import { signOut } from '@/app/actions/auth'
+import { signOutOnThisDevice } from '@/app/actions/onboardingSignOut'
 
 interface OnboardingSignInFormProps {
   token: string
@@ -120,7 +120,10 @@ export function RetryLoadButton() {
   )
 }
 
-/** For a link opened while signed in as somebody else: sign out, then open it again. */
+/**
+ * For a link opened while signed in as somebody else: sign out, then open it again. That somebody
+ * is often a manager, so only this browser is signed out, never their other devices.
+ */
 export function SignOutAndRetryButton() {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
@@ -139,7 +142,7 @@ export function SignOutAndRetryButton() {
           setLoading(true)
           setError('')
           try {
-            const result = await signOut()
+            const result = await signOutOnThisDevice()
             if (result && 'error' in result && result.error) {
               setError('We could not sign you out. Please try again.')
               return
@@ -161,7 +164,9 @@ export function SignOutAndRetryButton() {
 /**
  * On the finished page after an onboarding link (not portal setup, which never signs in). Creating
  * the password, or signing in to carry on, signed this browser in as the starter, which may be a
- * shared venue device or a manager's computer, so they are offered a way to sign out there.
+ * shared venue device or a manager's computer, so they are offered a way to sign out there. The
+ * page shows this only when it has found a session (success/page.tsx), and it signs out this
+ * browser only, so the starter stays signed in on their own phone.
  */
 export function FinishedSignOutButton() {
   const [loading, setLoading] = useState(false)
@@ -186,7 +191,7 @@ export function FinishedSignOutButton() {
           setLoading(true)
           setError('')
           try {
-            const result = await signOut()
+            const result = await signOutOnThisDevice()
             if (result && 'error' in result && result.error) {
               setError('We could not sign you out. Please try again.')
               return

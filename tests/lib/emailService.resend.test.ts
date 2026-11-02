@@ -265,7 +265,7 @@ describe('sendEmail Resend provider', () => {
       text: 'Hello',
     })
 
-    expect(result).toEqual({ success: false, error: 'Recipient email address is suppressed' })
+    expect(result).toEqual({ success: false, error: 'Recipient email address is suppressed', code: 'recipient_suppressed' })
     expect(resendSend).not.toHaveBeenCalled()
   })
 })
