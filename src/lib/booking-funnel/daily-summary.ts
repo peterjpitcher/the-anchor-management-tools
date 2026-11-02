@@ -1,6 +1,7 @@
 import { escapeHtml } from '@/lib/cron/alerting'
 import { formatDateInLondon, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import { STAFF } from '@/lib/brand/palette'
+import { formStepKeepsReason } from '@/lib/booking-funnel/events'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 /**
@@ -11,8 +12,9 @@ import type { createAdminClient } from '@/lib/supabase/admin'
  * It is sent only when something was turned away or held up: a refusal, a failure, an availability
  * check that could not be worked out, or a booking form stopped before it could send. A form held
  * up by the security check or a missing detail is not called turned away, because nobody was
- * refused (see HELD_UP_REASONS). Codes and counts only; booking_funnel_events holds no guest
- * details, so neither does this.
+ * refused (see HELD_UP_REASONS), and a guest the security check held up only counts towards
+ * sending when the check never finished for them (see securityCheckStalls). Codes and counts
+ * only; booking_funnel_events holds no guest details, so neither does this.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -139,7 +141,7 @@ export async function loadDailyFunnelSummary(supabase: AdminClient, date: string
       if (row.stage === 'refused') summary.refusedTotal += 1
       else summary.failedTotal += 1
     } else if (row.stage === 'form' && row.reason_code) {
-      const reason = row.reason_code === 'blocked' ? row.upstream_code ?? null : null
+      const reason = formStepKeepsReason(row.reason_code) ? row.upstream_code ?? null : null
       const key = [row.route, row.reason_code, reason ?? ''].join('|')
       const line = forms.get(key) ?? { form: row.route, step: row.reason_code, reason, count: 0 }
       line.count += 1
@@ -154,11 +156,30 @@ export async function loadDailyFunnelSummary(supabase: AdminClient, date: string
   return summary
 }
 
+/**
+ * What the security check did to guests who had started filling in a form. The website reports a
+ * held-up check only for such a guest, and says `recovered` when the check finished for them after
+ * all, so the difference is the guests it stopped. A recovery is dated back to its stall, so both
+ * fall on the same day; clamped all the same, so a stall that reached us a moment after midnight
+ * can never make the count negative.
+ */
+export function securityCheckStalls(lines: FormLine[]): { heldUp: number; gotThrough: number; neverThrough: number } {
+  const count = (step: string) =>
+    lines.filter((line) => line.step === step && line.reason === 'no_security_token').reduce((sum, line) => sum + line.count, 0)
+  const heldUp = count('blocked')
+  const gotThrough = Math.min(count('recovered'), heldUp)
+  return { heldUp, gotThrough, neverThrough: heldUp - gotThrough }
+}
+
 /** Something was turned away or held up, so the summary goes out. A quiet day sends nothing. */
 export function summaryNeedsSending(summary: DailyFunnelSummary): boolean {
-  const formsBlocked = summary.forms.filter((line) => line.step === 'blocked').reduce((sum, line) => sum + line.count, 0)
+  // A held-up check that finished after all stopped nobody, so only the guests it stopped count.
+  const formsBlocked = summary.forms
+    .filter((line) => line.step === 'blocked' && line.reason !== 'no_security_token')
+    .reduce((sum, line) => sum + line.count, 0)
+  const { neverThrough } = securityCheckStalls(summary.forms)
   return (
-    summary.refusedTotal + summary.failedTotal + summary.availability.couldNotCheck + formsBlocked > 0 ||
+    summary.refusedTotal + summary.failedTotal + summary.availability.couldNotCheck + formsBlocked + neverThrough > 0 ||
     // A day too busy to read in full is itself worth an email.
     summary.truncated ||
     Boolean(summary.readError)
@@ -200,17 +221,22 @@ const REASON_LABELS: Record<string, string> = {
 const FORM_LABELS: Record<string, string> = { event_booking: 'Event booking form' }
 const STEP_LABELS: Record<string, string> = {
   opened: 'opened',
+  started: 'started filling in',
   submit_pressed: 'submit pressed',
   sent: 'sent',
 }
 
 /**
- * Form stops that are not a booking being turned away: the security check had not finished, which
- * the website counts once a visit whether or not anyone pressed book, or a detail was missing. Any
- * other reason, including one this code does not know, counts as turned away rather than being
- * played down.
+ * Form stops that are not a booking being turned away: the security check had not finished for a
+ * guest who had started filling in the form, which the website counts once a visit whether or not
+ * they pressed book, or a detail was missing. Any other reason, including one this code does not
+ * know, counts as turned away rather than being played down.
  */
 const HELD_UP_REASONS = new Set(['no_security_token', 'missing_fields'])
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? '' : 's'}`
+}
 
 function describeRefusal(line: RefusalLine): string {
   const where = ROUTE_LABELS[line.route] ?? line.route
@@ -220,14 +246,19 @@ function describeRefusal(line: RefusalLine): string {
   return `${where}: ${kind}, ${why}${code}. ${line.count} time${line.count === 1 ? '' : 's'}.`
 }
 
+function describeSecurityCheckStalls(lines: FormLine[]): string | null {
+  const { heldUp, gotThrough, neverThrough } = securityCheckStalls(lines)
+  if (heldUp === 0) return null
+  return (
+    `the security check held up ${plural(heldUp, 'guest')} who had started filling in the form. ` +
+    `Got through after all: ${gotThrough}. Never got through: ${neverThrough}. ` +
+    'A guest held up is shown a warning and our phone number.'
+  )
+}
+
 function describeFormStop(reason: string | null, count: number): string {
   const times = `${count} time${count === 1 ? '' : 's'}`
   switch (reason) {
-    case 'no_security_token':
-      return (
-        `the security check stalled or failed on ${count} visit${count === 1 ? '' : 's'}. This counts even if nobody presses book: ` +
-        'a guest may still book once the check finishes, and a robot counts the same as a person. A guest held up is shown a warning and our phone number.'
-      )
     case 'missing_fields':
       return `a detail was missing or wrong, so it was not sent. ${times}.`
     case 'server_refused':
@@ -246,11 +277,15 @@ function describeForms(forms: FormLine[]): string[] {
     const label = FORM_LABELS[form] ?? form
     const totals = new Map<string, number>()
     const stops: string[] = []
+    const stalls = describeSecurityCheckStalls(lines)
+    if (stalls) stops.push(`${label}: ${stalls}`)
     for (const line of lines) {
       totals.set(line.step, (totals.get(line.step) ?? 0) + line.count)
-      if (line.step === 'blocked') stops.push(`${label}: ${describeFormStop(line.reason, line.count)}`)
+      if (line.step === 'blocked' && line.reason !== 'no_security_token') {
+        stops.push(`${label}: ${describeFormStop(line.reason, line.count)}`)
+      }
     }
-    const parts = ['opened', 'submit_pressed', 'sent'].map((step) => `${STEP_LABELS[step]} ${totals.get(step) ?? 0}`)
+    const parts = ['opened', 'started', 'submit_pressed', 'sent'].map((step) => `${STEP_LABELS[step]} ${totals.get(step) ?? 0}`)
     return [`${label}: ${parts.join(', ')}.`, ...stops]
   })
 }
@@ -286,10 +321,10 @@ export function buildDailyFunnelEmail(summary: DailyFunnelSummary, reportsUrl: s
     subject = `Website bookings summary for ${day} is incomplete: see inside`
     intro = `The summary of website bookings on ${day} could not be completed, so it cannot say whether anyone was turned away.`
   } else {
-    const stalled = formStops((reason) => reason === 'no_security_token')
+    const { neverThrough } = securityCheckStalls(summary.forms)
     const missing = formStops((reason) => reason === 'missing_fields')
     const heldUp = [
-      ...(stalled > 0 ? [`security check stalled or failed on ${stalled} visit${stalled === 1 ? '' : 's'}`] : []),
+      ...(neverThrough > 0 ? [`security check held up ${plural(neverThrough, 'guest')} who never got through`] : []),
       ...(missing > 0 ? [`a detail was missing or wrong ${missing} time${missing === 1 ? '' : 's'}`] : []),
     ]
     subject = `No website bookings refused on ${day}${heldUp.length > 0 ? `: ${heldUp.join(', ')}` : ''}`
