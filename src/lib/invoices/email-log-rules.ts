@@ -2,8 +2,9 @@
  * How to read a row of `email_messages` that is saved against an invoice.
  *
  * PURE: no database, no clock. The reminder job uses it to decide whether a client has been
- * emailed recently, and the invoice page uses it to decide what to show as email history, so
- * the two can never disagree about what counts as an email to the customer.
+ * chased this week and which emails left a copy off, and the invoice page uses it to decide what
+ * to show as email history, so the two can never disagree about what counts as an email to the
+ * customer.
  */
 
 interface InvoiceEmailRecord {

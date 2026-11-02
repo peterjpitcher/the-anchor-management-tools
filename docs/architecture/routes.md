@@ -205,7 +205,7 @@ All guarded by `authorizeCronRequest()` (`src/lib/cron-auth.ts`, CRON_SECRET bea
 | `/api/cron/rota-shift-acceptance` | `30 7 * * *` |
 | `/api/cron/event-checklist-reminders` | `0 8 * * *` |
 | `/api/cron/private-booking-monitor` | `0 9 * * *` |
-| `/api/cron/invoice-reminders` | `0 9 * * *` |
+| `/api/cron/invoice-reminders` | `30 9 * * 1-5` |
 | `/api/cron/birthday-reminders` | `0 9 * * *` |
 | `/api/cron/oj-projects-billing-reminders` | `0 9 * * *` |
 | `/api/cron/employee-invite-chase` | `0 9 * * *` |
