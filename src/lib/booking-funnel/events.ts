@@ -40,6 +40,15 @@ export function formStepKeepsReason(step: string): boolean {
   return step === 'blocked' || step === 'recovered'
 }
 
+/**
+ * A `recovered` signal says how long the check had held the visitor up, and is dated back to the
+ * moment it held them up. The daily summary counts each day on its own, so a recovery dated when
+ * it arrived would answer a different guest's stall whenever the two fell either side of
+ * midnight, and a guest the check really stopped could go unreported. A week is far longer than
+ * anyone keeps a booking form open.
+ */
+export const MAX_HELD_SECONDS = 7 * 24 * 60 * 60
+
 export async function recordFunnelEvent(supabase: AdminClient, event: FunnelEventInsert): Promise<boolean> {
   try {
     const { error } = await supabase.from('booking_funnel_events').insert(event)

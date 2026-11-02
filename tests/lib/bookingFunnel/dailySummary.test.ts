@@ -212,7 +212,7 @@ describe('buildDailyFunnelEmail', () => {
     })
 
     it('never counts more guests through than were held up', () => {
-      // Held up just before midnight and through just after: the recovery lands on the next day.
+      // A stall that reached us a moment after midnight, its recovery dated back to just before it.
       const lines = [form('blocked', 1, 'no_security_token'), form('recovered', 2, 'no_security_token')]
 
       expect(securityCheckStalls(lines)).toEqual({ heldUp: 1, gotThrough: 1, neverThrough: 0 })
