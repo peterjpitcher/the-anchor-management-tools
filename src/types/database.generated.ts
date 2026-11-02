@@ -20041,18 +20041,18 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "voucher_batches_terms_version_fkey"
-            columns: ["terms_version"]
-            isOneToOne: false
-            referencedRelation: "terms_versions"
-            referencedColumns: ["version"]
-          },
-          {
             foreignKeyName: "voucher_batches_marketing_campaign_id_fkey"
             columns: ["marketing_campaign_id"]
             isOneToOne: false
             referencedRelation: "marketing_campaigns"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voucher_batches_terms_version_fkey"
+            columns: ["terms_version"]
+            isOneToOne: false
+            referencedRelation: "terms_versions"
+            referencedColumns: ["version"]
           },
         ]
       }
@@ -20387,6 +20387,13 @@ export type Database = {
             referencedColumns: ["employee_id"]
           },
           {
+            foreignKeyName: "vouchers_marketing_recipient_id_fkey"
+            columns: ["marketing_recipient_id"]
+            isOneToOne: true
+            referencedRelation: "marketing_campaign_recipients"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "vouchers_redeemed_by_fkey"
             columns: ["redeemed_by"]
             isOneToOne: false
@@ -20419,13 +20426,6 @@ export type Database = {
             columns: ["type_id"]
             isOneToOne: false
             referencedRelation: "voucher_types"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "vouchers_marketing_recipient_id_fkey"
-            columns: ["marketing_recipient_id"]
-            isOneToOne: true
-            referencedRelation: "marketing_campaign_recipients"
             referencedColumns: ["id"]
           },
         ]
@@ -21957,13 +21957,16 @@ export type Database = {
           id: string
           last_attempt_at: string | null
           lease_expires_at: string | null
+          lifecycle_anchor_date: string | null
           max_attempts: number
+          merge_fields: Json | null
           next_attempt_at: string | null
           provider_message_id: string | null
           sent_at: string | null
           skip_reason: string | null
           status: string
           updated_at: string
+          voucher_id: string | null
         }[]
         SetofOptions: {
           from: "*"
