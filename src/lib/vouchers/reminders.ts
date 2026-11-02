@@ -466,6 +466,65 @@ async function loadDigitalVoucherIds(
   return digital
 }
 
+/**
+ * Customers among the claimed digital-voucher rows who have since objected to marketing email:
+ * unsubscribed, or on the do-not-contact list. A return-visit voucher came from a marketing
+ * email, so its reminder is marketing too and must honour an objection made after the send.
+ *
+ * A failed lookup throws, as loadDigitalVoucherIds does: sending to someone who may have
+ * unsubscribed is the wrong way to fail. The claimed rows stay pending for the next run.
+ */
+async function loadMarketingObjections(
+  supabase: AdminClient,
+  rows: ClaimedVoucherReminder[]
+): Promise<Set<string>> {
+  const objected = new Set<string>()
+  const customerIds = Array.from(new Set(rows.map((row) => row.customer_id).filter((id): id is string => Boolean(id))))
+  if (customerIds.length === 0) return objected
+
+  const { data: customers, error: customerError } = await supabase
+    .from('customers')
+    .select('id, email, marketing_email_opted_out_at')
+    .in('id', customerIds)
+  if (customerError) {
+    throw new Error(`Could not check marketing opt-outs: ${customerError.message}`)
+  }
+
+  const customerRows = (customers ?? []) as Array<{
+    id: string
+    email: string | null
+    marketing_email_opted_out_at: string | null
+  }>
+  const customerByEmail = new Map<string, string[]>()
+  for (const customer of customerRows) {
+    if (customer.marketing_email_opted_out_at) objected.add(customer.id)
+    const email = customer.email?.trim().toLowerCase()
+    if (email) customerByEmail.set(email, [...(customerByEmail.get(email) ?? []), customer.id])
+  }
+  // The claim's own address too, in case it differs from the customer row read above.
+  for (const row of rows) {
+    const email = row.email?.trim().toLowerCase()
+    if (email && row.customer_id) customerByEmail.set(email, [...(customerByEmail.get(email) ?? []), row.customer_id])
+  }
+
+  const emails = Array.from(customerByEmail.keys())
+  if (emails.length === 0) return objected
+
+  const { data: listed, error: dncError } = await supabase
+    .from('marketing_do_not_contact')
+    .select('email_normalised')
+    .in('email_normalised', emails)
+    .is('removed_at', null)
+  if (dncError) {
+    throw new Error(`Could not check the do-not-contact list: ${dncError.message}`)
+  }
+
+  for (const entry of (listed ?? []) as Array<{ email_normalised: string | null }>) {
+    for (const id of customerByEmail.get(entry.email_normalised ?? '') ?? []) objected.add(id)
+  }
+  return objected
+}
+
 async function loadBookingRequirements(
   supabase: AdminClient,
   voucherIds: string[]
@@ -716,6 +775,10 @@ export async function sendDueVoucherReminders(params: {
       loadBookingRequirements(supabase, unclassifiedVoucherIds),
       loadDigitalVoucherIds(supabase, Array.from(new Set(rows.map((row) => row.voucher_id))))
     ])
+    const marketingObjections = await loadMarketingObjections(
+      supabase,
+      rows.filter((row) => digitalVoucherIds.has(row.voucher_id))
+    )
 
     for (const row of rows) {
       try {
@@ -728,6 +791,14 @@ export async function sendDueVoucherReminders(params: {
         }
 
         const digital = digitalVoucherIds.has(row.voucher_id)
+        if (digital && row.customer_id && marketingObjections.has(row.customer_id)) {
+          await markReminderOutcome(supabase, row.reminder_id, 'skipped', {
+            errorText: 'guest has unsubscribed from marketing email since the voucher was sent'
+          })
+          totals.skipped += 1
+          continue
+        }
+
         const target = resolveChannel(row, emailBlocked, suppressedEmails, digital)
         if (target.channel === null) {
           await markReminderOutcome(supabase, row.reminder_id, 'skipped', {
