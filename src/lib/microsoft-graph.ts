@@ -157,6 +157,15 @@ export interface InvoiceEmailSendResult {
    * so it will be missing from the invoice's email history. Never a reason to send again.
    */
   recorded?: boolean
+  /**
+   * The copied addresses the email was handed to the provider with, after the block list check.
+   * Missing only when the send never got that far. A caller's own log of who was copied is
+   * written from this, never from the addresses it asked for: those included blocked addresses
+   * and recorded them as sent.
+   */
+  ccKept?: string[]
+  /** The copied addresses left off because they are on the block list. */
+  ccDropped?: string[]
   pdfBuffer?: Buffer
 }
 
@@ -284,6 +293,8 @@ export async function sendInvoiceEmail(
       uncertain: result.uncertain === true,
       // A send can succeed with no record of it (see the note on `requireLog` above).
       recorded: result.success ? Boolean(result.emailMessageId) : undefined,
+      ccKept: copied.kept,
+      ccDropped: copied.dropped,
       // Returned so a caller can archive the exact bytes the customer
       // received, rather than regenerating a document that may since have
       // drifted.

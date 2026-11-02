@@ -125,12 +125,17 @@ function inferKind(subject: string): InvoiceEmailHistoryKind {
   return 'other'
 }
 
-function kindOf(row: InvoiceEmailRow): { kind: InvoiceEmailHistoryKind; inferred: boolean } {
+function kindOf(row: Pick<InvoiceEmailRow, 'subject' | 'metadata'>): { kind: InvoiceEmailHistoryKind; inferred: boolean } {
   const recorded = emailMetadata(row).email_kind
   if (typeof recorded === 'string' && RECORDED_KINDS.has(recorded)) {
     return { kind: recorded as InvoiceEmailKind, inferred: false }
   }
   return { kind: inferKind(String(row.subject ?? '')), inferred: true }
+}
+
+/** What an invoice email was, labelled as the invoice page labels it ("Invoice", "Receipt"...). */
+export function invoiceEmailKindLabel(row: Pick<InvoiceEmailRow, 'subject' | 'metadata'>): string {
+  return KIND_LABELS[kindOf(row).kind]
 }
 
 /**

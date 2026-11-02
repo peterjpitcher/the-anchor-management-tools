@@ -91,6 +91,8 @@ interface Scenario {
   receiptMatches?: Row[]
   /** Reading the client's bank payments fails. */
   failBankCheck?: boolean
+  /** Reading `email_messages` fails. */
+  failEmailRead?: boolean
 }
 
 const OWNER = 'owner@orangejelly.example'
@@ -198,7 +200,15 @@ function fakeDb(scenario: Scenario) {
         )
       )
     }
-    if (query.table === 'email_messages') return ok(scenario.emails ?? [])
+    if (query.table === 'email_messages') {
+      if (scenario.failEmailRead) return { data: null, error: { message: 'statement timeout' } }
+      // A read by page or with a limit gets only those rows, as PostgREST gives them.
+      const range = query.filters.find((filter) => filter[0] === 'range')
+      const limit = query.filters.find((filter) => filter[0] === 'limit')
+      const emails = scenario.emails ?? []
+      if (range) return ok(emails.slice(range[1] as number, (range[2] as number) + 1))
+      return ok(limit ? emails.slice(0, limit[1] as number) : emails)
+    }
     if (query.table === 'invoice_email_logs') return ok(null)
     if (query.table === 'receipt_vendors') {
       return scenario.failBankCheck
@@ -231,7 +241,7 @@ function fakeDb(scenario: Scenario) {
             .then(() => answer(query))
             .then(resolve, reject),
       }
-      for (const method of ['eq', 'in', 'is', 'not', 'or', 'lt', 'lte', 'gte', 'order', 'limit']) {
+      for (const method of ['eq', 'in', 'is', 'not', 'or', 'lt', 'lte', 'gte', 'order', 'limit', 'range']) {
         builder[method] = (...args: unknown[]) => {
           query.filters.push([method, ...args])
           return builder
@@ -303,7 +313,13 @@ beforeEach(() => {
   vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '2026-10-01')
   vi.mocked(authorizeCronRequest).mockReturnValue({ authorized: true } as never)
   vi.mocked(sendEmail).mockResolvedValue({ success: true, messageId: 'summary-1' } as never)
-  vi.mocked(sendInvoiceEmail).mockResolvedValue({ success: true, messageId: 'reminder-1' })
+  // As the real sender answers when no copied address is blocked: every copy asked for is kept.
+  vi.mocked(sendInvoiceEmail).mockImplementation(async (_invoice, _to, _subject, _body, cc) => ({
+    success: true,
+    messageId: 'reminder-1',
+    ccKept: cc ?? [],
+    ccDropped: [],
+  }))
   vi.mocked(claimIdempotencyKey).mockResolvedValue({ state: 'claimed' })
   vi.mocked(persistIdempotencyResponse).mockResolvedValue(undefined)
   vi.mocked(releaseIdempotencyClaim).mockResolvedValue(undefined)
@@ -505,6 +521,26 @@ describe('invoice reminders cron: sending', () => {
 
     expect(savedRun(queries)).toMatchObject({ status: 'completed', state: { summary: 'accepted' } })
     expect(reportCronFailure).not.toHaveBeenCalled()
+  })
+
+  it('logs only the copies the reminder actually went to, never a blocked one', async () => {
+    const { queries } = fakeDb({ invoices: [invoice()] })
+    // The sender left the copied address off: it is on the block list.
+    vi.mocked(sendInvoiceEmail).mockResolvedValueOnce({
+      success: true,
+      messageId: 'reminder-1',
+      ccKept: [],
+      ccDropped: ['director@acme.example'],
+    })
+
+    const { payload } = await run()
+
+    expect(payload.results).toMatchObject({ reminders_sent: 1, summary: 'accepted' })
+    // Asked for, so the sender could check it...
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][4]).toEqual(['director@acme.example'])
+    // ...but not logged as sent to.
+    const logRows = queries.find((query) => query.table === 'invoice_email_logs')?.payload as Row[]
+    expect(logRows.map((row) => row.sent_to)).toEqual(['accounts@acme.example'])
   })
 
   it('sends the second reminder once the first is a week old', async () => {
@@ -972,6 +1008,157 @@ describe('invoice reminders cron: the summary', () => {
     expect(email.text).toContain('Not reported before')
     expect(email.text).toContain('- Tuesday 13 October: INV-0101, Acme Events Ltd: first reminder to accounts@acme.example')
     assertCleanText(email.text)
+  })
+
+  describe('copies left off', () => {
+    // An invoice email from any sender, saved as `sendInvoiceEmail` saves one that left a blocked
+    // copied address off: the main contact got it, the blocked copy did not, and it says "sent".
+    const leftOffEmail = (invoiceId: string, invoiceNumber: string, sentAt: string, overrides: Row = {}): Row => ({
+      invoice_id: invoiceId,
+      subject: `Invoice ${invoiceNumber} from Orange Jelly Limited`,
+      status: 'sent',
+      created_at: sentAt,
+      sent_at: sentAt,
+      metadata: {
+        invoice_number: invoiceNumber,
+        email_kind: 'invoice',
+        cc_proposed: ['ops@barons.example', 'copies@barons.example'],
+        cc_dropped: ['copies@barons.example'],
+        cc: ['ops@barons.example'],
+      },
+      ...overrides,
+    })
+    const checkedRun = (runKey: string, delivery: string, checkedTo: string): Row => ({
+      run_key: runKey,
+      status: 'completed',
+      result: asSaved({ v: 1, sent: [], problems: [], needs_you_keys: [], summary: delivery, copies_checked_to: checkedTo }),
+    })
+
+    it('tells the owner an invoice email went without a copy, without naming the address', async () => {
+      const { queries } = fakeDb({
+        invoices: [],
+        emails: [leftOffEmail('inv-9', 'INV-0999', '2026-10-12T14:05:00.000Z')],
+      })
+
+      const { payload } = await run()
+
+      expect(payload.results).toMatchObject({ copies_left_off: 1, summary: 'accepted' })
+      const email = summary()
+      expect(email.subject).toBe('Invoice reminders, Tuesday 13 October: 1 copy not sent')
+      expect(email.text).toContain('Copies not sent')
+      expect(email.text).toContain('The invoice page shows which address. Send them a copy by hand if they still need it')
+      expect(email.text).toContain('- INV-0999: invoice on Monday 12 October, 1 copy left off')
+      expect(email.text).toContain(`${APP_URL}/invoices/inv-9`)
+      expect(email.text).not.toContain('barons.example')
+      assertCleanText(email.subject)
+      assertCleanText(email.text)
+      expect(savedRun(queries).state).toMatchObject({ summary: 'accepted', copies_checked_to: '2026-10-13' })
+    })
+
+    it('checks each London day once: from where the last summary stopped, up to yesterday', async () => {
+      fakeDb({
+        invoices: [],
+        earlierRuns: [checkedRun('2026-10-12', 'accepted', '2026-10-12')],
+        emails: [
+          // Friday: the summary on Monday already covered it.
+          leftOffEmail('inv-old', 'INV-0990', '2026-10-09T10:00:00.000Z'),
+          // 00:30 on Monday in London, still Sunday in UTC.
+          leftOffEmail('inv-late', 'INV-0998', '2026-10-11T23:30:00.000Z'),
+          leftOffEmail('inv-9', 'INV-0999', '2026-10-12T14:05:00.000Z'),
+          // Never went, so it is a failure, reported elsewhere, not a missing copy.
+          leftOffEmail('inv-failed', 'INV-0997', '2026-10-12T15:00:00.000Z', { status: 'failed' }),
+          // Every copy went.
+          leftOffEmail('inv-whole', 'INV-0996', '2026-10-12T16:00:00.000Z', {
+            metadata: { invoice_number: 'INV-0996', email_kind: 'receipt', cc_dropped: [], cc: ['ops@barons.example'] },
+          }),
+          // Today: left for tomorrow's summary.
+          leftOffEmail('inv-today', 'INV-1000', '2026-10-13T08:00:00.000Z'),
+        ],
+      })
+
+      await run()
+
+      const text = summary().text
+      expect(text).toContain('- INV-0998: invoice on Monday 12 October, 1 copy left off')
+      expect(text).toContain('- INV-0999: invoice on Monday 12 October, 1 copy left off')
+      for (const left of ['INV-0990', 'INV-0997', 'INV-0996', 'INV-1000']) {
+        expect(text).not.toContain(left)
+      }
+    })
+
+    it('finds them again when the summary that should have said so never reached the owner', async () => {
+      fakeDb({
+        invoices: [],
+        earlierRuns: [
+          checkedRun('2026-10-12', 'failed', '2026-10-12'),
+          checkedRun('2026-10-09', 'accepted', '2026-10-09'),
+        ],
+        emails: [
+          leftOffEmail('inv-before', 'INV-0980', '2026-10-08T10:00:00.000Z'),
+          leftOffEmail('inv-friday', 'INV-0990', '2026-10-09T10:00:00.000Z', {
+            metadata: { invoice_number: 'INV-0990', email_kind: 'receipt', cc_dropped: ['a@x.example', 'b@x.example'] },
+          }),
+        ],
+      })
+
+      await run()
+
+      const email = summary()
+      expect(email.subject).toContain('2 copies not sent')
+      expect(email.text).toContain('- INV-0990: receipt on Friday 9 October, 2 copies left off')
+      expect(email.text).not.toContain('INV-0980')
+    })
+
+    it('reads every page before moving its marker on, so a copy left off past the first page is still found', async () => {
+      // Every copy went on all of these.
+      const whole = (index: number): Row =>
+        leftOffEmail(`inv-whole-${index}`, `INV-W${index}`, '2026-10-12T09:00:00.000Z', {
+          id: `email-${index}`,
+          metadata: { invoice_number: `INV-W${index}`, email_kind: 'invoice', cc_dropped: [], cc: ['ops@barons.example'] },
+        })
+      const { queries } = fakeDb({
+        invoices: [],
+        emails: [...Array.from({ length: 2500 }, (_, index) => whole(index)), leftOffEmail('inv-9', 'INV-0999', '2026-10-12T17:00:00.000Z')],
+      })
+
+      const { payload } = await run()
+
+      expect(payload.results).toMatchObject({ copies_left_off: 1, problems: 0 })
+      expect(summary().text).toContain('- INV-0999: invoice on Monday 12 October, 1 copy left off')
+      expect(savedRun(queries).state.copies_checked_to).toBe('2026-10-13')
+      // Read by whole London days, from midnight on the first (BST: 23:00 the evening before
+      // in UTC) up to the start of today, in a fixed order.
+      const read = queries.find((query) => query.table === 'email_messages')!
+      expect(read.filters).toContainEqual(['gte', 'created_at', '2026-10-05T23:00:00.000Z'])
+      expect(read.filters).toContainEqual(['lt', 'created_at', '2026-10-12T23:00:00.000Z'])
+      expect(read.filters).toContainEqual(['order', 'id', { ascending: true }])
+    })
+
+    it('leaves its marker where it was when there are too many emails to read them all', async () => {
+      const whole = leftOffEmail('inv-whole', 'INV-W', '2026-10-12T09:00:00.000Z', {
+        metadata: { invoice_number: 'INV-W', email_kind: 'invoice', cc_dropped: [] },
+      })
+      const { queries } = fakeDb({ invoices: [], emails: Array.from({ length: 20_001 }, () => whole) })
+
+      await run()
+
+      expect(summary().text).toContain(
+        'Could not check whether any invoice email went without one of its copies (More than 20000 invoice emails to check, so the check was not finished). The next summary will check again'
+      )
+      expect(savedRun(queries).state.copies_checked_to).toBeUndefined()
+    })
+
+    it('says so when the check cannot be made, and checks the same days again next time', async () => {
+      const { queries } = fakeDb({ invoices: [], failEmailRead: true })
+
+      const { payload } = await run()
+
+      expect(payload.results).toMatchObject({ copies_left_off: 0, problems: 1 })
+      expect(summary().text).toContain(
+        'Could not check whether any invoice email went without one of its copies (Could not read recent invoice emails: statement timeout). The next summary will check again'
+      )
+      expect(savedRun(queries).state.copies_checked_to).toBeUndefined()
+    })
   })
 
   it('marks the run failed and raises an alert on a fatal error', async () => {

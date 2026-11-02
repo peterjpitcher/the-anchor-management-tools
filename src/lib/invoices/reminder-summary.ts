@@ -10,7 +10,7 @@
  * a day with nothing to say. See tasks/spec-2026-10-04-invoice-issuing-and-chasing.md (R2).
  */
 
-import { getIsoWeekday } from '@/lib/dateUtils'
+import { getIsoWeekday, isValidIsoDate } from '@/lib/dateUtils'
 import { formatInvoiceDate } from './email-copy'
 import { nextRunDate, type ReminderStage } from './reminder-rules'
 
@@ -53,6 +53,25 @@ export interface SummaryNeedsYouEntry {
 }
 
 /**
+ * An invoice email (from any sender, not only this job) that went without one or more of its
+ * copies, because those addresses are on the block list. The sender records it as sent, so
+ * without this nobody would know: a client's accounts contact missed two Barons Pubs emails a
+ * month apart that way. The addresses are not carried, as the To address is the only customer
+ * address a summary ever carries; the invoice page names them.
+ */
+export interface SummaryCopiesLeftOffEntry {
+  invoiceNumber: string | null
+  clientName: string | null
+  /** What the email was, as the invoice page labels it: "Invoice", "Receipt", "Chase"... */
+  kindLabel: string
+  /** How many copied addresses were left off. */
+  copies: number
+  /** London date the email was sent. */
+  date: string
+  url: string
+}
+
+/**
  * Whether a run's summary reached the owner.
  *  - pending:    the run had not got as far as sending it (it died first)
  *  - accepted:   sent
@@ -74,6 +93,12 @@ export interface ReminderRunState {
   summary: SummaryDelivery
   /** Why the run, or its summary, failed. */
   error?: string
+  /**
+   * The London date this run checked invoice emails up to, for copies left off: everything sent
+   * before it. Saved only when the check worked. The next run checks from the latest of these
+   * whose summary reached the owner, so a lost summary's entries are found again, not dropped.
+   */
+  copies_checked_to?: string
 }
 
 function asText(value: unknown): string | null {
@@ -141,6 +166,7 @@ export function parseRunState(raw: unknown): ReminderRunState | null {
   const needsYouKeys = (Array.isArray(record.needs_you_keys) ? record.needs_you_keys : []).filter(
     (key): key is string => typeof key === 'string'
   )
+  const copiesCheckedTo = asText(record.copies_checked_to)
 
   return {
     v: 1,
@@ -149,6 +175,7 @@ export function parseRunState(raw: unknown): ReminderRunState | null {
     needs_you_keys: needsYouKeys,
     summary: record.summary,
     ...(asText(record.error) ? { error: asText(record.error) as string } : {}),
+    ...(copiesCheckedTo && isValidIsoDate(copiesCheckedTo) ? { copies_checked_to: copiesCheckedTo } : {}),
   }
 }
 
@@ -196,6 +223,8 @@ export interface ReminderSummaryInput {
   previousNeedsYouKeys: string[] | null
   /** What an earlier run sent and hit, when its own summary never reached the owner. */
   carriedOver?: { sent: SummarySentEntry[]; problems: SummaryProblemEntry[] } | null
+  /** Invoice emails since the last summary that went without one or more of their copies. */
+  copiesLeftOff?: SummaryCopiesLeftOffEntry[]
 }
 
 interface ReminderSummary {
@@ -243,6 +272,8 @@ function count(total: number, singular: string, plural: string): string {
  */
 export function buildReminderSummary(input: ReminderSummaryInput): ReminderSummary | null {
   const problems = dedupeProblems(input.problems)
+  const copiesLeftOff = input.copiesLeftOff ?? []
+  const copiesNotSent = copiesLeftOff.reduce((total, entry) => total + entry.copies, 0)
   const carriedSent = input.carriedOver?.sent ?? []
   const carriedProblems = dedupeProblems(input.carriedOver?.problems ?? [])
   const showNeedsYou = shouldShowNeedsYou(input.today, needsYouKeys(input.needsYou), input.previousNeedsYouKeys)
@@ -269,6 +300,17 @@ export function buildReminderSummary(input: ReminderSummaryInput): ReminderSumma
       'Needs you',
       ...input.needsYou.flatMap((entry) => [
         `- ${invoiceLabel(entry.invoiceNumber, entry.clientName)}: ${entry.detail}`,
+        `  ${entry.url}`,
+      ]),
+    ])
+  }
+
+  if (copiesLeftOff.length > 0) {
+    sections.push([
+      'Copies not sent',
+      'These went to the main contact, but a copied address was on the block list (after a bounce or a spam complaint), so it was left off. The invoice page shows which address. Send them a copy by hand if they still need it, and if the block looks wrong, get it cleared before the next email.',
+      ...copiesLeftOff.flatMap((entry) => [
+        `- ${invoiceLabel(entry.invoiceNumber, entry.clientName) || 'An invoice'}: ${entry.kindLabel.toLowerCase()} on ${formatInvoiceDate(entry.date)}, ${count(entry.copies, 'copy', 'copies')} left off`,
         `  ${entry.url}`,
       ]),
     ])
@@ -311,6 +353,7 @@ export function buildReminderSummary(input: ReminderSummaryInput): ReminderSumma
     input.sent.length > 0 ? `${input.sent.length} sent` : null,
     input.goingNext.length > 0 ? `${input.goingNext.length} going next` : null,
     showNeedsYou ? count(input.needsYou.length, 'needs you', 'need you') : null,
+    copiesNotSent > 0 ? `${count(copiesNotSent, 'copy', 'copies')} not sent` : null,
     problems.length > 0 ? count(problems.length, 'problem', 'problems') : null,
     carriedSent.length + carriedProblems.length > 0
       ? `${carriedSent.length + carriedProblems.length} not reported before`
