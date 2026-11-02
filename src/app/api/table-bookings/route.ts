@@ -23,6 +23,7 @@ import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
 import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
+import { recordTableBookingMarketingConversion } from '@/lib/email/marketing/table-booking-conversion'
 import {
   alignTablePaymentHoldToScheduledSend,
   chargedDepositAmount,
@@ -1070,6 +1071,19 @@ export async function POST(request: NextRequest) {
             eventType: 'table_booking_created'
           })
         ]
+
+        // A booking made from a marketing email's link names that email in utm_content. Recorded
+        // as a conversion so the campaign's results count it; it never holds up the booking.
+        if (bookingResult.table_booking_id) {
+          analyticsPromises.push(
+            recordTableBookingMarketingConversion(supabase, {
+              tableBookingId: bookingResult.table_booking_id,
+              customerId: customerResolution.customerId,
+              partySize: payload.party_size,
+              attribution,
+            }).then(() => undefined),
+          )
+        }
 
         if (bookingResult.state === 'pending_payment') {
           // Analytics records what was CHARGED, from the RPC, for the same reason the response
