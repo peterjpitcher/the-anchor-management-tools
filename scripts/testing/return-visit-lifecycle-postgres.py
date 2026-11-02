@@ -65,7 +65,7 @@ CREATE TABLE public.marketing_campaign_recipients (
   contact_id uuid, customer_id uuid, email text NOT NULL, status text NOT NULL DEFAULT 'pending', skip_reason text,
   failure_class text, error text, attempt_count integer NOT NULL DEFAULT 0, max_attempts integer NOT NULL DEFAULT 3,
   next_attempt_at timestamptz, last_attempt_at timestamptz, claimed_at timestamptz, lease_expires_at timestamptz,
-  sent_at timestamptz, created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  sent_at timestamptz, created_at timestamptz NOT NULL DEFAULT clock_timestamp(), updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT marketing_campaign_recipients_skip_reason_check CHECK (skip_reason IS NULL OR skip_reason = ANY (ARRAY[
     'unsubscribed','suppressed','do_not_contact','frequency_cap','not_eligible','campaign_cancelled','already_booked'])),
   CONSTRAINT mcr_skipped_has_reason CHECK (status <> 'skipped' OR skip_reason IS NOT NULL));
@@ -288,6 +288,34 @@ INSERT INTO marketing_campaigns (id, name, status, kind, audience, cooldown_days
             check(f"(SELECT count(*) = 5 FROM marketing_campaign_recipients WHERE campaign_id = {T1})", 'a later day adds nobody already in the cooldown')
             check(f"(SELECT count(*) = 0 FROM marketing_campaign_recipients WHERE campaign_id = {OTHER} AND status <> 'skipped')",
                   'nobody gets a second lifecycle email inside 30 days')
+
+            # A guest skipped for a closure week comes back on the next send day, reusing the
+            # row for the same visit. Customer 20 is the one guest outside the control group.
+            # The control group share is dropped to 0 for the run, so a reset holdout row would show.
+            closed = f"SELECT id FROM marketing_campaign_recipients WHERE campaign_id = {T1} AND customer_id = {cust(20)}"
+            sql(f"""
+UPDATE marketing_campaign_recipients SET status = 'skipped', skip_reason = 'venue_closed', attempt_count = 1, error = 'closed'
+ WHERE id = ({closed});
+UPDATE marketing_campaigns SET last_promoted_on = NULL, holdout_percent = 0 WHERE id = {T1};
+""")
+            sql("SELECT * FROM promote_due_marketing_campaigns();")
+            check(f"""(SELECT status = 'pending' AND skip_reason IS NULL AND attempt_count = 0 AND error IS NULL
+                     FROM marketing_campaign_recipients WHERE id = ({closed}))""",
+                  'a guest skipped while the kitchen was closed is picked again on the next send day')
+            check(f"(SELECT count(*) = 5 FROM marketing_campaign_recipients WHERE campaign_id = {T1})", 'the closed guest reuses their row rather than adding one')
+            check(f"(SELECT count(*) = 4 FROM marketing_campaign_recipients WHERE campaign_id = {T1} AND status = 'skipped' AND skip_reason = 'holdout')",
+                  'the control group is never reset into the send')
+            sql(f"""
+UPDATE marketing_campaign_recipients SET attempt_count = 2 WHERE id = ({closed});
+UPDATE marketing_campaigns SET last_promoted_on = NULL WHERE id = {T1};
+""")
+            sql("SELECT * FROM promote_due_marketing_campaigns();")
+            check(f"(SELECT attempt_count = 2 FROM marketing_campaign_recipients WHERE id = ({closed}))",
+                  'a guest already in the send is left exactly as they were')
+            sql(f"""
+UPDATE marketing_campaign_recipients SET attempt_count = 0 WHERE campaign_id = {T1};
+UPDATE marketing_campaigns SET holdout_percent = 20 WHERE id = {T1};
+""")
 
             # complete_finished must leave a lifecycle campaign running even with nothing pending.
             sql(f"UPDATE marketing_campaign_recipients SET status = 'skipped', skip_reason = 'not_eligible' WHERE campaign_id = {OTHER};")

@@ -358,7 +358,27 @@ BEGIN
           AND other.customer_id = a.customer_id
           AND (other.status IN ('pending', 'sending', 'sent', 'needs_review') OR other.skip_reason = 'holdout')
           AND other.created_at > now() - interval '30 days')
-    ON CONFLICT DO NOTHING;
+    -- The cooldown check above lets a skipped guest back in (a closure week, say), but their
+    -- old row holds the same visit and would block the insert. Reuse it as a fresh selection.
+    -- Never a holdout, a row that got as far as a voucher, or anything not skipped.
+    ON CONFLICT (campaign_id, customer_id, lifecycle_anchor_date) WHERE customer_id IS NOT NULL
+    DO UPDATE SET
+      email = EXCLUDED.email,
+      status = EXCLUDED.status,
+      skip_reason = EXCLUDED.skip_reason,
+      merge_fields = EXCLUDED.merge_fields,
+      created_at = now(),
+      updated_at = now(),
+      attempt_count = 0,
+      next_attempt_at = NULL,
+      last_attempt_at = NULL,
+      claimed_at = NULL,
+      lease_expires_at = NULL,
+      error = NULL,
+      failure_class = NULL
+    WHERE r.status = 'skipped'
+      AND r.skip_reason IS DISTINCT FROM 'holdout'
+      AND r.voucher_id IS NULL;
 
     GET DIAGNOSTICS v_added = ROW_COUNT;
 
