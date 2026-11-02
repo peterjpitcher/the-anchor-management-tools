@@ -1012,3 +1012,11 @@ Branch `claude/blissful-torvalds-a636ff`, rebased on 14 October onto `origin/mai
 - [x] Gates on Node 20 after the rebase: lint, `npx tsc --noEmit`, `npm run typecheck:tests`, `npm test` and `npm run test:utc` (1,315 files, 14,510 tests each) and the build, all exit 0.
 - [ ] The coordinator pushes and merges this branch.
 - [ ] Fix the Twilio webhook log fault (filed as a task chip): none of the 86 inbound texts saved since 22 June 2026 has a `webhook_logs` row.
+
+## 2026-11-02 Table booking return visits (discovery and spec)
+- [x] Discovery: live data (713 visitors, 30 repeaters, 5 repeat Sunday bookers; guest round-ups reach 100 of 100 Sunday emailers), code map of marketing pipeline, consent, attribution, labels, win-back SMS
+- [x] Spec written: tasks/spec-2026-11-02-table-booking-return-visits.md (Phase 1 lifecycle "come back" email via guest marketing pipeline; Phase 2 attribution; Phase 3 walk-in capture and tidy)
+- [x] Owner decisions 1 to 6 received 2 Nov (now spec section 11).
+- [x] 2 Nov, later: owner decisions 1 to 6 recorded in spec section 11 (all diners; timing from research + own data; phone-only out; no-shows in; 10% then 25% digital vouchers via the voucher feature; walk-in capture in). Best-practice research (section 5) and voucher feature discovery (section 6) added. Spec is v2.
+- [x] Voucher questions A to D answered 2 Nov (food only, 70% GP basis, 3-day reminder, 1-in-5 holdout); design brief written: docs/design/brief-return-visit-voucher-email.md
+- [ ] Owner to get the voucher card designed from the brief, then hand spec + design to a build agent. Still no code, no migration, nothing sent.
