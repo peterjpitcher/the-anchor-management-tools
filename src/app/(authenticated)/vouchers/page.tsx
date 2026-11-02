@@ -179,6 +179,11 @@ export default async function VouchersOverviewPage() {
                       <Badge tone="warning">Low stock</Badge>
                     </span>
                   )}
+                  {row.digitalOnly && (
+                    <span className="ml-2 align-middle">
+                      <Badge tone="info">Email only</Badge>
+                    </span>
+                  )}
                 </TableCell>
                 <TableCell align="right">
                   <Link

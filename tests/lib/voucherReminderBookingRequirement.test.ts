@@ -23,6 +23,11 @@ function buildClient(options: {
   claimed: ClaimRow[]
   voucherRows?: Array<Record<string, unknown>>
   voucherLookupError?: boolean
+  digitalVoucherIds?: string[]
+  digitalLookupError?: boolean
+  optedOutCustomerIds?: string[]
+  doNotContactEmails?: string[]
+  objectionLookupError?: 'customers' | 'do_not_contact'
 }) {
   const voucherSelectIn = vi.fn().mockResolvedValue(
     options.voucherLookupError
@@ -47,14 +52,35 @@ function buildClient(options: {
     from: vi.fn((table: string) => {
       if (table === 'customers') {
         return {
+          select: vi.fn((columns: string) => ({
+            in: vi.fn().mockResolvedValue(
+              columns.includes('marketing_email_opted_out_at') && options.objectionLookupError === 'customers'
+                ? { data: null, error: { message: 'boom' } }
+                : {
+                    data: (options.claimed as Array<{ customer_id?: string; email?: string | null }>).map((row) => ({
+                      id: row.customer_id,
+                      email: row.email ?? null,
+                      email_status: 'valid',
+                      email_deactivated_at: null,
+                      marketing_email_opted_out_at: (options.optedOutCustomerIds ?? []).includes(row.customer_id ?? '')
+                        ? '2026-10-01T09:00:00Z'
+                        : null,
+                    })),
+                    error: null,
+                  }
+            ),
+          })),
+        }
+      }
+      if (table === 'marketing_do_not_contact') {
+        return {
           select: vi.fn().mockReturnValue({
-            in: vi.fn().mockResolvedValue({
-              data: (options.claimed as Array<{ customer_id?: string }>).map((row) => ({
-                id: row.customer_id,
-                email_status: 'valid',
-                email_deactivated_at: null,
-              })),
-              error: null,
+            in: vi.fn().mockReturnValue({
+              is: vi.fn().mockResolvedValue(
+                options.objectionLookupError === 'do_not_contact'
+                  ? { data: null, error: { message: 'boom' } }
+                  : { data: (options.doNotContactEmails ?? []).map((email) => ({ email_normalised: email })), error: null }
+              ),
             }),
           }),
         }
@@ -66,6 +92,17 @@ function buildClient(options: {
       }
       if (table === 'vouchers') {
         return { select: vi.fn().mockReturnValue({ in: voucherSelectIn }) }
+      }
+      if (table === 'marketing_campaign_recipients') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue(
+              options.digitalLookupError
+                ? { data: null, error: { message: 'boom' } }
+                : { data: (options.digitalVoucherIds ?? []).map((id) => ({ voucher_id: id })), error: null }
+            ),
+          }),
+        }
       }
       throw new Error(`Unexpected table: ${table}`)
     }),
@@ -183,5 +220,94 @@ describe('voucher reminder booking requirement', () => {
     await run()
 
     expect(sentEmailText()).toContain('to book')
+  })
+
+  it('reminds an emailed voucher by email with its number, never by text', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true, voucher_number: 'AN-2611-0042', won_at_label: 'Come back offer, touch 1' })],
+      digitalVoucherIds: ['voucher-1'],
+    })
+
+    await run()
+
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sentEmailText()).toContain('Your voucher number is AN-2611-0042.')
+    expect(sentEmailText()).toContain('show this email at the bar')
+    expect(sentEmailText()).not.toContain('Come back offer')
+  })
+
+  it('skips an emailed voucher whose address no longer works rather than texting', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true, email: null })],
+      digitalVoucherIds: ['voucher-1'],
+    })
+
+    const totals = await run()
+
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(totals.skipped).toBe(1)
+  })
+
+  it('sends nothing when it cannot tell which vouchers were emailed', async () => {
+    buildClient({ claimed: [claimRow({ requires_booking: true })], digitalLookupError: true })
+
+    await expect(run()).rejects.toThrow(/sent by email/)
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
+  })
+
+  it('skips an emailed voucher when the guest has since unsubscribed', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true })],
+      digitalVoucherIds: ['voucher-1'],
+      optedOutCustomerIds: ['customer-1'],
+    })
+
+    const totals = await run()
+
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(totals.skipped).toBe(1)
+  })
+
+  it('skips an emailed voucher when the address is on the do-not-contact list', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true, email: ' Sam@Example.com ' })],
+      digitalVoucherIds: ['voucher-1'],
+      doNotContactEmails: ['sam@example.com'],
+    })
+
+    const totals = await run()
+
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(totals.skipped).toBe(1)
+  })
+
+  it.each(['customers', 'do_not_contact'] as const)(
+    'sends nothing when the %s opt-out check cannot be read',
+    async (failing) => {
+      buildClient({
+        claimed: [claimRow({ requires_booking: true })],
+        digitalVoucherIds: ['voucher-1'],
+        objectionLookupError: failing,
+      })
+
+      await expect(run()).rejects.toThrow(/opt-outs|do-not-contact/)
+      expect(sendEmail).not.toHaveBeenCalled()
+      expect(sendSMS).not.toHaveBeenCalled()
+    }
+  )
+
+  it('still reminds a printed voucher holder who has unsubscribed from marketing', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true })],
+      optedOutCustomerIds: ['customer-1'],
+    })
+
+    const totals = await run()
+
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(totals.sentEmail).toBe(1)
   })
 })

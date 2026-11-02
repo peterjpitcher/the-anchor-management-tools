@@ -373,12 +373,20 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
   }
 
   const batch = progress?.batch
+  // A digital batch belongs to a return-visit email: ready from the start, with no PDF.
+  const digital = batch?.digital ?? false
 
   return (
     <>
-      <Alert tone="success" title="Batch ready to print">
-        The PDF has rendered and every card in it now counts as stock.
-      </Alert>
+      {digital ? (
+        <Alert tone="info" title="Sent by email">
+          These vouchers were issued by a return-visit email. There is no PDF and nothing to print.
+        </Alert>
+      ) : (
+        <Alert tone="success" title="Batch ready to print">
+          The PDF has rendered and every card in it now counts as stock.
+        </Alert>
+      )}
 
       <Card>
         <CardHeader
@@ -411,12 +419,15 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
             <span className="font-mono font-medium text-text">
               {progress?.lastNumber ?? '?'}
             </span>
-            {batch ? `, ${batch.totalCount} cards, ${batch.totalCount * PDF_PAGES_PER_CARD} PDF pages` : ''}
+            {batch && !digital ? `, ${batch.totalCount} cards, ${batch.totalCount * PDF_PAGES_PER_CARD} PDF pages` : ''}
+            {batch && digital ? `, ${batch.totalCount} sent by email` : ''}
           </div>
           <div className="flex flex-wrap gap-2 pt-2">
-            <Button variant="primary" onClick={() => void handleDownload()}>
-              Download PDF
-            </Button>
+            {!digital && (
+              <Button variant="primary" onClick={() => void handleDownload()}>
+                Download PDF
+              </Button>
+            )}
             {batchId && (
               <LinkButton
                 variant="secondary"
@@ -433,16 +444,18 @@ export function GenerateClient({ types, initialBatchId }: GenerateClientProps) {
         </CardBody>
       </Card>
 
-      <Card>
-        <CardHeader title="Print Instructions" />
-        <CardBody>
-          <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-text">
-            A4 landscape · print <strong>double sided, flip on short edge</strong> · 100% scale, no
-            &quot;fit to page&quot; · fold each sheet down the middle. Pages come in pairs: odd pages
-            are the outside (back cover + front cover), even pages are the inside spread.
-          </blockquote>
-        </CardBody>
-      </Card>
+      {!digital && (
+        <Card>
+          <CardHeader title="Print Instructions" />
+          <CardBody>
+            <blockquote className="border-l-4 border-border-strong pl-4 text-sm text-text">
+              A4 landscape · print <strong>double sided, flip on short edge</strong> · 100% scale, no
+              &quot;fit to page&quot; · fold each sheet down the middle. Pages come in pairs: odd pages
+              are the outside (back cover + front cover), even pages are the inside spread.
+            </blockquote>
+          </CardBody>
+        </Card>
+      )}
 
       <ConfirmDialog
         open={downloadWarning !== null}

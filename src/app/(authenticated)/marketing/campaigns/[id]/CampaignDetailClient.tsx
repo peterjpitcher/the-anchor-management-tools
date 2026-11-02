@@ -29,6 +29,7 @@ import {
   toast,
 } from '@/ds'
 import {
+  activateMarketingLifecycleCampaign,
   cancelMarketingCampaign,
   pauseMarketingCampaign,
   resumeMarketingCampaign,
@@ -37,6 +38,7 @@ import {
 } from '@/app/actions/marketing-campaigns'
 import { londonLocalInputToUtcIso, utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 import type { CampaignAudienceDrift } from '@/services/marketing-campaigns'
+import type { LifecycleCampaignStats } from '@/services/marketing-lifecycle'
 import type {
   MarketingCampaign,
   MarketingCampaignLinkPerformance,
@@ -47,6 +49,7 @@ import type {
 import {
   CampaignStatusBadge,
   EngagedBadge,
+  LifecycleBadge,
   RecipientStatusBadge,
   SKIP_REASON_LABELS,
   formatDateTimeInLondon,
@@ -55,6 +58,7 @@ import {
   skipReasonLabel,
 } from '../../_shared/marketing-ui'
 import { MARKETING_BACK } from '../../_shared/nav'
+import { LifecyclePanel } from './LifecyclePanel'
 
 /**
  * `skippedByReason` is keyed by whatever string the database held, including the literal
@@ -80,6 +84,9 @@ interface CampaignDetailClientProps {
   linkPerformanceError: string | null
   previewHtml: string | null
   previewError: string | null
+  /** Return-visit campaigns only. */
+  lifecycleStats: LifecycleCampaignStats | null
+  lifecycleStatsError: string | null
   canSend: boolean
 }
 
@@ -103,6 +110,8 @@ export function CampaignDetailClient({
   linkPerformanceError,
   previewHtml,
   previewError,
+  lifecycleStats,
+  lifecycleStatsError,
   canSend,
 }: CampaignDetailClientProps) {
   const router = useRouter()
@@ -112,12 +121,16 @@ export function CampaignDetailClient({
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [cancelOpen, setCancelOpen] = useState(false)
   const [testSendOpen, setTestSendOpen] = useState(false)
+  const [switchOnOpen, setSwitchOnOpen] = useState(false)
   const [scheduledLocal, setScheduledLocal] = useState(
     campaign.scheduledFor ? utcIsoToLondonLocalInput(campaign.scheduledFor) : '',
   )
 
   const { status } = campaign
-  const canSchedule = canSend && status === 'draft'
+  // A return-visit campaign is switched on rather than scheduled: it has no single send time.
+  const isLifecycle = campaign.kind === 'lifecycle'
+  const canSchedule = canSend && status === 'draft' && !isLifecycle
+  const canSwitchOn = canSend && status === 'draft' && isLifecycle
   const canPause = canSend && (status === 'sending' || status === 'scheduled')
   const canResume = canSend && status === 'paused'
   const canCancel =
@@ -200,6 +213,11 @@ export function CampaignDetailClient({
                 Schedule Campaign
               </Button>
             )}
+            {canSwitchOn && (
+              <Button variant="primary" size="sm" onClick={() => setSwitchOnOpen(true)} disabled={busy}>
+                Switch On
+              </Button>
+            )}
             {canResume && (
               <Button
                 variant="primary"
@@ -222,6 +240,7 @@ export function CampaignDetailClient({
             <div className="min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-2">
                 <CampaignStatusBadge status={status} />
+                {isLifecycle && <LifecycleBadge />}
                 {campaign.audience.includeTags.map((tag) => (
                   <Badge key={`in-${tag}`} tone="info">
                     {tag}
@@ -237,11 +256,13 @@ export function CampaignDetailClient({
             </div>
             <dl className="shrink-0 space-y-1 text-sm">
               <div className="flex gap-2">
-                <dt className="text-text-muted">Scheduled</dt>
+                <dt className="text-text-muted">{isLifecycle ? 'Switched on' : 'Scheduled'}</dt>
                 <dd className="text-text">
                   {campaign.scheduledFor
                     ? formatDateTimeInLondon(campaign.scheduledFor)
-                    : 'Not scheduled'}
+                    : isLifecycle
+                      ? 'Not yet'
+                      : 'Not scheduled'}
                 </dd>
               </div>
               {campaign.startedAt && (
@@ -279,6 +300,16 @@ export function CampaignDetailClient({
           </div>
           </CardBody>
         </Card>
+
+        {isLifecycle && (
+          <LifecyclePanel
+            campaign={campaign}
+            stats={lifecycleStats}
+            statsError={lifecycleStatsError}
+            canSend={canSend}
+            onChanged={refresh}
+          />
+        )}
 
         {!canSend && (
           <Alert tone="info" title="You can view this campaign but not send it">
@@ -629,6 +660,33 @@ export function CampaignDetailClient({
           </p>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        open={switchOnOpen}
+        onClose={() => setSwitchOnOpen(false)}
+        onConfirm={async () => {
+          const switched = await runAction('Campaign switched on.', () =>
+            activateMarketingLifecycleCampaign(campaign.id),
+          )
+          if (switched) setSwitchOnOpen(false)
+        }}
+        closeOnConfirm={false}
+        title="Switch On"
+        message={
+          <div className="space-y-3">
+            <p>
+              This freezes the email as it is now and starts sending it on its send days to every
+              guest the rule picks, each with their own voucher. Pause it at any time; content
+              changes need a new campaign.
+            </p>
+            <p className="text-text-muted">
+              Send yourself a test first and read it on your phone.
+            </p>
+          </div>
+        }
+        confirmLabel="Switch On"
+        tone="primary"
+      />
 
       <ConfirmDialog
         open={cancelOpen}

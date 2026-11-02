@@ -1680,6 +1680,8 @@ async function alertBarRefundsOwed(
       title: `Cancelled event: ${formatPounds(total)} paid at the bar to hand back`,
       summary: `${input.eventName || 'The cancelled event'} had ${input.owed.length} ${input.owed.length === 1 ? 'payment' : 'payments'} taken at the bar, in cash or on the card terminal. PayPal cannot return those, so hand each one back and record it with Record cash or card refund on the booking. The guests have been told we will be in touch about it.`,
       path: `/events/${input.eventId}`,
+      // Cash and card taken at the bar: nothing is wrong with PayPal.
+      subjectTag: 'REFUNDS TO HAND BACK',
       context: Object.fromEntries(input.owed.map((row, index) => [
         `Booking ${index + 1}`,
         `${row.bookingId}: ${formatPounds(row.amount)} (${methodText(row.method)})`,

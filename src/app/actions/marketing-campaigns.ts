@@ -13,6 +13,7 @@ import {
   MARKETING_UTM_SOURCE,
 } from '@/lib/email/marketing/config'
 import { lintMarketingContent } from '@/lib/email/marketing/registry'
+import { contentHasMergeTokens, mergeCampaignContent, SAMPLE_MERGE_FIELDS } from '@/lib/email/marketing/merge'
 import { renderMarketingEmail } from '@/lib/email/marketing/render'
 import { createClient } from '@/lib/supabase/server'
 import type { ActionType } from '@/types/rbac'
@@ -39,9 +40,16 @@ import {
   updateCampaign,
   updateSettings,
   type CampaignAudienceDrift,
+  type CampaignInput,
   type ListCampaignsResult,
   type ListRecipientsResult,
 } from '@/services/marketing-campaigns'
+import {
+  activateLifecycleCampaign,
+  getLifecycleCampaignStats,
+  setLifecycleHoldout,
+  type LifecycleCampaignStats,
+} from '@/services/marketing-lifecycle'
 
 /**
  * Server actions for marketing campaigns.
@@ -129,6 +137,9 @@ const createSchema = z.object({
   content: z.unknown(),
   audience: audienceSchema.optional(),
   utmCampaign: z.string().trim().max(100).nullable().optional(),
+  // Return-visit settings. Checked in full by parseLifecycleSettings in the service, so the
+  // refusal names the field that is wrong.
+  lifecycle: z.unknown().optional(),
 })
 
 const updateSchema = createSchema.partial()
@@ -297,7 +308,11 @@ export async function createMarketingCampaign(
     // `content` is optional in the parsed shape only because zod treats an unknown-typed
     // field that way; the service needs the key present, so it is named explicitly.
     const campaign = await createCampaign(
-      { ...parsed.data, content: parsed.data.content },
+      {
+        ...parsed.data,
+        content: parsed.data.content,
+        lifecycle: parsed.data.lifecycle as CampaignInput['lifecycle'],
+      },
       context.user.id,
     )
 
@@ -308,7 +323,7 @@ export async function createMarketingCampaign(
       resource_type: 'marketing_campaign',
       resource_id: campaign.id,
       operation_status: 'success',
-      additional_info: { name: campaign.name, subject: campaign.subject },
+      additional_info: { name: campaign.name, subject: campaign.subject, kind: campaign.kind },
     })
 
     revalidateCampaigns(campaign.id)
@@ -330,7 +345,11 @@ export async function updateMarketingCampaign(
     const parsed = updateSchema.safeParse(input)
     if (!parsed.success) return { error: parsed.error.errors[0]?.message ?? 'Invalid campaign' }
 
-    const campaign = await updateCampaign(id, parsed.data, context.user.id)
+    const campaign = await updateCampaign(
+      id,
+      { ...parsed.data, lifecycle: parsed.data.lifecycle as CampaignInput['lifecycle'] },
+      context.user.id,
+    )
 
     await logAuditEvent({
       user_id: context.user.id,
@@ -473,6 +492,97 @@ export async function cancelMarketingCampaign(id: string): Promise<ActionResult<
 }
 
 // ---------------------------------------------------------------------------
+// Return-visit (lifecycle) campaigns
+// ---------------------------------------------------------------------------
+
+/**
+ * Switches a return-visit campaign on. Like scheduling, this is the moment a human approves
+ * the email, so the audit entry carries the content hash and the size of today's audience.
+ */
+export async function activateMarketingLifecycleCampaign(
+  id: unknown,
+): Promise<ActionResult<MarketingCampaign>> {
+  try {
+    const context = await authorise('send')
+    if ('error' in context) return { error: context.error }
+
+    const campaignId = z.string().uuid().safeParse(id)
+    if (!campaignId.success) return { error: 'Invalid campaign id' }
+
+    const { campaign, audienceToday } = await activateLifecycleCampaign(campaignId.data, context.user.id)
+
+    await logAuditEvent({
+      user_id: context.user.id,
+      user_email: context.user.email,
+      operation_type: 'update',
+      resource_type: 'marketing_campaign',
+      resource_id: campaign.id,
+      operation_status: 'success',
+      additional_info: {
+        change: 'switch_on',
+        audience_today: audienceToday,
+        content_hash: campaign.contentHash,
+        holdout_percent: campaign.holdoutPercent,
+      },
+    })
+
+    revalidateCampaigns(campaign.id)
+    return { success: true, data: campaign }
+  } catch (error) {
+    console.error('Failed to switch on a return-visit campaign:', error)
+    return { error: failureMessage(error, 'Failed to switch the campaign on') }
+  }
+}
+
+const holdoutSchema = z.object({
+  id: z.string().uuid(),
+  holdoutPercent: z.number().int().min(0).max(50),
+})
+
+export async function setMarketingLifecycleHoldout(input: unknown): Promise<ActionResult<MarketingCampaign>> {
+  try {
+    const context = await authorise('send')
+    if ('error' in context) return { error: context.error }
+
+    const parsed = holdoutSchema.safeParse(input)
+    if (!parsed.success) return { error: 'The control group share must be a whole number from 0 to 50' }
+
+    const campaign = await setLifecycleHoldout(parsed.data.id, parsed.data.holdoutPercent)
+
+    await logAuditEvent({
+      user_id: context.user.id,
+      user_email: context.user.email,
+      operation_type: 'update',
+      resource_type: 'marketing_campaign',
+      resource_id: campaign.id,
+      operation_status: 'success',
+      additional_info: { change: 'holdout', holdout_percent: parsed.data.holdoutPercent },
+    })
+
+    revalidateCampaigns(campaign.id)
+    return { success: true, data: campaign }
+  } catch (error) {
+    console.error('Failed to change a return-visit control group:', error)
+    return { error: failureMessage(error, 'Failed to change the control group') }
+  }
+}
+
+export async function getMarketingLifecycleStats(id: unknown): Promise<ActionResult<LifecycleCampaignStats>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    const campaignId = z.string().uuid().safeParse(id)
+    if (!campaignId.success) return { error: 'Invalid campaign id' }
+
+    return { success: true, data: await getLifecycleCampaignStats(campaignId.data) }
+  } catch (error) {
+    console.error('Failed to load return-visit results:', error)
+    return { error: failureMessage(error, 'Failed to load the results') }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
 
@@ -555,7 +665,12 @@ export async function sendMarketingTestEmail(id: unknown): Promise<ActionResult<
     const campaign = await getCampaign(campaignId.data)
     if (!campaign) return { error: 'Campaign not found' }
 
-    const content = parseCampaignContent(campaign.content)
+    // A return-visit email is filled with sample values, so the test shows a real-looking
+    // voucher rather than raw placeholders. The sample number is not a ledger voucher.
+    const parsedContent = parseCampaignContent(campaign.content)
+    const content = contentHasMergeTokens(parsedContent)
+      ? mergeCampaignContent(parsedContent, SAMPLE_MERGE_FIELDS)
+      : parsedContent
     const rendered = renderMarketingEmail(content, {
       unsubscribeUrl: `${getAppUrl()}/api/unsubscribe?t=test-send-placeholder-token`,
       linkMap: campaign.linkMap ?? {},

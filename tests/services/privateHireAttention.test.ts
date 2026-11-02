@@ -192,6 +192,40 @@ describe('the manager email', () => {
     expect(email.text).toContain('https://management.example.test/private-bookings/sms-queue')
   })
 
+  // Owner, 2 November 2026: no email unless there is a problem.
+  it('sends nothing for a hire that has only not been closed out', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      // Past, still confirmed, no deposit to return.
+      private_bookings: [hire('77777777-0000-0000-0000-000000000009', { event_date: '2026-10-20', deposit_paid_date: null, deposit_amount: 0 })],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: false })
+    expect(mockedSendEmail).not.toHaveBeenCalled()
+  })
+
+  it('lists a hire not closed out when a deposit due back sends the email', async () => {
+    const db = createFakeSupabase({
+      venue_spaces: [DINING],
+      private_bookings: [hire('99999999-0000-0000-0000-000000000007', { event_date: '2026-10-20', deposit_amount: 250 })],
+      private_booking_items: [],
+      private_booking_audit: [],
+      private_booking_sms_queue: [],
+    })
+
+    const result = await runHireAttentionCheck({ todayIso: TODAY, now: NOW, db })
+
+    expect(result).toEqual({ listed: 0, emailed: true })
+    const email = mockedSendEmail.mock.calls[0][0]
+    expect(email.text).toContain('PB-99999999: £250.00 deposit has no outcome recorded')
+    expect(email.text).toContain('PB-99999999: the hire on Tue, 20 Oct 2026 has not been closed out.')
+  })
+
   // BK-065: a refund a cancellation promised was recorded nowhere, so it could be forgotten.
   it('lists refunds owed to cancelled bookings until the refunds recorded cover them', async () => {
     const db = createFakeSupabase({

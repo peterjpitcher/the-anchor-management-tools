@@ -40,7 +40,8 @@ export default async function GenerateVouchersPage({
     (summaryResult.data?.stock ?? []).map((row) => [row.typeId, row.inStock])
   )
   const types = typesResult.data
-    .filter((type) => type.active)
+    // Email-only types (the return-visit vouchers) are never printed.
+    .filter((type) => type.active && !type.digitalOnly)
     .map((type) => ({
       typeId: type.id,
       displayTitle: type.displayTitle,

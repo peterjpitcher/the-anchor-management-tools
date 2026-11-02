@@ -27,9 +27,9 @@ export async function GET(
 
   const { data: batch, error: batchError } = await supabase
     .from('voucher_batches')
-    .select('id, pdf_status, pdf_path')
+    .select('id, pdf_status, pdf_path, digital')
     .eq('id', batchId)
-    .maybeSingle<Pick<VoucherBatchRow, 'id' | 'pdf_status' | 'pdf_path'>>()
+    .maybeSingle<Pick<VoucherBatchRow, 'id' | 'pdf_status' | 'pdf_path' | 'digital'>>()
 
   if (batchError) {
     console.error('Failed to load voucher batch for download:', batchError)
@@ -51,7 +51,14 @@ export async function GET(
       return NextResponse.json({ error: 'Failed to load batch info' }, { status: 500 })
     }
 
-    return NextResponse.json({ deadCount: count ?? 0, pdfStatus: batch.pdf_status })
+    return NextResponse.json({ deadCount: count ?? 0, pdfStatus: batch.pdf_status, digital: batch.digital })
+  }
+
+  if (batch.digital) {
+    return NextResponse.json(
+      { error: 'These vouchers were sent by email and have no PDF', code: 'DIGITAL_BATCH' },
+      { status: 409 }
+    )
   }
 
   if (batch.pdf_status !== 'ready' || !batch.pdf_path) {

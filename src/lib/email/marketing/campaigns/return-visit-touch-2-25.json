@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "title": "Here's 25% off your food",
+  "preheader": "A bigger voucher for your next visit. Book a table, then show this email at the bar.",
+  "blocks": [
+    {
+      "type": "masthead_cream",
+      "data": {}
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Hi {{first_name|there}}, here's a bigger one",
+        "body": [
+          "Your last voucher ran out before you had the chance to use it, so here's 25% off your food on your next visit instead.",
+          "Sunday's what we live for. Roasts are carved fresh from 1pm, the kitchen serves until 6pm, and you can arrive up to 5:30pm. There's nothing to order ahead, so you can decide on the day. There are kids roasts too, and the vegan Wellington sits right alongside the beef, pork and turkey.",
+          "Walk-ins are always welcome, but book a table to use your voucher."
+        ]
+      }
+    },
+    {
+      "type": "voucher_card",
+      "data": {
+        "kicker": "Your voucher",
+        "headline": "{{voucher_percent}}% off your food",
+        "first_name": "{{first_name|}}",
+        "number": "{{voucher_number}}",
+        "expiry_date": "{{voucher_expires_on}}",
+        "how_to_use": "Book a table, then show this email at the bar.",
+        "conditions": [
+          "{{voucher_percent}}% off food for the booked table, in one visit.",
+          "Drinks are not included.",
+          "Not valid with the Christmas menu or special occasion menus.",
+          "Book your table in advance.",
+          "One voucher per table.",
+          "Cannot be used with any other offer.",
+          "Show this email at the bar so we can read the voucher number."
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "See you soon",
+        "body": "Pick a day that suits you and book your table. Bring the voucher with you on your phone, and we'll take care of the rest.",
+        "cta_label": "Book a table",
+        "cta_url": "https://www.the-anchor.pub/book-table?source=return_visit_email",
+        "reassurance_items": [
+          "Free parking right outside",
+          "Dogs welcome throughout"
+        ],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked a table with us before. If you would rather not hear from us, you can unsubscribe at any time."
+      }
+    }
+  ]
+}

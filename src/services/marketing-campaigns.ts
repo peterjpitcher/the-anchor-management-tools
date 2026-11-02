@@ -45,6 +45,11 @@ import {
   type MarketingSettings,
 } from '@/types/marketing'
 
+import { parseLifecycleSettings, type LifecycleSettings } from '@/lib/email/marketing/lifecycle'
+import { contentHasMergeTokens } from '@/lib/email/marketing/merge'
+
+import type { Json } from '@/types/database.generated'
+
 import { previewAudience } from './marketing-contacts'
 
 /**
@@ -313,7 +318,7 @@ export async function getCampaign(id: string): Promise<MarketingCampaign | null>
   return data ? mapMarketingCampaign(data) : null
 }
 
-async function requireCampaign(id: string): Promise<MarketingCampaign> {
+export async function requireCampaign(id: string): Promise<MarketingCampaign> {
   const campaign = await getCampaign(id)
   if (!campaign) throw new Error('Campaign not found')
   return campaign
@@ -338,6 +343,12 @@ export interface CampaignInput {
    * campaign out of the door.
    */
   ignoresFrequencyCap?: boolean
+  /**
+   * Makes this a lifecycle campaign (the table-booking return-visit emails): a customer
+   * campaign that runs on its send days until paused or cancelled, choosing guests by
+   * `customerFilter` instead of tags. Set at creation; a one-off never becomes one.
+   */
+  lifecycle?: LifecycleSettings
 }
 
 export async function createCampaign(
@@ -347,9 +358,12 @@ export async function createCampaign(
   const supabase = createAdminClient()
   const content = parseCampaignContent(input.content)
 
+  const lifecycle = input.lifecycle ? parseLifecycleSettings(input.lifecycle) : null
+
   const audience: MarketingAudience = {
-    includeTags: cleanTags(input.audience?.includeTags),
-    excludeTags: cleanTags(input.audience?.excludeTags),
+    includeTags: lifecycle ? [] : cleanTags(input.audience?.includeTags),
+    excludeTags: lifecycle ? [] : cleanTags(input.audience?.excludeTags),
+    customerFilter: lifecycle?.customerFilter ?? null,
   }
 
   const { data, error } = await supabase
@@ -359,8 +373,17 @@ export async function createCampaign(
       subject: input.subject.trim(),
       preheader: input.preheader.trim(),
       content,
-      audience_type: input.audienceType ?? 'business',
+      audience_type: lifecycle ? 'customer' : input.audienceType ?? 'business',
       audience: audienceToDb(audience),
+      ...(lifecycle
+        ? {
+            kind: 'lifecycle',
+            cooldown_days: lifecycle.cooldownDays,
+            send_days: lifecycle.sendDays,
+            promote_at_local: lifecycle.promoteAtLocal,
+            holdout_percent: lifecycle.holdoutPercent,
+          }
+        : {}),
       utm_campaign: emptyToNull(input.utmCampaign),
       // Only sent when the caller actually asks for it. The column defaults to false, so
       // omitting it is identical in effect and lets this code run against a database that
@@ -406,11 +429,27 @@ export async function updateCampaign(
   if (input.utmCampaign !== undefined) payload.utm_campaign = emptyToNull(input.utmCampaign)
   if (input.ignoresFrequencyCap !== undefined) payload.ignores_frequency_cap = input.ignoresFrequencyCap === true
 
-  if (input.audience !== undefined) {
-    payload.audience = audienceToDb({
-      includeTags: cleanTags(input.audience.includeTags),
-      excludeTags: cleanTags(input.audience.excludeTags),
-    })
+  if (existing.kind === 'lifecycle') {
+    // A lifecycle campaign picks guests by its rule, not by tags; the rule and timings change
+    // only through `lifecycle`, and stay intact through any edit to the copy.
+    if (input.lifecycle !== undefined) {
+      const lifecycle = parseLifecycleSettings(input.lifecycle)
+      payload.audience = audienceToDb({ includeTags: [], excludeTags: [], customerFilter: lifecycle.customerFilter })
+      payload.cooldown_days = lifecycle.cooldownDays
+      payload.send_days = lifecycle.sendDays
+      payload.promote_at_local = lifecycle.promoteAtLocal
+      payload.holdout_percent = lifecycle.holdoutPercent
+    }
+  } else {
+    if (input.lifecycle !== undefined) {
+      throw new Error('A one-off campaign cannot become a lifecycle campaign. Create a new one.')
+    }
+    if (input.audience !== undefined) {
+      payload.audience = audienceToDb({
+        includeTags: cleanTags(input.audience.includeTags),
+        excludeTags: cleanTags(input.audience.excludeTags),
+      })
+    }
   }
 
   if (Object.keys(payload).length === 0) return existing
@@ -445,7 +484,7 @@ export interface ScheduleCampaignResult {
  * click attribution. Refusing to schedule over a redirector problem would trade a real send
  * for a report.
  */
-async function provisionLinkMap(
+export async function provisionLinkMap(
   campaignId: string,
   utmCampaign: string,
   content: MarketingContent,
@@ -614,7 +653,7 @@ async function assertNoFrequencyCapCollision(
  * no records and still runs, and refusing to schedule an otherwise good campaign because a
  * lookup failed would turn this guard into an outage.
  */
-async function assertNoMisleadingClosureCopy(
+export async function assertNoMisleadingClosureCopy(
   content: MarketingContent,
   when: Date,
 ): Promise<void> {
@@ -653,6 +692,9 @@ export async function scheduleCampaign(
   if (existing.status !== 'draft') {
     throw new Error(`Only draft campaigns can be scheduled. This one is ${existing.status}.`)
   }
+  if (existing.kind === 'lifecycle') {
+    throw new Error('A return-visit campaign is switched on, not scheduled. Use Switch On.')
+  }
 
   const when = new Date(scheduledFor)
   if (Number.isNaN(when.getTime())) {
@@ -663,6 +705,11 @@ export async function scheduleCampaign(
   }
 
   const content = parseCampaignContent(existing.content)
+  // Only a return-visit campaign fills per-guest values. A one-off would send "{{first_name}}"
+  // to every recipient as written.
+  if (contentHasMergeTokens(content)) {
+    throw new Error('This copy has {{...}} placeholders, which only a return-visit campaign fills. Remove them first.')
+  }
 
   const preview = await previewAudience({
     audienceType: existing.audienceType,
@@ -750,6 +797,14 @@ export interface CampaignAudienceDrift {
 export async function getCampaignAudienceDrift(id: string): Promise<CampaignAudienceDrift> {
   const campaign = await requireCampaign(id)
 
+  if (campaign.kind === 'lifecycle') {
+    // Who the rule picks today, before the holdout and the send-day guards. A lifecycle
+    // campaign has no frozen approval to drift from beyond the count taken at switch-on.
+    const live = await countLifecycleAudience(campaign.audience.customerFilter ?? null)
+    const approved = campaign.approvedRecipientCount
+    return { approved, live, delta: approved === null ? 0 : live - approved }
+  }
+
   const preview = await previewAudience({
     audienceType: campaign.audienceType,
     includeTags: campaign.audience.includeTags,
@@ -762,6 +817,16 @@ export async function getCampaignAudienceDrift(id: string): Promise<CampaignAudi
     live: preview.eligibleCount,
     delta: approved === null ? 0 : preview.eligibleCount - approved,
   }
+}
+
+/** How many guests a return-visit rule selects today. Throws when the rule cannot run. */
+export async function countLifecycleAudience(filter: MarketingAudience['customerFilter']): Promise<number> {
+  if (!filter) throw new Error('This return-visit campaign has no rule to select guests by')
+  const { data, error } = await createAdminClient().rpc('get_table_return_visit_audience', {
+    p_filter: filter as unknown as Json,
+  })
+  if (error) throw new Error(`Could not count the return-visit audience: ${error.message}`)
+  return (data ?? []).length
 }
 
 export async function pauseCampaign(id: string, userId: string): Promise<MarketingCampaign> {
