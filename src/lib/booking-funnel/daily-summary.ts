@@ -9,12 +9,12 @@ import type { createAdminClient } from '@/lib/supabase/admin'
  * of 24 October 2026). Owner decision D17: website refusals go to the manager inbox as ONE email
  * a day, not one each. Built from booking_funnel_events for one London day.
  *
- * It is sent only when something was turned away or held up: a refusal, a failure, an availability
- * check that could not be worked out, or a booking form stopped before it could send. A form held
- * up by the security check or a missing detail is not called turned away, because nobody was
- * refused (see HELD_UP_REASONS), and a guest the security check held up only counts towards
- * sending when the check never finished for them (see securityCheckStalls). Codes and counts
- * only; booking_funnel_events holds no guest details, so neither does this.
+ * It is sent only when there is a problem (owner, 2 November 2026: "I don't want to receive emails
+ * unless there's a problem"): see summaryNeedsSending. A refusal on its own is not one. When the
+ * email does go out it still lists every refusal of the day, and the reports page always does. A
+ * form held up by the security check or a missing detail is not called turned away, because nobody
+ * was refused (see HELD_UP_REASONS). Codes and counts only; booking_funnel_events holds no guest
+ * details, so neither does this.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>
@@ -171,15 +171,27 @@ export function securityCheckStalls(lines: FormLine[]): { heldUp: number; gotThr
   return { heldUp, gotThrough, neverThrough: heldUp - gotThrough }
 }
 
-/** Something was turned away or held up, so the summary goes out. A quiet day sends nothing. */
+/**
+ * Form stops that are an ordinary answer, not a fault: a detail the guest had to fix, or the booking
+ * system saying no, whose refusal is already counted with the refusals. Any other reason, including
+ * one this code does not know, is a booking lost on the way and sends the summary.
+ */
+const ORDINARY_FORM_STOPS = new Set(['no_security_token', 'missing_fields', 'server_refused'])
+
+/**
+ * Only a problem sends the summary: a failure on our side, a guest the security check stopped, a
+ * form lost on the way, an availability check that could not be worked out, or a day that could not
+ * be counted in full. A refusal alone does not: the website already sorts its answers into refusals
+ * (the guest's to fix, a bot, or an ordinary no such as a full night) and failures (ours).
+ */
 export function summaryNeedsSending(summary: DailyFunnelSummary): boolean {
-  // A held-up check that finished after all stopped nobody, so only the guests it stopped count.
-  const formsBlocked = summary.forms
-    .filter((line) => line.step === 'blocked' && line.reason !== 'no_security_token')
+  const formsLost = summary.forms
+    .filter((line) => line.step === 'blocked' && !ORDINARY_FORM_STOPS.has(line.reason ?? ''))
     .reduce((sum, line) => sum + line.count, 0)
+  // A held-up check that finished after all stopped nobody, so only the guests it stopped count.
   const { neverThrough } = securityCheckStalls(summary.forms)
   return (
-    summary.refusedTotal + summary.failedTotal + summary.availability.couldNotCheck + formsBlocked + neverThrough > 0 ||
+    summary.failedTotal + summary.availability.couldNotCheck + formsLost + neverThrough > 0 ||
     // A day too busy to read in full is itself worth an email.
     summary.truncated ||
     Boolean(summary.readError)
