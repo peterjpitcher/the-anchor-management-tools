@@ -403,6 +403,78 @@ describe('Resend webhook route', () => {
     expect(customerUpdateEq).toHaveBeenCalledWith('id', 'customer-1')
   })
 
+  it('keeps an event for an email another app sent, and changes nothing else', async () => {
+    // 6 October to 2 November 2026: BaronsHub shares the Resend account, Resend refused its weekly
+    // update to a Barons address for an old bounce, and this endpoint put her on our block list,
+    // so she was dropped from the copies of our invoices.
+    const messageUpdate = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ select: vi.fn().mockResolvedValue({ data: [], error: null }) }),
+    })
+    const unmatchedInsert = vi.fn().mockResolvedValue({ error: null })
+    const webhookLogFinishContains = vi.fn().mockResolvedValue({ error: null })
+    const touched: string[] = []
+
+    createAdminClient.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'webhook_logs') {
+          return {
+            insert: vi.fn().mockResolvedValue({ error: null }),
+            update: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ contains: webhookLogFinishContains }) }),
+          }
+        }
+        if (table === 'email_messages') {
+          return {
+            select: vi.fn().mockReturnValue({
+              eq: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+            }),
+            update: messageUpdate,
+          }
+        }
+        if (table === 'email_webhook_unmatched') return { insert: unmatchedInsert }
+        touched.push(table)
+        return {
+          upsert: vi.fn().mockResolvedValue({ error: null }),
+          insert: vi.fn().mockResolvedValue({ error: null }),
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+              limit: vi.fn().mockResolvedValue({ data: [{ id: 'customer-1', email_delivery_failures: 0 }], error: null }),
+            }),
+          }),
+          update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
+        }
+      }),
+    })
+
+    verifyWebhook.mockReturnValue({
+      type: 'email.suppressed',
+      created_at: '2026-10-13T08:00:59.503Z',
+      data: {
+        email_id: 'other-app-email-1',
+        from: 'BaronsHub <noreply@auth.orangejelly.co.uk>',
+        to: ['Helen.Contact@example.com'],
+        suppressed: { type: 'Suppressed', reason: 'previous_bounce', message: 'On the suppression list' },
+      },
+    })
+
+    const { POST } = await import('@/app/api/webhooks/resend/route')
+    const response = await POST(new Request('http://localhost/api/webhooks/resend', {
+      method: 'POST',
+      headers: { 'svix-id': 'msg_other_app', 'svix-timestamp': '1780000000', 'svix-signature': 'v1,test' },
+      body: '{}',
+    }))
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, unmatched: true })
+    expect(unmatchedInsert).toHaveBeenCalledWith(expect.objectContaining({
+      provider_message_id: 'other-app-email-1',
+      event_type: 'email.suppressed',
+      to_address: 'helen.contact@example.com',
+    }))
+    expect(touched).toEqual([])
+    expect(webhookLogFinishContains).toHaveBeenCalledWith('params', { svix_id: 'msg_other_app' })
+  })
+
   it('does not use ILIKE email matching for customer health updates', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/api/webhooks/resend/route.ts'), 'utf8')
 
