@@ -449,3 +449,6 @@ The owner wants the Orange Jelly logo to occupy the expanded navigation width an
 
 ## 2026-10-04 Customer recurring charges
 - Distinguish OJ Projects client recurring charges from recurring invoice templates. For customer charges such as baronshub, check OJ Projects > Clients > View > Recurring Charges before giving instructions.
+
+## 2026-11-02 Clear the writer, not just the row
+- On 5 October a Barons invoice contact's block-list row was deleted by hand, and the note said any Resend email to her would put it back. A different app on the shared Resend account (BaronsHub) did exactly that the next Monday, and she missed two invoice emails before anyone noticed. When a bad row is cleared, find what wrote it and stop that in the same change, or say plainly that it will come back.
