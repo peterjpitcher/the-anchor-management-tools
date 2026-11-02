@@ -73,7 +73,7 @@ type SentEmail = { to: unknown; subject: string; text?: string; html?: string }
 
 const CHAIN_METHODS = [
   'select', 'insert', 'update', 'upsert', 'delete',
-  'eq', 'neq', 'in', 'is', 'not', 'gt', 'gte', 'lt', 'lte', 'or', 'contains', 'order', 'limit',
+  'eq', 'neq', 'in', 'is', 'not', 'gt', 'gte', 'lt', 'lte', 'or', 'contains', 'order', 'limit', 'range',
 ]
 
 /**
