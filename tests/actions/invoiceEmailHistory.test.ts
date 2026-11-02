@@ -436,10 +436,11 @@ describe('getInvoiceEmailHistory: what it shows', () => {
 
     const { history } = await getInvoiceEmailHistory(INVOICE_ID)
 
-    // A week after Tuesday 6 October, not the day before.
+    // Every Monday (owner decision, 2 November 2026): last week's went on Tuesday 6 October, so
+    // this Monday's is due on today's run, not a full seven days on.
     expect(history?.nextReminder).toEqual({
-      line: 'Next automatic reminder: Tuesday 13 October (forecast)',
-      detail: 'The weekly reminder. Everything is checked again before it is sent.',
+      line: 'Next automatic reminder: Monday 12 October (forecast)',
+      detail: "The weekly reminder, on today's run. Everything is checked again before it is sent.",
     })
     expect(history?.crossCheck).toContainEqual({ label: 'Latest weekly reminder', value: 'Tuesday 6 October 2026' })
   })
