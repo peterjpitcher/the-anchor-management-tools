@@ -1,5 +1,5 @@
 import { sendEmail, type EmailOptions } from './emailService';
-import { formatDateFull, formatTime12Hour } from '@/lib/dateUtils';
+import { formatDateFull, formatTime12Hour, formatTimeInLondon } from '@/lib/dateUtils';
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
 const BILLY_EMAIL = 'billy@orangejelly.co.uk';
@@ -81,13 +81,38 @@ function buildRemainingShiftsText(input: SeparationStartedEmailInput): string | 
 // manager mailbox. Those links set the new starter's password, so anyone with
 // access to that mailbox could open the link first and take over the account.
 // Purely informational emails (separation, onboarding complete) still copy in.
+// Every step of the onboarding form, in the order the starter meets them, and what to have ready.
+// The welcome email once listed four of the six, so starters met the time off and right to work
+// steps cold, and went looking for bank details halfway through.
+const ONBOARDING_STEPS_TEXT =
+  `The form has six parts:\n` +
+  `- Personal details: your name, date of birth, address and phone numbers\n` +
+  `- Time off already booked: any holidays or dates you cannot work\n` +
+  `- Emergency contacts: someone we can call, with their phone number\n` +
+  `- Financial details: your bank sort code and account number, and your National Insurance number if you have it to hand\n` +
+  `- Health information: your GP's name and address, and a few health questions you do not have to answer\n` +
+  `- Right to work: what to bring so a manager can check your documents before your first shift\n\n` +
+  `Each part is saved when you press Save & Continue, so you can stop and come back to it.\n\n`;
+
+/**
+ * When a link stops working, on the London clock: "3:15pm on Friday, 6 November 2026". Read from
+ * the token's own expiry rather than worked out from when it was sent, so a reminder that goes out
+ * late still tells the truth.
+ */
+function formatLinkExpiry(expiresAtIso: string): string | null {
+  const expires = new Date(expiresAtIso);
+  if (Number.isNaN(expires.getTime())) return null;
+  return `${formatTime12Hour(formatTimeInLondon(expires))} on ${formatDateFull(expires)}`;
+}
+
 function buildWelcomeEmail(email: string, onboardingUrl: string) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';
   const text =
     `Hi there,\n\n` +
     `Welcome to The Anchor! We're excited to have you joining the team.\n\n` +
-    `To get started, please complete your employee profile by clicking the link below. ` +
-    `You'll be asked to create a password and fill in your personal details, emergency contacts, financial information, and health information.\n\n` +
+    `To get started, please complete your employee profile using the link below. ` +
+    `You'll be asked to create a password first, then to fill in the form.\n\n` +
+    ONBOARDING_STEPS_TEXT +
     `Complete your profile here:\n${onboardingUrl}\n\n` +
     `This link will expire in 7 days. If you have any questions, please contact your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
@@ -95,36 +120,123 @@ function buildWelcomeEmail(email: string, onboardingUrl: string) {
   return { subject, text };
 }
 
-function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
-  const subject = 'Reminder: Please Complete Your Profile';
+function buildChaseEmail(email: string, onboardingUrl: string, dayNumber: number, expiresAt?: string | null) {
+  const expiry = expiresAt ? formatLinkExpiry(expiresAt) : null;
+  const lastReminder = dayNumber >= 6;
+  const subject = lastReminder
+    ? 'Last Reminder: Your Profile Link Expires Soon'
+    : 'Reminder: Please Complete Your Profile';
+  const expiryText = expiry
+    ? lastReminder
+      ? `Your link stops working at ${expiry}, so please finish before then. If it runs out, ask your manager to send you a new one.\n\n`
+      : `Your link stops working at ${expiry}.\n\n`
+    : '';
   const text =
     `Hi there,\n\n` +
     `This is a friendly reminder that your employee profile at The Anchor is still incomplete.\n\n` +
     `Please take a few minutes to complete your profile:\n${onboardingUrl}\n\n` +
+    expiryText +
     `If you have any questions or need help, please contact your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 
   return { subject, text };
 }
 
-function buildOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
-  const subject = `${employeeName} has completed their profile`;
-  const text =
-    `Hi,\n\n` +
-    `${employeeName} (${employeeEmail}) has completed their employee profile and is now Active.\n\n` +
-    `You can view their profile in the employee management system.\n\n` +
-    `Kind regards,\nThe Anchor Management System`;
-
-  return { subject, text };
+interface OnboardingCompleteTimeOffBlock {
+  startDate: string;
+  endDate: string;
+  leaveType: string | null;
+  note: string | null;
 }
 
-function buildPortalInviteEmail(email: string, onboardingUrl: string) {
+export interface OnboardingCompleteEmailInput {
+  employeeName: string;
+  employeeEmail: string;
+  /** A link to their profile in the app. */
+  profileUrl?: string | null;
+  /** 'none' when they said nothing is booked; null when the answer could not be read. */
+  timeOffAnswer: 'none' | 'has_dates' | null;
+  timeOffBlocks: OnboardingCompleteTimeOffBlock[];
+  /** The date of a right to work check already on their record, if there is one. */
+  rightToWorkCheckedOn?: string | null;
+  /** True when their right to work record could not be read, so whether a check exists is unknown. */
+  rightToWorkUnknown?: boolean;
+  /** Their age today when they are under 18, otherwise null. */
+  ageIfUnder18?: number | null;
+  /** True when their date of birth could not be read, so whether they are under 18 is unknown. */
+  ageUnknown?: boolean;
+}
+
+const LEAVE_TYPE_TEXT: Record<string, string> = {
+  holiday: 'holiday',
+  unavailable: 'cannot work, not holiday',
+};
+
+function buildTimeOffText(input: OnboardingCompleteEmailInput): string {
+  if (input.timeOffAnswer === 'none') {
+    return 'Time off already booked: none. They told us they have nothing booked.';
+  }
+  if (input.timeOffBlocks.length === 0) {
+    return 'Time off already booked: we could not read their answer. Check their holiday on their profile.';
+  }
+  const lines = input.timeOffBlocks.map((block) => {
+    const range = block.startDate === block.endDate
+      ? formatDateFull(block.startDate)
+      : `${formatDateFull(block.startDate)} to ${formatDateFull(block.endDate)}`;
+    const type = LEAVE_TYPE_TEXT[block.leaveType ?? ''] ?? block.leaveType ?? 'time off';
+    const note = block.note?.trim() ? `: ${block.note.trim()}` : '';
+    return `- ${range} (${type})${note}`;
+  });
+  return [
+    'Time off already booked (saved as approved time off, so plan the rota around it):',
+    ...lines,
+  ].join('\n');
+}
+
+function buildOnboardingCompleteEmail(input: OnboardingCompleteEmailInput) {
+  const { employeeName, employeeEmail } = input;
+  const subject = `${employeeName} has completed their profile`;
+  const rightToWorkText = input.rightToWorkCheckedOn
+    ? `Right to work: a check is recorded on their profile, dated ${formatDateFull(input.rightToWorkCheckedOn)}.`
+    : input.rightToWorkUnknown
+      ? 'Right to work: we could not read their record. Check it on their profile before their first shift.'
+      : 'Right to work: still to check. See their documents in person, or check their share code online, before their first shift.';
+  const sections = [
+    'Hi,',
+    '',
+    `${employeeName} (${employeeEmail}) has completed their employee profile and is now Active.`,
+    '',
+    buildTimeOffText(input),
+    '',
+    rightToWorkText,
+    typeof input.ageIfUnder18 === 'number'
+      ? `\nUnder 18: they are ${input.ageIfUnder18}. Check the rules for young workers before you put them on the rota.`
+      : input.ageUnknown
+        ? '\nAge: we could not check their date of birth. Check it on their profile before you put them on the rota, in case they are under 18.'
+        : null,
+    '',
+    input.profileUrl
+      ? `View their profile: ${input.profileUrl}`
+      : 'You can view their profile in the employee management system.',
+    '',
+    'Kind regards,',
+    'The Anchor Management System',
+  ].filter((section): section is string => section !== null);
+
+  return { subject, text: sections.join('\n') };
+}
+
+function buildPortalInviteEmail(email: string, onboardingUrl: string, expiresAt?: string | null) {
   const subject = 'Set Up Your Staff Portal Access -- The Anchor';
+  // A reminder re-sends this email part way through the link's life, so it gives the real expiry
+  // rather than "7 days".
+  const expiry = expiresAt ? formatLinkExpiry(expiresAt) : null;
   const text =
     `Hi there,\n\n` +
     `We've launched a new staff portal and you've been invited to set up your access.\n\n` +
     `Click the link below to create your staff portal password:\n${onboardingUrl}\n\n` +
-    `This link will expire in 7 days. If you have any questions, please speak to your manager.\n\n` +
+    (expiry ? `This link stops working at ${expiry}.` : `This link will expire in 7 days.`) +
+    ` If you have any questions, please speak to your manager.\n\n` +
     `Kind regards,\nThe Anchor Management Team`;
 
   return { subject, text };
@@ -178,8 +290,8 @@ async function sendInviteEmailOrThrow(options: EmailOptions, whatFailed: string)
   return result;
 }
 
-export async function sendPortalInviteEmail(email: string, onboardingUrl: string) {
-  const { subject, text } = buildPortalInviteEmail(email, onboardingUrl);
+export async function sendPortalInviteEmail(email: string, onboardingUrl: string, expiresAt?: string | null) {
+  const { subject, text } = buildPortalInviteEmail(email, onboardingUrl, expiresAt);
   return sendInviteEmailOrThrow({ to: email, subject, text }, 'the portal invite email');
 }
 
@@ -188,13 +300,13 @@ export async function sendWelcomeEmail(email: string, onboardingUrl: string) {
   return sendInviteEmailOrThrow({ to: email, subject, text }, 'the invite email');
 }
 
-export async function sendChaseEmail(email: string, onboardingUrl: string, dayNumber: number) {
-  const { subject, text } = buildChaseEmail(email, onboardingUrl, dayNumber);
+export async function sendChaseEmail(email: string, onboardingUrl: string, dayNumber: number, expiresAt?: string | null) {
+  const { subject, text } = buildChaseEmail(email, onboardingUrl, dayNumber, expiresAt);
   return sendInviteEmailOrThrow({ to: email, subject, text }, 'the reminder email');
 }
 
-export async function sendOnboardingCompleteEmail(employeeName: string, employeeEmail: string) {
-  const { subject, text } = buildOnboardingCompleteEmail(employeeName, employeeEmail);
+export async function sendOnboardingCompleteEmail(input: OnboardingCompleteEmailInput) {
+  const { subject, text } = buildOnboardingCompleteEmail(input);
   return sendInviteEmailOrThrow({ to: MANAGER_EMAIL, subject, text }, 'the onboarding complete email');
 }
 

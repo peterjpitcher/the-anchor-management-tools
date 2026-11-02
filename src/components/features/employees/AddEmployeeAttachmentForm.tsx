@@ -7,17 +7,11 @@ import type { AttachmentFormState } from '@/types/actions'
 import type { AttachmentCategory } from '@/types/database'
 import { Alert, Button, Field, FileButton, FormFooter, Icon, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
-
-const ATTACHMENT_ALLOWED_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/tiff',
-  'image/tif',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain'
-] as const
+import {
+  EMPLOYEE_ATTACHMENT_ACCEPT,
+  EMPLOYEE_ATTACHMENT_TYPE_MESSAGE,
+  isAllowedAttachmentType,
+} from '@/lib/employees/document-rules'
 
 interface AddEmployeeAttachmentFormProps {
   employeeId: string
@@ -41,7 +35,12 @@ export default function AddEmployeeAttachmentForm({
   const [state, setState] = useState<AttachmentFormState>(null)
   const [isUploading, startTransition] = useTransition()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [selectedCategoryId, setSelectedCategoryId] = useState('')
   const formRef = useRef<HTMLFormElement>(null)
+  // Some categories email the file to the employee on upload, so say so before it goes.
+  const selectedCategoryEmails = categories.some(
+    (category) => category.category_id === selectedCategoryId && category.email_on_upload
+  )
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -66,8 +65,16 @@ export default function AddEmployeeAttachmentForm({
         setState(result)
 
         if (result?.type === 'success') {
+          // A failed email to the employee is a warning, not a silent success: the file is
+          // saved, but the employee may not have it.
+          if (result.email?.status === 'failed') {
+            toast.warning(result.message ?? 'Attachment uploaded, but the email to the employee may not have been sent.', { duration: 10000 })
+          } else {
+            toast.success(result.message ?? 'Attachment uploaded.')
+          }
           formRef.current?.reset()
           setSelectedFile(null)
+          setSelectedCategoryId('')
           router.refresh()
         }
       } catch (error) {
@@ -95,12 +102,12 @@ export default function AddEmployeeAttachmentForm({
             from state (the handler builds the FormData), so the input keeps no value. */}
         <FileButton
           id="attachment_file"
-          accept=".pdf,.png,.jpg,.jpeg,.tif,.tiff,.doc,.docx,.txt"
+          accept={EMPLOYEE_ATTACHMENT_ACCEPT}
           disabled={!hasCategories || isUploading}
           icon={<Icon name="upload" size={16} />}
           onFiles={([file]) => {
-            if (!ATTACHMENT_ALLOWED_MIME_TYPES.includes(file.type as (typeof ATTACHMENT_ALLOWED_MIME_TYPES)[number])) {
-              toast.error('Invalid file type. Only PDF, Word, JPG, PNG, TIFF, and TXT files are allowed.')
+            if (!isAllowedAttachmentType(file.type)) {
+              toast.error(EMPLOYEE_ATTACHMENT_TYPE_MESSAGE)
               setSelectedFile(null)
               return
             }
@@ -123,6 +130,7 @@ export default function AddEmployeeAttachmentForm({
           id="category_id"
           name="category_id"
           defaultValue={hasCategories ? '' : 'no-category'}
+          onChange={(event) => setSelectedCategoryId(event.target.value)}
           required
           disabled={!hasCategories}
           error={state?.errors?.category_id?.join(' ') || undefined}
@@ -142,6 +150,12 @@ export default function AddEmployeeAttachmentForm({
           ))}
         </Select>
       </Field>
+
+      {selectedCategoryEmails && (
+        <Alert tone="info" size="sm">
+          Files in this category are emailed to the employee when you upload them.
+        </Alert>
+      )}
 
       <Field label="Description (Optional)">
         <Textarea

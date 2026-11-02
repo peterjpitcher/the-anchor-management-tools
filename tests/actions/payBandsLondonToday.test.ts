@@ -57,6 +57,16 @@ function clientFor(table: 'pay_band_rates' | 'employee_rate_overrides', effectiv
   mockedCreateClient.mockResolvedValue({
     auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
     from: vi.fn((name: string) => {
+      // An override write also checks the employee has not left (FF-45).
+      if (name === 'employees' && table === 'employee_rate_overrides') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({ data: { status: 'Active' }, error: null }),
+            }),
+          }),
+        }
+      }
       if (name !== table) throw new Error(`Unexpected table: ${name}`)
       return {
         select: vi.fn().mockReturnValue({

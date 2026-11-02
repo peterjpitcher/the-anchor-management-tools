@@ -1,7 +1,7 @@
 // The birthdays page around midnight, in both test zones.
 //
-// The page groups each birthday under the month it next falls in, working that out from the
-// host clock plus the helper's day count, and starts the list at the host clock's month. On the
+// The page groups each birthday under the month and year it next falls in, working that out from
+// the host clock plus the helper's day count; it used to start the list at the host clock's month. On the
 // UTC server that clock is still yesterday from 00:00 to 00:59 British Summer Time, so on the
 // last night of a month a birthday "today" was filed under the month before. The page and the
 // helper now both count from the London date, so they agree about the day. The real
@@ -84,7 +84,7 @@ describe('EmployeeBirthdaysPage', () => {
   it('files a birthday today under this London month in the first hour of the day', async () => {
     const { container } = await renderAt(JUST_AFTER_MIDNIGHT_BST, [SEPTEMBER_LAST, OCTOBER_FIRST])
 
-    expect(pageOutline(container)).toEqual(['October', 'Alex', 'September', 'Sam'])
+    expect(pageOutline(container)).toEqual(['October 2026', 'Alex', 'September 2027', 'Sam'])
     expect(screen.getByText('Today! 🎉')).toBeInTheDocument()
     expect(screen.getByText('1 Oct')).toBeInTheDocument()
     expect(screen.getByText('30 Sept')).toBeInTheDocument()
@@ -95,7 +95,7 @@ describe('EmployeeBirthdaysPage', () => {
   it('keeps the last day of the month under that month before midnight', async () => {
     const { container } = await renderAt(JUST_BEFORE_MIDNIGHT_BST, [SEPTEMBER_LAST, OCTOBER_FIRST])
 
-    expect(pageOutline(container)).toEqual(['September', 'Sam', 'October', 'Alex'])
+    expect(pageOutline(container)).toEqual(['September 2026', 'Sam', 'October 2026', 'Alex'])
     expect(screen.getByText('Today! 🎉')).toBeInTheDocument()
     expect(screen.getByText('Tomorrow')).toBeInTheDocument()
   })
@@ -106,7 +106,7 @@ describe('EmployeeBirthdaysPage', () => {
       employee(4, 'Kim', '1990-02-01'),
     ])
 
-    expect(pageOutline(container)).toEqual(['February', 'Kim', 'January', 'Jo'])
+    expect(pageOutline(container)).toEqual(['February 2026', 'Kim', 'January 2027', 'Jo'])
     expect(screen.getByText('1 Feb')).toBeInTheDocument()
     expect(screen.getByText('31 Jan')).toBeInTheDocument()
   })

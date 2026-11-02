@@ -13,6 +13,18 @@ vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: vi.fn(),
 }))
 
+// The browser session. Account creation signs it in; every step after that reads it.
+const sessionUser = { id: 'auth-user-1' as string | null }
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: vi.fn(async () => ({
+    auth: {
+      getUser: async () => ({ data: { user: sessionUser.id ? { id: sessionUser.id } : null } }),
+      signInWithPassword: async () => ({ data: { user: { id: 'auth-user-1' } }, error: null }),
+      signOut: async () => ({ error: null }),
+    },
+  })),
+}))
+
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn(),
 }))
@@ -57,6 +69,15 @@ function mockMaybeSingle(data: unknown, error: unknown = null) {
       eq: vi.fn().mockReturnValue({
         maybeSingle: vi.fn().mockResolvedValue({ data, error }),
       }),
+    }),
+  }
+}
+
+/** A `.select().eq()` read awaited as it is, with no `.maybeSingle()`. */
+function mockSelectList(data: unknown[], error: unknown = null) {
+  return {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ data, error }),
     }),
   }
 }
@@ -126,6 +147,7 @@ describe('employee invite status transitions', () => {
     mockedPermission.mockResolvedValue(true)
     mockedGetCurrentUser.mockResolvedValue({ user_id: 'user-1', user_email: 'manager@example.com' })
     mockedAudit.mockResolvedValue(undefined)
+    sessionUser.id = 'auth-user-1'
   })
 
   it('rejects stale invite tokens when the employee email has changed', async () => {
@@ -193,12 +215,12 @@ describe('employee invite status transitions', () => {
       auth: { admin: { createUser, deleteUser } },
     })
 
-    const result = await createEmployeeAccount('token-value', 'password123')
+    const result = await createEmployeeAccount('token-value', 'a-long-password-1')
 
     expect(result).toEqual({ success: true })
     expect(createUser).toHaveBeenCalledWith({
       email: 'employee@example.com',
-      password: 'password123',
+      password: 'a-long-password-1',
       email_confirm: true,
     })
     expect(rpc).toHaveBeenCalledWith('link_employee_invite_account', {
@@ -240,9 +262,13 @@ describe('employee invite status transitions', () => {
       auth: { admin: { createUser, deleteUser } },
     })
 
-    const result = await createEmployeeAccount('token-value', 'password123')
+    const result = await createEmployeeAccount('token-value', 'a-long-password-1')
 
-    expect(result).toEqual({ success: false, error: 'Invite changed' })
+    // Database text is not shown to the starter.
+    expect(result).toEqual({
+      success: false,
+      error: 'We could not create your account just now. Please try again in a moment.',
+    })
     expect(rpc).toHaveBeenCalledWith('link_employee_invite_account', {
       p_token: 'token-value',
       p_auth_user_id: 'auth-user-1',
@@ -278,6 +304,7 @@ describe('employee invite status transitions', () => {
     const formData = new FormData()
     formData.set('email', 'new-starter@example.com')
     formData.set('job_title', 'Bartender')
+    formData.set('employment_start_date', '2026-12-01')
 
     const result = await inviteEmployee(null, formData)
 
@@ -346,7 +373,16 @@ describe('employee invite status transitions', () => {
             status: 'Onboarding',
             first_name: 'Alex',
             last_name: 'Rowe',
+            date_of_birth: '1990-05-01',
           })
+        }
+        if (table === 'employee_emergency_contacts') {
+          return mockSelectList([
+            { name: 'Jo Rowe', phone_number: null, mobile_number: '+447700900123', priority: 'Primary' },
+          ])
+        }
+        if (table === 'employee_financial_details') {
+          return mockMaybeSingle({ bank_sort_code: '11-22-33', bank_account_number: '12345678' })
         }
         throw new Error(`Unexpected table: ${table}`)
       }),
@@ -356,7 +392,7 @@ describe('employee invite status transitions', () => {
     const result = await submitOnboardingProfile('token-value')
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('Primary emergency contact')
+    expect(result.success === false && result.error).toContain('Primary emergency contact')
     expect(rpc).toHaveBeenCalledWith('complete_employee_onboarding', { p_token: 'token-value' })
   })
 
@@ -373,7 +409,15 @@ describe('employee invite status transitions', () => {
       bank_account_number: '12345678',
     })
 
-    expect(result).toEqual({ success: true })
+    // The step is handed back what a reload would show: the numbers masked, the sort code tidied.
+    expect(result).toEqual({
+      success: true,
+      saved: {
+        ni_number: '••••••56C',
+        bank_sort_code: '11-22-33',
+        bank_account_number: '••••5678',
+      },
+    })
     expect(financialUpsert).toHaveBeenCalled()
     expect(mockedAudit).toHaveBeenCalledWith(expect.objectContaining({
       user_email: 'employee@example.com',
@@ -460,7 +504,7 @@ describe('employee invite status transitions', () => {
     const result = await revokeEmployeeAccess('employee-1')
 
     expect(result.success).toBe(false)
-    expect(result.error).toContain('recorded last working day')
+    expect(result.error).toBe('Their last working day is 15 May 2099. They can be marked as Former from that day.')
     expect(employeeUpdate).not.toHaveBeenCalled()
   })
 })

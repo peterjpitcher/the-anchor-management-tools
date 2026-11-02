@@ -8,6 +8,10 @@ export type ActionFormState = {
   type: 'success' | 'error';
   message: string;
   employeeId?: string; // Optional employeeId for success responses
+  /** A success that still needs someone to act; shown as a warning rather than a success. */
+  warning?: boolean;
+  /** The part of a success that did not save, on its own, for a caller that lists such parts. */
+  followUpError?: string;
   errors?: {
     [key: string]: string[] | undefined;
   } | null;

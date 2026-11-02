@@ -130,7 +130,7 @@ describe('employees pages on the page contract', () => {
     await user.click(screen.getByRole('tab', { name: 'Agreement & Setup' }))
     expect(screen.getByText('Zero Tolerance')).toBeInTheDocument()
     render(
-      <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments />,
+      <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments canUploadDocuments canDeleteDocuments />,
     )
     expect(screen.getAllByRole('heading', { level: 1, name: 'Edit Employee' }).length).toBeGreaterThan(0)
     // The employee's name is the subtitle, as their page is titled.

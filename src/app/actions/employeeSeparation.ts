@@ -27,7 +27,14 @@ export type EmployeeSeparationShift = SeparationShiftSummary & {
 export type EmployeeSeparationPreview = {
   employmentStartDate: string | null
   shifts: EmployeeSeparationShift[]
+  /** Approved leave from today on. */
   futureLeaveDates: string[]
+  /**
+   * Leave from today on that is still waiting for a decision. Its days are already on the rota
+   * (leave_days), so marking the person as Former is refused while any sit after the last
+   * working day, exactly as for approved leave.
+   */
+  pendingLeaveDates: string[]
 }
 
 export type EmployeeSeparationPreviewResult =
@@ -54,6 +61,7 @@ type SeparationEmployeeRow = {
   first_name: string | null
   last_name: string | null
   employment_start_date: string | null
+  employment_end_date?: string | null
   status: string
 }
 
@@ -193,7 +201,7 @@ export async function getEmployeeSeparationPreview(
       .select('leave_date, leave_requests!inner(status)')
       .eq('employee_id', employeeId)
       .gte('leave_date', today)
-      .eq('leave_requests.status', 'approved')
+      .in('leave_requests.status', ['approved', 'pending'])
       .order('leave_date', { ascending: true }),
   ])
 
@@ -214,8 +222,17 @@ export async function getEmployeeSeparationPreview(
     .filter((shift) => isNotStartedShift(shift, now))
     .map(mapShift)
 
-  const futureLeaveDates = [...new Set(
-    (leaveResult.data ?? []).map((row: { leave_date: string }) => row.leave_date),
+  type LeaveDayRow = {
+    leave_date: string
+    leave_requests: { status: string } | { status: string }[] | null
+  }
+  const leaveDatesWithStatus = (status: string): string[] => [...new Set(
+    ((leaveResult.data ?? []) as LeaveDayRow[])
+      .filter((row) => {
+        const request = Array.isArray(row.leave_requests) ? row.leave_requests[0] : row.leave_requests
+        return request?.status === status
+      })
+      .map((row) => row.leave_date),
   )]
 
   return {
@@ -223,7 +240,8 @@ export async function getEmployeeSeparationPreview(
     data: {
       employmentStartDate: employeeResult.data.employment_start_date,
       shifts,
-      futureLeaveDates,
+      futureLeaveDates: leaveDatesWithStatus('approved'),
+      pendingLeaveDates: leaveDatesWithStatus('pending'),
     },
   }
 }
@@ -260,7 +278,7 @@ export async function beginEmployeeSeparation(
   const admin = createAdminClient()
   const { data: employee, error: employeeError } = await admin
     .from('employees')
-    .select('email_address, first_name, last_name, employment_start_date, status')
+    .select('email_address, first_name, last_name, employment_start_date, employment_end_date, status')
     .eq('employee_id', employeeId)
     .maybeSingle()
 
@@ -341,6 +359,11 @@ export async function beginEmployeeSeparation(
       resource_type: 'employee',
       resource_id: employeeId,
       operation_status: 'success',
+      old_values: {
+        status: employeeRow.status,
+        employment_end_date: employeeRow.employment_end_date ?? null,
+        separation_shift_policy: null,
+      },
       new_values: {
         status: 'Started Separation',
         employment_end_date: parsed.data.employmentEndDate,
@@ -386,4 +409,135 @@ export async function beginEmployeeSeparation(
     releasedShiftCount: releasedShifts.length,
     ...(warning ? { warning } : {}),
   }
+}
+
+export type CancelEmployeeSeparationResult =
+  | { success: true }
+  | { success: false; error: string }
+
+type CancelSeparationEmployeeRow = {
+  status: string
+  employment_end_date: string | null
+  separation_shift_policy: string | null
+  separation_started_at: string | null
+}
+
+/**
+ * Cancel a separation that has started: the person stays on as Active. There was no way back
+ * before, and the edit form's status change failed against the separation check constraint.
+ *
+ * Shifts the separation released stay released (they may already have been picked up by someone
+ * else), so the manager reassigns any that are still wanted.
+ */
+export async function cancelEmployeeSeparation(employeeId: string): Promise<CancelEmployeeSeparationResult> {
+  const canEdit = await checkUserPermission('employees', 'edit')
+  if (!canEdit) return { success: false, error: 'You do not have permission to perform this action.' }
+
+  if (!z.string().uuid().safeParse(employeeId).success) {
+    return { success: false, error: 'Employee not found.' }
+  }
+
+  const admin = createAdminClient()
+  const { data: employee, error: employeeError } = await admin
+    .from('employees')
+    .select('status, employment_end_date, separation_shift_policy, separation_started_at')
+    .eq('employee_id', employeeId)
+    .maybeSingle()
+
+  if (employeeError) return { success: false, error: 'Failed to load employee.' }
+  if (!employee) return { success: false, error: 'Employee not found.' }
+
+  const before = employee as CancelSeparationEmployeeRow
+  if (before.status !== 'Started Separation') {
+    return {
+      success: false,
+      error: 'Only a separation that has started can be cancelled. Refresh the page and try again.',
+    }
+  }
+
+  const actor = await getCurrentUser()
+  const now = new Date().toISOString()
+
+  // One statement: employees_separation_shift_policy_check only allows the policy and start time
+  // while the status is Started Separation, so they are cleared together with the status change.
+  // The status filter means a separation finalised in the meantime is not silently undone.
+  const { data: updatedRows, error: updateError } = await admin
+    .from('employees')
+    .update({
+      status: 'Active',
+      employment_end_date: null,
+      separation_shift_policy: null,
+      separation_started_at: null,
+      updated_at: now,
+    })
+    .eq('employee_id', employeeId)
+    .eq('status', 'Started Separation')
+    .select('employee_id')
+
+  if (updateError) {
+    console.error('[cancelEmployeeSeparation] Failed to update the employee:', {
+      code: updateError.code,
+      message: updateError.message,
+      details: updateError.details,
+      hint: updateError.hint,
+    })
+    return { success: false, error: 'Failed to cancel the separation.' }
+  }
+  if (!updatedRows || updatedRows.length === 0) {
+    return {
+      success: false,
+      error: 'This employee is no longer in Started Separation. Refresh the page and try again.',
+    }
+  }
+
+  const noteText = [
+    'Separation cancelled. They stay on as Active.',
+    before.employment_end_date ? `The last working day of ${before.employment_end_date} was cleared.` : null,
+    // begin_employee_separation also takes them off every rota template and keeps no list of
+    // which, so nothing can be put back automatically.
+    'Starting the separation released their shifts and took them off every rota template. Neither comes back on its own: reassign the shifts and add them back to their templates.',
+  ].filter(Boolean).join(' ')
+
+  const { error: noteError } = await admin.from('employee_notes').insert({
+    employee_id: employeeId,
+    note_text: noteText,
+    created_by_user_id: actor.user_id,
+  })
+  if (noteError) {
+    console.error('[cancelEmployeeSeparation] Failed to add the cancellation note:', {
+      code: noteError.code,
+      message: noteError.message,
+      details: noteError.details,
+      hint: noteError.hint,
+    })
+  }
+
+  await logAuditEvent({
+    user_id: actor.user_id ?? undefined,
+    user_email: actor.user_email ?? undefined,
+    operation_type: 'status_change',
+    resource_type: 'employee',
+    resource_id: employeeId,
+    operation_status: 'success',
+    old_values: {
+      status: before.status,
+      employment_end_date: before.employment_end_date,
+      separation_shift_policy: before.separation_shift_policy,
+      separation_started_at: before.separation_started_at,
+    },
+    new_values: {
+      status: 'Active',
+      employment_end_date: null,
+      separation_shift_policy: null,
+      separation_started_at: null,
+    },
+    additional_info: { action: 'cancel_separation' },
+  })
+
+  revalidatePath('/employees')
+  revalidatePath(`/employees/${employeeId}`)
+  revalidatePath('/rota')
+  revalidatePath('/portal/shifts')
+
+  return { success: true }
 }

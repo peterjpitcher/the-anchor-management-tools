@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { logAuditEvent } from '@/app/actions/audit';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -22,8 +22,19 @@ type FinalizeEmployeeSeparationOptions = {
 };
 
 export type FinalizeEmployeeSeparationResult =
-  | { success: true; employmentEndDate: string; authUserDeleted: boolean }
+  | {
+      success: true;
+      employmentEndDate: string;
+      authUserDeleted: boolean;
+      /** Set when the person is Former but something after the status change needs a person. */
+      warning?: string;
+    }
   | { success: false; error: string; code?: string };
+
+/** Up to three dates as "5 November 2026, 6 November 2026", for a message that names them. */
+function listDates(dates: string[]): string {
+  return [...new Set(dates)].map((date) => formatDateDdMmmmYyyy(date)).join(', ');
+}
 
 export async function finalizeEmployeeSeparation(
   employeeId: string,
@@ -65,11 +76,15 @@ export async function finalizeEmployeeSeparation(
   if (employee.employment_end_date && employee.employment_end_date > today) {
     return {
       success: false,
-      error: `This employee's recorded last working day is ${employee.employment_end_date}. Update the end date before marking them as Former.`,
+      // No "update the end date" advice: during a separation the date is locked (EmployeeService
+      // updateEmployee), and changing it means cancelling the separation and starting it again.
+      error: `Their last working day is ${formatDateDdMmmmYyyy(employee.employment_end_date)}. They can be marked as Former from that day.`,
       code: 'last_working_day_in_future',
     };
   }
 
+  // Up to three, so the refusal can name them: "still has future rota shifts" alone left the
+  // nightly job's skip unexplained and gave nobody anything to go and fix.
   const shiftDateFilter = options.blockShiftsOnOrAfterToday
     ? adminClient
         .from('rota_shifts')
@@ -77,14 +92,16 @@ export async function finalizeEmployeeSeparation(
         .eq('employee_id', employeeId)
         .neq('status', 'cancelled')
         .gte('shift_date', today)
-        .limit(1)
+        .order('shift_date', { ascending: true })
+        .limit(3)
     : adminClient
         .from('rota_shifts')
         .select('id, shift_date')
         .eq('employee_id', employeeId)
         .neq('status', 'cancelled')
         .gt('shift_date', today)
-        .limit(1);
+        .order('shift_date', { ascending: true })
+        .limit(3);
 
   const [openSessionResult, blockingShiftResult] = await Promise.all([
     adminClient
@@ -113,9 +130,10 @@ export async function finalizeEmployeeSeparation(
   }
 
   if ((blockingShiftResult.data ?? []).length > 0) {
+    const dates = listDates((blockingShiftResult.data as Array<{ shift_date: string }>).map(row => row.shift_date));
     return {
       success: false,
-      error: 'This employee still has future rota shifts. Reassign or cancel those shifts before marking them as Former.',
+      error: `This employee still has rota shifts on ${dates}. Reassign or cancel those shifts before marking them as Former.`,
       code: 'future_rota_shifts',
     };
   }
@@ -135,10 +153,10 @@ export async function finalizeEmployeeSeparation(
   }
 
   if ((futureLeave ?? []).length > 0) {
-    const dates = (futureLeave as Array<{ leave_date: string }>).map(row => row.leave_date).join(', ');
+    const dates = listDates((futureLeave as Array<{ leave_date: string }>).map(row => row.leave_date));
     return {
       success: false,
-      error: `This employee still has leave booked from ${dates}. Cancel that leave before marking them as Former.`,
+      error: `This employee still has leave booked on ${dates} (approved or waiting for a decision). Cancel or decline that leave before marking them as Former.`,
       code: 'future_booked_leave',
     };
   }
@@ -222,22 +240,27 @@ export async function finalizeEmployeeSeparation(
     return { success: false, error: 'Employee status could not be updated.', code: 'status_update_empty' };
   }
 
+  // The link to the login is cleared only once the login is gone. Clearing it after a failed
+  // delete left a live login that nothing pointed at, so nobody could find it to remove it. Their
+  // roles were removed above, so a login left behind has no access while it waits.
   let authUserDeleted = false;
+  let authLinkCleared = false;
+  let warning: string | undefined;
   if (employee.auth_user_id) {
     const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id);
     if (authDeleteError) {
       console.error('[finalizeEmployeeSeparation] Failed to delete auth user:', authDeleteError);
+      warning = 'They are now Former and their permissions are removed, but their login could not be deleted. Ask an administrator to delete it.';
     } else {
       authUserDeleted = true;
+      authLinkCleared = await settleWrite(
+        adminClient
+          .from('employees')
+          .update({ auth_user_id: null })
+          .eq('employee_id', employeeId),
+        { table: 'employees', what: 'Clearing the auth user link', ids: { employeeId } },
+      );
     }
-
-    await settleWrite(
-      adminClient
-        .from('employees')
-        .update({ auth_user_id: null })
-        .eq('employee_id', employeeId),
-      { table: 'employees', what: 'Clearing the auth user link', ids: { employeeId } },
-    );
   }
 
   if (source === 'automatic') {
@@ -261,12 +284,19 @@ export async function finalizeEmployeeSeparation(
       resource_type: 'employee',
       resource_id: employeeId,
       operation_status: 'success',
+      old_values: {
+        status: employee.status,
+        employment_end_date: employee.employment_end_date,
+      },
       new_values: {
         status: 'Former',
         employment_end_date: employmentEndDate,
-        auth_user_id_cleared: Boolean(employee.auth_user_id),
+        auth_user_id_cleared: authLinkCleared,
       },
-      additional_info: { source },
+      additional_info: {
+        source,
+        ...(employee.auth_user_id ? { auth_user_deleted: authUserDeleted } : {}),
+      },
     });
   } catch (auditError) {
     console.error('[finalizeEmployeeSeparation] Audit log failed:', auditError);
@@ -277,5 +307,5 @@ export async function finalizeEmployeeSeparation(
   revalidatePath('/rota');
   revalidatePath('/timeclock');
 
-  return { success: true, employmentEndDate, authUserDeleted };
+  return { success: true, employmentEndDate, authUserDeleted, ...(warning ? { warning } : {}) };
 }

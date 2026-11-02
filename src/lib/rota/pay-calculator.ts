@@ -7,6 +7,22 @@ import { differenceInYears, parseISO } from 'date-fns';
 // New client-side callers should import '@/lib/rota/pay-math' directly.
 export * from './pay-math';
 
+/** The rate in force, or null when the employee is salaried or no rate can be determined. */
+type HourlyRate = { rate: number; source: 'override' | 'age_band' };
+
+/**
+ * What getHourlyRate found. A read that failed is an error, never "no rate": a failed override
+ * read used to fall through to the age-band rate, so the Pay tab showed the wrong rate as current.
+ */
+export type HourlyRateLookup =
+  | { success: true; data: HourlyRate | null }
+  | { success: false; error: string };
+
+function rateReadFailed(what: string, error: { code?: string; message?: string }): HourlyRateLookup {
+  console.error(`[getHourlyRate] Failed to read ${what}:`, { code: error.code, message: error.message });
+  return { success: false, error: `The current hourly rate could not be worked out because the ${what} could not be loaded.` };
+}
+
 /**
  * Calculates the hourly rate for a given employee on a given shift date.
  *
@@ -14,75 +30,84 @@ export * from './pay-math';
  * 1. Employee-specific override (employee_rate_overrides), latest effective_from <= shiftDate
  * 2. Age-band rate (pay_age_bands + pay_band_rates), band matched to employee age on shift date
  *
- * Returns null if the employee is salaried, or if no rate can be determined.
- * Callers should surface null rates as data completeness warnings.
+ * Returns data null if the employee is salaried, or if no rate can be determined.
+ * Callers should surface null rates as data completeness warnings, and errors as errors.
  */
 export async function getHourlyRate(
   employeeId: string,
   shiftDate: string, // ISO date string e.g. "2026-03-01"
-): Promise<{ rate: number; source: 'override' | 'age_band' } | null> {
+): Promise<HourlyRateLookup> {
   const supabase = await createClient();
 
+  // maybeSingle throughout: most employees have no pay settings row and no override, and
+  // .single() logged a 406 for every one of them.
+
   // 1. Check pay type
-  const { data: paySettings } = await supabase
+  const { data: paySettings, error: paySettingsError } = await supabase
     .from('employee_pay_settings')
     .select('pay_type')
     .eq('employee_id', employeeId)
-    .single();
+    .maybeSingle();
 
-  if (paySettings?.pay_type === 'salaried') return null;
+  if (paySettingsError) return rateReadFailed('pay settings', paySettingsError);
+  if (paySettings?.pay_type === 'salaried') return { success: true, data: null };
 
   // 2. Check for employee-specific override
-  const { data: override } = await supabase
+  const { data: override, error: overrideError } = await supabase
     .from('employee_rate_overrides')
     .select('hourly_rate')
     .eq('employee_id', employeeId)
     .lte('effective_from', shiftDate)
     .order('effective_from', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
+  if (overrideError) return rateReadFailed('individual rate overrides', overrideError);
   if (override) {
-    return { rate: Number(override.hourly_rate), source: 'override' };
+    return { success: true, data: { rate: Number(override.hourly_rate), source: 'override' } };
   }
 
   // 3. Determine age on shift date
-  const { data: employee } = await supabase
+  const { data: employee, error: employeeError } = await supabase
     .from('employees')
     .select('date_of_birth')
     .eq('employee_id', employeeId)
-    .single();
+    .maybeSingle();
 
-  if (!employee?.date_of_birth) return null;
+  if (employeeError) return rateReadFailed('date of birth', employeeError);
+  if (!employee?.date_of_birth) return { success: true, data: null };
 
   const ageOnShiftDate = differenceInYears(parseISO(shiftDate), parseISO(employee.date_of_birth));
 
   // 4. Find matching age band
-  const { data: bands } = await supabase
+  const { data: bands, error: bandsError } = await supabase
     .from('pay_age_bands')
     .select('id, min_age, max_age')
     .eq('is_active', true);
+
+  if (bandsError) return rateReadFailed('pay age bands', bandsError);
 
   const matchingBand = bands?.find(band =>
     ageOnShiftDate >= band.min_age &&
     (band.max_age === null || ageOnShiftDate <= band.max_age),
   );
 
-  if (!matchingBand) return null;
+  if (!matchingBand) return { success: true, data: null };
 
   // 5. Find latest effective rate for the band on or before shift date
-  const { data: bandRate } = await supabase
+  const { data: bandRate, error: bandRateError } = await supabase
     .from('pay_band_rates')
     .select('hourly_rate')
     .eq('band_id', matchingBand.id)
     .lte('effective_from', shiftDate)
     .order('effective_from', { ascending: false })
     .limit(1)
-    .single();
+    .maybeSingle();
 
-  if (!bandRate) return null;
+  if (bandRateError) return rateReadFailed('pay band rates', bandRateError);
+  if (!bandRate) return { success: true, data: null };
 
-  return { rate: Number(bandRate.hourly_rate), source: 'age_band' };
+  return { success: true, data: { rate: Number(bandRate.hourly_rate), source: 'age_band' } };
 }
 
 export interface RateResolver {
@@ -105,12 +130,13 @@ export async function getBatchHourlyRates(employeeId: string): Promise<RateResol
 
   // Fetch employee-specific data and age bands in parallel
   // Note: pay_type default 'hourly' must match the same default in portal/shifts/page.tsx
+  // maybeSingle: an employee with no pay settings row is normal, and .single() logged a 406.
   const [paySettingsRes, overridesRes, employeeRes, bandsRes] = await Promise.all([
     supabase
       .from('employee_pay_settings')
       .select('pay_type')
       .eq('employee_id', employeeId)
-      .single(),
+      .maybeSingle(),
     supabase
       .from('employee_rate_overrides')
       .select('hourly_rate, effective_from')
@@ -120,7 +146,7 @@ export async function getBatchHourlyRates(employeeId: string): Promise<RateResol
       .from('employees')
       .select('date_of_birth')
       .eq('employee_id', employeeId)
-      .single(),
+      .maybeSingle(),
     supabase
       .from('pay_age_bands')
       .select('id, min_age, max_age')

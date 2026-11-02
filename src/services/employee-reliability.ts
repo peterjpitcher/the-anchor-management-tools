@@ -1,8 +1,11 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/paged-read';
 import { logAuditEvent } from '@/app/actions/audit';
 import { displayName } from '@/lib/employees/display-name';
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 import {
   calculateBusinessReliabilityScore,
+  hasNoShiftSignals,
   RELIABILITY_WINDOW_DAYS,
   type EmployeeReliabilityEvent,
   type ReliabilityEventType,
@@ -44,6 +47,11 @@ export type EmployeeReliabilityData = {
   recent: ReliabilityScoreBreakdown;
   allTime: ReliabilityScoreBreakdown;
   events: EmployeeReliabilityEvent[];
+  /**
+   * Set when the events could not be read. The Reliability tab shows it instead of the scores,
+   * which would otherwise be worked out from no events and look like a real record.
+   */
+  loadError?: string | null;
 };
 
 export type TeamReliabilityRow = {
@@ -73,15 +81,14 @@ function getReliabilityWindowStart(days = RELIABILITY_WINDOW_DAYS): string {
   return date.toISOString();
 }
 
-function toIsoDate(value: Date): string {
-  return value.toISOString().split('T')[0]!;
-}
-
+// The London date of an instant. This used to take the UTC date, so a holiday asked for between
+// 00:00 and 00:59 BST was dated the day before, and its notice ran a day long: 15 days instead
+// of 14, just enough to miss the late holiday flag.
 function localDateFromIsoDateTime(value: string | null | undefined): string {
-  if (!value) return toIsoDate(new Date());
+  if (!value) return getTodayIsoDate();
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value.slice(0, 10);
-  return toIsoDate(date);
+  return toLocalIsoDate(date);
 }
 
 function daysBetween(startDate: string, eventAt: string | null | undefined): number {
@@ -486,61 +493,67 @@ export async function recordHolidayAuditOnly(input: {
 }
 
 type ReliabilityEventQuery = {
-  employeeIds?: string[];
   employeeId?: string;
   fromDate?: string;
-  limit?: number;
 };
 
-/** Reads reliability events and throws when the read fails, so a caller can tell a failure from no events. */
+/**
+ * Reads reliability events and throws when the read fails, so a caller can tell a failure from no
+ * events. Newest first.
+ *
+ * Read in pages: Supabase returns at most 1,000 rows per request and cuts the answer short with no
+ * error. The leaderboard's 90-day window was one unpaged read (417 rows on 2 November 2026, and
+ * growing), and an employee's all-time record stopped at 1,000, so scores would have drifted
+ * quietly once either passed the limit. The id breaks ties between events at the same instant, so
+ * no page repeats or skips a row.
+ */
 async function queryReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
   const supabase = createAdminClient();
 
-  let query = supabase
-    .from('employee_reliability_events')
-    .select('*')
-    .order('event_at', { ascending: false });
-
-  if (params.employeeId) {
-    query = query.eq('employee_id', params.employeeId);
-  }
-  if (params.employeeIds && params.employeeIds.length > 0) {
-    query = query.in('employee_id', params.employeeIds);
-  }
-  if (params.fromDate) {
-    query = query.gte('event_at', params.fromDate);
-  }
-  if (params.limit) {
-    query = query.limit(params.limit);
-  }
-
-  const { data, error } = await query;
-  if (error) {
+  let rows: unknown[];
+  try {
+    rows = await fetchAllRows<unknown>(
+      (from, to) => {
+        let query = supabase.from('employee_reliability_events').select('*');
+        if (params.employeeId) {
+          query = query.eq('employee_id', params.employeeId);
+        }
+        if (params.fromDate) {
+          query = query.gte('event_at', params.fromDate);
+        }
+        return query
+          .order('event_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to);
+      },
+      { label: 'reliability events' }
+    );
+  } catch (error) {
     console.error('[employeeReliability] failed to fetch events', error);
     throw new Error(RELIABILITY_EVENTS_LOAD_ERROR);
   }
 
-  return (data ?? []).map(normalizeReliabilityEvent);
+  return rows.map(normalizeReliabilityEvent);
 }
 
 /**
- * The employee page's Reliability tab still treats a failed read as no events (unchanged here);
- * the team leaderboard uses queryReliabilityEvents and reports the failure instead.
+ * One employee's record, for the Reliability tab on their page. A failed read comes back as
+ * loadError rather than as no events: before 2 November 2026 it was shown as an empty record with
+ * a score worked out from nothing.
  */
-async function fetchReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
+export async function getEmployeeReliabilityData(employeeId: string): Promise<EmployeeReliabilityData> {
+  let events: EmployeeReliabilityEvent[];
+  let loadError: string | null = null;
   try {
-    return await queryReliabilityEvents(params);
+    events = await queryReliabilityEvents({ employeeId });
   } catch (error) {
     // A database error was logged where it happened; anything else is logged here.
     if (!(error instanceof Error && error.message === RELIABILITY_EVENTS_LOAD_ERROR)) {
       console.error('[employeeReliability] exception while fetching events', error);
     }
-    return [];
+    events = [];
+    loadError = RELIABILITY_EVENTS_LOAD_ERROR;
   }
-}
-
-export async function getEmployeeReliabilityData(employeeId: string): Promise<EmployeeReliabilityData> {
-  const events = await fetchReliabilityEvents({ employeeId, limit: 1000 });
   const windowStart = getReliabilityWindowStart();
   const recentEvents = events.filter(event => event.event_at >= windowStart);
 
@@ -549,6 +562,7 @@ export async function getEmployeeReliabilityData(employeeId: string): Promise<Em
     recent: calculateBusinessReliabilityScore(recentEvents),
     allTime: calculateBusinessReliabilityScore(events),
     events: events.slice(0, 150),
+    loadError,
   };
 }
 
@@ -567,6 +581,10 @@ function sortLeaderboard(rows: TeamReliabilityRow[], sortBy: TeamReliabilitySort
   sorted.sort((a, b) => {
     const lowSampleDelta = Number(a.recent.isLowSample) - Number(b.recent.isLowSample);
     if (lowSampleDelta !== 0) return lowSampleDelta;
+    // Someone with no shifts at all has nothing to score, so they go last rather than above a
+    // low-sample score that is real.
+    const noShiftsDelta = Number(hasNoShiftSignals(a.recent)) - Number(hasNoShiftSignals(b.recent));
+    if (noShiftsDelta !== 0) return noShiftsDelta;
 
     if (sortBy === 'manual_accept_rate') {
       return (b.recent.rates.manualAcceptRate ?? -1) - (a.recent.rates.manualAcceptRate ?? -1);
@@ -608,25 +626,44 @@ export async function getTeamReliabilityLeaderboard(input: {
     ? ['Active', 'Started Separation', 'Former']
     : ['Active', 'Started Separation'];
 
-  const { data: employees, error } = await supabase
-    .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, email_address, job_title, status')
-    .in('status', statuses)
-    .order('last_name')
-    .order('first_name');
+  type LeaderboardEmployee = {
+    employee_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_name: string | null;
+    email_address: string;
+    job_title: string | null;
+    status: string;
+  };
 
-  if (error) {
+  let employeeRows: LeaderboardEmployee[];
+  try {
+    // Paged like the events, with the id as the last sort key so two people with the same name
+    // can never swap places between pages.
+    employeeRows = await fetchAllRows<LeaderboardEmployee>(
+      (from, to) =>
+        supabase
+          .from('employees')
+          .select('employee_id, first_name, last_name, preferred_name, email_address, job_title, status')
+          .in('status', statuses)
+          .order('last_name')
+          .order('first_name')
+          .order('employee_id')
+          .range(from, to),
+      { label: 'employees for leaderboard' }
+    );
+  } catch (error) {
     console.error('[employeeReliability] failed to fetch employees for leaderboard', error);
     throw new Error(RELIABILITY_LEADERBOARD_LOAD_ERROR);
   }
 
-  const employeeRows = employees ?? [];
-  const employeeIds = employeeRows.map((employee: any) => employee.employee_id as string);
+  // Everyone's events in the window, matched to the people above in memory. Filtering by a list
+  // of every employee id put the whole list in the request URL, which only grows.
+  const employeeIds = new Set(employeeRows.map(employee => employee.employee_id));
   let events: EmployeeReliabilityEvent[] = [];
-  if (employeeIds.length > 0) {
+  if (employeeIds.size > 0) {
     try {
       events = await queryReliabilityEvents({
-        employeeIds,
         fromDate: input.fromDate ?? getReliabilityWindowStart(),
       });
     } catch {
@@ -638,12 +675,13 @@ export async function getTeamReliabilityLeaderboard(input: {
 
   const eventsByEmployee = new Map<string, EmployeeReliabilityEvent[]>();
   for (const event of events) {
+    if (!employeeIds.has(event.employee_id)) continue;
     const existing = eventsByEmployee.get(event.employee_id) ?? [];
     existing.push(event);
     eventsByEmployee.set(event.employee_id, existing);
   }
 
-  const rows = employeeRows.map((employee: any): TeamReliabilityRow => ({
+  const rows = employeeRows.map((employee): TeamReliabilityRow => ({
     employeeId: employee.employee_id,
     employeeName: employeeName(employee),
     email: employee.email_address,

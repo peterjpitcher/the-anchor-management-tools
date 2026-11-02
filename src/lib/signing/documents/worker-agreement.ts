@@ -4,7 +4,6 @@ import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { CONTRACT_LOGO_DATA_URI } from '@/lib/private-bookings/contract-logo'
 import { getHourlyRate } from '@/lib/rota/pay-calculator'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { settleWrite } from '@/lib/supabase/settle-write'
 import { AGREEMENT_ISSUING_MANAGER, assembleWorkerAgreementData, computeAgeAt } from '@/lib/worker-agreement'
 import { generateWorkerAgreementHTML } from '@/lib/worker-agreement-template'
 
@@ -92,38 +91,28 @@ export async function loadWorkerAgreement(
     .maybeSingle()
   if (error) throw new Error(`Could not read the employee: ${error.message}`)
   if (!data) return null
-  const employee = data as WorkerAgreementEmployee
+  const record = data as WorkerAgreementEmployee
 
-  // Normalise the worker's name capitalisation and persist it before producing the agreement,
-  // so the document (and the record) always reads correctly.
-  const normalizedFirst = normalizePersonName(employee.first_name)
-  const normalizedLast = normalizePersonName(employee.last_name)
-  const firstChanged = Boolean(normalizedFirst) && normalizedFirst !== employee.first_name
-  const lastChanged = Boolean(normalizedLast) && normalizedLast !== employee.last_name
-  if (firstChanged || lastChanged) {
-    try {
-      await settleWrite(
-        admin
-          .from('employees')
-          .update({
-            first_name: firstChanged ? normalizedFirst : employee.first_name,
-            last_name: lastChanged ? normalizedLast : employee.last_name,
-          })
-          .eq('employee_id', employee.employee_id),
-        { table: 'employees', what: 'Saving the normalised employee name', ids: { employeeId: employee.employee_id } },
-      )
-      if (firstChanged) employee.first_name = normalizedFirst
-      if (lastChanged) employee.last_name = normalizedLast
-    } catch (persistError) {
-      console.error('Failed to persist normalised employee name before contract:', persistError)
-    }
+  // The agreement prints the name with its capitalisation tidied ("sam o'brien" reads
+  // "Sam O'Brien"). Done here, for the document only: building a document used to write the
+  // tidied name back to the employee record, so a download (a GET) changed the record. Names
+  // are tidied the same way when they are saved, by the staff forms and by onboarding, so this
+  // only matters for records saved before that.
+  const employee: WorkerAgreementEmployee = {
+    ...record,
+    first_name: normalizePersonName(record.first_name) || record.first_name,
+    last_name: normalizePersonName(record.last_name) || record.last_name,
   }
 
   const agreementDate = getTodayIsoDate()
-  const [rateResult, nmwBandLabel] = await Promise.all([
+  const [rateLookup, nmwBandLabel] = await Promise.all([
     getHourlyRate(employee.employee_id, agreementDate),
     resolveNmwBandLabel(admin, employee.date_of_birth, agreementDate),
   ])
+  // A failed read must not print as "hourly rate not set" (or as the age-band rate when an
+  // override is on file): refuse to build the agreement instead.
+  if (!rateLookup.success) throw new Error(rateLookup.error)
+  const rateResult = rateLookup.data
 
   const missing: string[] = []
   if (!employee.first_name?.trim() || !employee.last_name?.trim()) missing.push('full name')

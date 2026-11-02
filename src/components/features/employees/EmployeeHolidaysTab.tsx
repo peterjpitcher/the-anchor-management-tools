@@ -32,6 +32,12 @@ interface EmployeeHolidaysTabProps {
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
   /** Why the leave or the allowance could not be loaded. The tab then says so. */
   loadError?: string | null;
+  /**
+   * The starter's onboarding answer to "do you have time off booked?": 'none' or 'has_dates',
+   * with when they answered. A "nothing booked" answer leaves no leave rows behind, so without
+   * this the tab cannot tell "said nothing booked" from "never asked".
+   */
+  onboardingTimeOff?: { answer: string; answeredAt: string } | null;
 }
 
 function formatDate(iso: string) {
@@ -50,6 +56,7 @@ export default function EmployeeHolidaysTab({
   paySettings,
   rotaSettings,
   loadError,
+  onboardingTimeOff,
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
@@ -86,6 +93,19 @@ export default function EmployeeHolidaysTab({
 
   const progressPct = allowance > 0 ? Math.min(100, (approvedDays / allowance) * 100) : 0;
   const overAllowance = allowance > 0 && approvedDays >= allowance;
+  const daysLabel = (count: number) => `${count} ${count === 1 ? 'day' : 'days'}`;
+  // Exactly at the allowance is "used in full", not "0 days over allowance".
+  const remainingDays = allowance - approvedDays;
+  const allowanceSummary = remainingDays > 0
+    ? `${daysLabel(remainingDays)} remaining`
+    : remainingDays === 0
+      ? 'Allowance used in full'
+      : `${daysLabel(-remainingDays)} over allowance`;
+  const onboardingTimeOffText = onboardingTimeOff
+    ? `${onboardingTimeOff.answer === 'none'
+        ? 'At onboarding they said they had no time off already booked'
+        : 'At onboarding they listed time off already booked, shown in the requests below'} (answered ${formatDate(onboardingTimeOff.answeredAt)}).`
+    : null;
 
   const handleBook = () => {
     if (!bookStart) { setBookError('Choose a start date'); return; }
@@ -207,10 +227,14 @@ export default function EmployeeHolidaysTab({
             </div>
             <ProgressBar value={progressPct} tone={allowanceTone} size="md" label="Holiday allowance used" />
             <div className="flex gap-4 text-xs text-text-muted">
-              <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
+              <span>{allowanceSummary}</span>
               {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
             </div>
           </div>
+
+          {onboardingTimeOffText && (
+            <p className="text-sm text-text-muted">{onboardingTimeOffText}</p>
+          )}
         </CardBody>
       </Card>
 

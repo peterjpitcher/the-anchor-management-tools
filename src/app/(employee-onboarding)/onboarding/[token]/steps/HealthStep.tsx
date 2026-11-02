@@ -29,13 +29,18 @@ interface HealthData {
 
 interface HealthStepProps {
   token: string;
+  /** The last saved values, from the wizard (not the page load), so Back shows what was saved. */
   initialData?: Partial<HealthData>;
+  /** Already saved: unchanged answers move on without saving again. */
+  saved?: boolean;
   onSuccess: (data: HealthData) => void;
   onBack?: () => void;
+  /** Called when the server says this browser needs to sign in first. */
+  onSignInRequired?: () => void;
 }
 
-export default function HealthStep({ token, initialData, onSuccess, onBack }: HealthStepProps) {
-  const [data, setData] = useState<HealthData>({
+export default function HealthStep({ token, initialData, saved = false, onSuccess, onBack, onSignInRequired }: HealthStepProps) {
+  const [startingValues] = useState<HealthData>(() => ({
     doctor_name: initialData?.doctor_name ?? '',
     doctor_address: initialData?.doctor_address ?? '',
     has_allergies: initialData?.has_allergies ?? false,
@@ -55,13 +60,21 @@ export default function HealthStep({ token, initialData, onSuccess, onBack }: He
     disability_reg_number: initialData?.disability_reg_number ?? '',
     disability_reg_expiry_date: initialData?.disability_reg_expiry_date ?? '',
     disability_details: initialData?.disability_details ?? '',
-  });
+  }));
+  const [data, setData] = useState<HealthData>(startingValues);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Nothing changed since the last save: move on without writing it again.
+    if (saved && JSON.stringify(data) === JSON.stringify(startingValues)) {
+      onSuccess(data);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -90,6 +103,7 @@ export default function HealthStep({ token, initialData, onSuccess, onBack }: He
       if (result.success) {
         onSuccess(data);
       } else {
+        if (result.code === 'sign_in_required') onSignInRequired?.();
         setError(result.error || 'Failed to save. Please try again.');
       }
     } catch (caught) {
@@ -134,6 +148,16 @@ export default function HealthStep({ token, initialData, onSuccess, onBack }: He
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Every question here is optional: the save sends blanks as empty and unticked boxes as
+          no, and neither the form nor the server requires any of them. */}
+      <div className="space-y-2 text-sm text-text-muted">
+        <p>
+          Only managers who can edit staff records can see these answers. They help us keep you safe
+          at work and make any changes you might need.
+        </p>
+        <p>You do not have to answer any of these questions.</p>
+      </div>
+
       <StepSection title="GP Details">
         {textField('doctor_name', "Doctor's Name")}
         {textareaField('doctor_address', "Doctor's Address")}
@@ -154,8 +178,8 @@ export default function HealthStep({ token, initialData, onSuccess, onBack }: He
         {(data.had_absence_over_2_weeks_last_3_years || data.had_outpatient_treatment_over_3_months_last_3_years) && (
           textareaField('absence_or_treatment_details', 'Please provide details')
         )}
-        {textareaField('illness_history', 'Illness history (optional)')}
-        {textareaField('recent_treatment', 'Recent treatment (optional)')}
+        {textareaField('illness_history', 'Illness history')}
+        {textareaField('recent_treatment', 'Recent treatment')}
       </StepSection>
 
       <hr className="border-border" />

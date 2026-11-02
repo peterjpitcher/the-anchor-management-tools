@@ -8,8 +8,12 @@ import { acknowledgeRightToWorkNotice } from '@/app/actions/employeeInvite';
 interface RightToWorkNoticeStepProps {
   token: string;
   initialAcknowledged: boolean;
+  /** Already saved: moving on again does not record it a second time. */
+  saved?: boolean;
   onSuccess: () => void;
   onBack?: () => void;
+  /** Called when the server says this browser needs to sign in first. */
+  onSignInRequired?: () => void;
 }
 
 /**
@@ -27,8 +31,10 @@ interface RightToWorkNoticeStepProps {
 export default function RightToWorkNoticeStep({
   token,
   initialAcknowledged,
+  saved = false,
   onSuccess,
   onBack,
+  onSignInRequired,
 }: RightToWorkNoticeStepProps) {
   const [acknowledged, setAcknowledged] = useState(initialAcknowledged);
   const [error, setError] = useState('');
@@ -43,12 +49,18 @@ export default function RightToWorkNoticeStep({
       return;
     }
 
+    if (saved && initialAcknowledged) {
+      onSuccess();
+      return;
+    }
+
     setLoading(true);
     try {
       const result = await acknowledgeRightToWorkNotice(token);
       if (result.success) {
         onSuccess();
       } else {
+        if (result.code === 'sign_in_required') onSignInRequired?.();
         setError(result.error || 'Could not save that. Please try again.');
       }
     } catch (caught) {

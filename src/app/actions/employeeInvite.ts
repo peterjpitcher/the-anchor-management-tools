@@ -21,17 +21,54 @@ import {
   sendWelcomeEmail,
   sendOnboardingCompleteEmail,
   sendPortalInviteEmail,
+  type OnboardingCompleteEmailInput,
 } from '@/lib/email/employee-invite-emails';
 import { normalisePreferredName } from '@/lib/employees/display-name';
-import { resolveOnboardingSessionError } from '@/lib/employees/onboarding-session';
+import { normalizePersonName } from '@/lib/names';
+import {
+  resolveOnboardingSessionError,
+  SIGN_IN_REQUIRED_MESSAGE,
+  type OnboardingAccessCode,
+  type OnboardingAccessProblem,
+} from '@/lib/employees/onboarding-session';
+import {
+  ACCOUNT_NUMBER_VISIBLE_TAIL,
+  MASK_CHARACTER,
+  MASKED_VALUE_PATTERN,
+  NI_NUMBER_VISIBLE_TAIL,
+  ONBOARDING_INCOMPLETE_MESSAGES,
+  isEmergencyContactsComplete,
+  isFinancialComplete,
+  isPersonalComplete,
+  maskTail,
+  type OnboardingSectionKey,
+} from '@/lib/employees/onboarding-rules';
+import {
+  ACCOUNT_NUMBER_MESSAGE,
+  ACCOUNT_NUMBER_PATTERN,
+  NI_NUMBER_MESSAGE,
+  NI_NUMBER_PATTERN,
+  SORT_CODE_MESSAGE,
+  SORT_CODE_PATTERN,
+  ageOnDate,
+  dateOfBirthError,
+  isUnder18,
+  normaliseAccountNumber,
+  normaliseNiNumber,
+  normaliseSortCode,
+} from '@/lib/employees/field-rules';
+import { inviteTokenProblem, type InviteTokenProblem } from '@/lib/employees/invite-token-rules';
+import { passwordError } from '@/lib/employees/password-rule';
+import { AuthService } from '@/services/auth';
 import { formatPhoneForStorage } from '@/lib/utils';
+import { getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils';
 import { getAppUrl } from '@/lib/env';
 
 // DEF-015 verified: the employee_invite_tokens table column is defined as
 // `expires_at TIMESTAMPTZ NOT NULL DEFAULT NOW() + INTERVAL '7 days'`
 // in migration 20260227000001_employee_invite_onboarding.sql.
 // The create_employee_invite RPC relies on this default. Welcome and portal
-// invite emails both promise "7 days" — this matches the DB constraint.
+// invite emails both promise "7 days": this matches the DB constraint.
 
 function buildOnboardingUrl(token: string): string {
   return `${getAppUrl()}/onboarding/${token}`;
@@ -39,7 +76,27 @@ function buildOnboardingUrl(token: string): string {
 
 export type InviteType = 'onboarding' | 'portal_access';
 type EmployeeStatus = 'Onboarding' | 'Active' | 'Started Separation' | 'Former';
-type OnboardingSectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off' | 'right_to_work_notice';
+
+/**
+ * A refused onboarding action. `code` says the browser needs a session for this starter (or has
+ * someone else's), so the wizard can offer to sign in. `fieldErrors` ties each message to the
+ * field it is about, keyed by the field's path ("date_of_birth", "primary.phone_number").
+ */
+export type OnboardingActionFailure = {
+  success: false;
+  error: string;
+  code?: OnboardingAccessCode;
+  fieldErrors?: Record<string, string>;
+};
+
+/** What the financial step shows after a save: the masked NI and account number, as on reload. */
+export type SavedFinancialDisplay = {
+  ni_number: string;
+  bank_sort_code: string;
+  bank_account_number: string;
+};
+
+const SAVE_FAILED_MESSAGE = 'We could not save your details just now. Please try again in a moment.';
 
 type ValidationResult = {
   valid: boolean;
@@ -175,24 +232,63 @@ async function expirePendingSiblingTokens(
 }
 
 /**
- * Server side wrapper around resolveOnboardingSessionError. See that function for the rule and
- * why "no session" has to be allowed here.
+ * Server side wrapper around resolveOnboardingSessionError. See that function for the rule: once
+ * the starter has an account, the link only works alongside a session for that account.
+ *
+ * Reads auth_user_id fresh rather than trusting validateInviteToken's hasAuthUser, so an account
+ * made in another tab a moment ago counts. The cookie session is only read when there is an
+ * account to compare it with. `knownSessionUserId` is for a caller that has just signed in and
+ * already knows who it is (the new cookie is not readable in the same request).
  */
-async function requireTokenBoundSession(employeeId: string): Promise<string | null> {
+async function requireTokenBoundSession(
+  employeeId: string,
+  knownSessionUserId?: string | null,
+): Promise<OnboardingAccessProblem | { code?: undefined; message: string } | null> {
   const adminClient = createAdminClient();
-  const { data: employee } = await adminClient
+  const { data: employee, error } = await adminClient
     .from('employees')
     .select('auth_user_id')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
+  if (error) {
+    // Fail closed: without the row we cannot tell whether a session is needed.
+    console.error('[employeeInvite] Could not read the employee to check the session:', error);
+    return { message: 'We could not check who is signed in. Please reload the page and try again.' };
+  }
+
+  const employeeAuthUserId = (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null;
+  if (!employeeAuthUserId) {
+    return resolveOnboardingSessionError({ employeeAuthUserId: null, sessionUserId: null });
+  }
+
+  if (knownSessionUserId !== undefined) {
+    return resolveOnboardingSessionError({ employeeAuthUserId, sessionUserId: knownSessionUserId });
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   return resolveOnboardingSessionError({
-    employeeAuthUserId: (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null,
+    employeeAuthUserId,
     sessionUserId: user?.id ?? null,
   });
+}
+
+function accessFailure(problem: { code?: OnboardingAccessCode; message: string }): OnboardingActionFailure {
+  return problem.code
+    ? { success: false, error: problem.message, code: problem.code }
+    : { success: false, error: problem.message };
+}
+
+/** Zod issues keyed by field path, first message per field. */
+function zodFieldErrors(error: z.ZodError): Record<string, string> {
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of error.errors) {
+    const key = issue.path.join('.');
+    if (key && !fieldErrors[key]) fieldErrors[key] = issue.message;
+  }
+  return fieldErrors;
 }
 
 // ---------------------------------------------------------------------------
@@ -240,6 +336,13 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
   const emailResult = emailSchema.safeParse(email);
   if (!emailResult.success) {
     return { type: 'error', message: emailResult.error.errors[0].message };
+  }
+
+  // Only the browser checked the start date, so an impossible date went straight to the
+  // database. The invite form requires one; the recruitment hire hand-off sends none (staff add
+  // it on the record later), so a missing date is allowed here and a given one must be real.
+  if (employmentStartDate && !isValidIsoDate(employmentStartDate)) {
+    return { type: 'error', message: 'Enter a real employment start date.' };
   }
 
   const adminClient = createAdminClient();
@@ -454,6 +557,13 @@ export async function resendInvite(employeeId: string) {
 // Employee-side actions (token-authenticated, no permission check)
 // ---------------------------------------------------------------------------
 
+const INVITE_TOKEN_PROBLEM_MESSAGES: Record<InviteTokenProblem, string> = {
+  email_changed: 'Invite link no longer matches the employee email address.',
+  onboarding_finished: 'This onboarding invite is no longer valid.',
+  not_active: 'Portal invites can only be used by active employees.',
+  has_login: 'This employee already has a portal login.',
+};
+
 export async function validateInviteToken(token: string): Promise<ValidationResult> {
   const adminClient = createAdminClient();
 
@@ -516,12 +626,12 @@ export async function validateInviteToken(token: string): Promise<ValidationResu
 
   const employeeStatus = emp.status as EmployeeStatus;
   const hasAuthUser = Boolean(emp?.auth_user_id);
-  const employeeEmail = normalizeEmail(emp.email_address);
-  const tokenEmail = normalizeEmail(data.email);
   const employeeName = [emp.first_name, emp.last_name].filter(Boolean).join(' ') || null;
 
-  if (employeeEmail !== tokenEmail) {
-    return validationFailure('Invite link no longer matches the employee email address.', {
+  // The same rules the chase cron applies before it sends a reminder (invite-token-rules.ts).
+  const problem = inviteTokenProblem({ inviteType, tokenEmail: data.email, employee: emp });
+  if (problem) {
+    return validationFailure(INVITE_TOKEN_PROBLEM_MESSAGES[problem], {
       employee_id: data.employee_id,
       email: emp.email_address,
       hasAuthUser,
@@ -529,41 +639,6 @@ export async function validateInviteToken(token: string): Promise<ValidationResu
       employeeStatus,
       employeeName,
     });
-  }
-
-  if (inviteType === 'onboarding' && employeeStatus !== 'Onboarding') {
-    return validationFailure('This onboarding invite is no longer valid.', {
-      employee_id: data.employee_id,
-      email: emp.email_address,
-      hasAuthUser,
-      inviteType,
-      employeeStatus,
-      employeeName,
-    });
-  }
-
-  if (inviteType === 'portal_access') {
-    if (!['Active', 'Started Separation'].includes(employeeStatus)) {
-      return validationFailure('Portal invites can only be used by active employees.', {
-        employee_id: data.employee_id,
-        email: emp.email_address,
-        hasAuthUser,
-        inviteType,
-        employeeStatus,
-        employeeName,
-      });
-    }
-
-    if (hasAuthUser) {
-      return validationFailure('This employee already has a portal login.', {
-        employee_id: data.employee_id,
-        email: emp.email_address,
-        hasAuthUser,
-        inviteType,
-        employeeStatus,
-        employeeName,
-      });
-    }
   }
 
   return {
@@ -579,9 +654,61 @@ export async function validateInviteToken(token: string): Promise<ValidationResu
   };
 }
 
-export async function createEmployeeAccount(token: string, password: string): Promise<{ success: boolean; error?: string }> {
-  if (!password || password.length < 8) {
-    return { success: false, error: 'Password must be at least 8 characters.' };
+/**
+ * The messages our own invite and onboarding database functions raise. They are written for the
+ * starter, so they may be shown as they are. Anything else a database call returns (a constraint
+ * name, a connection error) is logged and replaced with a plain message.
+ */
+const PLAIN_INVITE_RPC_MESSAGES = new Set([
+  'Invalid invite link.',
+  'This link is not for employee onboarding.',
+  'Invite link has already been used.',
+  'Invite link has expired.',
+  'Employee not found.',
+  'Invite link no longer matches the employee email address.',
+  'Account already created. Please sign in.',
+  'This onboarding invite is no longer valid.',
+  'Portal invites can only be used by active employees.',
+  'Create your account before completing onboarding.',
+  'Personal details must be completed before submitting.',
+  'Primary emergency contact must be completed before submitting.',
+  'Financial details must be saved before submitting.',
+  'Health information must be saved before submitting.',
+  'Tell us about any time off you have already booked before submitting.',
+  'Please confirm you have read what to bring for your right to work check.',
+]);
+
+function plainRpcMessage(message: string | null | undefined, fallback: string): string {
+  const trimmed = (message ?? '').trim();
+  return PLAIN_INVITE_RPC_MESSAGES.has(trimmed) ? trimmed : fallback;
+}
+
+/**
+ * Supabase's admin createUser says an address is taken with the code `email_exists` (message "A
+ * user with this email address has already been registered"). The old check looked for "already
+ * registered", which that message does not contain, so a starter in that position only ever saw
+ * "Failed to create account". The message is kept as a fallback for older servers.
+ */
+function isEmailTakenError(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return false;
+  if (error.code === 'email_exists' || error.code === 'user_already_exists') return true;
+  const message = (error.message ?? '').toLowerCase();
+  return message.includes('already been registered') || message.includes('already registered');
+}
+
+const EMAIL_TAKEN_MESSAGE =
+  'There is already a login for this email address, so we cannot create a new one. Please ask your manager to sort this out: they can check the login or send your invite to a different email address.';
+
+export async function createEmployeeAccount(
+  token: string,
+  password: string,
+): Promise<
+  | { success: true; signedIn?: boolean }
+  | { success: false; error: string; fieldErrors?: Record<string, string>; code?: 'sign_in_required' }
+> {
+  const passwordProblem = passwordError(password);
+  if (passwordProblem) {
+    return { success: false, error: passwordProblem, fieldErrors: { password: passwordProblem } };
   }
 
   const validation = await validateInviteToken(token);
@@ -589,8 +716,10 @@ export async function createEmployeeAccount(token: string, password: string): Pr
     return { success: false, error: validation.error || 'Invalid or expired invite link.' };
   }
 
+  // A second tab, or a lost response after the account was made. The page moves on to its
+  // sign-in form on this code; with no code the starter was stuck on the password form.
   if (validation.hasAuthUser) {
-    return { success: false, error: 'Account already created. Please sign in.' };
+    return { success: false, error: SIGN_IN_REQUIRED_MESSAGE, code: 'sign_in_required' };
   }
 
   const adminClient = createAdminClient();
@@ -604,17 +733,18 @@ export async function createEmployeeAccount(token: string, password: string): Pr
 
   if (authError) {
     console.error('[createEmployeeAccount] Auth error:', authError);
-    if (authError.message?.includes('already registered')) {
-      return { success: false, error: 'This email address already has an account.' };
+    if (isEmailTakenError(authError as { code?: string; message?: string })) {
+      return { success: false, error: EMAIL_TAKEN_MESSAGE };
     }
-    return { success: false, error: 'Failed to create account. Please try again.' };
+    return { success: false, error: 'We could not create your account just now. Please try again in a moment.' };
   }
 
   const authUserId = authData.user?.id;
   if (!authUserId) {
-    // Edge case: auth user was created but no ID returned — attempt cleanup is not possible
-    // without the ID; return error immediately
-    return { success: false, error: 'Account created but no user ID returned.' };
+    // Edge case: auth user was created but no ID returned. Cleanup is not possible without the
+    // ID, so a retry will meet "email exists": point them at their manager now.
+    console.error('[createEmployeeAccount] CRITICAL: createUser returned no user id for an onboarding invite.');
+    return { success: false, error: 'Something went wrong creating your account. Please ask your manager for help before you try again.' };
   }
 
   const { error: linkError } = await adminClient.rpc('link_employee_invite_account', {
@@ -628,8 +758,148 @@ export async function createEmployeeAccount(token: string, password: string): Pr
     const { error: deleteAuthError } = await adminClient.auth.admin.deleteUser(authUserId);
     if (deleteAuthError) {
       console.error('[createEmployeeAccount] CRITICAL: Failed to delete orphaned auth user after link failure. Manual cleanup required. auth_user_id:', authUserId, deleteAuthError);
+      try {
+        await logAuditEvent({
+          user_email: validation.email ?? undefined,
+          operation_type: 'create_account',
+          resource_type: 'employee',
+          resource_id: validation.employee_id,
+          operation_status: 'failure',
+          error_message: 'Login created but not linked to the employee, and could not be removed. Remove it by hand before the starter tries again.',
+          additional_info: { orphaned_auth_user_id: authUserId },
+        });
+      } catch (auditError) {
+        console.error('[createEmployeeAccount] Audit log failed:', auditError);
+      }
+      // The orphaned login now holds their email address, so trying again would only meet
+      // "email exists". Tell them who can fix it rather than to retry.
+      return { success: false, error: 'Something went wrong creating your account. Please ask your manager for help before you try again.' };
     }
-    return { success: false, error: linkError.message || 'Failed to link account. Please try again.' };
+    return {
+      success: false,
+      error: plainRpcMessage(linkError.message, 'We could not create your account just now. Please try again in a moment.'),
+    };
+  }
+
+  // Portal access ends here: linking completes that link, so it cannot be reused anyway.
+  if (validation.inviteType !== 'onboarding') {
+    return { success: true };
+  }
+
+  // Sign this browser in as the new account. From here the onboarding link only works alongside
+  // that session (onboarding-session.ts), so a forwarded link stops working once a password is
+  // set. A failed sign-in does not undo the account: the starter is asked to sign in and carries on.
+  try {
+    const supabase = await createClient();
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: validation.email,
+      password,
+    });
+    if (signInError) {
+      console.error('[createEmployeeAccount] Account made but the browser could not be signed in:', signInError);
+      return { success: true, signedIn: false };
+    }
+  } catch (signInError) {
+    console.error('[createEmployeeAccount] Account made but the browser could not be signed in:', signInError);
+    return { success: true, signedIn: false };
+  }
+
+  return { success: true, signedIn: true };
+}
+
+/**
+ * Sign in on the onboarding page, for a starter who already set a password and has come back
+ * without a session (another device, a cleared browser). The email is the one the invite was sent
+ * to, so the link alone is still not enough: they need the password too.
+ *
+ * Goes through AuthService.signIn, the same path as the login page: its rate limit, its generic
+ * failure message and its audit rows. The login page itself cannot bring them back here, because
+ * the sign-in action sends anyone without a role (every new starter) to the staff portal.
+ */
+/**
+ * The address the starter's login was made with. Staff can correct the email on the employee
+ * record after the starter set a password, and nothing changes the login's own address, so signing
+ * in with the record's current address would fail for good. Null when it cannot be read.
+ */
+async function readLinkedLoginEmail(employeeId: string): Promise<string | null> {
+  const adminClient = createAdminClient();
+  const { data: employee, error } = await adminClient
+    .from('employees')
+    .select('auth_user_id')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+  if (error) {
+    console.error('[signInToOnboarding] Could not read the employee for sign in:', {
+      code: error.code,
+      message: error.message,
+    });
+    return null;
+  }
+
+  const authUserId = (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null;
+  if (!authUserId) return null;
+
+  const { data, error: userError } = await adminClient.auth.admin.getUserById(authUserId);
+  if (userError || !data?.user?.email) {
+    console.error('[signInToOnboarding] Could not read the login for sign in:', {
+      code: userError?.code,
+      message: userError?.message,
+    });
+    return null;
+  }
+  return data.user.email;
+}
+
+export async function signInToOnboarding(
+  token: string,
+  password: string,
+): Promise<{ success: true } | { success: false; error: string }> {
+  const validation = await validateInviteToken(token);
+  if (!validation.valid || !validation.employee_id || !validation.email) {
+    return { success: false, error: 'This invite link is no longer valid. Please ask your manager for a new one.' };
+  }
+  if (validation.inviteType !== 'onboarding') {
+    return { success: false, error: 'This link is for portal access only.' };
+  }
+  if (!validation.hasAuthUser) {
+    return { success: false, error: 'You have not set a password yet. Reload the page to create one.' };
+  }
+  if (!password) {
+    return { success: false, error: 'Enter your password.' };
+  }
+
+  const loginEmail = await readLinkedLoginEmail(validation.employee_id);
+  if (!loginEmail) {
+    return { success: false, error: 'We could not sign you in just now. Please try again in a moment.' };
+  }
+
+  let signedInUserId: string | undefined;
+  try {
+    const result = await AuthService.signIn(loginEmail, password);
+    signedInUserId = result.userId;
+  } catch (error: unknown) {
+    const message = getErrorMessage(error);
+    if (message.includes('Too many requests')) {
+      return { success: false, error: 'Too many attempts. Please wait a minute and try again.' };
+    }
+    if (message.includes('Invalid email or password')) {
+      return { success: false, error: 'That password is not right. Please try again, or reset it.' };
+    }
+    console.error('[signInToOnboarding] Sign in failed:', error);
+    return { success: false, error: 'We could not sign you in just now. Please try again in a moment.' };
+  }
+
+  // The email belongs to this employee's login, so the account should be theirs. Check rather than
+  // assume, and never leave someone else's session behind on a mismatch.
+  const boundError = await requireTokenBoundSession(validation.employee_id, signedInUserId ?? null);
+  if (boundError) {
+    try {
+      const supabase = await createClient();
+      await supabase.auth.signOut({ scope: 'local' });
+    } catch (signOutError) {
+      console.error('[signInToOnboarding] Could not sign out a mismatched session:', signOutError);
+    }
+    return { success: false, error: boundError.message };
   }
 
   return { success: true };
@@ -660,18 +930,8 @@ const onboardingPhoneSchema = z.preprocess(
 // An onboarding link is a bearer token sent by email, so getOnboardingSnapshot
 // masks the NI number and bank account number rather than replaying them in full
 // to anyone who reopens it. A masked value coming back on save is therefore a
-// value the employee never saw: it must not be written over the real one.
-const MASK_CHARACTER = '•';
-
-/** Exactly what maskTail produces: mask characters, then the visible tail. */
-const MASKED_VALUE_PATTERN = /^•+[A-Za-z0-9]*$/;
-
-function maskTail(value: string | null | undefined, visibleTail: number): string {
-  const raw = (value ?? '').trim();
-  if (!raw) return '';
-  if (raw.length <= visibleTail) return MASK_CHARACTER.repeat(raw.length);
-  return `${MASK_CHARACTER.repeat(raw.length - visibleTail)}${raw.slice(-visibleTail)}`;
-}
+// value the employee never saw: it must not be written over the real one. The
+// mask itself lives in onboarding-rules.ts, so the wizard can keep it after a save.
 
 /**
  * Optional financial field that applies the same rules as the manager edit form
@@ -682,6 +942,15 @@ function maskTail(value: string | null | undefined, visibleTail: number): string
  * Resolves to `undefined` when the submitted value is still masked, which the save
  * path reads as "leave the stored column alone".
  */
+const HALF_EDITED_MASK_MESSAGE = 'Clear the field and type the full value, or leave it exactly as shown.';
+
+/** The masked fields, and how much of each the snapshot shows. The sort code is shown in full. */
+const MASKED_FINANCIAL_TAILS: Record<keyof SavedFinancialDisplay, number | null> = {
+  ni_number: NI_NUMBER_VISIBLE_TAIL,
+  bank_sort_code: null,
+  bank_account_number: ACCOUNT_NUMBER_VISIBLE_TAIL,
+};
+
 function onboardingFinancialField(options: {
   normalise: (value: string) => string;
   pattern: RegExp;
@@ -703,10 +972,7 @@ function onboardingFinancialField(options: {
       // the employee believed they had corrected a detail they had not.
       if (MASKED_VALUE_PATTERN.test(trimmed)) return undefined;
       if (trimmed.includes(MASK_CHARACTER)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: 'Clear the field and type the full value, or leave it exactly as shown.',
-        });
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: HALF_EDITED_MASK_MESSAGE });
         return z.NEVER;
       }
 
@@ -720,23 +986,38 @@ function onboardingFinancialField(options: {
 }
 
 const PersonalSectionSchema = z.object({
-  first_name: z.string().min(1, 'First name is required'),
-  last_name: z.string().min(1, 'Last name is required'),
+  first_name: z.string().trim().min(1, 'First name is required'),
+  last_name: z.string().trim().min(1, 'Last name is required'),
   preferred_name: z.string().optional().nullable(),
-  date_of_birth: z.string().optional().nullable(),
+  // Required, and a real date that makes them 16 to 100 (field-rules.ts, shared with the staff
+  // forms). It was optional and unchecked, so a profile could go Active with no age on record.
+  date_of_birth: z
+    .string({ required_error: 'Date of birth is required', invalid_type_error: 'Date of birth is required' })
+    .trim()
+    .superRefine((value, ctx) => {
+      const problem = dateOfBirthError(value);
+      if (problem) ctx.addIssue({ code: z.ZodIssueCode.custom, message: problem });
+    }),
   address: z.string().optional().nullable(),
   post_code: z.string().optional().nullable(),
   phone_number: onboardingPhoneSchema,
   mobile_number: onboardingPhoneSchema,
 });
 
+const PRIMARY_CONTACT_PHONE_MESSAGE = 'Add a phone or mobile number for your main contact.';
+
 const EmergencyContactsSectionSchema = z.object({
   primary: z.object({
-    name: z.string().min(1, 'Primary contact name is required'),
+    name: z.string().trim().min(1, 'Primary contact name is required'),
     relationship: z.string().optional().nullable(),
     phone_number: onboardingPhoneSchema,
     mobile_number: onboardingPhoneSchema,
     address: z.string().optional().nullable(),
+  }).superRefine((contact, ctx) => {
+    // An emergency contact with no number cannot be rung in an emergency.
+    if (!contact.phone_number && !contact.mobile_number) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['phone_number'], message: PRIMARY_CONTACT_PHONE_MESSAGE });
+    }
   }),
   secondary: z.object({
     name: z.string().optional().nullable(),
@@ -747,29 +1028,27 @@ const EmergencyContactsSectionSchema = z.object({
   }).optional(),
 });
 
+// Each field may be saved blank here, so a starter without their bank details to hand can carry
+// on. Submitting needs the sort code and account number (isFinancialComplete); the NI number stays
+// optional, as they can give it to their manager later.
 const FinancialSectionSchema = z.object({
   ni_number: onboardingFinancialField({
-    normalise: (value) => value.replace(/\s+/g, '').toUpperCase(),
-    pattern: /^[A-Z]{2}\d{6}[A-Z]$/,
-    message: 'NI number must be in format: AA123456A',
+    normalise: normaliseNiNumber,
+    pattern: NI_NUMBER_PATTERN,
+    message: NI_NUMBER_MESSAGE,
   }),
   bank_name: z.string().optional().nullable(),
   payee_name: z.string().optional().nullable(),
   branch_address: z.string().optional().nullable(),
   bank_sort_code: onboardingFinancialField({
-    normalise: (value) => {
-      const digits = value.replace(/\D/g, '');
-      return digits.length === 6
-        ? `${digits.slice(0, 2)}-${digits.slice(2, 4)}-${digits.slice(4, 6)}`
-        : value;
-    },
-    pattern: /^\d{2}-\d{2}-\d{2}$/,
-    message: 'Sort code must be 6 digits',
+    normalise: normaliseSortCode,
+    pattern: SORT_CODE_PATTERN,
+    message: SORT_CODE_MESSAGE,
   }),
   bank_account_number: onboardingFinancialField({
-    normalise: (value) => value.replace(/\s+/g, ''),
-    pattern: /^\d{8}$/,
-    message: 'Account number must be exactly 8 digits',
+    normalise: normaliseAccountNumber,
+    pattern: ACCOUNT_NUMBER_PATTERN,
+    message: ACCOUNT_NUMBER_MESSAGE,
   }),
 });
 
@@ -796,7 +1075,7 @@ const HealthSectionSchema = z.object({
 });
 
 /**
- * Audit a persisted onboarding section write. Records field names only —
+ * Audit a persisted onboarding section write. Records field names only:
  * never PII values (the sections hold NI, bank, health and contact data).
  */
 async function auditOnboardingSectionWrite(
@@ -848,7 +1127,13 @@ export async function saveOnboardingSection(
   token: string,
   section: OnboardingSectionKey,
   data: unknown
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: true; saved?: SavedFinancialDisplay } | OnboardingActionFailure> {
+  // A section this action does not write used to fall through every branch and report success,
+  // so the starter was told something was saved when nothing was.
+  if (!SAVEABLE_SECTIONS.has(section)) {
+    return { success: false, error: 'That part of the form cannot be saved here.' };
+  }
+
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id) {
     return { success: false, error: 'Invalid or expired invite link.' };
@@ -856,6 +1141,11 @@ export async function saveOnboardingSection(
   if (validation.inviteType !== 'onboarding') {
     return { success: false, error: 'This link is for portal access only.' };
   }
+
+  // Once the account exists the invite link is no longer the only thing proving who this is,
+  // so a forwarded link stops working.
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return accessFailure(boundError);
 
   const adminClient = createAdminClient();
   const employeeId = validation.employee_id;
@@ -880,18 +1170,18 @@ export async function saveOnboardingSection(
           .maybeSingle();
 
         if (clash) {
-          return {
-            success: false,
-            error: `Someone here already goes by "${preferredName}". Please pick something else, for example add your first initial.`,
-          };
+          const message = `Someone here already goes by "${preferredName}". Please pick something else, for example add your first initial.`;
+          return { success: false, error: message, fieldErrors: { preferred_name: message } };
         }
       }
 
       const { error } = await adminClient
         .from('employees')
         .update({
-          first_name: parsed.first_name,
-          last_name: parsed.last_name,
+          // Tidied the same way as the staff forms (EmployeeService), so the worker agreement, the
+          // signing request and the record all carry one spelling of the name.
+          first_name: normalizePersonName(parsed.first_name) || parsed.first_name,
+          last_name: normalizePersonName(parsed.last_name) || parsed.last_name,
           preferred_name: preferredName,
           date_of_birth: parsed.date_of_birth ?? null,
           address: parsed.address ?? null,
@@ -906,10 +1196,8 @@ export async function saveOnboardingSection(
         // A unique index guards preferred names across current employees. Turn the raw
         // constraint error into something a new starter can act on.
         if ((error as { code?: string }).code === '23505') {
-          return {
-            success: false,
-            error: 'Someone here already goes by that name. Please choose a different one, for example add your first initial.',
-          };
+          const message = 'Someone here already goes by that name. Please choose a different one, for example add your first initial.';
+          return { success: false, error: message, fieldErrors: { preferred_name: message } };
         }
         throw error;
       }
@@ -958,6 +1246,38 @@ export async function saveOnboardingSection(
 
     } else if (section === 'financial') {
       const parsed = FinancialSectionSchema.parse(data);
+      const submitted = (data ?? {}) as Partial<Record<keyof SavedFinancialDisplay, string | null>>;
+
+      // A mask-shaped value is only "unchanged" when it is exactly the mask of what is stored.
+      // The shape alone let an edit such as one more digit typed after the mask be dropped while
+      // the save reported success.
+      const maskedFields = (Object.keys(MASKED_FINANCIAL_TAILS) as Array<keyof SavedFinancialDisplay>)
+        .filter((field) => parsed[field] === undefined);
+      if (maskedFields.length > 0) {
+        const { data: stored, error: storedError } = await adminClient
+          .from('employee_financial_details')
+          .select('ni_number, bank_sort_code, bank_account_number')
+          .eq('employee_id', employeeId)
+          .maybeSingle();
+        if (storedError) throw storedError;
+
+        const maskErrors: Record<string, string> = {};
+        for (const field of maskedFields) {
+          const tail = MASKED_FINANCIAL_TAILS[field];
+          const storedValue = (stored as Partial<Record<keyof SavedFinancialDisplay, string | null>> | null)?.[field] ?? null;
+          const expected = tail && storedValue ? maskTail(storedValue, tail) : null;
+          if (!expected || expected !== (submitted[field] ?? '').trim()) {
+            maskErrors[field] = HALF_EDITED_MASK_MESSAGE;
+          }
+        }
+        if (Object.keys(maskErrors).length > 0) {
+          return {
+            success: false,
+            error: Object.keys(maskErrors).length > 1 ? 'Please check the fields marked below.' : HALF_EDITED_MASK_MESSAGE,
+            fieldErrors: maskErrors,
+          };
+        }
+      }
 
       const financialPayload: Record<string, string | null> = {
         employee_id: employeeId,
@@ -981,6 +1301,22 @@ export async function saveOnboardingSection(
       if (error) throw error;
       await auditOnboardingSensitiveSectionWrite(employeeId, validation.email, 'financial');
 
+      // Hand back what the step should show if the starter goes Back: the same masked values a
+      // reload would show. A field left masked was not changed, so its mask stands.
+      const display = (value: string | null | undefined, submittedValue: string | null | undefined, visibleTail?: number) => {
+        if (value === undefined) return (submittedValue ?? '').trim();
+        if (value === null) return '';
+        return visibleTail ? maskTail(value, visibleTail) : value;
+      };
+      return {
+        success: true,
+        saved: {
+          ni_number: display(parsed.ni_number, submitted.ni_number, NI_NUMBER_VISIBLE_TAIL),
+          bank_sort_code: display(parsed.bank_sort_code, submitted.bank_sort_code),
+          bank_account_number: display(parsed.bank_account_number, submitted.bank_account_number, ACCOUNT_NUMBER_VISIBLE_TAIL),
+        },
+      };
+
     } else if (section === 'health') {
       const parsed = HealthSectionSchema.parse(data);
       const { error } = await adminClient
@@ -997,13 +1333,24 @@ export async function saveOnboardingSection(
 
     return { success: true };
   } catch (err: unknown) {
-    console.error(`[saveOnboardingSection] Section ${section} error:`, err);
     if (err instanceof z.ZodError) {
-      return { success: false, error: err.errors[0]?.message || 'Validation failed.' };
+      // Each message goes back against its own field, so the step can show it under the input.
+      const fieldErrors = zodFieldErrors(err);
+      const count = Object.keys(fieldErrors).length;
+      return {
+        success: false,
+        error: count > 1 ? 'Please check the fields marked below.' : (err.errors[0]?.message || 'Please check the fields marked below.'),
+        fieldErrors,
+      };
     }
-    return { success: false, error: getErrorMessage(err) };
+    // Database text (constraint names, connection errors) is for the log, not the starter.
+    console.error(`[saveOnboardingSection] Section ${section} error:`, err);
+    return { success: false, error: SAVE_FAILED_MESSAGE };
   }
 }
+
+/** The sections saveOnboardingSection writes. Time off and right to work have their own actions. */
+const SAVEABLE_SECTIONS = new Set<string>(['personal', 'emergency_contacts', 'financial', 'health']);
 
 /**
  * Save the "time off already booked" step.
@@ -1018,7 +1365,7 @@ export async function saveOnboardingTimeOff(
   answer: TimeOffAnswer,
   blocks: TimeOffBlock[],
   submissionVersion: number,
-): Promise<{ success: true; requestsCreated: number } | { success: false; error: string; blockIndex?: number }> {
+): Promise<{ success: true; requestsCreated: number } | (OnboardingActionFailure & { blockIndex?: number })> {
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id) {
     return { success: false, error: TIME_OFF_ERRORS.TIME_OFF_TOKEN_EXPIRED };
@@ -1032,7 +1379,7 @@ export async function saveOnboardingTimeOff(
   // Once the account exists the invite link is no longer the only thing proving who this is,
   // so a forwarded link stops working.
   const boundError = await requireTokenBoundSession(validation.employee_id);
-  if (boundError) return { success: false, error: boundError };
+  if (boundError) return accessFailure(boundError);
 
   const submitted = answer === 'has_dates' ? blocks.slice(0, MAX_BLOCKS + 1) : [];
 
@@ -1094,7 +1441,7 @@ export async function saveOnboardingTimeOff(
  */
 export async function acknowledgeRightToWorkNotice(
   token: string,
-): Promise<{ success: true } | { success: false; error: string }> {
+): Promise<{ success: true } | OnboardingActionFailure> {
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id) {
     return { success: false, error: 'Your invite link has expired. Ask your manager for a new one.' };
@@ -1104,7 +1451,7 @@ export async function acknowledgeRightToWorkNotice(
   }
 
   const boundError = await requireTokenBoundSession(validation.employee_id);
-  if (boundError) return { success: false, error: boundError };
+  if (boundError) return accessFailure(boundError);
 
   const adminClient = createAdminClient();
   const { error } = await adminClient.rpc('record_onboarding_acknowledgement', {
@@ -1149,6 +1496,11 @@ export async function checkPreferredNameAvailability(
     return { available: true };
   }
 
+  // The same session rule as every other onboarding action, so a forwarded link cannot be used
+  // to ask who goes by which name. Saving will ask them to sign in.
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return { available: true };
+
   const adminClient = createAdminClient();
   const { data: clash } = await adminClient
     .from('employees')
@@ -1169,7 +1521,7 @@ export async function checkPreferredNameAvailability(
 }
 
 export async function getOnboardingSnapshot(token: string): Promise<
-  { success: true; data: OnboardingSnapshot } | { success: false; error: string }
+  { success: true; data: OnboardingSnapshot } | OnboardingActionFailure
 > {
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id) {
@@ -1178,6 +1530,11 @@ export async function getOnboardingSnapshot(token: string): Promise<
   if (validation.inviteType !== 'onboarding') {
     return { success: false, error: 'This link is for portal access only.' };
   }
+
+  // Saved details (NI, bank, health) are only replayed to a starter who is signed in as
+  // themselves once they have an account. The page offers to sign in on `sign_in_required`.
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return accessFailure(boundError);
 
   const adminClient = createAdminClient();
   const employeeId = validation.employee_id;
@@ -1227,6 +1584,11 @@ export async function getOnboardingSnapshot(token: string): Promise<
   }
   if (healthResult.error) {
     return { success: false, error: 'Failed to load health information.' };
+  }
+  // These two were never checked, so a failed read came back as "no answer yet": the time off
+  // step then showed empty and its next save reused a version the database had already seen.
+  if (timeOffResult.error || timeOffBlocksResult.error) {
+    return { success: false, error: 'Failed to load your time off answers.' };
   }
 
   const employee = employeeResult.data;
@@ -1278,12 +1640,12 @@ export async function getOnboardingSnapshot(token: string): Promise<
         // Masked, not replayed: whoever holds the invite link has not
         // re-authenticated, so they only see enough to recognise their own
         // details. Saving the mask back leaves the stored value untouched.
-        ni_number: maskTail(financial?.ni_number, 3),
+        ni_number: maskTail(financial?.ni_number, NI_NUMBER_VISIBLE_TAIL),
         bank_name: financial?.bank_name ?? '',
         payee_name: financial?.payee_name ?? '',
         branch_address: financial?.branch_address ?? '',
         bank_sort_code: financial?.bank_sort_code ?? '',
-        bank_account_number: maskTail(financial?.bank_account_number, 4),
+        bank_account_number: maskTail(financial?.bank_account_number, ACCOUNT_NUMBER_VISIBLE_TAIL),
       },
       health: {
         doctor_name: health?.doctor_name ?? '',
@@ -1319,10 +1681,12 @@ export async function getOnboardingSnapshot(token: string): Promise<
         })),
       },
       right_to_work_notice: { acknowledged: rtwNoticeResponse?.answer === 'acknowledged' },
+      // The same rules submitOnboardingProfile applies (onboarding-rules.ts). A financial row used
+      // to count as done even with blank bank details, and a contact with no number as a contact.
       completedSections: {
-        personal: Boolean(employee?.first_name && employee?.last_name),
-        emergency_contacts: Boolean(primaryContact?.name),
-        financial: Boolean(financial),
+        personal: isPersonalComplete(employee),
+        emergency_contacts: isEmergencyContactsComplete(primaryContact),
+        financial: isFinancialComplete(financial),
         health: Boolean(health),
         time_off: Boolean(timeOffResponse?.answer),
         right_to_work_notice: rtwNoticeResponse?.answer === 'acknowledged',
@@ -1331,7 +1695,134 @@ export async function getOnboardingSnapshot(token: string): Promise<
   };
 }
 
-export async function submitOnboardingProfile(token: string): Promise<{ success: boolean; error?: string }> {
+/**
+ * Checks the three sections whose rules are stricter than complete_employee_onboarding's (date of
+ * birth, a number for the main emergency contact, a sort code and account number), so a profile
+ * cannot go Active without them. The database function still checks every section that exists.
+ */
+async function findIncompleteOnboardingSection(
+  adminClient: ReturnType<typeof createAdminClient>,
+  employeeId: string,
+): Promise<{ section: OnboardingSectionKey | null; error?: string }> {
+  const [employeeResult, contactsResult, financialResult] = await Promise.all([
+    adminClient
+      .from('employees')
+      .select('first_name, last_name, date_of_birth')
+      .eq('employee_id', employeeId)
+      .maybeSingle(),
+    adminClient
+      .from('employee_emergency_contacts')
+      .select('name, phone_number, mobile_number, priority')
+      .eq('employee_id', employeeId),
+    adminClient
+      .from('employee_financial_details')
+      .select('bank_sort_code, bank_account_number')
+      .eq('employee_id', employeeId)
+      .maybeSingle(),
+  ]);
+
+  if (employeeResult.error || contactsResult.error || financialResult.error) {
+    console.error('[submitOnboardingProfile] Could not read the profile to check it is complete:', {
+      employee: employeeResult.error,
+      contacts: contactsResult.error,
+      financial: financialResult.error,
+    });
+    return { section: null, error: 'We could not check your details just now. Please try again in a moment.' };
+  }
+
+  const contacts = (contactsResult.data ?? []) as Array<{
+    name: string | null; phone_number: string | null; mobile_number: string | null; priority: string | null;
+  }>;
+  const primaryContact = contacts.find((contact) => (contact.priority ?? 'Primary').toLowerCase() === 'primary') ?? null;
+
+  if (!isPersonalComplete(employeeResult.data)) return { section: 'personal' };
+  if (!isEmergencyContactsComplete(primaryContact)) return { section: 'emergency_contacts' };
+  if (!isFinancialComplete(financialResult.data)) return { section: 'financial' };
+  return { section: null };
+}
+
+/**
+ * What the manager's completion email says beyond the name: booked time off, whether a right to
+ * work check is on record, and an under-18 flag. A read that fails is reported as unknown in the
+ * email rather than stopping it.
+ */
+async function loadCompletionEmailDetails(
+  adminClient: ReturnType<typeof createAdminClient>,
+  employeeId: string,
+): Promise<Pick<OnboardingCompleteEmailInput, 'timeOffAnswer' | 'timeOffBlocks' | 'rightToWorkCheckedOn' | 'rightToWorkUnknown' | 'ageIfUnder18' | 'ageUnknown'>> {
+  const [employeeResult, responseResult, blocksResult, rightToWorkResult] = await Promise.all([
+    adminClient
+      .from('employees')
+      .select('date_of_birth')
+      .eq('employee_id', employeeId)
+      .maybeSingle(),
+    adminClient
+      .from('employee_onboarding_responses')
+      .select('question, answer')
+      .eq('employee_id', employeeId)
+      .eq('question', 'booked_time_off')
+      .maybeSingle(),
+    adminClient
+      .from('leave_requests')
+      .select('start_date, end_date, leave_type, note')
+      .eq('employee_id', employeeId)
+      .eq('leave_origin', 'agreed_at_hire')
+      .eq('request_channel', 'onboarding')
+      .order('start_date', { ascending: true }),
+    adminClient
+      .from('employee_right_to_work')
+      .select('verification_date')
+      .eq('employee_id', employeeId)
+      .order('verification_date', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  // A failed read is logged and said to be unknown in the email, never reported as a fact: under 18
+  // is a licensing and working-time flag, and "still to check" would hide a check already recorded.
+  const failedReads = [
+    ['date of birth', employeeResult.error],
+    ['time off answer', responseResult.error],
+    ['time off dates', blocksResult.error],
+    ['right to work', rightToWorkResult.error],
+  ] as const;
+  for (const [what, error] of failedReads) {
+    if (error) {
+      console.error(`[onboarding] Failed to read the ${what} for the completion email:`, {
+        code: error.code,
+        message: error.message,
+      });
+    }
+  }
+  const dateOfBirth = (employeeResult.data as { date_of_birth: string | null } | null)?.date_of_birth ?? null;
+  const todayIso = getTodayIsoDate();
+  const answer = responseResult.error
+    ? null
+    : ((responseResult.data as { answer: string | null } | null)?.answer ?? null);
+  const blocks = blocksResult.error
+    ? []
+    : ((blocksResult.data ?? []) as Array<{ start_date: string; end_date: string; leave_type: string | null; note: string | null }>);
+
+  return {
+    timeOffAnswer: answer === 'none' || answer === 'has_dates' ? answer : null,
+    timeOffBlocks: blocks.map((block) => ({
+      startDate: block.start_date,
+      endDate: block.end_date,
+      leaveType: block.leave_type,
+      note: block.note,
+    })),
+    rightToWorkCheckedOn: rightToWorkResult.error
+      ? null
+      : ((rightToWorkResult.data as { verification_date: string | null } | null)?.verification_date ?? null),
+    rightToWorkUnknown: Boolean(rightToWorkResult.error),
+    ageIfUnder18: dateOfBirth && isUnder18(dateOfBirth, todayIso) ? ageOnDate(dateOfBirth, todayIso) : null,
+    ageUnknown: Boolean(employeeResult.error) || !dateOfBirth,
+  };
+}
+
+export async function submitOnboardingProfile(
+  token: string,
+): Promise<{ success: true } | (OnboardingActionFailure & { section?: OnboardingSectionKey })> {
   const validation = await validateInviteToken(token);
   if (!validation.valid || !validation.employee_id || !validation.email) {
     return { success: false, error: 'Invalid or expired invite link.' };
@@ -1340,7 +1831,18 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
     return { success: false, error: 'This link is for portal access only.' };
   }
 
+  const boundError = await requireTokenBoundSession(validation.employee_id);
+  if (boundError) return accessFailure(boundError);
+
   const adminClient = createAdminClient();
+
+  const readiness = await findIncompleteOnboardingSection(adminClient, validation.employee_id);
+  if (readiness.error) {
+    return { success: false, error: readiness.error };
+  }
+  if (readiness.section) {
+    return { success: false, error: ONBOARDING_INCOMPLETE_MESSAGES[readiness.section], section: readiness.section };
+  }
 
   const { data: completionData, error: completionError } = await adminClient.rpc('complete_employee_onboarding', {
     p_token: token,
@@ -1361,7 +1863,11 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
       };
     }
 
-    return { success: false, error: message || 'Failed to complete profile. Please try again.' };
+    // Our function's own messages are written for the starter; anything else is database text.
+    return {
+      success: false,
+      error: plainRpcMessage(message, 'We could not complete your profile just now. Please try again in a moment.'),
+    };
   }
 
   const completion = completionData as {
@@ -1393,11 +1899,20 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
     }
   }
 
-  // Send completion email to manager (best-effort)
+  // Tell the manager. The starter's completion stands whatever happens here, but a failed email
+  // used to reach only the server log, so nobody knew a new starter was waiting. A failure now
+  // leaves a note on the employee's record and a failed audit row.
   try {
-    await sendOnboardingCompleteEmail(fullName, validation.email);
+    const details = await loadCompletionEmailDetails(adminClient, completion.employee_id);
+    await sendOnboardingCompleteEmail({
+      employeeName: fullName || validation.email,
+      employeeEmail: validation.email,
+      profileUrl: `${getAppUrl()}/employees/${completion.employee_id}`,
+      ...details,
+    });
   } catch (emailError) {
     console.error('[submitOnboardingProfile] Failed to send completion email:', emailError);
+    await recordCompletionEmailFailure(adminClient, completion.employee_id, validation.email, getErrorMessage(emailError));
   }
 
   // Audit log
@@ -1416,7 +1931,44 @@ export async function submitOnboardingProfile(token: string): Promise<{ success:
   return { success: true };
 }
 
-export async function revokeEmployeeAccess(employeeId: string): Promise<{ success: boolean; error?: string }> {
+async function recordCompletionEmailFailure(
+  adminClient: ReturnType<typeof createAdminClient>,
+  employeeId: string,
+  employeeEmail: string,
+  reason: string,
+): Promise<void> {
+  const { error: noteError } = await adminClient.from('employee_notes').insert({
+    employee_id: employeeId,
+    note_text:
+      `Onboarding completed, but the email telling the manager did not send (${reason}). ` +
+      'Check their booked time off and arrange their right to work check before their first shift.',
+    created_by_user_id: null,
+  });
+  if (noteError) {
+    console.error('[submitOnboardingProfile] Failed to add the completion email failure note:', {
+      code: noteError.code,
+      message: noteError.message,
+      details: noteError.details,
+      hint: noteError.hint,
+    });
+  }
+
+  try {
+    await logAuditEvent({
+      user_email: employeeEmail,
+      operation_type: 'onboarding_complete_email',
+      resource_type: 'employee',
+      resource_id: employeeId,
+      operation_status: 'failure',
+      error_message: reason,
+      additional_info: { note_added: !noteError },
+    });
+  } catch (auditError) {
+    console.error('[submitOnboardingProfile] Audit log failed:', auditError);
+  }
+}
+
+export async function revokeEmployeeAccess(employeeId: string): Promise<{ success: boolean; error?: string; warning?: string }> {
   const canEdit = await checkUserPermission('employees', 'edit');
   if (!canEdit) {
     return { success: false, error: 'You do not have permission to perform this action.' };
@@ -1433,5 +1985,6 @@ export async function revokeEmployeeAccess(employeeId: string): Promise<{ succes
     return { success: false, error: result.error };
   }
 
-  return { success: true };
+  // They are Former either way; a login that could not be deleted is said, not hidden (FF-47).
+  return { success: true, ...(result.warning ? { warning: result.warning } : {}) };
 }

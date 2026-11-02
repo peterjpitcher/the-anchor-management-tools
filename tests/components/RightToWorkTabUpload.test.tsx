@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RightToWorkTab from '@/components/features/employees/RightToWorkTab'
+import type { EmployeeRightToWork } from '@/types/database'
 
 vi.mock('@/app/actions/employeeActions', () => ({
   createRightToWorkDocumentUploadUrl: vi.fn(),
@@ -71,5 +72,54 @@ describe('RightToWorkTab document photo', () => {
 
     expect(screen.getByText(/passport-scan\.pdf\./)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Document Photo/ })).toHaveTextContent('Choose Another File')
+  })
+})
+
+// FF-05 and FF-42: someone who can view but not edit gets the record without its document number
+// and notes. The empty fields used to read as nothing on file.
+describe('RightToWorkTab for a viewer the document details are withheld from', () => {
+  const rightToWork: EmployeeRightToWork = {
+    employee_id: '00000000-0000-4000-8000-000000000001',
+    document_type: 'Passport',
+    check_method: 'manual',
+    document_reference: null,
+    document_details: null,
+    document_expiry_date: null,
+    follow_up_date: null,
+    verification_date: '2026-10-01',
+    verified_by_user_id: null,
+    photo_storage_path: null,
+    created_at: '2026-10-01T09:00:00Z',
+    updated_at: '2026-10-01T09:00:00Z',
+  }
+
+  it('labels the document number and notes as withheld', () => {
+    render(
+      <RightToWorkTab
+        employeeId="00000000-0000-4000-8000-000000000001"
+        rightToWork={rightToWork}
+        canEdit={false}
+        canViewDocuments
+        documentWithheld
+      />,
+    )
+
+    expect(screen.getByLabelText(/Document Reference/)).toHaveAttribute('placeholder', 'Withheld')
+    expect(screen.getByLabelText(/Additional Details/)).toHaveAttribute('placeholder', 'Withheld')
+    expect(screen.getAllByText('Shown only to staff who can edit employee records.')).toHaveLength(2)
+  })
+
+  it('says nothing about withholding to someone who can edit', () => {
+    render(
+      <RightToWorkTab
+        employeeId="00000000-0000-4000-8000-000000000001"
+        rightToWork={rightToWork}
+        canEdit
+        canViewDocuments
+      />,
+    )
+
+    expect(screen.getByLabelText(/Document Reference/)).not.toHaveAttribute('placeholder')
+    expect(screen.queryByText('Shown only to staff who can edit employee records.')).not.toBeInTheDocument()
   })
 })

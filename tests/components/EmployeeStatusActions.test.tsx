@@ -40,6 +40,7 @@ const EMPLOYEE_ID = '00000000-0000-4000-8000-000000000001'
 const preview = {
   employmentStartDate: '2026-01-01',
   futureLeaveDates: ['2026-10-05'],
+  pendingLeaveDates: [] as string[],
   shifts: [
     {
       id: '00000000-0000-4000-8000-000000000011',
@@ -73,6 +74,7 @@ function renderActions(employmentStartDate = '2026-01-01') {
       status="Active"
       canEdit
       employmentStartDate={employmentStartDate}
+      employmentEndDate={null}
     />,
   )
 }

@@ -21,8 +21,32 @@ interface PoliciesClientProps {
   canSend: boolean
 }
 
+// Who the bulk button sends to: everyone except those who have confirmed this version and those
+// who already have a link waiting (they get Send Again on their own row).
 function needsSending(row: PolicyStaffRow): boolean {
   return row.state === 'not_sent' || row.state === 'outdated' || row.state === 'declined'
+}
+
+function people(count: number): string {
+  return `${count} ${count === 1 ? 'person' : 'people'}`
+}
+
+/**
+ * What the bulk send will do, said before it happens. People with no email address on their
+ * record get the policy to confirm in person; the dialog used to say everyone would be emailed.
+ */
+function bulkSendMessage(outstanding: PolicyStaffRow[], waitingCount: number, title: string): string {
+  const byEmail = outstanding.filter((row) => row.email).length
+  const inPerson = outstanding.length - byEmail
+  const parts: string[] = []
+  if (byEmail > 0) parts.push(`${people(byEmail)} will be emailed a link to read and confirm "${title}".`)
+  if (inPerson > 0) {
+    parts.push(`${people(inPerson)} ${inPerson === 1 ? 'has' : 'have'} no email address, so nothing is emailed: they read and confirm it in person.`)
+  }
+  if (waitingCount > 0) {
+    parts.push(`${people(waitingCount)} already ${waitingCount === 1 ? 'has' : 'have'} a link waiting and ${waitingCount === 1 ? 'is' : 'are'} left out; use Send Again on their row.`)
+  }
+  return parts.join(' ')
 }
 
 /**
@@ -37,11 +61,13 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
 
   const outstanding = overview ? overview.staff.filter(needsSending) : []
   const confirmed = overview ? overview.staff.filter((row) => row.state === 'confirmed').length : 0
+  const waiting = overview ? overview.staff.filter((row) => row.state === 'waiting').length : 0
 
   const send = (rows: PolicyStaffRow[]): void => {
     if (!overview || rows.length === 0) return
     startTransition(async () => {
       let sent = 0
+      const inPerson: string[] = []
       const failed: string[] = []
       for (let start = 0; start < rows.length; start += POLICY_BATCH_SIZE) {
         const batch = rows.slice(start, start + POLICY_BATCH_SIZE)
@@ -55,13 +81,21 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
           return
         }
         sent += result.data.sent
+        inPerson.push(...result.data.signInPerson.map((person) => person.name))
         failed.push(...result.data.failed.map((failure) => `${failure.name}: ${failure.reason}`))
       }
       setProgress(null)
+      // Emailed, to confirm in person (no email address), and not sent are three different
+      // outcomes, so each is said separately.
+      const inPersonNote = inPerson.length > 0
+        ? ` No email address, so to confirm in person: ${inPerson.slice(0, 3).join(', ')}${inPerson.length > 3 ? ' …' : ''}.`
+        : ''
       if (failed.length > 0) {
-        toast.error(`Sent to ${sent}. Not sent to ${failed.length}: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ' …' : ''}`)
+        toast.error(`Emailed to ${people(sent)}.${inPersonNote} Not sent to ${failed.length}: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ' …' : ''}`)
+      } else if (inPerson.length > 0) {
+        toast.success(`Emailed to ${people(sent)}.${inPersonNote}`)
       } else {
-        toast.success(`Sent to ${sent} ${sent === 1 ? 'person' : 'people'}.`)
+        toast.success(`Emailed to ${people(sent)}.`)
       }
       router.refresh()
     })
@@ -85,7 +119,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
                 action={
                   canSend && overview.isActive && outstanding.length > 0 ? (
                     <Button type="button" size="sm" variant="primary" loading={pending} onClick={() => setConfirmAll(true)}>
-                      {progress ?? `Send to the ${outstanding.length} Who Have Not Confirmed`}
+                      {progress ?? `Send to the ${outstanding.length} With No Link Waiting`}
                     </Button>
                   ) : undefined
                 }
@@ -171,7 +205,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
           send(outstanding)
         }}
         title="Send This Policy?"
-        message={`${outstanding.length} ${outstanding.length === 1 ? 'person' : 'people'} will be emailed a link to read and confirm "${overview?.title ?? ''}".`}
+        message={bulkSendMessage(outstanding, waiting, overview?.title ?? '')}
         confirmLabel="Send"
       />
     </PageLayout>

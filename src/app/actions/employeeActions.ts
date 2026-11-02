@@ -3,6 +3,7 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import type { PostgrestError } from '@supabase/supabase-js';
 import type { ActionFormState, NoteFormState, AttachmentFormState, DeleteState } from '@/types/actions';
 import { getConstraintErrorMessage, isPostgrestError } from '@/lib/dbErrorHandler';
 import { MAX_FILE_SIZE } from '@/lib/constants';
@@ -13,9 +14,17 @@ import { sendEmail } from '@/lib/email/emailService';
 import { formatDateInLondon } from '@/lib/dateUtils';
 import { hashTimeclockPin, isValidTimeclockPin } from '@/lib/timeclock/pin';
 import { displayName, legalName, normalisePreferredName, preferredNameKey, SELECTABLE_EMPLOYEE_STATUSES } from '@/lib/employees/display-name';
+import {
+  RIGHT_TO_WORK_TYPE_MESSAGE,
+  isAllowedRightToWorkType,
+  isRightToWorkStoragePath,
+  rightToWorkDownloadName,
+  rightToWorkStoragePath,
+} from '@/lib/employees/document-rules';
 // Import services and schemas
 import {
   EmployeeService,
+  EmployeeServiceError,
   employeeSchema,
   noteSchema,
   addAttachmentSchema,
@@ -32,8 +41,51 @@ import { getErrorMessage } from '@/lib/errors';
 
 const EMPLOYEE_ATTACHMENTS_BUCKET_NAME = 'employee-attachments';
 
+/**
+ * getConstraintErrorMessage, plus the employee constraint it does not know: a status change
+ * that leaves separation details behind. Without it that save read "Invalid data provided".
+ */
+function employeeConstraintMessage(error: PostgrestError): string {
+  if (error.code === '23514' && String(error.message ?? '').includes('employees_separation_shift_policy_check')) {
+    return 'This employee is part-way through a separation, so their status cannot be changed here. Use Cancel Separation on the employee page to bring them back to Active.';
+  }
+  return getConstraintErrorMessage(error);
+}
+
+/**
+ * The message a failed employee save shows. A service refusal is written for the person saving
+ * and is shown as it is; it used to arrive as "Database error". A database error is mapped to
+ * plain words; anything else is a fault, so it gets the fallback.
+ */
+function employeeActionErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof EmployeeServiceError) return error.message;
+  if (isPostgrestError(error)) return employeeConstraintMessage(error);
+  return fallback;
+}
+
+/**
+ * Empties the health answers whose question was answered "no". A form hides those boxes when
+ * the tick is taken off, so nothing is sent for them and the old answer stayed stored: unticking
+ * "registered disabled" kept the registration number, expiry and details.
+ */
+function clearUnansweredHealthDetails(data: Record<string, any>): void {
+  if (!data.has_allergies) {
+    data.allergies = null;
+  }
+
+  if (!data.had_absence_over_2_weeks_last_3_years && !data.had_outpatient_treatment_over_3_months_last_3_years) {
+    data.absence_or_treatment_details = null;
+  }
+
+  if (!data.is_registered_disabled) {
+    data.disability_reg_number = null;
+    data.disability_reg_expiry_date = null;
+    data.disability_details = null;
+  }
+}
+
 // Sensitive fields stored in separate tables (employee_financial_details,
-// employee_health_records). Stripped here as defence-in-depth — they should
+// employee_health_records). Stripped here as defence-in-depth: they should
 // never appear on an employees.* row, but guard against future schema drift.
 const SENSITIVE_EMPLOYEE_FIELDS = new Set([
   'ni_number', 'bank_account_number', 'bank_sort_code', 'bank_name', 'payee_name', 'branch_address',
@@ -53,18 +105,6 @@ function sanitiseEmployeeForAudit(employee: Record<string, unknown>): Record<str
   }
   return sanitised;
 }
-const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const;
-const EMPLOYEE_ATTACHMENT_ALLOWED_MIME_TYPES = [
-  'application/pdf',
-  'image/jpeg',
-  'image/png',
-  'image/tiff',
-  'image/tif',
-  'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain',
-] as const;
-
 const EMPLOYEE_DOCUMENT_EMAIL_COMPANY = process.env.COMPANY_LEGAL_NAME || 'Orange Jelly Limited';
 const EMPLOYEE_DOCUMENT_EMAIL_SENDER = process.env.DOCUMENT_EMAIL_SENDER || 'Peter Pitcher';
 
@@ -115,6 +155,16 @@ async function normaliseToBuffer(data: unknown): Promise<Buffer> {
   return Buffer.from(String(data));
 }
 
+/**
+ * What happened to the email an attachment category can send on upload. The upload screen
+ * shows it: a failed email used to reach only the server log while the page said the upload
+ * had gone fine, so nobody knew the employee never got their payslip or contract.
+ */
+type AttachmentEmailOutcome =
+  | { status: 'not_required' }
+  | { status: 'sent'; recipient: string }
+  | { status: 'failed'; reason: string };
+
 async function maybeSendEmployeeAttachmentEmail(params: {
   adminClient: ReturnType<typeof createAdminClient>;
   employeeId: string;
@@ -123,7 +173,7 @@ async function maybeSendEmployeeAttachmentEmail(params: {
   fileName: string;
   mimeType: string;
   fileSizeBytes: number;
-}) {
+}): Promise<AttachmentEmailOutcome> {
   const { adminClient, employeeId, categoryId, storagePath, fileName, mimeType, fileSizeBytes } = params;
 
   const { data: category, error: categoryError } = await adminClient
@@ -134,10 +184,11 @@ async function maybeSendEmployeeAttachmentEmail(params: {
 
   if (categoryError) {
     console.error('Failed to load attachment category for email:', categoryError);
+    return { status: 'failed', reason: 'we could not check whether this category emails the employee' };
   }
 
   if (!category?.email_on_upload) {
-    return { attempted: false };
+    return { status: 'not_required' };
   }
 
   const { data: employee, error: employeeError } = await adminClient
@@ -148,12 +199,12 @@ async function maybeSendEmployeeAttachmentEmail(params: {
 
   if (employeeError) {
     console.error('Failed to load employee for document email:', employeeError);
-    return { attempted: true, success: false, error: employeeError.message };
+    return { status: 'failed', reason: 'their details could not be loaded' };
   }
 
   if (!employee?.email_address) {
     console.warn('Employee email missing for document email.', { employeeId });
-    return { attempted: true, success: false, error: 'Employee email missing' };
+    return { status: 'failed', reason: 'they have no email address on file' };
   }
 
   const { data: download, error: downloadError } = await adminClient.storage
@@ -162,7 +213,7 @@ async function maybeSendEmployeeAttachmentEmail(params: {
 
   if (downloadError || !download) {
     console.error('Failed to download attachment for email:', downloadError);
-    return { attempted: true, success: false, error: downloadError?.message || 'Download failed' };
+    return { status: 'failed', reason: 'the file could not be attached' };
   }
 
   const buffer = await normaliseToBuffer(download);
@@ -190,37 +241,46 @@ async function maybeSendEmployeeAttachmentEmail(params: {
     ]
   });
 
-  const userInfo = await getCurrentUser();
-  await logAuditEvent({
-    ...(userInfo.user_id && { user_id: userInfo.user_id }),
-    ...(userInfo.user_email && { user_email: userInfo.user_email }),
-    operation_type: emailResult.success ? 'email_sent' : 'email_failed',
-    resource_type: 'employee_attachment',
-    resource_id: storagePath,
-    operation_status: emailResult.success ? 'success' : 'failure',
-    error_message: emailResult.success ? undefined : emailResult.error,
-    additional_info: {
-      employee_id: employeeId,
-      recipient: employee.email_address,
-      category_id: categoryId,
-      category_name: category.category_name,
-      file_name: fileName,
-      file_size_bytes: fileSizeBytes,
-      mime_type: mimeType,
-    }
+  // The email has gone (or not) by now, so a failed audit write must not change what the
+  // person uploading is told about it.
+  try {
+    const userInfo = await getCurrentUser();
+    await logAuditEvent({
+      ...(userInfo.user_id && { user_id: userInfo.user_id }),
+      ...(userInfo.user_email && { user_email: userInfo.user_email }),
+      operation_type: emailResult.success ? 'email_sent' : 'email_failed',
+      resource_type: 'employee_attachment',
+      resource_id: storagePath,
+      operation_status: emailResult.success ? 'success' : 'failure',
+      error_message: emailResult.success ? undefined : emailResult.error,
+      additional_info: {
+        employee_id: employeeId,
+        recipient: employee.email_address,
+        category_id: categoryId,
+        category_name: category.category_name,
+        file_name: fileName,
+        file_size_bytes: fileSizeBytes,
+        mime_type: mimeType,
+      }
+    });
+  } catch (auditError) {
+    console.error('Failed to audit employee attachment email:', auditError);
+  }
+
+  if (emailResult.success) {
+    return { status: 'sent', recipient: employee.email_address };
+  }
+  // The provider's own text goes to the log and the audit row above, never into the toast.
+  console.error('[employee attachment] Email send failed:', {
+    code: emailResult.code,
+    error: emailResult.error,
   });
-
-  return { attempted: true, success: emailResult.success, error: emailResult.error };
-}
-
-function sanitizeFileName(name: string, fallback: string) {
-  const sanitized = name
-    .replace(/[^\w\s.-]/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/_+/g, '_')
-    .replace(/^[._-]+|[._-]+$/g, '');
-
-  return sanitized || fallback;
+  return {
+    status: 'failed',
+    reason: emailResult.code === 'email_suspended'
+      ? 'email sending is switched off at the moment'
+      : 'the email service did not accept it',
+  };
 }
 
 // Helper to clean form data (moved from original actions)
@@ -236,7 +296,6 @@ function cleanFormDataForEmployee(formData: FormData, includeFiles = false) {
       'mobile_number',
       'first_shift_date',
       'uniform_preference',
-      'employment_end_date',
       'employment_end_date',
       'ni_number',
       'bank_account_number',
@@ -258,9 +317,8 @@ function cleanFormDataForEmployee(formData: FormData, includeFiles = false) {
       'document_details',
       'document_expiry_date',
       'follow_up_date',
-      'verified_by_user_id',
-      'check_method',
-      'note'
+      'check_method'
+      // Not note_text: a blank note must stay a string so noteSchema can say it is empty.
     ].includes(key)) {
       acc[key] = null;
     } else if (key === 'document_photo' && !includeFiles) {
@@ -387,6 +445,27 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
         return { type: 'error', message: 'Invalid form data.', errors: result.error.flatten().fieldErrors };
     }
 
+    // Bank and health answers go through the same schemas as the staff edit forms. They used to
+    // be passed to the database as typed, so an NI number with spaces in it was stored, and the
+    // next edit of that record was refused for a value nobody had changed.
+    const hasFinancialData = Object.values(financialData).some((value) => value !== null && value !== undefined);
+    const financialResult = FinancialDetailsSchema.omit({ employee_id: true }).safeParse(financialData);
+    if (!financialResult.success) {
+        return { type: 'error', message: 'Please check the bank details.', errors: financialResult.error.flatten().fieldErrors };
+    }
+
+    // Decided before the clearing below, which adds keys: a form that sent no health answers
+    // must not create an empty health record.
+    const hasHealthData = Object.keys(healthData).length > 0;
+    if (hasHealthData) {
+        clearUnansweredHealthDetails(healthData);
+    }
+    // Partial: the service fills any question not sent with "no", as it always has.
+    const healthResult = HealthRecordSchema.omit({ employee_id: true }).partial().safeParse(healthData);
+    if (!healthResult.success) {
+        return { type: 'error', message: 'Please check the health details.', errors: healthResult.error.flatten().fieldErrors };
+    }
+
     const preferredName = normalisePreferredName(formData.get('preferred_name') as string | null);
 
     // Checked before the employee is created so a clash costs nothing. Once the row
@@ -407,8 +486,8 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
     try {
       const newEmployee = await EmployeeService.createEmployee({
         ...result.data,
-        financial: Object.keys(financialData).length > 0 ? financialData : undefined,
-        health: Object.keys(healthData).length > 0 ? healthData : undefined,
+        financial: hasFinancialData ? financialResult.data : undefined,
+        health: hasHealthData ? healthResult.data : undefined,
       });
 
       // Written after creation because create_employee_transaction takes a fixed
@@ -455,7 +534,8 @@ export async function addEmployee(prevState: ActionFormState, formData: FormData
           message: preferredNameWarning
               ? `Employee created successfully. ${preferredNameWarning}`
               : 'Employee created successfully.',
-          employeeId: newEmployee.employee_id
+          employeeId: newEmployee.employee_id,
+          ...(preferredNameWarning ? { warning: true, followUpError: `Preferred name: ${preferredNameWarning}` } : {}),
       };
     } catch (error: unknown) {
         const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : getErrorMessage(error);
@@ -523,39 +603,14 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     const userInfo = await getCurrentUser();
 
     try {
-      const { updatedEmployee, oldEmployee } = await EmployeeService.updateEmployee(employeeId, result.data);
-
-      if (timeclockPin) {
-          const adminClient = createAdminClient();
-          const { error: pinError } = await adminClient
-              .from('employees')
-              .update({
-                  timeclock_pin_hash: hashTimeclockPin(timeclockPin),
-                  timeclock_pin_updated_at: new Date().toISOString(),
-              } as any)
-              .eq('employee_id', employeeId);
-
-          if (pinError) {
-              throw pinError;
-          }
-      }
-
-      // Separate write for the same reason as the PIN: preferred_name is outside
-      // employeeSchema, so EmployeeService.updateEmployee never sees it.
-      const preferredNameChanged = preferredNameSubmitted
-          && (((oldEmployee as { preferred_name?: string | null } | null)?.preferred_name ?? null) !== preferredName);
-
-      if (preferredNameChanged) {
-          const adminClient = createAdminClient();
-          const { error: preferredNameError } = await adminClient
-              .from('employees')
-              .update({ preferred_name: preferredName } as any)
-              .eq('employee_id', employeeId);
-
-          if (preferredNameError) {
-              throw preferredNameError;
-          }
-      }
+      // preferred_name and the PIN are outside employeeSchema, so they travel as extras in the
+      // same write. Separate writes after it could fail and report a save that had happened.
+      const { updatedEmployee, oldEmployee, onboardingLinks } = await EmployeeService.updateEmployee(employeeId, result.data, {
+          ...(preferredNameSubmitted ? { preferred_name: preferredName } : {}),
+          ...(timeclockPin
+              ? { timeclock_pin_hash: hashTimeclockPin(timeclockPin), timeclock_pin_updated_at: new Date().toISOString() }
+              : {}),
+      });
 
       const changedFields: string[] = [];
       if (oldEmployee) {
@@ -576,13 +631,13 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
           old_values: sanitiseEmployeeForAudit(oldEmployee as Record<string, unknown>),
           new_values: sanitiseEmployeeForAudit(updatedEmployee as Record<string, unknown>),
           additional_info: {
-              // updatedEmployee was read back before the preferred_name write above, so
-              // the diff cannot see that change: record it explicitly.
+              // The PIN hash is stripped from both rows, so the diff cannot see a new PIN.
               fields_changed: [
                   ...changedFields,
-                  ...(timeclockPin ? ['timeclock_pin'] : []),
-                  ...(preferredNameChanged ? ['preferred_name'] : [])
-              ]
+                  ...(timeclockPin ? ['timeclock_pin'] : [])
+              ],
+              ...(onboardingLinks && 'closed' in onboardingLinks ? { onboarding_invite_links_closed: onboardingLinks.closed } : {}),
+              ...(onboardingLinks && 'failed' in onboardingLinks ? { onboarding_invite_links_close_failed: true } : {})
           }
       });
 
@@ -600,13 +655,27 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
 
       revalidatePath(`/employees`);
       revalidatePath(`/employees/${employeeId}`);
-      return { type: 'success', message: 'Employee updated successfully.', employeeId };
+      if (onboardingLinks && 'failed' in onboardingLinks) {
+          // Saved, so still a success, but shown as a warning: something needs a person.
+          return {
+              type: 'success',
+              warning: true,
+              message: 'Employee updated and now Active, but their old onboarding link could not be closed. It no longer opens the form, but please tell an administrator.',
+              employeeId,
+          };
+      }
+      const message = onboardingLinks && onboardingLinks.closed > 0
+          ? 'Employee updated. They are now Active and their onboarding link has been closed.'
+          : onboardingLinks
+              ? 'Employee updated. They are now Active.'
+              : 'Employee updated successfully.';
+      return { type: 'success', message, employeeId };
     } catch (error: unknown) {
         // A preferred-name clash only reaches here if someone claimed the name between
         // the check above and the write. Say so plainly instead of leaking a 23505.
         const message = isPreferredNameClash(error) && preferredName
             ? preferredNameClashMessage(preferredName, null)
-            : isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+            : employeeActionErrorMessage(error, 'The changes could not be saved. Please try again.');
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
             ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -622,7 +691,10 @@ export async function updateEmployee(prevState: ActionFormState, formData: FormD
     }
 }
 
-export async function deleteEmployee(prevState: DeleteState, formData: FormData): Promise<DeleteState> {
+/** A delete that went through can still carry a warning: the login could not be removed. */
+export type DeleteEmployeeState = (NonNullable<DeleteState> & { warning?: string }) | null;
+
+export async function deleteEmployee(prevState: DeleteEmployeeState, formData: FormData): Promise<DeleteEmployeeState> {
     const hasPermission = await checkUserPermission('employees', 'delete');
     if (!hasPermission) {
         return { type: 'error', message: 'Insufficient permissions to delete employees.' };
@@ -634,7 +706,7 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
     const userInfo = await getCurrentUser();
 
     try {
-      const deletedEmployee = await EmployeeService.deleteEmployee(employeeId);
+      const { deletedEmployee, loginRemoved } = await EmployeeService.deleteEmployee(employeeId);
 
       await logAuditEvent({
           ...(userInfo.user_id && { user_id: userInfo.user_id }),
@@ -643,18 +715,29 @@ export async function deleteEmployee(prevState: DeleteState, formData: FormData)
           resource_type: 'employee',
           resource_id: employeeId,
           operation_status: 'success',
-          old_values: deletedEmployee,
+          old_values: sanitiseEmployeeForAudit(deletedEmployee as Record<string, unknown>),
           additional_info: {
               employee_name: deletedEmployee ? `${deletedEmployee.first_name} ${deletedEmployee.last_name}` : 'Unknown',
               job_title: deletedEmployee?.job_title,
-              status: deletedEmployee?.status
+              status: deletedEmployee?.status,
+              login_removed: loginRemoved
           }
       });
 
       revalidatePath('/employees');
-      return { type: 'success', message: 'Employee deleted successfully' };
+      return {
+          type: 'success',
+          message: 'Employee deleted.',
+          ...(loginRemoved ? {} : {
+              warning: 'Employee deleted, but their login could not be removed. Their access has been taken away; please ask an administrator to delete the login.'
+          })
+      };
     } catch (error: unknown) {
-        const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error';
+        // A reference the pre-check does not know about. Not "Related record not found",
+        // which is what the generic mapper says for every foreign key error.
+        const message = isPostgrestError(error) && error.code === '23503'
+            ? 'Other records still refer to this employee, so they were not deleted.'
+            : employeeActionErrorMessage(error, 'The employee could not be deleted. Please try again.');
         await logAuditEvent({
             ...(userInfo.user_id && { user_id: userInfo.user_id }),
             ...(userInfo.user_email && { user_email: userInfo.user_email }),
@@ -696,9 +779,11 @@ export async function addEmployeeNote(prevState: NoteFormState, formData: FormDa
     }
 
     const userInfo = await getCurrentUser();
+    // The author is always the signed-in user. It used to be taken from the form when one was
+    // sent, so a note could be posted under someone else's name.
     const notePayload = {
         ...result.data,
-        created_by_user_id: result.data.created_by_user_id ?? userInfo.user_id ?? undefined
+        created_by_user_id: userInfo.user_id ?? null
     };
 
     try {
@@ -743,7 +828,8 @@ export async function createRightToWorkDocumentUploadUrl(
   fileType: string,
   fileSize: number
 ): Promise<{ type: 'success'; path: string; token: string } | { type: 'error'; message: string }> {
-  const hasPermission = await checkUserPermission('employees', 'edit')
+  // Uploading a scan is a document permission, as attachments are, not plain edit.
+  const hasPermission = await checkUserPermission('employees', 'upload_documents')
   if (!hasPermission) {
     return { type: 'error', message: 'Insufficient permissions to upload right to work documents.' }
   }
@@ -753,8 +839,8 @@ export async function createRightToWorkDocumentUploadUrl(
     return { type: 'error', message: 'Invalid employee ID.' }
   }
 
-  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(fileType as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-    return { type: 'error', message: 'Only PDF, JPG, and PNG files are allowed.' }
+  if (!isAllowedRightToWorkType(fileType)) {
+    return { type: 'error', message: RIGHT_TO_WORK_TYPE_MESSAGE }
   }
 
   if (!Number.isFinite(fileSize) || fileSize <= 0) {
@@ -765,8 +851,7 @@ export async function createRightToWorkDocumentUploadUrl(
     return { type: 'error', message: 'File size must be less than 10MB.' }
   }
 
-  const finalFileName = sanitizeFileName(fileName, 'right_to_work_document')
-  const uniqueFileName = `${employeeId}/rtw_${Date.now()}_${finalFileName}`
+  const uniqueFileName = rightToWorkStoragePath(employeeId, fileName)
 
   const adminClient = createAdminClient()
   const { data, error } = await adminClient.storage
@@ -780,10 +865,13 @@ export async function createRightToWorkDocumentUploadUrl(
   return { type: 'success', path: data.path, token: data.token }
 }
 
+/** The upload result, with what happened to the category's email when it sends one. */
+export type AddAttachmentState = (NonNullable<AttachmentFormState> & { email?: AttachmentEmailOutcome }) | null;
+
 export async function addEmployeeAttachment(
   prevState: AttachmentFormState,
   formData: FormData
-): Promise<AttachmentFormState> {
+): Promise<AddAttachmentState> {
   try {
     const { checkRateLimit } = await import('@/lib/rate-limit-server')
     await checkRateLimit('employee-upload', 10) // 10 uploads per minute
@@ -833,9 +921,12 @@ export async function addEmployeeAttachment(
     console.error('Failed to write employee attachment audit event:', auditError);
   }
 
+  // The file is saved whatever happens to the email, so the upload still succeeds, but the
+  // person uploading is told plainly when the employee did not get their copy.
+  let email: AttachmentEmailOutcome = { status: 'not_required' };
   try {
     if (attachment?.storagePath) {
-      const emailResult = await maybeSendEmployeeAttachmentEmail({
+      email = await maybeSendEmployeeAttachmentEmail({
         adminClient: createAdminClient(),
         employeeId: employee_id,
         categoryId: category_id,
@@ -845,19 +936,32 @@ export async function addEmployeeAttachment(
         fileSizeBytes: attachment_file.size,
       });
 
-      if (emailResult.attempted && !emailResult.success) {
-        console.error('Employee attachment email failed:', emailResult.error);
+      if (email.status === 'failed') {
+        console.error('Employee attachment email failed:', email.reason);
       }
     }
   } catch (emailError) {
     console.error('Unexpected employee attachment email error:', emailError);
+    email = { status: 'failed', reason: 'something went wrong while sending it' };
   }
 
   revalidatePath(`/employees/${employee_id}`);
-  return { type: 'success', message: 'Attachment uploaded successfully!' };
+  const message = email.status === 'sent'
+    ? `Attachment uploaded and emailed to ${email.recipient}.`
+    : email.status === 'failed'
+      ? `Attachment uploaded, but the email to the employee may not have been sent (${email.reason}). Check with them, or send it another way.`
+      : 'Attachment uploaded.';
+  return { type: 'success', message, email };
 }
 
-export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ url: string | null; error: string | null }> {
+/**
+ * A short-lived link to an attachment, minted when it is clicked. `download` makes it save the
+ * file under its stored name; without it the link opens the file in the browser.
+ */
+export async function getAttachmentSignedUrl(
+  attachmentId: string,
+  options: { download?: boolean } = {}
+): Promise<{ url: string | null; error: string | null }> {
   const hasPermission = await checkUserPermission('employees', 'view_documents');
   if (!hasPermission) {
     return { url: null, error: 'Insufficient permissions to view employee documents.' };
@@ -868,7 +972,7 @@ export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ ur
     const supabase = createAdminClient();
     const { data: attachment, error: fetchError } = await supabase
       .from('employee_attachments')
-      .select('storage_path, employee_id')
+      .select('storage_path, employee_id, file_name')
       .eq('attachment_id', attachmentId)
       .single();
 
@@ -876,12 +980,15 @@ export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ ur
       return { url: null, error: 'Attachment not found.' };
     }
 
-    const url = await EmployeeService.getAttachmentSignedUrl(attachment.storage_path);
+    const url = await EmployeeService.getAttachmentSignedUrl(
+      attachment.storage_path,
+      options.download ? (attachment.file_name || 'download') : undefined
+    );
     const userInfo = await getCurrentUser();
     await logAuditEvent({
       ...(userInfo.user_id && { user_id: userInfo.user_id }),
       ...(userInfo.user_email && { user_email: userInfo.user_email }),
-      operation_type: 'view',
+      operation_type: options.download ? 'download' : 'view',
       resource_type: 'employee_attachment',
       resource_id: attachmentId,
       operation_status: 'success',
@@ -892,8 +999,9 @@ export async function getAttachmentSignedUrl(attachmentId: string): Promise<{ ur
     });
     return { url, error: null };
   } catch (error: unknown) {
+    // Storage's own text (for example "Object not found") goes to the log, not the toast.
     console.error('Error creating signed URL:', error);
-    return { url: null, error: getErrorMessage(error) };
+    return { url: null, error: 'Could not open the document. Please try again.' };
   }
 }
 
@@ -1031,7 +1139,7 @@ export async function updateEmergencyContact(
     return { type: 'success', message: 'Emergency contact updated successfully.' };
   } catch (error: unknown) {
     console.error('Error updating emergency contact:', error);
-    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not update emergency contact.';
+    const message = employeeActionErrorMessage(error, 'Database error: Could not update emergency contact.');
     return { type: 'error', message };
   }
 }
@@ -1052,7 +1160,7 @@ export async function deleteEmergencyContact(
   }
 
   try {
-    await EmployeeService.deleteEmergencyContact(contactId);
+    await EmployeeService.deleteEmergencyContact(contactId, employeeId);
 
     const userInfo = await getCurrentUser();
     await logAuditEvent({
@@ -1069,7 +1177,7 @@ export async function deleteEmergencyContact(
     return { type: 'success', message: 'Emergency contact deleted.' };
   } catch (error: unknown) {
     console.error('Error deleting emergency contact:', error);
-    const message = isPostgrestError(error) ? getConstraintErrorMessage(error) : 'Database error: Could not delete emergency contact.';
+    const message = employeeActionErrorMessage(error, 'Database error: Could not delete emergency contact.');
     return { type: 'error', message };
   }
 }
@@ -1160,13 +1268,7 @@ export async function upsertHealthRecord(
   });
 
   // Keep dependent text fields consistent with checkbox state
-  if (!data.has_allergies) {
-    data.allergies = null;
-  }
-
-  if (!data.had_absence_over_2_weeks_last_3_years && !data.had_outpatient_treatment_over_3_months_last_3_years) {
-    data.absence_or_treatment_details = null;
-  }
+  clearUnansweredHealthDetails(data);
 
   const optionalTextFields = [
     'doctor_name',
@@ -1267,11 +1369,24 @@ export async function upsertRightToWork(
 	    const userInfo = await getCurrentUser();
 	    const currentUserId = userInfo.user_id ?? null;
 
-	    if (photoStoragePath && !photoStoragePath.startsWith(`${validatedFields.data.employee_id}/`)) {
+	    // The browser hands us the path it uploaded to, so it must be this employee's right to
+	    // work scan (not another file in their folder), and only someone allowed to upload
+	    // documents may attach one.
+	    if (photoStoragePath && !isRightToWorkStoragePath(validatedFields.data.employee_id, photoStoragePath)) {
 	      return {
 	        type: 'error',
 	        message: 'Invalid upload path.',
 	      };
+	    }
+
+	    if (photoStoragePath || validatedFields.data.document_photo) {
+	      const canUpload = await checkUserPermission('employees', 'upload_documents');
+	      if (!canUpload) {
+	        return {
+	          type: 'error',
+	          message: 'You do not have permission to upload employee documents, so nothing was saved.',
+	        };
+	      }
 	    }
 
 	    await EmployeeService.upsertRightToWork(
@@ -1305,12 +1420,20 @@ export async function upsertRightToWork(
     console.error('Error upserting right to work:', error);
     return {
       type: 'error',
-      message: getErrorMessage(error),
+      message: employeeActionErrorMessage(error, getErrorMessage(error)),
     };
   }
 }
 
-export async function getRightToWorkPhotoUrl(employeeId: string): Promise<{ url: string | null; error: string | null }> {
+/**
+ * Mints a short-lived link to the employee's right to work scan. Called when someone clicks View
+ * or Download, not when the page loads, and every call is audited: the scan is an identity
+ * document, so each look at it is recorded.
+ */
+export async function getRightToWorkPhotoUrl(
+  employeeId: string,
+  options: { download?: boolean } = {}
+): Promise<{ url: string | null; error: string | null }> {
   const hasPermission = await checkUserPermission('employees', 'view_documents');
   if (!hasPermission) {
     return { url: null, error: 'Insufficient permissions to view employee documents.' };
@@ -1329,22 +1452,43 @@ export async function getRightToWorkPhotoUrl(employeeId: string): Promise<{ url:
       return { url: null, error: 'Right to work photo not found.' };
     }
 
-    const url = await EmployeeService.getRightToWorkPhotoUrl(rtw.photo_storage_path);
-    return { url, error: null };
+    const url = await EmployeeService.getRightToWorkPhotoUrl(
+      rtw.photo_storage_path,
+      options.download ? rightToWorkDownloadName(rtw.photo_storage_path) : undefined
+    );
+
+    if (url) {
+      const userInfo = await getCurrentUser();
+      await logAuditEvent({
+        ...(userInfo.user_id && { user_id: userInfo.user_id }),
+        ...(userInfo.user_email && { user_email: userInfo.user_email }),
+        operation_type: options.download ? 'download' : 'view',
+        resource_type: 'employee_attachment',
+        resource_id: employeeId,
+        operation_status: 'success',
+        additional_info: {
+          attachment_type: 'right_to_work_photo',
+          storage_path: rtw.photo_storage_path,
+        },
+      });
+    }
+
+    return { url, error: url ? null : 'Could not open the document. Please try again.' };
   } catch (error: unknown) {
+    // Storage's own text (for example "Object not found") goes to the log, not the toast.
     console.error('Error creating signed URL for right to work photo:', error);
-    return { url: null, error: getErrorMessage(error) };
+    return { url: null, error: 'Could not open the document. Please try again.' };
   }
 }
 
 export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ error?: string; success?: boolean }> {
-  const hasPermission = await checkUserPermission('employees', 'edit');
+  const hasPermission = await checkUserPermission('employees', 'delete_documents');
   if (!hasPermission) {
     return { error: 'Insufficient permissions to delete employee documents.' };
   }
 
   try {
-    await EmployeeService.deleteRightToWorkPhoto(employeeId);
+    const { photoPath } = await EmployeeService.deleteRightToWorkPhoto(employeeId);
 
     const userInfo = await getCurrentUser();
     await logAuditEvent({
@@ -1356,7 +1500,7 @@ export async function deleteRightToWorkPhoto(employeeId: string): Promise<{ erro
       operation_status: 'success',
       additional_info: {
         attachment_type: 'right_to_work_photo',
-        file_path: 'deleted' // Path is not available from service after delete
+        file_path: photoPath,
       }
     });
 

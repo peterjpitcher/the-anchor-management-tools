@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { formatDateInLondon, formatDateTime } from '@/lib/dateUtils'
-import { Button, Card, CardBody, CardHeader, Empty, Icon, toast } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, Empty, Icon, toast } from '@/ds'
 import { auditEntryIconClasses } from '@/app/(authenticated)/employees/_shared/status-ui'
 import type { AuditLogEntry, EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
 
@@ -12,13 +12,16 @@ interface EmployeeAuditTrailProps {
   auditLogs: AuditLogEntry[]
   notes?: EmployeeNoteWithAuthor[]
   canViewAudit: boolean
+  /** Why the audit rows could not be loaded. Shown instead of "No audit history yet". */
+  loadError?: string | null
 }
 
 export function EmployeeAuditTrail({
   employeeName,
   auditLogs,
   notes,
-  canViewAudit
+  canViewAudit,
+  loadError
 }: EmployeeAuditTrailProps) {
   const [copied, setCopied] = useState(false)
 
@@ -52,6 +55,17 @@ export function EmployeeAuditTrail({
           <p className="text-center text-sm text-text-muted">
             You do not have permission to view audit history.
           </p>
+        </CardBody>
+      </Card>
+    )
+  }
+
+  if (loadError) {
+    return (
+      <Card>
+        <CardHeader title="Audit Trail" />
+        <CardBody>
+          <Alert tone="danger" size="sm">{loadError}</Alert>
         </CardBody>
       </Card>
     )
@@ -92,7 +106,12 @@ export function EmployeeAuditTrail({
         holiday_conflict: 'had holiday conflict with the rota',
         holiday_declined: 'had holiday declined',
         holiday_deleted: 'had holiday deleted',
-        holiday_updated: 'updated holiday'
+        holiday_updated: 'updated holiday',
+        cancel_separation: 'cancelled the separation',
+        add_rate_override: 'added a pay rate override',
+        update_rate_override: 'changed a pay rate override',
+        download_starter_pack: 'downloaded the new starter pack',
+        download_worker_agreement: 'downloaded the casual worker agreement'
       }
       return specificActions[additionalInfo.action] || additionalInfo.action
     }
@@ -107,7 +126,9 @@ export function EmployeeAuditTrail({
       add_note: 'added note',
       delete_note: 'deleted note',
       add_attachment: 'added attachment',
-      delete_attachment: 'deleted attachment'
+      delete_attachment: 'deleted attachment',
+      status_change: 'changed employment status',
+      access_revoked: 'marked as Former and removed system access'
     }
     return actionLabels[log.operation_type] || log.operation_type
   }
@@ -234,6 +255,23 @@ export function EmployeeAuditTrail({
       if (note) {
         details.push(`Note: ${note.substring(0, 80)}${note.length > 80 ? '…' : ''}`)
       }
+    }
+
+    if (action === 'add_rate_override' || action === 'update_rate_override') {
+      const describeRate = (rate: unknown, from: unknown): string | null => {
+        const amount = Number(rate)
+        if (rate === null || rate === undefined || !Number.isFinite(amount) || typeof from !== 'string') return null
+        return `£${amount.toFixed(2)}/hr from ${formatDateInLondon(from, { day: 'numeric', month: 'short', year: 'numeric' })}`
+      }
+      const now = describeRate(additionalInfo.hourly_rate, additionalInfo.effective_from)
+      const was = describeRate(additionalInfo.previous_hourly_rate, additionalInfo.previous_effective_from)
+      if (now) details.push(`Rate: ${now}`)
+      if (was) details.push(`Was: ${was}`)
+    }
+
+    if (log.operation_type === 'access_revoked') {
+      if (additionalInfo.source === 'automatic') details.push('Done automatically after the last working day')
+      if (additionalInfo.auth_user_deleted === false) details.push('Their login could not be deleted')
     }
 
     if (log.old_values && log.new_values) {

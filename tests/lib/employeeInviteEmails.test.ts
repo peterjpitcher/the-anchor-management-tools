@@ -26,7 +26,12 @@ describe('employee invite emails say when a send failed', () => {
     ['the welcome invite', () => sendWelcomeEmail('new-starter@example.com', 'https://example.com/onboarding/token')],
     ['the portal invite', () => sendPortalInviteEmail('staff@example.com', 'https://example.com/onboarding/token')],
     ['a chase reminder', () => sendChaseEmail('staff@example.com', 'https://example.com/onboarding/token', 3)],
-    ['the onboarding complete note', () => sendOnboardingCompleteEmail('Alex Rowe', 'staff@example.com')],
+    ['the onboarding complete note', () => sendOnboardingCompleteEmail({
+      employeeName: 'Alex Rowe',
+      employeeEmail: 'staff@example.com',
+      timeOffAnswer: 'none',
+      timeOffBlocks: [],
+    })],
   ]
 
   beforeEach(() => {
