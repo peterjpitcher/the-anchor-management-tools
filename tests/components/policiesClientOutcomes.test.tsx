@@ -8,7 +8,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const sendMock = vi.hoisted(() => vi.fn())
-const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }))
+const toastMock = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), warning: vi.fn() }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
@@ -72,7 +72,7 @@ describe('the bulk send on the policies page', () => {
 
   it('reports people with no email address apart from those emailed', async () => {
     const user = userEvent.setup()
-    sendMock.mockResolvedValue({ success: true, data: { sent: 1, signInPerson: [{ name: 'Alex Unknown' }], failed: [] } })
+    sendMock.mockResolvedValue({ success: true, data: { sent: 1, signInPerson: [{ name: 'Alex Unknown' }], emailNotConfirmed: [], failed: [] } })
     renderPage()
 
     await user.click(screen.getByRole('button', { name: 'Send to the 2 With No Link Waiting' }))
@@ -82,5 +82,50 @@ describe('the bulk send on the policies page', () => {
     await waitFor(() => expect(toastMock.success).toHaveBeenCalled())
     expect(sendMock).toHaveBeenCalledWith({ slug: 'allergens', employeeIds: ['e1', 'e2'] })
     expect(toastMock.success).toHaveBeenCalledWith('Emailed to 1 person. No email address, so to confirm in person: Alex Unknown.')
+  })
+})
+
+// siblings#8: an email failure showed the provider's text in an error toast that began "Not sent
+// to", even when the email may have gone.
+describe('a policy whose link email did not definitely go', () => {
+  const MAY_HAVE_GONE = 'Created, but we could not confirm the email went. It may have reached them, so check with them before sending again.'
+
+  async function sendToMandy(): Promise<void> {
+    const user = userEvent.setup()
+    renderPage()
+    await user.click(screen.getByRole('button', { name: 'Send to Mandy (Amanda Smith)' }))
+  }
+
+  it('is a warning that says it may have reached them, never "not sent"', async () => {
+    sendMock.mockResolvedValue({
+      success: true,
+      data: { sent: 0, signInPerson: [], emailNotConfirmed: [{ name: 'Mandy (Amanda Smith)', reason: MAY_HAVE_GONE }], failed: [] },
+    })
+
+    await sendToMandy()
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalled())
+    expect(toastMock.warning).toHaveBeenCalledWith(`Emailed to 0 people. Email not confirmed for 1: Mandy (Amanda Smith): ${MAY_HAVE_GONE}`)
+    expect(toastMock.error).not.toHaveBeenCalled()
+    expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('keeps it apart from people nothing was created for', async () => {
+    sendMock.mockResolvedValue({
+      success: true,
+      data: {
+        sent: 0,
+        signInPerson: [],
+        emailNotConfirmed: [{ name: 'Mandy (Amanda Smith)', reason: MAY_HAVE_GONE }],
+        failed: [{ name: 'Jo Rowe', reason: 'Something went wrong. Please try again.' }],
+      },
+    })
+
+    await sendToMandy()
+
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalled())
+    expect(toastMock.error).toHaveBeenCalledWith(
+      `Emailed to 0 people. Email not confirmed for 1: Mandy (Amanda Smith): ${MAY_HAVE_GONE} Not sent to 1: Jo Rowe: Something went wrong. Please try again.`,
+    )
   })
 })

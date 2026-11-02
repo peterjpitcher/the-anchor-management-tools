@@ -17,6 +17,7 @@ import {
 } from '@/lib/leave/working-days';
 import type { EmployeeLeaveDay } from '@/app/actions/leave';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { leaveTypeLabel, ONBOARDING_LEAVE_ORIGIN_LABEL } from '@/lib/employees/leave-type-labels';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
@@ -189,9 +190,11 @@ export default function EmployeeHolidaysTab({
               </Field>
             </div>
             <Field label="Note (optional)">
+              {/* The server keeps notes to 500 characters; this stops a longer one being typed. */}
               <Input
                 id="book-note"
                 placeholder="e.g. Annual leave"
+                maxLength={500}
                 value={bookNote}
                 onChange={e => setBookNote(e.target.value)}
               />
@@ -250,6 +253,14 @@ export default function EmployeeHolidaysTab({
           <ul className="divide-y divide-border">
             {yearRequests.map(r => {
               const days = countRequestDays(r.start_date, r.end_date);
+              // Each row says what it is: days a starter cannot work are not holiday, and the
+              // allowance above leaves them out, so the list must not read as if they were.
+              const details = [
+                leaveTypeLabel(r.leave_type),
+                `${days} ${days === 1 ? 'day' : 'days'}`,
+                r.leave_origin === 'agreed_at_hire' ? ONBOARDING_LEAVE_ORIGIN_LABEL : null,
+                r.note,
+              ].filter(Boolean).join(' · ');
               return (
                 <li key={r.id} className="flex items-center justify-between gap-3 px-pad-card py-2.5">
                   <div className="min-w-0">
@@ -257,10 +268,7 @@ export default function EmployeeHolidaysTab({
                       {formatDate(r.start_date)}
                       {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
                     </p>
-                    <p className="text-xs text-text-muted">
-                      {days} {days === 1 ? 'day' : 'days'}
-                      {r.note && ` · ${r.note}`}
-                    </p>
+                    <p className="text-xs text-text-muted">{details}</p>
                   </div>
                   <Badge tone={rotaLeaveStatusTone(r.status)} size="sm">
                     {rotaLeaveStatusLabel(r.status)}

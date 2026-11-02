@@ -4,10 +4,9 @@
  * minutes old (the links last five minutes).
  */
 
-type SignedUrlResult = { url: string | null; error: string | null }
+import { DOCUMENT_DOWNLOAD_FAILED as DOWNLOAD_FAILED, DOCUMENT_OPEN_FAILED as OPEN_FAILED } from '@/lib/employees/document-link-messages'
 
-const OPEN_FAILED = 'Could not open the document. Please try again.'
-const DOWNLOAD_FAILED = 'Could not download the document. Please try again.'
+type SignedUrlResult = { url: string | null; error: string | null }
 
 /**
  * Opens the document in a new tab. The tab is opened before the link is fetched, while the click

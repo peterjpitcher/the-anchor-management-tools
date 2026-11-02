@@ -31,6 +31,11 @@ function people(count: number): string {
   return `${count} ${count === 1 ? 'person' : 'people'}`
 }
 
+/** The first three "name: reason" entries, and a mark when there are more. */
+function firstThree(entries: string[]): string {
+  return `${entries.slice(0, 3).join('; ')}${entries.length > 3 ? ' …' : ''}`
+}
+
 /**
  * What the bulk send will do, said before it happens. People with no email address on their
  * record get the policy to confirm in person; the dialog used to say everyone would be emailed.
@@ -68,6 +73,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
     startTransition(async () => {
       let sent = 0
       const inPerson: string[] = []
+      const emailNotConfirmed: string[] = []
       const failed: string[] = []
       for (let start = 0; start < rows.length; start += POLICY_BATCH_SIZE) {
         const batch = rows.slice(start, start + POLICY_BATCH_SIZE)
@@ -82,16 +88,24 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
         }
         sent += result.data.sent
         inPerson.push(...result.data.signInPerson.map((person) => person.name))
+        emailNotConfirmed.push(...result.data.emailNotConfirmed.map((entry) => `${entry.name}: ${entry.reason}`))
         failed.push(...result.data.failed.map((failure) => `${failure.name}: ${failure.reason}`))
       }
       setProgress(null)
-      // Emailed, to confirm in person (no email address), and not sent are three different
-      // outcomes, so each is said separately.
+      // Emailed, to confirm in person (no email address), created but the email not confirmed,
+      // and not sent are different outcomes, so each is said separately. An email that may have
+      // gone is never called "not sent": the person may already have the link.
       const inPersonNote = inPerson.length > 0
         ? ` No email address, so to confirm in person: ${inPerson.slice(0, 3).join(', ')}${inPerson.length > 3 ? ' …' : ''}.`
         : ''
+      const emailNote = emailNotConfirmed.length > 0
+        ? ` Email not confirmed for ${emailNotConfirmed.length}: ${firstThree(emailNotConfirmed)}`
+        : ''
+      const failedNote = failed.length > 0 ? ` Not sent to ${failed.length}: ${firstThree(failed)}` : ''
       if (failed.length > 0) {
-        toast.error(`Emailed to ${people(sent)}.${inPersonNote} Not sent to ${failed.length}: ${failed.slice(0, 3).join('; ')}${failed.length > 3 ? ' …' : ''}`)
+        toast.error(`Emailed to ${people(sent)}.${inPersonNote}${emailNote}${failedNote}`)
+      } else if (emailNotConfirmed.length > 0) {
+        toast.warning(`Emailed to ${people(sent)}.${inPersonNote}${emailNote}`)
       } else if (inPerson.length > 0) {
         toast.success(`Emailed to ${people(sent)}.${inPersonNote}`)
       } else {

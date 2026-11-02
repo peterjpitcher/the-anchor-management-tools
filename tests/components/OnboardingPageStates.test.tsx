@@ -10,8 +10,11 @@ import { allSections, filledOnboardingValues } from '../fixtures/onboarding/valu
 const validateInviteToken = vi.fn()
 const getOnboardingSnapshot = vi.fn()
 const signInToOnboarding = vi.fn()
-const signOut = vi.fn()
+const signOutOnThisDevice = vi.fn()
+const globalSignOut = vi.fn()
 const routerRefresh = vi.fn()
+// Who the success page finds signed in, read on the server.
+const session = vi.hoisted(() => ({ user: null as { id: string } | null }))
 
 vi.mock('@/app/actions/employeeInvite', () => ({
   validateInviteToken: (...args: unknown[]) => validateInviteToken(...args),
@@ -25,8 +28,23 @@ vi.mock('@/app/actions/employeeInvite', () => ({
   checkPreferredNameAvailability: vi.fn(),
 }))
 
+vi.mock('@/app/actions/onboardingSignOut', () => ({
+  signOutOnThisDevice: (...args: unknown[]) => signOutOnThisDevice(...args),
+}))
+
+// The staff app's sign-out ends every session the account has. The onboarding pages never use it.
 vi.mock('@/app/actions/auth', () => ({
-  signOut: (...args: unknown[]) => signOut(...args),
+  signOut: (...args: unknown[]) => globalSignOut(...args),
+}))
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: {
+      getUser: async () => (session.user
+        ? { data: { user: session.user }, error: null }
+        : { data: { user: null }, error: { name: 'AuthSessionMissingError', message: 'Auth session missing!' } }),
+    },
+  }),
 }))
 
 vi.mock('next/navigation', () => ({
@@ -99,20 +117,22 @@ describe('onboarding page states', () => {
     expect(routerRefresh).not.toHaveBeenCalled()
   })
 
-  it('offers to sign out when the link is opened while signed in as someone else', async () => {
+  // That someone is often a manager: signing them out everywhere ended their phone session too.
+  it('offers to sign out when the link is opened while signed in as someone else, on this device only', async () => {
     getOnboardingSnapshot.mockResolvedValue({
       success: false,
       code: 'wrong_account',
       error: 'This onboarding link belongs to a different account. Please sign out and open the link again.',
     })
-    signOut.mockResolvedValue({ success: true })
+    signOutOnThisDevice.mockResolvedValue({ success: true })
 
     await renderPage()
 
     expect(screen.getByRole('heading', { name: 'Signed In as Someone Else' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }))
     await vi.waitFor(() => expect(routerRefresh).toHaveBeenCalled())
-    expect(signOut).toHaveBeenCalled()
+    expect(signOutOnThisDevice).toHaveBeenCalledTimes(1)
+    expect(globalSignOut).not.toHaveBeenCalled()
   })
 
   it('opens the wizard on the saved details when they load', async () => {
@@ -129,17 +149,33 @@ describe('onboarding page states', () => {
 
 // Creating the password signs the browser in as the starter, often on a shared venue device.
 describe('the finished page', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    session.user = { id: 'auth-starter' }
+  })
 
-  it('lets the starter sign out on this device', async () => {
-    signOut.mockResolvedValue({ success: true })
+  it('lets the starter sign out on this device, and only this device', async () => {
+    signOutOnThisDevice.mockResolvedValue({ success: true })
     render(await OnboardingSuccessPage({ searchParams: Promise.resolve({}) }))
 
+    expect(screen.getByText(/You are signed in on this device/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }))
 
     await waitFor(() => expect(screen.getByText('You are signed out on this device.')).toBeInTheDocument())
     expect(screen.queryByText(/You are signed in on this device/)).not.toBeInTheDocument()
-    expect(signOut).toHaveBeenCalledTimes(1)
+    expect(signOutOnThisDevice).toHaveBeenCalledTimes(1)
+    expect(globalSignOut).not.toHaveBeenCalled()
+  })
+
+  // The signed-in line lived in the button's own state, so a reload after Sign Out, or the page
+  // opened again later, said "You are signed in" with nobody signed in.
+  it('says nothing about being signed in, and offers no sign out, when there is no session', async () => {
+    session.user = null
+    render(await OnboardingSuccessPage({ searchParams: Promise.resolve({}) }))
+
+    expect(screen.getByText('How to Sign In Next Time')).toBeInTheDocument()
+    expect(screen.queryByText(/You are signed in on this device/)).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Sign Out' })).not.toBeInTheDocument()
   })
 
   it('offers no sign out after portal setup, which never signs the browser in', async () => {
@@ -151,7 +187,7 @@ describe('the finished page', () => {
   })
 
   it('says so when signing out fails', async () => {
-    signOut.mockResolvedValue({ error: 'An error occurred during sign out' })
+    signOutOnThisDevice.mockResolvedValue({ error: 'We could not sign you out. Please try again.' })
     render(await OnboardingSuccessPage({ searchParams: Promise.resolve({}) }))
 
     fireEvent.click(screen.getByRole('button', { name: 'Sign Out' }))

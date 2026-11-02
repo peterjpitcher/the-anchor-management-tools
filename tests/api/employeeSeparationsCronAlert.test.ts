@@ -58,7 +58,7 @@ describe('/api/cron/employee-separations alerts', () => {
       .mockResolvedValueOnce({ success: true, employmentEndDate: '2026-10-30', authUserDeleted: true })
       .mockResolvedValueOnce({
         success: false,
-        error: 'This employee still has rota shifts on 05 November 2026. Reassign or cancel those shifts before marking them as Former.',
+        error: 'This employee still has rota shifts on 5 November 2026. Reassign or cancel those shifts before marking them as Former.',
         code: 'future_rota_shifts',
       })
 
@@ -74,10 +74,13 @@ describe('/api/cron/employee-separations alerts', () => {
     expect(context).toEqual(expect.objectContaining({
       not_finalised: [{
         record: 'https://management.example.test/employees/employee-2',
-        reason: 'This employee still has rota shifts on 05 November 2026. Reassign or cancel those shifts before marking them as Former.',
+        reason: 'This employee still has rota shifts on 5 November 2026. Reassign or cancel those shifts before marking them as Former.',
       }],
       needs_follow_up: [],
+      // The words the app uses for the stored Started Separation status.
+      outcome: 'Each person not finalised stays on notice and is tried again tomorrow. Clear what is named, or mark them as Former from their record.',
     }))
+    expect(JSON.stringify(context)).not.toContain('Started Separation')
     // A link to the record, never the person's name.
     expect(JSON.stringify(context)).not.toContain('Sam')
     expect(JSON.stringify(context)).not.toContain('Hale')

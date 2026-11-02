@@ -167,11 +167,14 @@ export function calculateBusinessReliabilityScore(
       case 'holiday_approved':
         counts.holidayApproved += 1;
         break;
+      // A leave event that is not score-eligible (days someone cannot work, which are not
+      // holiday, or time off agreed at hire) is neither counted nor penalised. score_eligible was
+      // never read here, so those events lowered the score all the same.
       case 'late_holiday':
-        counts.lateHolidays += 1;
+        if (event.score_eligible) counts.lateHolidays += 1;
         break;
       case 'holiday_conflict':
-        counts.holidayConflicts += 1;
+        if (event.score_eligible) counts.holidayConflicts += 1;
         break;
     }
   }

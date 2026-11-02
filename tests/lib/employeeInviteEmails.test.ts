@@ -6,11 +6,13 @@ vi.mock('@/lib/email/emailService', () => ({
 }))
 
 import { sendEmail } from '@/lib/email/emailService'
+import { InviteEmailSendError } from '@/lib/employees/invite-email-failure'
 import {
   buildSeparationStartedEmail,
   sendChaseEmail,
   sendOnboardingCompleteEmail,
   sendPortalInviteEmail,
+  sendSeparationStartedEmail,
   sendWelcomeEmail,
 } from '@/lib/email/employee-invite-emails'
 
@@ -32,6 +34,13 @@ describe('employee invite emails say when a send failed', () => {
       timeOffAnswer: 'none',
       timeOffBlocks: [],
     })],
+    ['the separation email', () => sendSeparationStartedEmail({
+      email: 'leaver@example.com',
+      employeeName: 'Alex Rowe',
+      employmentEndDate: '2026-11-20',
+      todayIso: '2026-11-02',
+      shiftPolicy: 'release_remaining',
+    })],
   ]
 
   beforeEach(() => {
@@ -48,6 +57,47 @@ describe('employee invite emails say when a send failed', () => {
     mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1' })
 
     await expect(send()).resolves.toMatchObject({ success: true })
+  })
+
+  // The thrown error keeps what sendEmail said, so a caller can tell "refused" from "may have
+  // gone". A plain Error lost it, and the invite actions deleted the record behind a live link.
+  it.each(sends)('%s keeps the may-have-gone flag and the code on the thrown error', async (_label, send) => {
+    mockedSendEmail.mockResolvedValue({ success: false, error: 'Resend 503', uncertain: true })
+    const uncertain = await send().catch((error: unknown) => error)
+    expect(uncertain).toBeInstanceOf(InviteEmailSendError)
+    expect(uncertain).toMatchObject({ uncertain: true, message: 'Resend 503' })
+
+    mockedSendEmail.mockResolvedValue({ success: false, error: 'Email sending is currently suspended', code: 'email_suspended' })
+    const suspended = await send().catch((error: unknown) => error)
+    expect(suspended).toMatchObject({ uncertain: false, code: 'email_suspended' })
+  })
+
+  it('treats a send that threw as one that may have gone', async () => {
+    mockedSendEmail.mockRejectedValue(new Error('socket hang up'))
+
+    const error = await sendWelcomeEmail('new-starter@example.com', 'https://example.com/onboarding/token').catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(InviteEmailSendError)
+    expect(error).toMatchObject({ uncertain: true, message: 'socket hang up' })
+  })
+
+  // It goes through the same helper as the invites, so it must still copy in the managers.
+  it('still copies the separation email to the managers', async () => {
+    mockedSendEmail.mockResolvedValue({ success: true, messageId: 'resend-1' })
+
+    await sendSeparationStartedEmail({
+      email: 'leaver@example.com',
+      employeeName: 'Alex Rowe',
+      employmentEndDate: '2026-11-20',
+      todayIso: '2026-11-02',
+      shiftPolicy: 'release_remaining',
+    })
+
+    expect(mockedSendEmail).toHaveBeenCalledWith(expect.objectContaining({
+      to: 'leaver@example.com',
+      subject: 'Formal separation process started - Orange Jelly Limited',
+      cc: expect.arrayContaining(['billy@orangejelly.co.uk']),
+    }))
   })
 
   it('names what failed when the provider gives no reason', async () => {

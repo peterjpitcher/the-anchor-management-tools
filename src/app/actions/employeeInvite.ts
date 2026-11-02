@@ -23,6 +23,11 @@ import {
   sendPortalInviteEmail,
   type OnboardingCompleteEmailInput,
 } from '@/lib/email/employee-invite-emails';
+import {
+  describeInviteEmailFailure,
+  inviteEmailFailureLog,
+  type InviteEmailFailure,
+} from '@/lib/employees/invite-email-failure';
 import { normalisePreferredName } from '@/lib/employees/display-name';
 import { normalizePersonName } from '@/lib/names';
 import {
@@ -75,6 +80,18 @@ function buildOnboardingUrl(token: string): string {
 }
 
 export type InviteType = 'onboarding' | 'portal_access';
+
+/**
+ * What every invite action (inviteEmployee, sendPortalInvite, resendInvite) hands back to the
+ * screen. 'warning' means it may have worked, or worked with a catch: the screen says so, and staff
+ * must not simply try again, because that can send the person a second email.
+ */
+export type InviteActionResult = {
+  type: 'success' | 'warning' | 'error';
+  message: string;
+  /** The employee the invite made (inviteEmployee only), on 'success' and on 'warning'. */
+  employeeId?: string;
+};
 type EmployeeStatus = 'Onboarding' | 'Active' | 'Started Separation' | 'Former';
 
 /**
@@ -209,12 +226,13 @@ async function deleteTokenByValue(adminClient: ReturnType<typeof createAdminClie
   }
 }
 
+/** True when the older links were switched off. A failure is logged here; the caller says so. */
 async function expirePendingSiblingTokens(
   adminClient: ReturnType<typeof createAdminClient>,
   employeeId: string,
   inviteType: InviteType,
   activeToken: string,
-): Promise<string | null> {
+): Promise<boolean> {
   const { error } = await adminClient
     .from('employee_invite_tokens')
     .update({ expires_at: new Date().toISOString() })
@@ -224,11 +242,30 @@ async function expirePendingSiblingTokens(
     .neq('token', activeToken);
 
   if (error) {
-    console.error('[employeeInvite] Failed to expire older invite tokens:', error);
-    return error.message || 'Failed to expire older invite links.';
+    console.error('[employeeInvite] Failed to expire older invite tokens:', {
+      code: error.code,
+      message: error.message,
+    });
+    return false;
   }
 
-  return null;
+  return true;
+}
+
+/**
+ * The invite went, but the links sent before it could not be switched off. Said as a warning, not
+ * an error: "try again" here sent the person a second email and wrote no success audit row.
+ */
+function olderLinksStillWorkMessage(sentTo: string): string {
+  return `Invite sent to ${sentTo}, but the links sent to them before could not be switched off, so those still work until they run out. There is no need to send it again.`;
+}
+
+/**
+ * The invite email may have arrived (the email service took it and did not answer). Never
+ * "nothing reached them", and the link it carries is kept.
+ */
+function mayHaveGoneMessage(what: string, sentTo: string, failure: InviteEmailFailure, after: string): string {
+  return `We sent ${what} to ${sentTo}, but ${failure.reason}. ${failure.advice} ${after}`;
 }
 
 /**
@@ -322,7 +359,7 @@ async function auditInviteAttempt(input: {
   }
 }
 
-export async function inviteEmployee(prevState: any, formData: FormData) {
+export async function inviteEmployee(prevState: any, formData: FormData): Promise<InviteActionResult> {
   const canCreate = await checkUserPermission('employees', 'create');
   if (!canCreate) {
     return { type: 'error', message: 'You do not have permission to invite employees.' };
@@ -369,13 +406,43 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     }
 
     // The email is what makes the invite real: the new starter cannot do anything without the
-    // link. So a failed send undoes the half-made record rather than leaving a blank employee
-    // nobody can explain, and staff are told the invite did not go.
+    // link. So a send that definitely failed undoes the half-made record rather than leaving a
+    // blank employee nobody can explain, and staff are told the invite did not go. The provider's
+    // own text goes to the log and the audit row only.
     try {
       await sendWelcomeEmail(email, buildOnboardingUrl(result.token));
     } catch (emailError) {
-      console.error('[inviteEmployee] Failed to send welcome email:', emailError);
-      const reason = getErrorMessage(emailError);
+      const failure = describeInviteEmailFailure(emailError);
+      console.error('[inviteEmployee] Failed to send welcome email:', inviteEmailFailureLog(failure));
+
+      // The email service took it and did not answer, so it may have arrived. Deleting the record
+      // would delete its link too (the token cascades), and the starter would open "Invalid Link".
+      if (failure.uncertain) {
+        await auditInviteAttempt({
+          employeeId: result.employee_id,
+          status: 'failure',
+          error: failure.detail,
+          values: {
+            email,
+            job_title: jobTitle,
+            employment_start_date: employmentStartDate,
+            status: 'Onboarding',
+            email_outcome: 'uncertain',
+          },
+        });
+        revalidatePath('/employees');
+        return {
+          type: 'warning',
+          message: mayHaveGoneMessage(
+            'the invite',
+            email,
+            failure,
+            'Their record has been kept, so you can resend the invite from their profile if it did not arrive.',
+          ),
+          employeeId: result.employee_id,
+        };
+      }
+
       const { error: cleanupError } = await adminClient
         .from('employees')
         .delete()
@@ -383,20 +450,23 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
         .eq('status', 'Onboarding')
         .is('auth_user_id', null);
       if (cleanupError) {
-        console.error('[inviteEmployee] Failed to clean up invite-created employee:', cleanupError);
+        console.error('[inviteEmployee] Failed to clean up invite-created employee:', {
+          code: cleanupError.code,
+          message: cleanupError.message,
+        });
       }
       await auditInviteAttempt({
         employeeId: result.employee_id,
         status: 'failure',
-        error: reason,
+        error: failure.detail,
         values: { email, job_title: jobTitle, employment_start_date: employmentStartDate, cleaned_up: !cleanupError },
       });
       revalidatePath('/employees');
       return {
         type: 'error',
         message: cleanupError
-          ? `The invite email could not be sent (${reason}), and the part-made employee record could not be removed. Check the employee list before trying again.`
-          : `The invite email could not be sent (${reason}). Nothing reached them and no employee record was made, so check the email address and try again.`,
+          ? `The invite email could not be sent because ${failure.reason}, and the part-made employee record could not be removed. Check the employee list before trying again.`
+          : `The invite email could not be sent because ${failure.reason}. Nothing reached them and no employee record was made. ${failure.advice}`,
       };
     }
 
@@ -409,12 +479,19 @@ export async function inviteEmployee(prevState: any, formData: FormData) {
     revalidatePath('/employees');
     return { type: 'success', message: `Invite sent to ${email}.`, employeeId: result.employee_id };
   } catch (err: unknown) {
-    console.error('[inviteEmployee] Unexpected error:', err);
-    return { type: 'error', message: getErrorMessage(err) };
+    // Whatever threw is not written for staff. The record may already exist, so say where to look.
+    console.error('[inviteEmployee] Unexpected error:', {
+      code: (err as { code?: string } | null)?.code,
+      message: getErrorMessage(err),
+    });
+    return {
+      type: 'error',
+      message: 'Something went wrong sending the invite. Check the employee list before trying again.',
+    };
   }
 }
 
-export async function sendPortalInvite(employeeId: string) {
+export async function sendPortalInvite(employeeId: string): Promise<InviteActionResult> {
   const canEdit = await checkUserPermission('employees', 'edit');
   if (!canEdit) {
     return { type: 'error', message: 'You do not have permission to send portal invites.' };
@@ -461,32 +538,49 @@ export async function sendPortalInvite(employeeId: string) {
   try {
     await sendPortalInviteEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
   } catch (emailError) {
-    console.error('[sendPortalInvite] Failed to send email:', emailError);
-    const reason = getErrorMessage(emailError);
+    const failure = describeInviteEmailFailure(emailError);
+    console.error('[sendPortalInvite] Failed to send email:', inviteEmailFailureLog(failure));
+    // An email that may have arrived keeps its link, and the older links stay too.
+    if (failure.uncertain) {
+      await auditInviteAttempt({
+        employeeId,
+        status: 'failure',
+        error: failure.detail,
+        values: { portal_invite_sent: 'uncertain' },
+      });
+      return {
+        type: 'warning',
+        message: mayHaveGoneMessage('the portal invite', employee.email_address, failure, 'Any link they already had still works.'),
+      };
+    }
     await deleteTokenByValue(adminClient, tokenData.token);
-    await auditInviteAttempt({ employeeId, status: 'failure', error: reason, values: { portal_invite_sent: false } });
+    await auditInviteAttempt({ employeeId, status: 'failure', error: failure.detail, values: { portal_invite_sent: false } });
     return {
       type: 'error',
-      message: `The portal invite email could not be sent (${reason}). Nothing reached them, and any link they already had still works. Check the email address and try again.`,
+      message: `The portal invite email could not be sent because ${failure.reason}. Nothing reached them, and any link they already had still works. ${failure.advice}`,
     };
   }
 
-  const siblingExpiryError = await expirePendingSiblingTokens(
+  const olderLinksExpired = await expirePendingSiblingTokens(
     adminClient,
     employeeId,
     'portal_access',
     tokenData.token,
   );
-  if (siblingExpiryError) {
-    return { type: 'error', message: 'Invite sent, but old portal invite links could not be expired. Please try again.' };
+
+  await auditInviteAttempt({
+    employeeId,
+    status: 'success',
+    values: { portal_invite_sent: true, ...(olderLinksExpired ? {} : { older_links_expired: false }) },
+  });
+
+  if (!olderLinksExpired) {
+    return { type: 'warning', message: olderLinksStillWorkMessage(employee.email_address) };
   }
-
-  await auditInviteAttempt({ employeeId, status: 'success', values: { portal_invite_sent: true } });
-
   return { type: 'success', message: `Portal invite sent to ${employee.email_address}.` };
 }
 
-export async function resendInvite(employeeId: string) {
+export async function resendInvite(employeeId: string): Promise<InviteActionResult> {
   const canEdit = await checkUserPermission('employees', 'edit');
   if (!canEdit) {
     return { type: 'error', message: 'You do not have permission to resend invites.' };
@@ -494,10 +588,10 @@ export async function resendInvite(employeeId: string) {
 
   const adminClient = createAdminClient();
 
-  // Get employee email
+  // auth_user_id says whether they already set a password, which changes what the email tells them.
   const { data: employee, error: empError } = await adminClient
     .from('employees')
-    .select('email_address, status')
+    .select('email_address, status, auth_user_id')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
@@ -526,30 +620,50 @@ export async function resendInvite(employeeId: string) {
   // Older onboarding links are expired only after the new email has gone (below). A resend whose
   // email failed must not take away the link the employee may already be holding.
   try {
-    await sendWelcomeEmail(employee.email_address, buildOnboardingUrl(tokenData.token));
+    // A starter who set a password on an earlier link is asked to sign in, not to make one.
+    await sendWelcomeEmail(employee.email_address, buildOnboardingUrl(tokenData.token), {
+      passwordAlreadySet: Boolean(employee.auth_user_id),
+    });
   } catch (emailError) {
-    console.error('[resendInvite] Failed to send email:', emailError);
-    const reason = getErrorMessage(emailError);
+    const failure = describeInviteEmailFailure(emailError);
+    console.error('[resendInvite] Failed to send email:', inviteEmailFailureLog(failure));
+    // An email that may have arrived keeps its link, and the older links stay too.
+    if (failure.uncertain) {
+      await auditInviteAttempt({
+        employeeId,
+        status: 'failure',
+        error: failure.detail,
+        values: { invite_resent: 'uncertain' },
+      });
+      return {
+        type: 'warning',
+        message: mayHaveGoneMessage('the invite', employee.email_address, failure, 'Any link they already had still works.'),
+      };
+    }
     await deleteTokenByValue(adminClient, tokenData.token);
-    await auditInviteAttempt({ employeeId, status: 'failure', error: reason, values: { invite_resent: false } });
+    await auditInviteAttempt({ employeeId, status: 'failure', error: failure.detail, values: { invite_resent: false } });
     return {
       type: 'error',
-      message: `The invite email could not be sent (${reason}). Nothing reached them, and any link they already had still works. Check the email address and try again.`,
+      message: `The invite email could not be sent because ${failure.reason}. Nothing reached them, and any link they already had still works. ${failure.advice}`,
     };
   }
 
-  const siblingExpiryError = await expirePendingSiblingTokens(
+  const olderLinksExpired = await expirePendingSiblingTokens(
     adminClient,
     employeeId,
     'onboarding',
     tokenData.token,
   );
-  if (siblingExpiryError) {
-    return { type: 'error', message: 'Invite sent, but old onboarding links could not be expired. Please try again.' };
+
+  await auditInviteAttempt({
+    employeeId,
+    status: 'success',
+    values: { invite_resent: true, ...(olderLinksExpired ? {} : { older_links_expired: false }) },
+  });
+
+  if (!olderLinksExpired) {
+    return { type: 'warning', message: olderLinksStillWorkMessage(employee.email_address) };
   }
-
-  await auditInviteAttempt({ employeeId, status: 'success', values: { invite_resent: true } });
-
   return { type: 'success', message: `Invite resent to ${employee.email_address}.` };
 }
 
@@ -809,47 +923,19 @@ export async function createEmployeeAccount(
 
 /**
  * Sign in on the onboarding page, for a starter who already set a password and has come back
- * without a session (another device, a cleared browser). The email is the one the invite was sent
- * to, so the link alone is still not enough: they need the password too.
+ * without a session (another device, a cleared browser). The email is the record's own, the one
+ * the invite was sent to and the one the page shows, so the link alone is still not enough: they
+ * need the password too.
+ *
+ * The record's address and the login's address are kept the same where the email is changed (the
+ * employee edit refuses a change on an Onboarding record that has a login, and moves the login for
+ * current staff), so this never looks the login up. If they ever differ, sign in fails closed
+ * rather than letting in whoever holds the old address.
  *
  * Goes through AuthService.signIn, the same path as the login page: its rate limit, its generic
  * failure message and its audit rows. The login page itself cannot bring them back here, because
  * the sign-in action sends anyone without a role (every new starter) to the staff portal.
  */
-/**
- * The address the starter's login was made with. Staff can correct the email on the employee
- * record after the starter set a password, and nothing changes the login's own address, so signing
- * in with the record's current address would fail for good. Null when it cannot be read.
- */
-async function readLinkedLoginEmail(employeeId: string): Promise<string | null> {
-  const adminClient = createAdminClient();
-  const { data: employee, error } = await adminClient
-    .from('employees')
-    .select('auth_user_id')
-    .eq('employee_id', employeeId)
-    .maybeSingle();
-  if (error) {
-    console.error('[signInToOnboarding] Could not read the employee for sign in:', {
-      code: error.code,
-      message: error.message,
-    });
-    return null;
-  }
-
-  const authUserId = (employee as { auth_user_id: string | null } | null)?.auth_user_id ?? null;
-  if (!authUserId) return null;
-
-  const { data, error: userError } = await adminClient.auth.admin.getUserById(authUserId);
-  if (userError || !data?.user?.email) {
-    console.error('[signInToOnboarding] Could not read the login for sign in:', {
-      code: userError?.code,
-      message: userError?.message,
-    });
-    return null;
-  }
-  return data.user.email;
-}
-
 export async function signInToOnboarding(
   token: string,
   password: string,
@@ -868,14 +954,9 @@ export async function signInToOnboarding(
     return { success: false, error: 'Enter your password.' };
   }
 
-  const loginEmail = await readLinkedLoginEmail(validation.employee_id);
-  if (!loginEmail) {
-    return { success: false, error: 'We could not sign you in just now. Please try again in a moment.' };
-  }
-
   let signedInUserId: string | undefined;
   try {
-    const result = await AuthService.signIn(loginEmail, password);
+    const result = await AuthService.signIn(validation.email, password);
     signedInUserId = result.userId;
   } catch (error: unknown) {
     const message = getErrorMessage(error);
@@ -1911,8 +1992,9 @@ export async function submitOnboardingProfile(
       ...details,
     });
   } catch (emailError) {
-    console.error('[submitOnboardingProfile] Failed to send completion email:', emailError);
-    await recordCompletionEmailFailure(adminClient, completion.employee_id, validation.email, getErrorMessage(emailError));
+    const failure = describeInviteEmailFailure(emailError);
+    console.error('[submitOnboardingProfile] Failed to send completion email:', inviteEmailFailureLog(failure));
+    await recordCompletionEmailFailure(adminClient, completion.employee_id, validation.email, failure);
   }
 
   // Audit log
@@ -1931,16 +2013,24 @@ export async function submitOnboardingProfile(
   return { success: true };
 }
 
+/**
+ * The note staff read on the profile says what happened in plain words: did not send and why, or
+ * may have gone when the email service took it and did not answer. The provider's own text goes
+ * to the audit row only.
+ */
 async function recordCompletionEmailFailure(
   adminClient: ReturnType<typeof createAdminClient>,
   employeeId: string,
   employeeEmail: string,
-  reason: string,
+  failure: InviteEmailFailure,
 ): Promise<void> {
+  const whatHappened = failure.uncertain
+    ? `Onboarding completed. We sent the email telling the manager, but ${failure.reason}. `
+    : `Onboarding completed, but the email telling the manager did not send because ${failure.reason}. `;
   const { error: noteError } = await adminClient.from('employee_notes').insert({
     employee_id: employeeId,
     note_text:
-      `Onboarding completed, but the email telling the manager did not send (${reason}). ` +
+      whatHappened +
       'Check their booked time off and arrange their right to work check before their first shift.',
     created_by_user_id: null,
   });
@@ -1960,8 +2050,8 @@ async function recordCompletionEmailFailure(
       resource_type: 'employee',
       resource_id: employeeId,
       operation_status: 'failure',
-      error_message: reason,
-      additional_info: { note_added: !noteError },
+      error_message: failure.detail,
+      additional_info: { note_added: !noteError, email_outcome: failure.uncertain ? 'uncertain' : 'not_sent' },
     });
   } catch (auditError) {
     console.error('[submitOnboardingProfile] Audit log failed:', auditError);

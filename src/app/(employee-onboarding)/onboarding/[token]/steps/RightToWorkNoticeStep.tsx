@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox } from '@/ds';
-import { StepFooter } from './StepParts';
+import { StepFooter, thrownStepError } from './StepParts';
 import { acknowledgeRightToWorkNotice } from '@/app/actions/employeeInvite';
 
 interface RightToWorkNoticeStepProps {
@@ -64,7 +64,7 @@ export default function RightToWorkNoticeStep({
         setError(result.error || 'Could not save that. Please try again.');
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save that. Please try again.');
+      setError(thrownStepError('Saving the right to work notice', caught));
     } finally {
       setLoading(false);
     }

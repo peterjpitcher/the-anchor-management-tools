@@ -2,7 +2,6 @@
 
 import { checkUserPermission } from './rbac'
 import { EmployeeService, type EmployeeRosterEmployee } from '@/services/employees'
-import { getErrorMessage } from '@/lib/errors';
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
@@ -88,10 +87,14 @@ export async function getEmployeesRoster(
 
     return result;
   } catch (error: unknown) {
+    // The service throws raw Postgres and paging errors ("roster holiday days failed: canceling
+    // statement due to statement timeout"). That text is for the log; the list banner says it
+    // plainly, and its Try Again button runs the read again. The error itself is logged, so a
+    // thrown TypeError keeps its stack.
     console.error('[getEmployeesRoster] Failed to fetch employees roster:', error)
     return {
       ...emptyResult,
-      error: getErrorMessage(error)
+      error: 'The employee list could not be loaded. Please try again.'
     }
   }
 }

@@ -16,6 +16,8 @@ interface EmployeeHeaderActionsProps {
   employmentStartDate: string | null
   /** The recorded last working day, which gates Mark as Former. */
   employmentEndDate: string | null
+  /** separation_shift_policy, so Cancel Separation says which shifts were released. */
+  separationShiftPolicy?: string | null
   canEdit: boolean
   canDelete: boolean
 }
@@ -46,10 +48,18 @@ export function EmployeeHeaderActions({
   status,
   employmentStartDate,
   employmentEndDate,
+  separationShiftPolicy = null,
   canEdit,
   canDelete,
 }: EmployeeHeaderActionsProps): React.JSX.Element {
-  const statusActions = useEmployeeStatusActions({ employeeId, status, canEdit, employmentStartDate, employmentEndDate })
+  const statusActions = useEmployeeStatusActions({
+    employeeId,
+    status,
+    canEdit,
+    employmentStartDate,
+    employmentEndDate,
+    separationShiftPolicy,
+  })
   const deleteAction = useDeleteEmployeeAction({ employeeId, employeeName })
 
   // Delete is for a record that never got going: an invite that was not taken up. Anyone who has

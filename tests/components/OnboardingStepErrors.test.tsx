@@ -11,6 +11,8 @@ const submitOnboardingProfile = vi.fn()
 const checkPreferredNameAvailability = vi.fn()
 const routerPush = vi.fn()
 
+const PLAIN_FALLBACK = 'Something went wrong. Please try again.'
+
 vi.mock('@/app/actions/employeeInvite', () => ({
   createEmployeeAccount: (...args: unknown[]) => createEmployeeAccount(...args),
   saveOnboardingSection: (...args: unknown[]) => saveOnboardingSection(...args),
@@ -24,6 +26,7 @@ vi.mock('next/navigation', () => ({
 
 describe('onboarding step errors', () => {
   beforeEach(() => {
+    vi.restoreAllMocks()
     vi.clearAllMocks()
     checkPreferredNameAvailability.mockResolvedValue({ available: true })
   })
@@ -87,7 +90,10 @@ describe('onboarding step errors', () => {
     expect(field).toHaveValue('Peter')
   })
 
-  it('surfaces thrown account creation errors', async () => {
+  // A thrown error is not written for starters and can carry raw server text, so they see a plain
+  // message and the detail goes to the console.
+  it('shows a plain message, not the thrown text, when account creation throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     createEmployeeAccount.mockRejectedValue(new Error('Account service unavailable'))
     const onSuccess = vi.fn()
 
@@ -97,11 +103,30 @@ describe('onboarding step errors', () => {
     fireEvent.change(screen.getByLabelText(/^Confirm Password/), { target: { value: 'a-long-password-1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create Account & Continue' }))
 
-    expect(await screen.findByText('Account service unavailable')).toBeInTheDocument()
+    expect(await screen.findByText(PLAIN_FALLBACK)).toBeInTheDocument()
+    expect(screen.queryByText(/Account service unavailable/)).not.toBeInTheDocument()
+    expect(consoleError).toHaveBeenCalledWith(
+      expect.stringContaining('Creating the account'),
+      expect.objectContaining({ message: 'Account service unavailable' }),
+    )
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
-  it('surfaces thrown section save errors', async () => {
+  it("still shows the action's own returned error, which is written for starters", async () => {
+    createEmployeeAccount.mockResolvedValue({ success: false, error: 'This link has already been used to make an account.' })
+
+    render(<CreateAccountStep token="invite-token" email="staff@example.com" onSuccess={vi.fn()} />)
+
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'a-long-password-1' } })
+    fireEvent.change(screen.getByLabelText(/^Confirm Password/), { target: { value: 'a-long-password-1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Create Account & Continue' }))
+
+    expect(await screen.findByText('This link has already been used to make an account.')).toBeInTheDocument()
+    expect(screen.queryByText(PLAIN_FALLBACK)).not.toBeInTheDocument()
+  })
+
+  it('shows a plain message, not the thrown text, when a section save throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     saveOnboardingSection.mockRejectedValue(new Error('Section save failed'))
     const onSuccess = vi.fn()
 
@@ -113,11 +138,14 @@ describe('onboarding step errors', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save & Continue' }))
 
     await waitFor(() => expect(saveOnboardingSection).toHaveBeenCalled())
-    expect(await screen.findByText('Section save failed')).toBeInTheDocument()
+    expect(await screen.findByText(PLAIN_FALLBACK)).toBeInTheDocument()
+    expect(screen.queryByText(/Section save failed/)).not.toBeInTheDocument()
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Saving personal details'), expect.any(Error))
     expect(onSuccess).not.toHaveBeenCalled()
   })
 
-  it('surfaces thrown final submit errors', async () => {
+  it('shows a plain message, not the thrown text, when the final submit throws', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     submitOnboardingProfile.mockRejectedValue(new Error('Final submit failed'))
 
     render(
@@ -126,7 +154,9 @@ describe('onboarding step errors', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Complete Profile' }))
 
-    expect(await screen.findByText('Final submit failed')).toBeInTheDocument()
+    expect(await screen.findByText(PLAIN_FALLBACK)).toBeInTheDocument()
+    expect(screen.queryByText(/Final submit failed/)).not.toBeInTheDocument()
+    expect(consoleError).toHaveBeenCalledWith(expect.stringContaining('Submitting the profile'), expect.any(Error))
     expect(routerPush).not.toHaveBeenCalled()
   })
 })

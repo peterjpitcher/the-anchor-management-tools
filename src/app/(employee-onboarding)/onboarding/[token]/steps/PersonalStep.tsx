@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Field, Input, Textarea } from '@/ds';
-import { StepFooter } from './StepParts';
+import { StepFooter, thrownStepError } from './StepParts';
 import { checkPreferredNameAvailability, saveOnboardingSection } from '@/app/actions/employeeInvite';
 import { dateOfBirthError } from '@/lib/employees/field-rules';
 
@@ -127,7 +127,7 @@ export default function PersonalStep({ token, initialData, saved = false, onSucc
         setError(Object.keys(serverErrors).length > 0 ? CHECK_FIELDS_MESSAGE : (result.error || 'Failed to save. Please try again.'));
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
+      setError(thrownStepError('Saving personal details', caught));
     } finally {
       setLoading(false);
     }

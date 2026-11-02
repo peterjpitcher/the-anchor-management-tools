@@ -76,7 +76,7 @@ describe('bookApprovedHoliday and the last working day', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'Holiday cannot run past 08 June 2099, the last working day before leaving.',
+      error: 'Holiday cannot run past 8 June 2099, the last working day before leaving.',
     })
     expect(rpc).not.toHaveBeenCalled()
   })
@@ -111,7 +111,7 @@ describe('submitLeaveRequest and the last working day', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'Holiday cannot run past 08 June 2099, the last working day before leaving.',
+      error: 'Holiday cannot run past 8 June 2099, the last working day before leaving.',
     })
     expect(insert).not.toHaveBeenCalled()
   })
@@ -174,7 +174,7 @@ describe('reviewLeaveRequest and the last working day', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'Holiday cannot run past 08 June 2099, the last working day before leaving.',
+      error: 'Holiday cannot run past 8 June 2099, the last working day before leaving.',
     })
     expect(rpc).not.toHaveBeenCalled()
   })

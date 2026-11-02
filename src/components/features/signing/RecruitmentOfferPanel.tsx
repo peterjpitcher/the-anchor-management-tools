@@ -5,6 +5,7 @@ import { Alert, Button, Input, Modal, Spinner, Textarea, toast } from '@/ds'
 import { getSigningDocumentsForSubject } from '@/app/actions/signing'
 import { sendJobOffer } from '@/app/actions/signing-recruitment'
 import type { SigningDocumentSummary } from '@/lib/signing/service'
+import { failedDeliveryToast } from './delivery-outcome'
 import { SignaturePanel } from './SignaturePanel'
 
 export interface RecruitmentOfferPanelProps {
@@ -52,9 +53,12 @@ export function RecruitmentOfferPanel({ applicationId, candidateName, canSendNow
         setError(result.error ?? 'Could not send the offer.')
         return
       }
-      const failed = result.data.deliveries.some((delivery) => delivery.email_status === 'failed')
+      const failed = result.data.deliveries.find((delivery) => delivery.email_status === 'failed')
       if (failed) {
-        toast.error('Offer created, but the email failed. Use "Send new link".')
+        // An email we did not hear back about may have reached them, so it is a warning to check
+        // with them before a new link cancels the one they may be holding.
+        const problem = failedDeliveryToast(failed, { noun: 'Offer', recipient: candidateName })
+        toast[problem.kind](problem.message)
       } else {
         toast.success(`Offer sent to ${candidateName}.`)
       }

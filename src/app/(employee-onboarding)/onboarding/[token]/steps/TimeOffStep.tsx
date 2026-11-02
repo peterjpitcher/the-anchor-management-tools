@@ -4,7 +4,7 @@ import { useId, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
 import { cn } from '@/lib/utils';
 import { TIME_OFF_ROW_BORDER_CLASSES } from '../../_shared/status-ui';
-import { StepFooter, StepSection } from './StepParts';
+import { StepFooter, StepSection, thrownStepError } from './StepParts';
 import { saveOnboardingTimeOff } from '@/app/actions/employeeInvite';
 import {
   getTimeOffDateBounds,
@@ -12,6 +12,7 @@ import {
   MAX_NOTE_LENGTH,
   type TimeOffAnswer,
 } from '@/lib/leave/onboarding-time-off';
+import { LEAVE_TYPE_LABELS } from '@/lib/employees/leave-type-labels';
 
 type BlockRow = {
   key: string;
@@ -44,10 +45,8 @@ interface TimeOffStepProps {
   onSignInRequired?: () => void;
 }
 
-const LEAVE_TYPE_OPTIONS = [
-  { value: 'holiday', label: 'Holiday' },
-  { value: 'unavailable', label: 'Cannot work (not holiday)' },
-];
+/** The two a starter can pick, in the words staff read on the Holidays tab. */
+const LEAVE_TYPE_OPTIONS = ['holiday', 'unavailable'].map((value) => ({ value, label: LEAVE_TYPE_LABELS[value] }));
 
 function emptyRow(key: string): BlockRow {
   return { key, startDate: '', endDate: '', leaveType: 'holiday', note: '' };
@@ -238,7 +237,7 @@ export default function TimeOffStep({
         errorRef.current?.focus();
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save these dates. Please try again.');
+      setError(thrownStepError('Saving time off', caught));
       errorRef.current?.focus();
     } finally {
       setLoading(false);

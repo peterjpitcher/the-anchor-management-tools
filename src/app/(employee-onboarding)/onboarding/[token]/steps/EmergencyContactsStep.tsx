@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Alert, Button, Field, Input } from '@/ds';
-import { StepFooter, StepSection } from './StepParts';
+import { StepFooter, StepSection, thrownStepError } from './StepParts';
 import { saveOnboardingSection } from '@/app/actions/employeeInvite';
 
 interface ContactData {
@@ -147,7 +147,7 @@ export default function EmergencyContactsStep({
         setError(Object.keys(serverErrors).length > 0 ? CHECK_FIELDS_MESSAGE : (result.error || 'Failed to save. Please try again.'));
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to save. Please try again.');
+      setError(thrownStepError('Saving emergency contacts', caught));
     } finally {
       setLoading(false);
     }

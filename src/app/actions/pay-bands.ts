@@ -273,7 +273,15 @@ export async function getEmployeePaySettings(employeeId: string): Promise<
     .eq('employee_id', employeeId)
     .single();
 
-  if (error && error.code !== 'PGRST116') return { success: false, error: error.message };
+  if (error && error.code !== 'PGRST116') {
+    // Both the Pay tab and the Holidays tab (the allowance lives here) show this message, and
+    // it wins over the plain rate overrides one. Postgres text used to reach both tabs.
+    console.error('[pay settings] Failed to load pay settings:', { code: error.code, message: error.message });
+    return {
+      success: false,
+      error: 'The pay and holiday allowance settings could not be loaded. Refresh the page to try again.',
+    };
+  }
   return { success: true, data: (data ?? null) as EmployeePaySettings | null };
 }
 

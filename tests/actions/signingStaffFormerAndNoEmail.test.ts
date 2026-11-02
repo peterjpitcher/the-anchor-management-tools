@@ -111,7 +111,7 @@ describe('no email address means sign in person, not sent (FF-55)', () => {
 
     const result = await sendPolicyAcknowledgements({ slug: 'allergens', employeeIds: [ACTIVE, NO_EMAIL] })
 
-    expect(result.data).toEqual({ sent: 1, signInPerson: [{ name: 'Alex Unknown' }], failed: [] })
+    expect(result.data).toEqual({ sent: 1, signInPerson: [{ name: 'Alex Unknown' }], emailNotConfirmed: [], failed: [] })
   })
 
   it('still prints the legal name on the document and signs them as it', async () => {

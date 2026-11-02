@@ -6,13 +6,15 @@ import { submitOnboardingProfile, type OnboardingSnapshot } from '@/app/actions/
 import { useRouter } from 'next/navigation';
 import { formatDate } from '@/lib/dateUtils';
 import { ONBOARDING_INCOMPLETE_MESSAGES, type OnboardingSectionKey } from '@/lib/employees/onboarding-rules';
+import { HEALTH_CONDITION_FIELDS, HEALTH_QUESTIONS } from '@/lib/employees/health-questions';
+import { LEAVE_TYPE_LABELS } from '@/lib/employees/leave-type-labels';
 import {
   ONBOARDING_SECTION_ICON,
   ONBOARDING_SECTION_LABEL,
   ONBOARDING_SECTION_TONE,
   type OnboardingSectionState,
 } from '../../_shared/status-ui';
-import { StepFooter } from './StepParts';
+import { StepFooter, thrownStepError } from './StepParts';
 
 type OnboardingValues = Omit<OnboardingSnapshot, 'completedSections'>;
 
@@ -31,11 +33,6 @@ interface ReviewStepProps {
 }
 
 const NOT_GIVEN = 'Not given';
-
-const LEAVE_TYPE_LABELS: Record<string, string> = {
-  holiday: 'Holiday',
-  unavailable: 'Cannot work (not holiday)',
-};
 
 function text(value: string | null | undefined): string {
   return value && value.trim() ? value.trim() : NOT_GIVEN;
@@ -114,32 +111,58 @@ function financialItems(financial: OnboardingValues['financial']): DescriptionLi
   ];
 }
 
-const CONDITION_LABELS: Array<[keyof OnboardingValues['health'], string]> = [
-  ['has_diabetes', 'Diabetes'],
-  ['has_epilepsy', 'Epilepsy'],
-  ['has_skin_condition', 'Skin condition'],
-  ['has_depressive_illness', 'Depressive illness'],
-  ['has_bowel_problems', 'Bowel problems'],
-  ['has_ear_problems', 'Ear problems'],
-];
-
+/**
+ * Every health question with the starter's answer, worded as staff will read it on the health tab
+ * (health-questions.ts). A detail box the starter could not see (allergies not ticked, say) is
+ * left out, as it was on the Health step.
+ */
 function healthItems(health: OnboardingValues['health']): DescriptionListItem[] {
-  const conditions = CONDITION_LABELS.filter(([key]) => health[key] === true).map(([, label]) => label);
-  return [
-    { key: 'gp', label: "Doctor's Name", value: text(health.doctor_name) },
-    {
-      key: 'allergies',
-      label: 'Allergies',
-      value: health.has_allergies ? `Yes${health.allergies.trim() ? `: ${health.allergies.trim()}` : ''}` : 'No',
-    },
-    {
-      key: 'history',
-      label: 'Long Absence or Treatment',
-      value: yesNo(health.had_absence_over_2_weeks_last_3_years || health.had_outpatient_treatment_over_3_months_last_3_years),
-    },
-    { key: 'conditions', label: 'Conditions', value: conditions.length > 0 ? conditions.join(', ') : 'None ticked' },
-    { key: 'disabled', label: 'Registered Disabled', value: yesNo(health.is_registered_disabled) },
+  const hadAbsenceOrTreatment = health.had_absence_over_2_weeks_last_3_years
+    || health.had_outpatient_treatment_over_3_months_last_3_years;
+  const items: DescriptionListItem[] = [
+    { key: 'doctor_name', label: HEALTH_QUESTIONS.doctor_name, value: text(health.doctor_name) },
+    { key: 'doctor_address', label: HEALTH_QUESTIONS.doctor_address, value: text(health.doctor_address) },
+    { key: 'has_allergies', label: HEALTH_QUESTIONS.has_allergies, value: yesNo(health.has_allergies), span: 2 },
   ];
+  if (health.has_allergies) {
+    items.push({ key: 'allergies', label: HEALTH_QUESTIONS.allergies, value: text(health.allergies), span: 2 });
+  }
+  items.push(
+    {
+      key: 'had_absence_over_2_weeks_last_3_years',
+      label: HEALTH_QUESTIONS.had_absence_over_2_weeks_last_3_years,
+      value: yesNo(health.had_absence_over_2_weeks_last_3_years),
+      span: 2,
+    },
+    {
+      key: 'had_outpatient_treatment_over_3_months_last_3_years',
+      label: HEALTH_QUESTIONS.had_outpatient_treatment_over_3_months_last_3_years,
+      value: yesNo(health.had_outpatient_treatment_over_3_months_last_3_years),
+      span: 2,
+    },
+  );
+  if (hadAbsenceOrTreatment) {
+    items.push({
+      key: 'absence_or_treatment_details',
+      label: HEALTH_QUESTIONS.absence_or_treatment_details,
+      value: text(health.absence_or_treatment_details),
+      span: 2,
+    });
+  }
+  items.push(
+    { key: 'illness_history', label: HEALTH_QUESTIONS.illness_history, value: text(health.illness_history), span: 2 },
+    { key: 'recent_treatment', label: HEALTH_QUESTIONS.recent_treatment, value: text(health.recent_treatment), span: 2 },
+    ...HEALTH_CONDITION_FIELDS.map((field) => ({ key: field, label: HEALTH_QUESTIONS[field], value: yesNo(health[field]) })),
+    { key: 'is_registered_disabled', label: HEALTH_QUESTIONS.is_registered_disabled, value: yesNo(health.is_registered_disabled), span: 2 },
+  );
+  if (health.is_registered_disabled) {
+    items.push(
+      { key: 'disability_reg_number', label: HEALTH_QUESTIONS.disability_reg_number, value: text(health.disability_reg_number) },
+      { key: 'disability_reg_expiry_date', label: HEALTH_QUESTIONS.disability_reg_expiry_date, value: date(health.disability_reg_expiry_date) },
+      { key: 'disability_details', label: HEALTH_QUESTIONS.disability_details, value: text(health.disability_details), span: 2 },
+    );
+  }
+  return items;
 }
 
 export default function ReviewStep({
@@ -168,7 +191,7 @@ export default function ReviewStep({
         setError(result.error || 'Failed to submit. Please try again.');
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to submit. Please try again.');
+      setError(thrownStepError('Submitting the profile', caught));
     } finally {
       setLoading(false);
     }

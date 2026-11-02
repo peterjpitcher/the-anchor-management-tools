@@ -112,7 +112,7 @@ function mockUpdateClient(options: {
 
   const leaveRequestsTable = {
     select: vi.fn((columns: string) => {
-      if (columns === 'id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at') return fetchQuery
+      if (columns === 'id, employee_id, status, start_date, end_date, note, manager_note, reviewed_by, reviewed_at, holiday_year, created_at, updated_at, leave_type, leave_origin') return fetchQuery
       if (columns === 'id') return overlapQuery
       throw new Error(`Unexpected select columns: ${columns}`)
     }),

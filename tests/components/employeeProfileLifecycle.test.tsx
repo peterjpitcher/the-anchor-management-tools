@@ -15,6 +15,8 @@ import { EmployeeAuditTrail } from '@/components/features/employees/EmployeeAudi
 import type { AuditLogEntry } from '@/app/actions/employeeDetails'
 import type { EmployeeLeaveDay } from '@/app/actions/leave'
 import type { EmployeeHealthRecord } from '@/types/database'
+// The health tab's labels are the shared questions the starter is asked (health-questions.ts).
+import { HEALTH_QUESTIONS } from '@/lib/employees/health-questions'
 
 const cancelMock = vi.hoisted(() => vi.fn())
 const revokeMock = vi.hoisted(() => vi.fn())
@@ -95,19 +97,21 @@ describe('EmployeeStatusActions for someone on notice', () => {
   })
 
   it('cancels the separation after a confirmation that says released shifts stay open', async () => {
-    cancelMock.mockResolvedValue({ success: true })
+    const message = 'Separation cancelled. They stay on as Active. Reassign any released shifts still wanted and add them back to their rota templates.'
+    cancelMock.mockResolvedValue({ success: true, message })
     const user = userEvent.setup()
     renderOnNotice('2026-11-20')
 
     await user.click(screen.getByRole('button', { name: 'Cancel Separation' }))
     const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getByText(/took them off every rota template/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Any shifts released when the separation started stay open, and starting it took them off every rota template/)).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Keep Separation' })).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel Separation' }))
 
     await waitFor(() => expect(cancelMock).toHaveBeenCalledWith(EMPLOYEE_ID))
-    expect(toastMock.success).toHaveBeenCalledWith('Separation cancelled. They stay on as Active. Add them back to their rota templates and shifts.')
+    // The toast is the server's, which knows the shift policy the separation started with.
+    expect(toastMock.success).toHaveBeenCalledWith(message)
     expect(refreshMock).toHaveBeenCalled()
   })
 })
@@ -160,7 +164,7 @@ describe('HealthRecordsTab and FinancialDetailsTab', () => {
     render(<HealthRecordsTab employeeId={EMPLOYEE_ID} healthRecord={null} canEdit={false} redacted />)
 
     expect(screen.getByText('You do not have permission to see the health record.')).toBeInTheDocument()
-    expect(screen.queryByText('Has Allergies?')).not.toBeInTheDocument()
+    expect(screen.queryByText(HEALTH_QUESTIONS.has_allergies)).not.toBeInTheDocument()
   })
 
   it('says when no health record exists', () => {
@@ -173,7 +177,7 @@ describe('HealthRecordsTab and FinancialDetailsTab', () => {
     const record = { employee_id: EMPLOYEE_ID, recent_treatment: 'Physiotherapy in August' } as unknown as EmployeeHealthRecord
     render(<HealthRecordsTab employeeId={EMPLOYEE_ID} healthRecord={record} canEdit />)
 
-    expect(screen.getByText('Recent Treatment')).toBeInTheDocument()
+    expect(screen.getByText(HEALTH_QUESTIONS.recent_treatment)).toBeInTheDocument()
     expect(screen.getByText('Physiotherapy in August')).toBeInTheDocument()
   })
 

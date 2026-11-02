@@ -33,6 +33,19 @@ export function StepSection({
   );
 }
 
+/** What a starter reads when a step's save throws rather than returning an error. */
+export const STEP_THROWN_ERROR_MESSAGE = 'Something went wrong. Please try again.';
+
+/**
+ * The message for a save that threw (a dropped connection, or a server error the action did not
+ * catch). Thrown text is not written for starters and can carry raw server detail, so it goes to
+ * the console only. An action's own returned `error` is written for them and is shown as it is.
+ */
+export function thrownStepError(step: string, caught: unknown): string {
+  console.error(`[onboarding] ${step} failed:`, caught);
+  return STEP_THROWN_ERROR_MESSAGE;
+}
+
 /**
  * The end of every onboarding step: Back (from the second step on) and the step's own submit
  * button, in the one form footer the app uses everywhere.

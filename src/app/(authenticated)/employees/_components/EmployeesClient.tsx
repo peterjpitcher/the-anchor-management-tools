@@ -71,21 +71,25 @@ function countOf(count: number, singular: string, plural: string): string {
   return `${count} ${count === 1 ? singular : plural}`
 }
 
+// A 'warning' means the invite may have gone (or went with a catch), so the button does not come
+// back: pressing it again could send the person a second email.
 function PortalInviteButton({ employeeId }: { employeeId: string }) {
   const [pending, setPending] = useState(false)
-  const [sent, setSent] = useState(false)
+  const [outcome, setOutcome] = useState<'sent' | 'check' | null>(null)
 
   const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
-    if (pending || sent) return
+    if (pending || outcome) return
     setPending(true)
     const result = await sendPortalInvite(employeeId)
     setPending(false)
-    if (result.type === 'success') { setSent(true); toast.success(result.message) }
+    if (result.type === 'success') { setOutcome('sent'); toast.success(result.message) }
+    else if (result.type === 'warning') { setOutcome('check'); toast.warning(result.message, { duration: 10000 }) }
     else { toast.error(result.message) }
   }
 
-  if (sent) return <span className="text-xs text-success-fg">Invite sent</span>
+  if (outcome === 'sent') return <span className="text-xs text-success-fg">Invite sent</span>
+  if (outcome === 'check') return <span className="text-xs text-warning-fg">Check before resending</span>
   return (
     <Button type="button" variant="link" size="sm" onClick={handleClick} loading={pending}>
       Send Portal Invite

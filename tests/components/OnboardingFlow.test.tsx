@@ -4,6 +4,7 @@ import OnboardingClient from '@/app/(employee-onboarding)/onboarding/[token]/_co
 import ReviewStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/ReviewStep'
 import type { OnboardingSnapshot } from '@/app/actions/employeeInvite'
 import { allSections, emptyOnboardingValues, filledOnboardingValues } from '../fixtures/onboarding/values'
+import { LEAVE_TYPE_LABELS } from '@/lib/employees/leave-type-labels'
 
 /**
  * The wizard as a whole, not one step at a time. The steps unmount when the starter moves on, so
@@ -30,7 +31,7 @@ vi.mock('@/app/actions/employeeInvite', () => ({
   signInToOnboarding: (...args: unknown[]) => signInToOnboarding(...args),
 }))
 
-vi.mock('@/app/actions/auth', () => ({ signOut: vi.fn() }))
+vi.mock('@/app/actions/onboardingSignOut', () => ({ signOutOnThisDevice: vi.fn() }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
@@ -183,6 +184,33 @@ describe('onboarding wizard', () => {
     fireEvent.click(saveButton())
     await stepHeading('Emergency Contacts')
     expect(saveOnboardingTimeOff).toHaveBeenCalledTimes(3)
+  })
+
+  // The starter and staff read one list of leave type words: the Time Off step's choices, the
+  // review screen and the employee's Holidays tab all take them from leave-type-labels.ts.
+  it('offers and shows the same leave type words staff read', async () => {
+    const values = filledOnboardingValues()
+    values.time_off = {
+      ...values.time_off,
+      blocks: [
+        { startDate: '2026-12-01', endDate: '2026-12-05', leaveType: 'holiday', note: 'Wedding' },
+        { startDate: '2026-12-10', endDate: '2026-12-10', leaveType: 'unavailable', note: '' },
+      ],
+    }
+    renderFlow(snapshot(values, { personal: true }))
+    await stepHeading('Time Off Booked')
+
+    const [firstType] = screen.getAllByLabelText('What is it?')
+    const options = within(firstType).getAllByRole('option').map((option) => [option.getAttribute('value'), option.textContent])
+    expect(options).toEqual([
+      ['holiday', LEAVE_TYPE_LABELS.holiday],
+      ['unavailable', LEAVE_TYPE_LABELS.unavailable],
+    ])
+    expect(LEAVE_TYPE_LABELS.unavailable).toBe('Cannot work (not holiday)')
+
+    render(<ReviewStep token="invite-token" values={values} savedSections={allSections(true)} />)
+    expect(screen.getByText(/10 December 2026, Cannot work \(not holiday\)/)).toBeInTheDocument()
+    expect(screen.getByText(/1 December 2026 to 5 December 2026, Holiday \(Wedding\)/)).toBeInTheDocument()
   })
 
   it('moves focus to the new step heading and scrolls to the top on every step change', async () => {

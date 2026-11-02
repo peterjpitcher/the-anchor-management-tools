@@ -3,12 +3,16 @@ import { sendEmail } from '@/lib/email/emailService';
 import { escapeHtml } from '@/lib/email/escape-html';
 import { getUpcomingBirthday, calculateAge } from '@/lib/employeeUtils';
 import { displayName } from '@/lib/employees/display-name';
-import { formatDateInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import { formatDateInLondon, formatTimeInLondon, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 import { STAFF } from '@/lib/brand/palette';
+import { errorLogFields } from '@/lib/errors';
 import { logAuditEvent } from '@/app/actions/audit';
 import {
+  STALE_PROCESSING_MS,
   claimIdempotencyKey,
   computeIdempotencyRequestHash,
+  lookupIdempotencyKey,
+  markIdempotencyClaimCommitted,
   persistIdempotencyResponse,
   releaseIdempotencyClaim
 } from '@/lib/api/idempotency';
@@ -38,8 +42,75 @@ export interface EmployeeWithBirthday {
 }
 
 export type BirthdayReminderResult =
-  | { success: true; sent: number; message: string; error?: undefined }
-  | { error: string; success?: undefined; sent?: undefined; message?: undefined };
+  | {
+      success: true;
+      sent: number;
+      message: string;
+      /**
+       * True when the reminder went but the app could not record that it did (see recordRun).
+       * The cron raises an alert and the page shows a warning, because a press of the Birthdays
+       * button after the claim goes stale would send the manager a second copy.
+       */
+      unrecorded?: boolean;
+      error?: undefined;
+      uncertain?: undefined;
+      warning?: undefined;
+    }
+  | {
+      /**
+       * Another run holds today's reminder: it is being sent now, or it may have gone a few
+       * minutes ago without a confirmation. Nothing was sent; the sentence says to check with
+       * the manager and when the page can send it.
+       */
+      warning: string;
+      success?: undefined;
+      sent?: undefined;
+      message?: undefined;
+      unrecorded?: undefined;
+      error?: undefined;
+      uncertain?: undefined;
+    }
+  | {
+      /** A fixed sentence for people. The database's or email service's own text is only logged. */
+      error: string;
+      /**
+       * True when the email may have reached the manager: it was handed to the email service,
+       * which did not confirm it. Nothing resends it automatically; a person checks with the
+       * manager first.
+       */
+      uncertain?: boolean;
+      success?: undefined;
+      sent?: undefined;
+      message?: undefined;
+      unrecorded?: undefined;
+      warning?: undefined;
+    };
+
+type BirthdayReminderSuccess = Extract<BirthdayReminderResult, { success: true }>;
+
+/** What staff and the cron alert are told. Exported for the tests. */
+export const BIRTHDAY_REMINDER_MESSAGES = {
+  notStarted: "Today's birthday reminder could not be started, so it was not sent. Please try again later.",
+  loadFailed: 'The staff list could not be loaded, so no birthday reminder was sent. Please try again later.',
+  notSent: 'The birthday reminder email was not sent. Please try again later.',
+  // No "try again later": it stays off until someone switches email back on (SUSPEND_ALL_EMAIL or
+  // SUSPEND_ALL_COMMS, either of which makes sendEmail return 'email_suspended').
+  suspended: 'Email sending is switched off at the moment, so the birthday reminder was not sent.',
+  uncertain:
+    'The birthday reminder email may have reached the manager, but the email service did not confirm it. Check with the manager before sending it again.',
+  // No date in it: the run key is an ISO date, which is not for people.
+  alreadyDone: "Today's birthday reminder has already been dealt with.",
+  /** `sendFrom` is a London time, as HH:mm. */
+  inProgress: (sendFrom: string) =>
+    `Today's birthday reminder was started a few minutes ago and may already have reached the manager. Check with the manager before sending it again. If it did not arrive, you can send it from ${sendFrom}.`,
+  unrecorded:
+    'but the app could not record that it went. Do not send it again today, or the manager will get a second copy.',
+} as const;
+
+/** Logs a failure field by field, never the whole object. */
+function logFailure(what: string, error: unknown): void {
+  console.error(`[birthday-reminders] ${what}`, errorLogFields(error));
+}
 
 export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Promise<BirthdayReminderResult> {
   const supabase = createAdminClient();
@@ -50,19 +121,74 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
     days_ahead: daysAhead
   });
 
-  const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash, 24 * 3);
-  if (claim.state === 'conflict') {
-    return { error: 'Birthday reminder idempotency conflict' };
+  const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash, 24 * 3).catch((claimError: unknown) => {
+    logFailure('Could not claim the run', claimError);
+    return null;
+  });
+  if (!claim) {
+    return { error: BIRTHDAY_REMINDER_MESSAGES.notStarted };
   }
-  if (claim.state === 'in_progress' || claim.state === 'replay') {
-    return {
-      success: true,
-      sent: 0,
-      message: `Birthday reminders already processed for ${runDateKey}`
-    };
+  if (claim.state === 'conflict') {
+    console.error('[birthday-reminders] The run claim did not match an earlier one', { key: idempotencyKey });
+    return { error: BIRTHDAY_REMINDER_MESSAGES.notStarted };
+  }
+  if (claim.state === 'replay') {
+    return { success: true, sent: 0, message: BIRTHDAY_REMINDER_MESSAGES.alreadyDone };
+  }
+  if (claim.state === 'in_progress') {
+    return heldByAnotherRun(supabase, idempotencyKey, requestHash);
   }
 
   let claimHeld = claim.state === 'claimed';
+  // Once the email is handed over it may have gone, so a failure after that point is never
+  // reported as "not sent".
+  let sendAttempted = false;
+
+  const fail = async (failure: { error: string; uncertain?: boolean }): Promise<BirthdayReminderResult> => {
+    // A send that may have gone keeps its claim, so an overlapping run cannot send it again. Until
+    // the claim goes stale after ten minutes (STALE_PROCESSING_MS in lib/api/idempotency.ts), a
+    // press of the Birthdays button is warned and told when it can send (heldByAnotherRun); after
+    // that, someone who has checked with the manager can send it from the page. Any other failure
+    // frees the day straight away.
+    if (claimHeld && !failure.uncertain) {
+      try {
+        await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash);
+      } catch (releaseError) {
+        logFailure('Could not release the run claim', releaseError);
+      }
+      claimHeld = false;
+    }
+    return failure.uncertain ? { error: failure.error, uncertain: true } : { error: failure.error };
+  };
+
+  // Saves today's answer so a later run is told it is done. A claim left as plain "processing"
+  // goes stale after ten minutes and is handed to the next press, which would send a second copy,
+  // so a failed save is written again into the claim itself (markIdempotencyClaimCommitted): a
+  // later run replays that answer instead of sending, stale or not. Only when both writes fail is
+  // the run unrecorded. It still counts as done, because the email went, but a sent reminder is
+  // flagged so the cron raises an alert and the page warns the person who pressed.
+  const recordRun = async (response: BirthdayReminderSuccess): Promise<BirthdayReminderResult> => {
+    claimHeld = false;
+    try {
+      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
+      return response;
+    } catch (persistError) {
+      logFailure('The run finished but its record was not saved', persistError);
+    }
+    try {
+      await markIdempotencyClaimCommitted(supabase, idempotencyKey, requestHash, response);
+      return response;
+    } catch (markError) {
+      logFailure('The run finished but its claim could not be marked done either', markError);
+    }
+    // A run that sent nothing can safely run again: it finds the same people and sends nothing.
+    if (response.sent === 0) return response;
+    return {
+      ...response,
+      unrecorded: true,
+      message: `${response.message}, ${BIRTHDAY_REMINDER_MESSAGES.unrecorded}`,
+    };
+  };
 
   try {
     // Get all active employees with date of birth
@@ -73,15 +199,12 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
       .not('date_of_birth', 'is', null);
 
     if (error) {
-      console.error('Error fetching employees:', error);
-      throw new Error('Failed to fetch employees');
+      logFailure('Could not load employees', error);
+      return await fail({ error: BIRTHDAY_REMINDER_MESSAGES.loadFailed });
     }
 
     if (!employees || employees.length === 0) {
-      const response = { success: true as const, sent: 0, message: 'No active employees with birthdays found' };
-      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
-      claimHeld = false;
-      return response;
+      return await recordRun({ success: true, sent: 0, message: 'No active employees with birthdays found' });
     }
 
     // Find employees with upcoming birthdays
@@ -101,14 +224,11 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
     }
 
     if (upcomingBirthdays.length === 0) {
-      const response = {
-        success: true as const,
+      return await recordRun({
+        success: true,
         sent: 0,
         message: `No birthdays exactly ${daysAhead} day${daysAhead === 1 ? '' : 's'} away`
-      };
-      await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
-      claimHeld = false;
-      return response;
+      });
     }
 
     // Prepare email content
@@ -116,6 +236,7 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
 
     // Send email to manager
     const managerEmail = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
+    sendAttempted = true;
     const result = await sendEmail({
       to: managerEmail,
       subject: `Birthday Reminder: ${upcomingBirthdays.length} upcoming birthday${upcomingBirthdays.length > 1 ? 's' : ''} next week`,
@@ -124,7 +245,18 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
     });
 
     if (!result.success) {
-      throw new Error('Failed to send birthday reminder email');
+      console.error('[birthday-reminders] The reminder email was not confirmed as sent', {
+        code: result.code ?? null,
+        message: result.error ?? null,
+        uncertain: result.uncertain === true,
+      });
+      return await fail(
+        result.uncertain
+          ? { error: BIRTHDAY_REMINDER_MESSAGES.uncertain, uncertain: true }
+          : result.code === 'email_suspended'
+            ? { error: BIRTHDAY_REMINDER_MESSAGES.suspended }
+            : { error: BIRTHDAY_REMINDER_MESSAGES.notSent }
+      );
     }
 
     // Log the action
@@ -139,26 +271,55 @@ export async function sendBirthdayRemindersInternal(daysAhead: number = 7): Prom
       }
     });
 
-    const response = {
-      success: true as const,
+    return await recordRun({
+      success: true,
       sent: upcomingBirthdays.length,
       message: `Birthday reminder sent for ${upcomingBirthdays.length} employee${upcomingBirthdays.length > 1 ? 's' : ''}`
-    };
-    await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, response, 24 * 3);
-    claimHeld = false;
-    return response;
+    });
   } catch (error) {
-    if (claimHeld) {
-      try {
-        await releaseIdempotencyClaim(supabase, idempotencyKey, requestHash);
-      } catch (releaseError) {
-        console.error('Failed to release birthday reminder idempotency claim:', releaseError);
-      }
-    }
-
-    console.error('Error sending birthday reminders:', error);
-    return { error: error instanceof Error ? error.message : 'An unexpected error occurred' };
+    logFailure(sendAttempted ? 'Failed after handing the email over' : 'Failed before sending', error);
+    return await fail(
+      sendAttempted
+        ? { error: BIRTHDAY_REMINDER_MESSAGES.uncertain, uncertain: true }
+        : { error: BIRTHDAY_REMINDER_MESSAGES.notSent }
+    );
   }
+}
+
+/**
+ * A run found today's claim held by another. That run is sending now, or it handed the email over
+ * in the last few minutes without a confirmation and kept the claim on purpose, so that nothing
+ * sends it again automatically. Nothing is sent here either. The person is warned it may have
+ * gone, to check with the manager, and given the London time the claim goes stale
+ * (STALE_PROCESSING_MS), from which the page will send it.
+ *
+ * A claim carrying the run's answer (recordRun) means the reminder went: that is reported as done.
+ */
+async function heldByAnotherRun(
+  supabase: ReturnType<typeof createAdminClient>,
+  idempotencyKey: string,
+  requestHash: string
+): Promise<BirthdayReminderResult> {
+  let claimedAtMs: number | null = null;
+  try {
+    const current = await lookupIdempotencyKey(supabase, idempotencyKey, requestHash);
+    if (current.state === 'replay') {
+      const response = current.response as { state?: unknown; claimed_at?: unknown; committed_response?: unknown } | null;
+      if (response?.state !== 'processing' || (response.committed_response ?? null) !== null) {
+        return { success: true, sent: 0, message: BIRTHDAY_REMINDER_MESSAGES.alreadyDone };
+      }
+      const parsed = typeof response.claimed_at === 'string' ? Date.parse(response.claimed_at) : NaN;
+      claimedAtMs = Number.isFinite(parsed) ? parsed : null;
+    }
+  } catch (lookupError) {
+    logFailure('Could not read the claim held by another run', lookupError);
+  }
+
+  // Without the claim's own time, now is the latest it can have been taken, so the time given is
+  // never too early. Rounded up to the next whole minute, because HH:mm drops the seconds.
+  const staleAtMs = (claimedAtMs ?? Date.now()) + STALE_PROCESSING_MS;
+  const sendFrom = new Date((Math.floor(staleAtMs / 60_000) + 1) * 60_000);
+  return { warning: BIRTHDAY_REMINDER_MESSAGES.inProgress(formatTimeInLondon(sendFrom)) };
 }
 
 /**

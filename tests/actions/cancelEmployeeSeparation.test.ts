@@ -4,6 +4,10 @@
 // against employees_separation_shift_policy_check, which only allows the shift policy and start
 // time while the status is Started Separation. cancelEmployeeSeparation clears them together
 // with the status change, notes and audits it, and refuses anyone not in Started Separation.
+//
+// The note and toast say what starting the separation really did to their shifts. Under "work
+// agreed shifts" the shifts up to the last day were kept, so telling the manager to reassign
+// "their shifts" sent them after shifts the person still held. The date reads as on the page.
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -72,7 +76,10 @@ describe('cancelEmployeeSeparation', () => {
 
     const result = await cancelEmployeeSeparation(EMPLOYEE_ID)
 
-    expect(result).toEqual({ success: true })
+    expect(result).toEqual({
+      success: true,
+      message: 'Separation cancelled. They stay on as Active. Reassign any released shifts still wanted and add them back to their rota templates.',
+    })
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       status: 'Active',
       employment_end_date: null,
@@ -84,7 +91,9 @@ describe('cancelEmployeeSeparation', () => {
     expect(noteInsert).toHaveBeenCalledWith(expect.objectContaining({
       employee_id: EMPLOYEE_ID,
       created_by_user_id: 'manager-1',
-      note_text: expect.stringContaining('took them off every rota template'),
+      note_text: 'Separation cancelled. They stay on as Active. The last working day of 20 November 2026 was cleared. '
+        + 'Starting the separation released all their remaining shifts to open shifts and took them off every rota template. '
+        + 'Neither comes back on its own: reassign any shifts still wanted and add them back to their templates.',
     }))
     expect(mockedAudit).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'status_change',
@@ -95,6 +104,35 @@ describe('cancelEmployeeSeparation', () => {
       additional_info: { action: 'cancel_separation' },
     }))
     expect(mockedRevalidate).toHaveBeenCalledWith(`/employees/${EMPLOYEE_ID}`)
+  })
+
+  it('says the shifts up to the last day are still theirs when they were working their notice', async () => {
+    const { noteInsert } = adminFor({ ...ON_NOTICE, employment_end_date: '2026-12-05', separation_shift_policy: 'work_remaining' })
+
+    const result = await cancelEmployeeSeparation(EMPLOYEE_ID)
+
+    expect(result).toEqual({
+      success: true,
+      message: 'Separation cancelled. They stay on as Active and keep their shifts up to the old last working day. Reassign any later shifts still wanted and add them back to their rota templates.',
+    })
+    const note = noteInsert.mock.calls[0][0].note_text as string
+    // A single-digit day, as the employee page writes it: "5 December", never 2026-12-05 or "05".
+    expect(note).toContain('The last working day of 5 December 2026 was cleared.')
+    expect(note).toContain('kept their shifts up to the last working day, which are still theirs, but released any later shifts')
+    expect(note).toContain('took them off every rota template')
+    expect(note).not.toContain('released all their remaining shifts')
+  })
+
+  it('claims nothing about which shifts went when no policy is stored', async () => {
+    const { noteInsert } = adminFor({ ...ON_NOTICE, separation_shift_policy: null, separation_started_at: null })
+
+    const result = await cancelEmployeeSeparation(EMPLOYEE_ID)
+
+    expect(result).toEqual(expect.objectContaining({ success: true }))
+    const note = noteInsert.mock.calls[0][0].note_text as string
+    expect(note).toContain('Any shifts released when the separation started stay open')
+    expect(note).not.toContain('released all their remaining shifts')
+    expect(note).not.toContain('kept their shifts')
   })
 
   it('refuses someone who is not in Started Separation', async () => {
@@ -117,7 +155,7 @@ describe('cancelEmployeeSeparation', () => {
 
     expect(result).toEqual({
       success: false,
-      error: 'This employee is no longer in Started Separation. Refresh the page and try again.',
+      error: 'This employee is no longer on notice. Refresh the page and try again.',
     })
     expect(mockedAudit).not.toHaveBeenCalled()
   })

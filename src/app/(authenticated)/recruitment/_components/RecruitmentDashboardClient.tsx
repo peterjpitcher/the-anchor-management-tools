@@ -37,6 +37,7 @@ import {
   Tabs,
   Textarea,
   Icon,
+  toast,
   type IconName,
 } from '@/ds'
 import type { RecruitmentCandidate } from '@/types/recruitment'
@@ -664,7 +665,8 @@ function SubmitButton({
   )
 }
 
-type RecruitmentActionResult = { success?: boolean; message?: string; error?: string } | null | void
+/** `warning`: it was done, but staff must read this (the hire's welcome email may have gone). */
+type RecruitmentActionResult = { success?: boolean; message?: string; error?: string; warning?: string } | null | void
 type RecruitmentFormAction = (formData: FormData) => Promise<RecruitmentActionResult>
 
 function ActionFeedbackForm({
@@ -715,6 +717,13 @@ function ActionFeedbackForm({
       const result = await action(formData)
       if (result && 'error' in result && result.error) {
         setState({ error: result.error })
+        return
+      }
+      // Done, but not cleanly: onSuccess may close the dialog this form sits in, which would
+      // take a message under the form with it, so the warning goes in a toast that outlives it.
+      if (result && 'warning' in result && result.warning) {
+        toast.warning(result.warning, { duration: 10000 })
+        onSuccess?.()
         return
       }
       setState({ success: result && 'message' in result && result.message ? result.message : successMessage })

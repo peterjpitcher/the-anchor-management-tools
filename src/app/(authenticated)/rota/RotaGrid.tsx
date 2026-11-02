@@ -398,9 +398,12 @@ function ShiftBlockOverlay({ shift, colour, isDraft }: { shift: RotaShift; colou
 // Raw <button>s inside the grid cells are deliberate. They are the tinted status chips and the
 // 12px cell shortcuts of a dense seven-column grid, where the DS Button's fixed heights and its
 // 44px touch floor on phones would push every row open.
+//
+// The leave chip says LEAVE, not HOLIDAY: the leave days here carry no type, and some are days
+// someone cannot work, which are not holiday. The detail modal the chip opens names the type.
 const LEAVE_STYLES = {
-  approved: { bg: 'bg-success-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.approved}`, label: 'HOLIDAY' },
-  pending:  { bg: 'bg-warning-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.pending}`,  label: 'HOLIDAY – PENDING' },
+  approved: { bg: 'bg-success-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.approved}`, label: 'LEAVE' },
+  pending:  { bg: 'bg-warning-soft', pill: `border ${ROTA_HOLIDAY_CLASSES.pending}`,  label: 'LEAVE – PENDING' },
 };
 
 const COULDNT_WORK_STYLE = {
@@ -532,7 +535,7 @@ function DroppableCell({
               type="button"
               onClick={e => { e.stopPropagation(); onLeaveClick(); }}
               className={`w-full rounded-default px-1.5 py-0.5 text-center text-2xs font-semibold leading-tight transition-opacity hover:opacity-75 focus-visible:outline-hidden focus-visible:shadow-ring ${leaveStyle.pill}`}
-              title="View holiday details"
+              title="View leave details"
             >
               {leaveStyle.label}
             </button>
@@ -1568,8 +1571,8 @@ export default function RotaGrid({
           </span>
           <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_SHIFT_STATUS_CLASSES.sick}`} /> Couldn&apos;t Work</span>
           <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm ${ROTA_SHIFT_STATUS_CLASSES.rejected}`} /> Rejected shift</span>
-          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.approved}`} /> Holiday approved</span>
-          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.pending}`} /> Holiday pending</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.approved}`} /> Leave approved</span>
+          <span className="flex items-center gap-1.5"><span className={`inline-block h-3 w-3 rounded-sm border ${ROTA_HOLIDAY_CLASSES.pending}`} /> Leave pending</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-info-border bg-info-soft" /> Unpublished shift</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border-l-4 border-primary bg-primary-soft" /> Role grouping</span>
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger-border bg-danger-soft" /> Wage % over target</span>

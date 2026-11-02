@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import { reportCronFailure } from '@/lib/cron/alerting'
-import { sendEmail } from '@/lib/email/emailService'
+import { sendEmail, type EmailSendCode } from '@/lib/email/emailService'
 import { invoiceEmailRouting } from '@/lib/email/invoice-sender'
 import { getAppUrl } from '@/lib/env'
 import { logger } from '@/lib/logger'
@@ -170,6 +170,17 @@ export interface PartyDelivery {
    */
   email_status: 'sent' | 'failed' | 'none' | 'caller_sends'
   error?: string
+  /**
+   * Only with `failed`: the email service's reason, when it gave one. 'email_suspended' means
+   * email is switched off; 'recipient_suppressed' means the address is on the suppression list.
+   * Both are definite: nothing was sent.
+   */
+  code?: EmailSendCode
+  /**
+   * Only with `failed`: true when the provider gave no definite answer, so the email may have
+   * gone and the person may hold the link. False means it was definitely not sent.
+   */
+  uncertain?: boolean
   /** Only with `caller_sends`. Never stored, and never returned to a browser. */
   signingUrl?: string
 }
@@ -199,7 +210,7 @@ async function sendSigningLinkEmail(input: {
   rawToken: string
   expiresAt: string
   isReminder: boolean
-}): Promise<{ success: boolean; error?: string; uncertain?: boolean }> {
+}): Promise<{ success: boolean; error?: string; code?: EmailSendCode; uncertain?: boolean }> {
   if (!input.party.email) {
     return { success: false, error: 'No email address' }
   }
@@ -229,7 +240,7 @@ async function sendSigningLinkEmail(input: {
   })
   return result.success
     ? { success: true }
-    : { success: false, error: result.error ?? 'Email failed', uncertain: result.uncertain === true }
+    : { success: false, error: result.error ?? 'Email failed', code: result.code, uncertain: result.uncertain === true }
 }
 
 /**
@@ -490,6 +501,9 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
       email: party.email,
       email_status: sent.success ? 'sent' : 'failed',
       error: sent.success ? undefined : sent.error,
+      // So the screen can tell "email is switched off" and "not sent" from "may have gone".
+      code: sent.success ? undefined : sent.code,
+      uncertain: sent.success ? undefined : sent.uncertain === true,
     })
     if (sent.success) {
       await insertEvent(admin, {

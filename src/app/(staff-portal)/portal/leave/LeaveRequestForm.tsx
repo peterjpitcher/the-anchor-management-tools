@@ -79,6 +79,8 @@ export default function LeaveRequestForm({ employeeId }: LeaveRequestFormProps) 
         <Input
           id="lr-note"
           placeholder="Any context for your manager…"
+          // The server refuses a longer note, so the box stops at the same length.
+          maxLength={500}
           value={note}
           onChange={e => setNote(e.target.value)}
         />

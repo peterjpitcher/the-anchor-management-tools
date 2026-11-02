@@ -53,6 +53,24 @@ describe('employee invite email content', () => {
     expect(email.text).toContain(LINK)
   })
 
+  // A resent link for someone who already set a password opens on Sign In, not Create Password.
+  it('tells a starter who already set a password to sign in with it, not to create one', async () => {
+    await sendWelcomeEmail('starter@example.com', LINK, { passwordAlreadySet: true })
+    const email = sentEmail()
+
+    expect(email.text).not.toMatch(/create a password/i)
+    expect(email.text).toContain('You have already set a password, so if the link asks you to sign in, use that password')
+    expect(email.text).toContain('choose Reset your password on that page')
+    expect(email.text).toContain('The form has six parts')
+    expect(email.text).toContain(LINK)
+  })
+
+  it('still tells a new starter they will create a password first', async () => {
+    await sendWelcomeEmail('starter@example.com', LINK)
+
+    expect(sentEmail().text).toContain("You'll be asked to create a password first, then to fill in the form.")
+  })
+
   it('gives the real expiry in reminders, and says plainly that the last one is the last', async () => {
     await sendChaseEmail('starter@example.com', LINK, 3, EXPIRES_AT)
     const dayThree = sentEmail()

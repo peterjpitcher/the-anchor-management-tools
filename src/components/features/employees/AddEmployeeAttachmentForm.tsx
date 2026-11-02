@@ -66,9 +66,10 @@ export default function AddEmployeeAttachmentForm({
 
         if (result?.type === 'success') {
           // A failed email to the employee is a warning, not a silent success: the file is
-          // saved, but the employee may not have it.
-          if (result.email?.status === 'failed') {
-            toast.warning(result.message ?? 'Attachment uploaded, but the email to the employee may not have been sent.', { duration: 10000 })
+          // saved, but the employee may not have it. An uncertain one is a warning too: it may
+          // have gone, so the message says to check before sending it again.
+          if (result.email?.status === 'failed' || result.email?.status === 'uncertain') {
+            toast.warning(result.message ?? 'Attachment uploaded, but we could not confirm the email to the employee. Check with them before sending it again.', { duration: 10000 })
           } else {
             toast.success(result.message ?? 'Attachment uploaded.')
           }
@@ -79,7 +80,7 @@ export default function AddEmployeeAttachmentForm({
         }
       } catch (error) {
         console.error('Attachment save failed:', error)
-        setState({ type: 'error', message: error instanceof Error ? error.message : 'Failed to upload attachment.' })
+        setState({ type: 'error', message: 'Failed to upload attachment. Please try again.' })
       }
     })
   }

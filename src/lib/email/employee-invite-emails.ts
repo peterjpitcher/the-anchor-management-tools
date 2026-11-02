@@ -1,5 +1,6 @@
 import { sendEmail, type EmailOptions } from './emailService';
 import { formatDateFull, formatTime12Hour, formatTimeInLondon } from '@/lib/dateUtils';
+import { InviteEmailSendError } from '@/lib/employees/invite-email-failure';
 
 const MANAGER_EMAIL = process.env.MANAGER_EMAIL || 'manager@the-anchor.pub';
 const BILLY_EMAIL = 'billy@orangejelly.co.uk';
@@ -105,13 +106,26 @@ function formatLinkExpiry(expiresAtIso: string): string | null {
   return `${formatTime12Hour(formatTimeInLondon(expires))} on ${formatDateFull(expires)}`;
 }
 
-function buildWelcomeEmail(email: string, onboardingUrl: string) {
+export interface WelcomeEmailOptions {
+  /**
+   * True when they set a password on an earlier link. A resent link then opens on Sign In, not
+   * Create Password, so the email must not tell them they will be asked to make one.
+   */
+  passwordAlreadySet?: boolean;
+}
+
+function buildWelcomeEmail(email: string, onboardingUrl: string, options: WelcomeEmailOptions = {}) {
   const subject = 'Welcome to The Anchor -- Complete Your Profile';
+  const linkText = options.passwordAlreadySet
+    ? `Please carry on with your employee profile using the link below. ` +
+      `You have already set a password, so if the link asks you to sign in, use that password, then carry on with the form. ` +
+      `If you have forgotten it, choose Reset your password on that page.\n\n`
+    : `To get started, please complete your employee profile using the link below. ` +
+      `You'll be asked to create a password first, then to fill in the form.\n\n`;
   const text =
     `Hi there,\n\n` +
     `Welcome to The Anchor! We're excited to have you joining the team.\n\n` +
-    `To get started, please complete your employee profile using the link below. ` +
-    `You'll be asked to create a password first, then to fill in the form.\n\n` +
+    linkText +
     ONBOARDING_STEPS_TEXT +
     `Complete your profile here:\n${onboardingUrl}\n\n` +
     `This link will expire in 7 days. If you have any questions, please contact your manager.\n\n` +
@@ -279,13 +293,25 @@ export function buildSeparationStartedEmail(input: SeparationStartedEmailInput) 
  * sendEmail catches its own errors and returns { success: false }, so a helper that handed that
  * result back left every caller unable to tell a send from a failure: the invite actions reported
  * "Invite sent" on a failed email, and the chase cron stamped a chase that never went (found 11
- * September 2026). Throwing is the contract the callers were already written for, and the one
- * sendSeparationStartedEmail has always used.
+ * September 2026). Throwing is the contract the callers were already written for.
+ *
+ * The error carries sendEmail's code and `uncertain` flag (invite-email-failure.ts). A plain Error
+ * lost them, so a send the provider may have taken was reported as "nothing reached them" and the
+ * record behind the link was deleted.
  */
 async function sendInviteEmailOrThrow(options: EmailOptions, whatFailed: string) {
-  const result = await sendEmail(options);
+  const result = await sendEmail(options).catch((error: unknown) => {
+    // sendEmail catches its own errors, so a throw here is unexpected and says nothing about
+    // whether the provider took the request. Treat it as one that may have gone.
+    throw new InviteEmailSendError(error instanceof Error ? error.message : `Failed to send ${whatFailed}.`, {
+      uncertain: true,
+    });
+  });
   if (!result.success) {
-    throw new Error(result.error || `Failed to send ${whatFailed}.`);
+    throw new InviteEmailSendError(result.error || `Failed to send ${whatFailed}.`, {
+      code: result.code,
+      uncertain: result.uncertain === true,
+    });
   }
   return result;
 }
@@ -295,8 +321,8 @@ export async function sendPortalInviteEmail(email: string, onboardingUrl: string
   return sendInviteEmailOrThrow({ to: email, subject, text }, 'the portal invite email');
 }
 
-export async function sendWelcomeEmail(email: string, onboardingUrl: string) {
-  const { subject, text } = buildWelcomeEmail(email, onboardingUrl);
+export async function sendWelcomeEmail(email: string, onboardingUrl: string, options: WelcomeEmailOptions = {}) {
+  const { subject, text } = buildWelcomeEmail(email, onboardingUrl, options);
   return sendInviteEmailOrThrow({ to: email, subject, text }, 'the invite email');
 }
 
@@ -310,11 +336,10 @@ export async function sendOnboardingCompleteEmail(input: OnboardingCompleteEmail
   return sendInviteEmailOrThrow({ to: MANAGER_EMAIL, subject, text }, 'the onboarding complete email');
 }
 
+// Through the same helper as the invites, so the error keeps sendEmail's code and `uncertain`
+// flag. A plain Error lost them, and a separation email the provider may have taken was reported
+// to staff as not sent, with advice to send it again by hand.
 export async function sendSeparationStartedEmail(input: SeparationStartedEmailInput) {
   const { subject, text, cc } = buildSeparationStartedEmail(input);
-  const result = await sendEmail({ to: input.email, subject, text, cc });
-  if (!result.success) {
-    throw new Error(result.error || 'Failed to send separation email.');
-  }
-  return result;
+  return sendInviteEmailOrThrow({ to: input.email, subject, text, cc }, 'the separation email');
 }

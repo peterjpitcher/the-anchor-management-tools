@@ -66,6 +66,40 @@ describe('getEmployeesRoster action', () => {
     expect(result.employees[0].holiday_days_current_year).toBe(7)
   })
 
+  // siblings#9: the list banner showed raw Postgres text, including the FF-50 paging error.
+  it.each([
+    ['a Postgres error object', { code: '57014', message: 'canceling statement due to statement timeout' }],
+    ['the paged holiday read', new Error('roster holiday days failed: canceling statement due to statement timeout')],
+  ])('shows a plain message when %s fails, and logs the detail', async (_label, failure) => {
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(EmployeeService.getEmployeesRoster as unknown as Mock).mockRejectedValue(failure)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await getEmployeesRoster({ page: 1, pageSize: 50 })
+
+    expect(result.error).toBe('The employee list could not be loaded. Please try again.')
+    expect(result.employees).toEqual([])
+    expect(consoleError).toHaveBeenCalledWith(
+      '[getEmployeesRoster] Failed to fetch employees roster:',
+      expect.objectContaining({ message: expect.stringContaining('statement timeout') }),
+    )
+    consoleError.mockRestore()
+  })
+
+  it('logs a thrown error itself, so a bug keeps its stack', async () => {
+    const bug = new TypeError("Cannot read properties of undefined (reading 'employee_id')")
+    ;(checkUserPermission as unknown as Mock).mockResolvedValue(true)
+    ;(EmployeeService.getEmployeesRoster as unknown as Mock).mockRejectedValue(bug)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const result = await getEmployeesRoster({ page: 1, pageSize: 50 })
+
+    expect(result.error).toBe('The employee list could not be loaded. Please try again.')
+    expect(consoleError).toHaveBeenCalledWith('[getEmployeesRoster] Failed to fetch employees roster:', bug)
+    expect(bug.stack).toContain('TypeError')
+    consoleError.mockRestore()
+  })
+
   it('does not call the service without employees:view permission', async () => {
     ;(checkUserPermission as unknown as Mock).mockResolvedValue(false)
 

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { logAuditEvent } from '@/app/actions/audit';
-import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDate, getTodayIsoDate } from '@/lib/dateUtils';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -31,9 +31,12 @@ export type FinalizeEmployeeSeparationResult =
     }
   | { success: false; error: string; code?: string };
 
-/** Up to three dates as "5 November 2026, 6 November 2026", for a message that names them. */
+/**
+ * Up to three dates as "5 November 2026, 6 November 2026", for a message that names them. The
+ * employee page's own format (its Leaving banner), so a refusal and the page beside it agree.
+ */
 function listDates(dates: string[]): string {
-  return [...new Set(dates)].map((date) => formatDateDdMmmmYyyy(date)).join(', ');
+  return [...new Set(dates)].map((date) => formatDate(date)).join(', ');
 }
 
 export async function finalizeEmployeeSeparation(
@@ -78,7 +81,7 @@ export async function finalizeEmployeeSeparation(
       success: false,
       // No "update the end date" advice: during a separation the date is locked (EmployeeService
       // updateEmployee), and changing it means cancelling the separation and starting it again.
-      error: `Their last working day is ${formatDateDdMmmmYyyy(employee.employment_end_date)}. They can be marked as Former from that day.`,
+      error: `Their last working day is ${formatDate(employee.employment_end_date)}. They can be marked as Former from that day.`,
       code: 'last_working_day_in_future',
     };
   }
@@ -269,7 +272,8 @@ export async function finalizeEmployeeSeparation(
         .from('employee_notes')
         .insert({
           employee_id: employeeId,
-          note_text: `Automatically marked as Former on ${today} after last working day ${employmentEndDate}.`,
+          // Dates as the employee page shows them, not the stored 2026-11-03.
+          note_text: `Automatically marked as Former on ${formatDate(today)} after last working day ${formatDate(employmentEndDate)}.`,
           created_by_user_id: null,
         }),
       { table: 'employee_notes', what: 'Adding the automatic separation note', ids: { employeeId } },

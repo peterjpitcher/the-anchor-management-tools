@@ -6,11 +6,17 @@ import { z } from 'zod'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
-import { formatDateFull, getTodayIsoDate, isValidIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
+import { formatDate, formatDateFull, getTodayIsoDate, isValidIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import {
   sendSeparationStartedEmail,
   type SeparationShiftSummary,
 } from '@/lib/email/employee-invite-emails'
+import {
+  describeInviteEmailFailure,
+  inviteEmailFailureLog,
+  type InviteEmailFailure,
+} from '@/lib/employees/invite-email-failure'
+import { separationCancelRotaSentence, separationCancelledToast } from '@/lib/employees/separation-cancel-copy'
 import { syncRotaWeekToCalendar } from '@/lib/google-calendar-rota'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -260,6 +266,20 @@ function rpcStateError(result: z.infer<typeof rpcResultSchema>): string {
   return 'The separation could not be started.'
 }
 
+/**
+ * The warning when the separation email did not go, or may have gone. The separation itself is
+ * committed either way. A send the provider may have taken is never reported as not sent: they may
+ * already have it, so staff check with them before sending it again by hand.
+ */
+function separationEmailWarning(email: string, failure: InviteEmailFailure): string {
+  const started = 'Separation was started and the rota was updated'
+  if (failure.uncertain) {
+    return `${started}. We sent the separation email to ${email}, but ${failure.reason}. ${failure.advice}`
+  }
+  // Refused, switched off (SUSPEND_ALL_EMAIL) or never handed over: it definitely did not go.
+  return `${started}, but the separation email was not sent because ${failure.reason}. Send it to them yourself.`
+}
+
 export async function beginEmployeeSeparation(
   employeeId: string,
   input: BeginEmployeeSeparationInput,
@@ -330,7 +350,8 @@ export async function beginEmployeeSeparation(
   const note = parsed.data.note?.trim()
   const noteText = [
     'Separation started.',
-    `Last working day: ${parsed.data.employmentEndDate}.`,
+    // As the employee page shows the date ("5 November 2026"), not the stored 2026-11-05.
+    `Last working day: ${formatDate(parsed.data.employmentEndDate)}.`,
     parsed.data.shiftPolicy === 'work_remaining'
       ? `${retainedShifts.length} remaining shift${retainedShifts.length === 1 ? '' : 's'} retained; ${releasedShifts.length} released to open shifts.`
       : `${releasedShifts.length} remaining shift${releasedShifts.length === 1 ? '' : 's'} released to open shifts.`,
@@ -390,8 +411,9 @@ export async function beginEmployeeSeparation(
       remainingShifts: retainedShifts,
     })
   } catch (emailError) {
-    console.error('[beginEmployeeSeparation] Failed to send separation email:', emailError)
-    warning = 'Separation was started and the rota was updated, but the employee email could not be sent. Send it manually.'
+    const failure = describeInviteEmailFailure(emailError)
+    console.error('[beginEmployeeSeparation] Failed to send separation email:', inviteEmailFailureLog(failure))
+    warning = separationEmailWarning(employeeRow.email_address, failure)
   }
 
   if (affectedWeekIds.length > 0) {
@@ -412,7 +434,8 @@ export async function beginEmployeeSeparation(
 }
 
 export type CancelEmployeeSeparationResult =
-  | { success: true }
+  /** message: the toast, which says what the separation did to their shifts under its policy. */
+  | { success: true; message: string }
   | { success: false; error: string }
 
 type CancelSeparationEmployeeRow = {
@@ -427,7 +450,8 @@ type CancelSeparationEmployeeRow = {
  * before, and the edit form's status change failed against the separation check constraint.
  *
  * Shifts the separation released stay released (they may already have been picked up by someone
- * else), so the manager reassigns any that are still wanted.
+ * else), so the manager reassigns any that are still wanted. Which shifts those are depends on the
+ * stored shift policy, so the note and toast say it from that (separation-cancel-copy).
  */
 export async function cancelEmployeeSeparation(employeeId: string): Promise<CancelEmployeeSeparationResult> {
   const canEdit = await checkUserPermission('employees', 'edit')
@@ -486,16 +510,16 @@ export async function cancelEmployeeSeparation(employeeId: string): Promise<Canc
   if (!updatedRows || updatedRows.length === 0) {
     return {
       success: false,
-      error: 'This employee is no longer in Started Separation. Refresh the page and try again.',
+      error: 'This employee is no longer on notice. Refresh the page and try again.',
     }
   }
 
   const noteText = [
     'Separation cancelled. They stay on as Active.',
-    before.employment_end_date ? `The last working day of ${before.employment_end_date} was cleared.` : null,
+    before.employment_end_date ? `The last working day of ${formatDate(before.employment_end_date)} was cleared.` : null,
     // begin_employee_separation also takes them off every rota template and keeps no list of
     // which, so nothing can be put back automatically.
-    'Starting the separation released their shifts and took them off every rota template. Neither comes back on its own: reassign the shifts and add them back to their templates.',
+    separationCancelRotaSentence(before.separation_shift_policy),
   ].filter(Boolean).join(' ')
 
   const { error: noteError } = await admin.from('employee_notes').insert({
@@ -539,5 +563,5 @@ export async function cancelEmployeeSeparation(employeeId: string): Promise<Canc
   revalidatePath('/rota')
   revalidatePath('/portal/shifts')
 
-  return { success: true }
+  return { success: true, message: separationCancelledToast(before.separation_shift_policy) }
 }
