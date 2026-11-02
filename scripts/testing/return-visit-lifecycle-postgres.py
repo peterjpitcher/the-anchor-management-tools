@@ -22,8 +22,8 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261102171000_return_visit_lifecycle.sql'
-ROLLBACK = ROOT / 'supabase/rollbacks/20261102171000_return_visit_lifecycle.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261102210508_return_visit_lifecycle.sql'
+ROLLBACK = ROOT / 'supabase/rollbacks/20261102210508_return_visit_lifecycle.sql'
 
 SCHEMA = r"""
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;

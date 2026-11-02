@@ -37,7 +37,7 @@ type TypeInfo = {
   alcohol?: boolean
   requires_booking?: boolean
   value_pence?: number | null
-  // Added with the return-visit vouchers (migration 20261102171000); older snapshots lack them.
+  // Added with the return-visit vouchers (migration 20261102210508); older snapshots lack them.
   discount_kind?: string
   percent_off?: number | null
 }

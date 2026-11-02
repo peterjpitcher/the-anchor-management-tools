@@ -75,7 +75,7 @@ export type MarketingSkipReason =
 /**
  * one_off: a single send to everyone eligible on `scheduledFor`.
  * lifecycle: stays in sending and adds that day's audience on each London send day
- * (the table-booking return-visit emails, migration 20261102171000).
+ * (the table-booking return-visit emails, migration 20261102210508).
  */
 export type MarketingCampaignKind = 'one_off' | 'lifecycle'
 

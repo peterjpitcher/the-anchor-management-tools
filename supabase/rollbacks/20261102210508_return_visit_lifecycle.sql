@@ -1,4 +1,4 @@
--- Rollback for 20261102171000_return_visit_lifecycle.sql. NOT a migration: run only on the
+-- Rollback for 20261102210508_return_visit_lifecycle.sql. NOT a migration: run only on the
 -- owner's say-so, through the prod-migrate skill, if the return-visit feature has to come out.
 --
 -- It puts every replaced function back exactly as it was before (bodies copied from the
