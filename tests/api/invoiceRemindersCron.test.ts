@@ -201,9 +201,13 @@ function fakeDb(scenario: Scenario) {
       )
     }
     if (query.table === 'email_messages') {
-      return scenario.failEmailRead
-        ? { data: null, error: { message: 'statement timeout' } }
-        : ok(scenario.emails ?? [])
+      if (scenario.failEmailRead) return { data: null, error: { message: 'statement timeout' } }
+      // A read by page or with a limit gets only those rows, as PostgREST gives them.
+      const range = query.filters.find((filter) => filter[0] === 'range')
+      const limit = query.filters.find((filter) => filter[0] === 'limit')
+      const emails = scenario.emails ?? []
+      if (range) return ok(emails.slice(range[1] as number, (range[2] as number) + 1))
+      return ok(limit ? emails.slice(0, limit[1] as number) : emails)
     }
     if (query.table === 'invoice_email_logs') return ok(null)
     if (query.table === 'receipt_vendors') {
@@ -237,7 +241,7 @@ function fakeDb(scenario: Scenario) {
             .then(() => answer(query))
             .then(resolve, reject),
       }
-      for (const method of ['eq', 'in', 'is', 'not', 'or', 'lt', 'lte', 'gte', 'order', 'limit']) {
+      for (const method of ['eq', 'in', 'is', 'not', 'or', 'lt', 'lte', 'gte', 'order', 'limit', 'range']) {
         builder[method] = (...args: unknown[]) => {
           query.filters.push([method, ...args])
           return builder
@@ -1099,6 +1103,45 @@ describe('invoice reminders cron: the summary', () => {
       expect(email.subject).toContain('2 copies not sent')
       expect(email.text).toContain('- INV-0990: receipt on Friday 9 October, 2 copies left off')
       expect(email.text).not.toContain('INV-0980')
+    })
+
+    it('reads every page before moving its marker on, so a copy left off past the first page is still found', async () => {
+      // Every copy went on all of these.
+      const whole = (index: number): Row =>
+        leftOffEmail(`inv-whole-${index}`, `INV-W${index}`, '2026-10-12T09:00:00.000Z', {
+          id: `email-${index}`,
+          metadata: { invoice_number: `INV-W${index}`, email_kind: 'invoice', cc_dropped: [], cc: ['ops@barons.example'] },
+        })
+      const { queries } = fakeDb({
+        invoices: [],
+        emails: [...Array.from({ length: 2500 }, (_, index) => whole(index)), leftOffEmail('inv-9', 'INV-0999', '2026-10-12T17:00:00.000Z')],
+      })
+
+      const { payload } = await run()
+
+      expect(payload.results).toMatchObject({ copies_left_off: 1, problems: 0 })
+      expect(summary().text).toContain('- INV-0999: invoice on Monday 12 October, 1 copy left off')
+      expect(savedRun(queries).state.copies_checked_to).toBe('2026-10-13')
+      // Read by whole London days, from midnight on the first (BST: 23:00 the evening before
+      // in UTC) up to the start of today, in a fixed order.
+      const read = queries.find((query) => query.table === 'email_messages')!
+      expect(read.filters).toContainEqual(['gte', 'created_at', '2026-10-05T23:00:00.000Z'])
+      expect(read.filters).toContainEqual(['lt', 'created_at', '2026-10-12T23:00:00.000Z'])
+      expect(read.filters).toContainEqual(['order', 'id', { ascending: true }])
+    })
+
+    it('leaves its marker where it was when there are too many emails to read them all', async () => {
+      const whole = leftOffEmail('inv-whole', 'INV-W', '2026-10-12T09:00:00.000Z', {
+        metadata: { invoice_number: 'INV-W', email_kind: 'invoice', cc_dropped: [] },
+      })
+      const { queries } = fakeDb({ invoices: [], emails: Array.from({ length: 20_001 }, () => whole) })
+
+      await run()
+
+      expect(summary().text).toContain(
+        'Could not check whether any invoice email went without one of its copies (More than 20000 invoice emails to check, so the check was not finished). The next summary will check again'
+      )
+      expect(savedRun(queries).state.copies_checked_to).toBeUndefined()
     })
 
     it('says so when the check cannot be made, and checks the same days again next time', async () => {
