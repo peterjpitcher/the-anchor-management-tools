@@ -1688,7 +1688,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
       console.error('[invoice-reminders] The daily summary could not be sent:', summaryError)
       await reportCronFailure(
         INVOICE_REMINDERS_JOB,
-        new Error(`The daily summary could not be sent: ${summaryError}. Its content is saved on the run record and will be carried into the next summary`),
+        new Error(`The daily summary could not be sent: ${summaryError}. Its content is saved on the run record, and its problems will be carried into the next summary`),
         { run: today, reminders_sent: context.sent.length, problems: context.problems.length }
       )
     }

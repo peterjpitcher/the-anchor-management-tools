@@ -267,6 +267,7 @@ describe('private bookings expire-holds cron', () => {
           domain: 'private_bookings',
           bookingId: 'short',
           kind: 'unpaid_hold_not_cancelled',
+          subjectTag: 'BOOKING ACTION NEEDED',
           summary: expect.stringContaining('No message has been sent to the customer.'),
         }),
       )

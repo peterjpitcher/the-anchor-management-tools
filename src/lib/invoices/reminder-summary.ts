@@ -267,8 +267,10 @@ function count(total: number, singular: string, plural: string): string {
 }
 
 /**
- * The summary email, or null when there is nothing to say. Null means send nothing: an empty
- * daily email is exactly the noise this replaces.
+ * The summary email, or null when nothing needs the owner. Null means send nothing. Owner, 2
+ * November 2026: "I don't want to receive emails unless there's a problem", so reminders that
+ * went out fine and the forecast for the next run never send it on their own; they are listed
+ * only when something else does (needs you, a copy not sent, a problem).
  */
 export function buildReminderSummary(input: ReminderSummaryInput): ReminderSummary | null {
   const problems = dedupeProblems(input.problems)
@@ -277,6 +279,8 @@ export function buildReminderSummary(input: ReminderSummaryInput): ReminderSumma
   const carriedSent = input.carriedOver?.sent ?? []
   const carriedProblems = dedupeProblems(input.carriedOver?.problems ?? [])
   const showNeedsYou = shouldShowNeedsYou(input.today, needsYouKeys(input.needsYou), input.previousNeedsYouKeys)
+
+  if (!showNeedsYou && copiesLeftOff.length === 0 && problems.length === 0 && carriedProblems.length === 0) return null
 
   const sections: string[][] = []
 

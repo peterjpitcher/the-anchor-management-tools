@@ -144,7 +144,7 @@ describe('whole-event cancellation lists tickets paid at the bar', () => {
     expect(result.refundsFailed).toBe(0)
     expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
     const alert = vi.mocked(alertMoneyNeedsAPerson).mock.calls[0][1]
-    expect(alert).toMatchObject({ domain: 'event_bookings', bookingId: 'event-1', kind: 'event_cancelled_bar_refunds', path: '/events/event-1' })
+    expect(alert).toMatchObject({ domain: 'event_bookings', bookingId: 'event-1', kind: 'event_cancelled_bar_refunds', path: '/events/event-1', subjectTag: 'REFUNDS TO HAND BACK' })
     expect(alert.title).toContain('£135.00')
     expect(Object.values(alert.context ?? {})).toEqual(['booking-cash: £45.00 (cash)', 'booking-card: £90.00 (card)'])
     expect(JSON.stringify(alert)).not.toContain('Sam')

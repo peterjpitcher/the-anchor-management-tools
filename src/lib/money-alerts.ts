@@ -48,7 +48,9 @@ export type MoneyAlertInput = {
   path?: string | null
   /**
    * The bracketed subject tag. Defaults to PAYPAL ACTION NEEDED; a booking problem with no money
-   * in it (a consent that did not save, a guest change that crashed) says BOOKING ACTION NEEDED.
+   * in it (a consent that did not save, a guest change that crashed) says BOOKING ACTION NEEDED,
+   * and ordinary work says what it is (GUEST REQUEST, REFUND DECISION NEEDED, REFUNDS TO HAND
+   * BACK), so a real PayPal fault is never lost among them.
    */
   subjectTag?: string
 }

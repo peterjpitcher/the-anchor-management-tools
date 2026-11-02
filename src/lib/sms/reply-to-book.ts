@@ -430,6 +430,8 @@ async function flagUnbookedReply(
       title: `A text reply about ${eventName} needs a person`,
       summary: `A guest replied to an event text for ${eventName}, which starts within 48 hours, and the reply could not be booked automatically. Open Messages to read it and book them by hand. The guest has been told one of us will pick it up.`,
       path: `/events/${input.eventId}`,
+      // A guest asking for something is work, not a PayPal fault.
+      subjectTag: 'GUEST REQUEST',
       context: { 'Inbound message': input.inboundMessageId ?? null, Event: input.eventId, Why: input.why },
     })
   } catch (err) {
