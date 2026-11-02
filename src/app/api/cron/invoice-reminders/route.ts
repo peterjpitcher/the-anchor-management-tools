@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic'
 // Each reminder renders the invoice PDF in a headless browser. The job stops starting new sends
 // well inside this limit (see SEND_TIME_BUDGET_MS), because a send cut off part way is an
 // unknown outcome: a first or second reminder is then never retried, and a weekly chaser waits
-// a week.
+// for the next Monday.
 export const maxDuration = 300
 
 // Automatic invoice reminders, weekdays at 09:30 UTC (`vercel.json`). Customers are emailed

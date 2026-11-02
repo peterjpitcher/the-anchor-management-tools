@@ -54,7 +54,7 @@ export function invoicePayPalReceiptsFrom(): string | null {
 
 /**
  * `INVOICE_WEEKLY_REMINDERS_FROM=YYYY-MM-DD`: from this London date an unpaid invoice is never
- * left alone. Once the first and second reminders have run, the client is emailed every week
+ * left alone. Once the first and second reminders have run, the client is emailed every Monday
  * until it is paid, voided or written off, one email per client covering all their unpaid
  * invoices. Null means the schedule ends at 21 days, as before. It changes nothing while
  * `INVOICE_REMINDERS_GO_LIVE_DATE` is unset: that one still switches every reminder off.

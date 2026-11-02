@@ -741,8 +741,10 @@ describe('invoice reminders cron: who is left alone', () => {
     expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
     expect(vi.mocked(sendInvoiceEmail).mock.calls[0][0].id).toBe('inv-1')
     expect(reminderColumnWrites(queries)).toHaveLength(1)
-    // The second invoice waits out the three quiet days, so it is not forecast for tomorrow.
-    expect(summary().text).not.toContain('Going next')
+    // No quiet days (owner decision, 2 November 2026): the second invoice reaches seven days
+    // overdue tomorrow, so it is forecast for the next run.
+    expect(summary().text).toContain('Going next')
+    expect(summary().text).toMatch(/Going next[\s\S]*INV-0102/)
   })
 
   it('stops when a fresh read shows the invoice has been paid', async () => {
@@ -780,7 +782,8 @@ describe('invoice reminders cron: who is left alone', () => {
     expect(summary().text).toContain('Could not re-check the invoice before sending, so nothing was sent')
   })
 
-  it('waits when the client was sent another invoice email yesterday', async () => {
+  // No quiet days (owner decision, 2 November 2026): another email to the client does not hold a reminder back.
+  it('is not held back by another invoice email sent to the client yesterday', async () => {
     fakeDb({
       invoices: [invoice()],
       emails: [
@@ -797,7 +800,7 @@ describe('invoice reminders cron: who is left alone', () => {
 
     await run()
 
-    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
   })
 
   it('is not held back by an old internal alert or a failed email', async () => {
@@ -828,7 +831,7 @@ describe('invoice reminders cron: who is left alone', () => {
     expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
   })
 
-  it('waits when another of the client invoices was first emailed yesterday', async () => {
+  it('is not held back when another of the client invoices was first emailed yesterday', async () => {
     fakeDb({
       invoices: [
         invoice(),
@@ -839,7 +842,8 @@ describe('invoice reminders cron: who is left alone', () => {
 
     await run()
 
-    expect(sendInvoiceEmail).not.toHaveBeenCalled()
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][0].id).toBe('inv-1')
   })
 
   it('lists an invoice with no address under Needs you and takes no claim', async () => {
@@ -1391,7 +1395,7 @@ describe('invoice reminders cron: weekly chasers', () => {
       { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
       { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
     ])
-    // Always the latest, never only where empty: the seven-day clock runs from it.
+    // Always the latest, never only where empty: the once-a-week check runs from it.
     expect(writes.every((query) => !has(query, 'is', 'reminder_last_weekly_sent_at'))).toBe(true)
 
     const logRows = queries.find((query) => query.table === 'invoice_email_logs')?.payload as Row[]
@@ -1429,7 +1433,7 @@ describe('invoice reminders cron: weekly chasers', () => {
     await run()
     expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
 
-    // Friday 16 October: three days on, past the quiet days but not a week.
+    // Friday 16 October: the same week, so nothing.
     vi.mocked(sendInvoiceEmail).mockClear()
     vi.mocked(sendEmail).mockClear()
     vi.setSystemTime(new Date('2026-10-16T09:30:00.000Z'))
@@ -1437,7 +1441,7 @@ describe('invoice reminders cron: weekly chasers', () => {
     await run()
     expect(sendInvoiceEmail).not.toHaveBeenCalled()
 
-    // Tuesday 20 October: a week on, so both go again, under the new week's claims.
+    // Tuesday 20 October: a new week with no run yet, so both go again, under the new week's claims.
     vi.mocked(claimIdempotencyKey).mockClear()
     vi.setSystemTime(new Date('2026-10-20T09:30:00.000Z'))
     fakeDb(scenario)
@@ -1449,10 +1453,9 @@ describe('invoice reminders cron: weekly chasers', () => {
     ])
   })
 
-  it('waits a full week after a weekly email whose record could not be written, going by the email log', async () => {
-    // Thursday 8 October: a weekly email went (it is in the log) but the invoice column was never written.
-    vi.setSystemTime(new Date('2026-10-12T09:30:00.000Z'))
-    fakeDb({
+  it('sends nothing more that week after a weekly email whose record could not be written, going by the email log', async () => {
+    // Monday 12 October: a weekly email went (it is in the log) but the invoice column was never written.
+    const scenario = {
       invoices: [invoice(OLDER)],
       emails: [
         {
@@ -1460,16 +1463,23 @@ describe('invoice reminders cron: weekly chasers', () => {
           subject: 'Invoice INV-0101 is overdue',
           status: 'sent',
           metadata: { email_kind: 'reminder_weekly', invoice_number: 'INV-0101' },
-          created_at: '2026-10-08T09:30:00.000Z',
-          sent_at: '2026-10-08T09:30:04.000Z',
+          created_at: '2026-10-12T09:30:00.000Z',
+          sent_at: '2026-10-12T09:30:04.000Z',
         },
       ],
-    })
+    }
+    fakeDb(scenario)
 
     await run()
 
-    // Monday 12 October: past the three quiet days, but only four days on.
+    // Tuesday 13 October: the same week, so nothing.
     expect(sendInvoiceEmail).not.toHaveBeenCalled()
+
+    // Monday 19 October: a new week, so it goes.
+    vi.setSystemTime(new Date('2026-10-19T09:30:00.000Z'))
+    fakeDb(scenario)
+    await run()
+    expect(sendInvoiceEmail).toHaveBeenCalledTimes(1)
   })
 
   it('counts a send with an unknown outcome as the week\'s email: kept, recorded, not retried that week', async () => {
@@ -1490,7 +1500,7 @@ describe('invoice reminders cron: weekly chasers', () => {
     expect(weeklyWrites(queries).map((query) => query.payload)).toEqual([
       { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
     ])
-    expect(summary().text).toContain("It counts as this week's, so the next one goes in a week. Check Sent Items")
+    expect(summary().text).toContain("It counts as this week's, so the next one goes next Monday. Check Sent Items")
     expect(reportCronFailure).toHaveBeenCalledTimes(1)
 
     // Wednesday 14 October: nothing, even though the claim helper would hand out a claim.
