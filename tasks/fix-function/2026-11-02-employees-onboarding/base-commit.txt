@@ -1,0 +1,23 @@
+Base commit: c4dee2d01eb8445864fc34b8eee9a4ad388c5746 (main, 2 November 2026)
+
+Initially dirty paths (user-owned, do not touch, stage or commit):
+ M tasks/todo.md
+?? docs/reviews/2026-09-15-mileage-owner-decisions.md
+?? docs/reviews/2026-09-15-mileage-spec-developer-review.md
+?? docs/reviews/2026-10-04-invoice-issuing-and-chasing-developer-review.md
+?? docs/reviews/2026-10-24-customer-bookings-review.md
+?? tasks/discovery-2026-10-29-invoice-weekly-chasers.md
+?? tasks/fix-function/2026-10-04-final-recurring-charge/release.md
+?? tasks/plan-2026-09-15-mileage-r1-rates-recalculation.md
+?? tasks/plan-2026-09-15-mileage-r2-complete-counts.md
+?? tasks/plan-2026-09-15-mileage-r3-drivers.md
+?? tasks/plan-2026-09-15-mileage-r4-accountant-report.md
+?? tasks/plan-2026-09-15-mileage-r5-trip-filters.md
+?? tasks/plan-2026-09-15-mileage-rebuild.md
+?? tasks/plan-2026-10-16-statement-import-safeguards.md
+?? tasks/previews/
+?? tasks/spec-2026-09-15-mileage-section-design.md
+?? tasks/spec-2026-10-01-neutral-feedback-page.md
+?? tasks/spec-2026-10-13-document-signing.md
+
+Work happens in a dedicated worktree so main's dirty files are never swept in.
