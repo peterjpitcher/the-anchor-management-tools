@@ -452,3 +452,6 @@ The owner wants the Orange Jelly logo to occupy the expanded navigation width an
 
 ## 2026-11-02 Clear the writer, not just the row
 - On 5 October a Barons invoice contact's block-list row was deleted by hand, and the note said any Resend email to her would put it back. A different app on the shared Resend account (BaronsHub) did exactly that the next Monday, and she missed two invoice emails before anyone noticed. When a bad row is cleared, find what wrote it and stop that in the same change, or say plainly that it will come back.
+
+## 2026-11-02 A promised weekly send must not be held by another rule
+- The weekly invoice chasers were switched on for Monday 2 November, but the "no reminder within 3 days of any other invoice email" rule held every one back, because both clients had a new invoice that morning. The owner wanted the Monday emails regardless and had the rule removed. When a feature promises a send on a set day, list every rule that can stop that send and confirm each one with the owner before switch-on.
