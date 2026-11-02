@@ -271,6 +271,25 @@ function summary(): { to: string; subject: string; text: string } {
   return calls[0][0] as { to: string; subject: string; text: string }
 }
 
+/**
+ * An earlier run whose summary never reached the owner and held a problem. Owner, 2 November
+ * 2026: the summary goes out only when something needs him, so a test about what the summary
+ * says gives it a reason to go.
+ */
+function unreportedProblemRun(): Row {
+  return {
+    run_key: '2026-10-12',
+    status: 'completed',
+    result: {
+      v: 1,
+      sent: [],
+      problems: [{ invoiceNumber: 'INV-0099', clientName: 'Older Ltd', message: 'The reminder was not sent', url: null, date: '2026-10-12' }],
+      needs_you_keys: [],
+      summary: 'failed',
+    },
+  }
+}
+
 /** A run record's `result` column is jsonb, so it comes back as the object that was saved. */
 function asSaved<T>(state: T): T {
   return state
@@ -387,7 +406,7 @@ describe('invoice reminders cron: who may run it and when', () => {
     expect(sendInvoiceEmail).not.toHaveBeenCalled()
   })
 
-  it('takes over a failed run and still reports what it had already sent', async () => {
+  it('takes over a failed run and keeps what it had already sent', async () => {
     const { queries } = fakeDb({
       invoices: [],
       todayRun: {
@@ -410,8 +429,10 @@ describe('invoice reminders cron: who may run it and when', () => {
     const { payload } = await run()
 
     expect(payload.success).toBe(true)
-    expect(summary().text).toContain('- INV-0090, Earlier Ltd: first reminder to pay@earlier.example')
+    // Reminders that went out fine are no reason to email the owner (2 November 2026).
+    expect(sendEmail).not.toHaveBeenCalled()
     expect(savedRun(queries).status).toBe('completed')
+    expect(savedRun(queries).state.sent).toEqual([expect.objectContaining({ invoiceNumber: 'INV-0090', to: 'pay@earlier.example' })])
   })
 })
 
@@ -468,7 +489,7 @@ describe('invoice reminders cron: sending', () => {
 
     const { payload } = await run()
 
-    expect(payload.results).toMatchObject({ reminders_sent: 1, problems: 0, summary: 'accepted' })
+    expect(payload.results).toMatchObject({ reminders_sent: 1, problems: 0, summary: 'not_needed' })
 
     expect(claimIdempotencyKey).toHaveBeenCalledTimes(1)
     const [, claimKey, claimHash, ttlHours, staleAfterMs] = vi.mocked(claimIdempotencyKey).mock.calls[0]
@@ -510,16 +531,13 @@ describe('invoice reminders cron: sending', () => {
     expect(logRows.map((row) => row.sent_to)).toEqual(['accounts@acme.example', 'director@acme.example'])
     expect(logRows[0]).toMatchObject({ invoice_id: 'inv-1', status: 'sent', subject, body: 'First reminder, 7 days overdue' })
 
-    const email = summary()
-    expect(email.to).toBe(OWNER)
-    expect(email.text).toContain('Sent today')
-    expect(email.text).toContain('- INV-0101, Acme Events Ltd: first reminder to accounts@acme.example')
-    // The copied address is not in the summary: only the To address of a sent reminder is.
-    expect(email.text).not.toContain('director@acme.example')
-    assertCleanText(email.subject)
-    assertCleanText(email.text)
-
-    expect(savedRun(queries)).toMatchObject({ status: 'completed', state: { summary: 'accepted' } })
+    // A reminder that went out fine sends the owner nothing (2 November 2026); the run keeps it.
+    expect(sendEmail).not.toHaveBeenCalled()
+    const saved = savedRun(queries)
+    expect(saved).toMatchObject({ status: 'completed', state: { summary: 'not_needed' } })
+    expect(saved.state.sent).toEqual([expect.objectContaining({ invoiceNumber: 'INV-0101', to: 'accounts@acme.example' })])
+    // Only the To address of a sent reminder is kept, never the copied one.
+    expect(JSON.stringify(saved.state)).not.toContain('director@acme.example')
     expect(reportCronFailure).not.toHaveBeenCalled()
   })
 
@@ -535,7 +553,7 @@ describe('invoice reminders cron: sending', () => {
 
     const { payload } = await run()
 
-    expect(payload.results).toMatchObject({ reminders_sent: 1, summary: 'accepted' })
+    expect(payload.results).toMatchObject({ reminders_sent: 1, summary: 'not_needed' })
     // Asked for, so the sender could check it...
     expect(vi.mocked(sendInvoiceEmail).mock.calls[0][4]).toEqual(['director@acme.example'])
     // ...but not logged as sent to.
@@ -649,7 +667,7 @@ describe('invoice reminders cron: sending', () => {
 
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
     expect(reminderColumnWrites(queries)).toHaveLength(1)
-    expect(summary().text).toContain('Sent today')
+    expect(savedRun(queries).state.sent).toHaveLength(1)
   })
 
   it('keeps the claim when the email went but could not be recorded, and never sends it again', async () => {
@@ -743,8 +761,7 @@ describe('invoice reminders cron: who is left alone', () => {
     expect(reminderColumnWrites(queries)).toHaveLength(1)
     // No quiet days (owner decision, 2 November 2026): the second invoice reaches seven days
     // overdue tomorrow, so it is forecast for the next run.
-    expect(summary().text).toContain('Going next')
-    expect(summary().text).toMatch(/Going next[\s\S]*INV-0102/)
+    expect(payload.results.going_next).toBe(1)
   })
 
   it('stops when a fresh read shows the invoice has been paid', async () => {
@@ -959,9 +976,9 @@ describe('invoice reminders cron: the summary', () => {
     assertCleanText(email.text)
   })
 
-  it('forecasts tomorrow under Going next, with a link to hold it', async () => {
+  it('forecasts tomorrow under Going next, with a link to hold it, when the summary goes out', async () => {
     // Due Friday 9 October: four days overdue today, five tomorrow.
-    fakeDb({ invoices: [invoice({ due_date: '2026-10-09' })] })
+    fakeDb({ invoices: [invoice({ due_date: '2026-10-09' })], earlierRuns: [unreportedProblemRun()] })
 
     const { payload } = await run()
 
@@ -977,7 +994,7 @@ describe('invoice reminders cron: the summary', () => {
 
   it('raises an alert when the summary cannot be sent, and carries it into the next one', async () => {
     vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Email sending is currently suspended' } as never)
-    const { queries } = fakeDb({ invoices: [invoice()] })
+    const { queries } = fakeDb({ invoices: [invoice()], earlierRuns: [unreportedProblemRun()] })
 
     const { payload } = await run()
 
@@ -1364,7 +1381,7 @@ describe('invoice reminders cron: weekly chasers', () => {
     const { payload } = await run()
 
     expect(payload).toMatchObject({ reminders_on: true, weekly_chasers_on: true })
-    expect(payload.results).toMatchObject({ reminders_sent: 2, problems: 0, summary: 'accepted' })
+    expect(payload.results).toMatchObject({ reminders_sent: 2, problems: 0, summary: 'not_needed' })
 
     expect(vi.mocked(claimIdempotencyKey).mock.calls.map((call) => [call[1], call[2]])).toEqual([
       ['invoice-reminder:v2:inv-1:weekly:2026-10-12', 'hash:{"invoice_id":"inv-1","stage":"weekly","week":"2026-10-12"}'],
@@ -1407,9 +1424,11 @@ describe('invoice reminders cron: weekly chasers', () => {
     ])
     expect(logRows[0].body).toBe('Weekly reminder, 35 days overdue, in one email with 1 other invoice')
 
-    const email = summary()
-    expect(email.text).toContain('- INV-0101, Acme Events Ltd: weekly reminder to accounts@acme.example')
-    expect(email.text).toContain('- INV-0102, Acme Events Ltd: weekly reminder to accounts@acme.example')
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(savedRun(queries).state.sent.map((entry: { invoiceNumber: string; stage: string }) => [entry.invoiceNumber, entry.stage])).toEqual([
+      ['INV-0101', 'weekly'],
+      ['INV-0102', 'weekly'],
+    ])
     expect(releaseIdempotencyClaim).not.toHaveBeenCalled()
   })
 
@@ -1557,9 +1576,11 @@ describe('invoice reminders cron: weekly chasers', () => {
       { reminder_last_weekly_sent_at: '2026-10-13T09:30:00.000Z' },
       { reminder_first_sent_at: '2026-10-13T09:30:00.000Z' },
     ])
-    const text = summary().text
-    expect(text).toContain('- INV-0101, Acme Events Ltd: weekly reminder to accounts@acme.example')
-    expect(text).toContain('- INV-0103, Acme Events Ltd: first reminder to accounts@acme.example')
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(savedRun(queries).state.sent.map((entry: { invoiceNumber: string; stage: string }) => [entry.invoiceNumber, entry.stage])).toEqual([
+      ['INV-0101', 'weekly'],
+      ['INV-0103', 'first'],
+    ])
   })
 
   it('chases private hire from 21 days, but never the invoice of a cancelled booking', async () => {

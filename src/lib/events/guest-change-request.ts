@@ -116,6 +116,8 @@ export async function raiseGuestChangeRequest(
     title,
     summary,
     path: input.eventId ? `/events/${input.eventId}` : null,
+    // A guest asking for something is work, not a PayPal fault.
+    subjectTag: 'GUEST REQUEST',
     context: {
       'Event booking': input.bookingId,
       'Places now': input.currentSeats,

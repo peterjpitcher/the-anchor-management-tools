@@ -12,6 +12,7 @@ The email goes to one validated address, `MANAGER_EMAIL`. The per-feature recipi
 
 - `vercel.json` runs `/api/cron/manager-weekly-report` hourly on Fridays (`0 * * * 5`). Delivery (`src/lib/manager-report/delivery.ts`) does nothing before 06:00 London, in British Summer Time and in winter alike (`src/lib/manager-report/schedule.ts`).
 - **One report per Friday.** Before building, delivery checks for any report already recorded for that Friday (`email_messages`, `comm_type='manager_weekly_report'`, `metadata->>periodKey` = the Friday's London date), old format or new. If one exists, nothing new is built that day.
+- **Only a week with something to act on is sent** (owner, 2 November 2026: "I don't want to receive emails unless there's a problem"). A report with no red section and every section read sends nothing: delivery records `cron_job_runs` row `job_name='manager-weekly-report'`, `run_key='quiet:<Friday>'` so later hourly runs that day build nothing, and `/insights` still shows the report. A section that could not be read still sends it from 09:00.
 - **Not checked, held until 09:00.** The first attempt from 06:00 builds the report. If every section was read, the payload is frozen and sent. If any section could not be read before 09:00 London, nothing is frozen and the next hourly run tries again. From 09:00 the report is frozen with those sections marked "⚪ Not checked" and sent.
 - Once frozen, the payload never changes: retries resend exactly the same email.
 
