@@ -63,7 +63,7 @@
     "openItems": [
       "public.profiles returns rows to the anon key. See RECORDED, NOT APPROVED above.",
       "Most anon callable functions hold grants nobody chose (PUBLIC, and a direct anon grant from the pre-28-August default). See WHY THE FUNCTION LIST IS SO LONG above.",
-      "205 of the 217 tables listed grant anon SELECT with no website need, and the other 12 are not read with the anon key either (the website has no Supabase client). Each one is a candidate for REVOKE ALL ON TABLE ... FROM anon in a future migration."
+      "204 of the 216 tables listed grant anon SELECT with no website need, and the other 12 are not read with the anon key either (the website has no Supabase client). Each one is a candidate for REVOKE ALL ON TABLE ... FROM anon in a future migration."
     ]
   },
   "anon": {
