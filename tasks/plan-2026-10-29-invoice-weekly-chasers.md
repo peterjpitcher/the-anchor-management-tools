@@ -17,6 +17,14 @@ This replaces the 4 October 2026 rule that an invoice gets at most two automatic
 
 Accepted with the discovery's change list: first and second reminders unchanged; weekly from 21 days, at least 7 days after the last reminder, until paid, voided or written off; an unknown send outcome counts as that week's email; a chase sent by hand counts as that week's email; invoices marked sent without an email record are chased too; still never chased: paid, void, written off, nothing owed, no address, a payment waiting in the bank feed, a cancelled booking's invoice, the master switch off, the email kill switches on.
 
+## Changed 2 November 2026 (owner, pull request 292)
+
+Owner: "get rid of the 3 day rule, I need the monday emails to go out for old invoices regardless of anything else." This replaces "at least 7 days after the last reminder" above and the weekly clock in the assumptions below:
+- The weekly email is due on Monday for every invoice 21 or more days overdue that Monday. If Monday's run does not send it, the next run that week does.
+- At most one weekly email per client per London week (Monday to Sunday). A weekly email, an unknown outcome or a chase sent by hand earlier that week counts as the week's email.
+- No quiet days at any stage: a new invoice or a receipt to the same client no longer holds a reminder back.
+- Unchanged: holds, the bank-feed check, the address check, the email kill switches, and first and second reminders at 5 to 13 and 14 to 20 days overdue.
+
 ## Assumptions
 
 - "Breaches the agreed schedule" means the point where the schedule handed over to the owner: 21 days overdue.

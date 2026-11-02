@@ -110,6 +110,7 @@ describe('buildReminderSummary', () => {
       input({
         today: '2026-10-16',
         goingNext: [{ invoiceNumber: 'INV-0102', clientName: 'Beta Ltd', stage: 'first', url: `${APP_URL}/invoices/inv-2` }],
+        needsYou: [overdue],
       })
     )
 
@@ -132,7 +133,8 @@ describe('buildReminderSummary', () => {
     ).toBeNull()
   })
 
-  it('still sends the other sections on an unchanged Tuesday, without Needs you', () => {
+  it('sends nothing on an unchanged Tuesday when the reminders simply went out', () => {
+    // Owner, 2 November 2026: no email unless there is a problem.
     const summary = buildReminderSummary(
       input({
         needsYou: [overdue],
@@ -143,10 +145,7 @@ describe('buildReminderSummary', () => {
       })
     )
 
-    expect(summary?.text).toContain('Sent today')
-    expect(summary?.text).toContain('second reminder to accounts@acme.example')
-    expect(summary?.text).not.toContain('Needs you')
-    expect(summary?.subject).toBe('Invoice reminders, Tuesday 13 October: 1 sent')
+    expect(summary).toBeNull()
   })
 
   it('shows Needs you on a Tuesday when an entry was added, removed or changed reason', () => {
@@ -302,7 +301,7 @@ describe('weekly chasers in the summary', () => {
       { invoiceNumber: 'INV-003W9', clientName: 'Golden Barrels Limited', to: 'accounts@golden.example', stage: 'weekly' as const, date: TUESDAY },
       { invoiceNumber: 'INV-003WG', clientName: 'Golden Barrels Limited', to: 'accounts@golden.example', stage: 'weekly' as const, date: TUESDAY },
     ]
-    const summary = buildReminderSummary(input({ sent }))
+    const summary = buildReminderSummary(input({ sent, needsYou: [overdue] }))
     expect(summary?.text).toContain('- INV-003W9, Golden Barrels Limited: weekly reminder to accounts@golden.example')
     expect(summary?.text).toContain('- INV-003WG, Golden Barrels Limited: weekly reminder to accounts@golden.example')
     assertCleanText(summary?.subject ?? '')
@@ -310,6 +309,33 @@ describe('weekly chasers in the summary', () => {
 
     const state: ReminderRunState = { v: 1, sent, problems: [], needs_you_keys: [], summary: 'accepted' }
     expect(parseRunState(serialiseRunState(state))).toEqual(state)
+  })
+})
+
+describe('sends only when something needs the owner (owner, 2 November 2026)', () => {
+  const sent = [
+    { invoiceNumber: 'INV-0101', clientName: 'Acme Events Ltd', to: 'accounts@acme.example', stage: 'first' as const, date: TUESDAY },
+  ]
+  const goingNext = [{ invoiceNumber: 'INV-0102', clientName: 'Beta Ltd', stage: 'second' as const, url: `${APP_URL}/invoices/inv-2` }]
+  const problem = { invoiceNumber: 'INV-0104', clientName: 'Gamma Ltd', message: 'The reminder was not sent', url: null, date: TUESDAY }
+
+  it.each([
+    ['reminders that went out fine', input({ sent })],
+    ['a forecast of the next run', input({ goingNext })],
+    ['both together', input({ sent, goingNext })],
+    ['reminders an earlier undelivered summary sent fine', input({ carriedOver: { sent, problems: [] } })],
+  ])('sends nothing for %s', (_label, scenario) => {
+    expect(buildReminderSummary(scenario)).toBeNull()
+  })
+
+  it.each([
+    ['a problem', input({ problems: [problem] })],
+    ['a problem an earlier summary never reported', input({ carriedOver: { sent: [], problems: [problem] } })],
+    ['a new Needs you list', input({ needsYou: [overdue] })],
+  ])('sends for %s, and lists what went out with it', (_label, scenario) => {
+    const summary = buildReminderSummary({ ...scenario, sent, goingNext })
+    expect(summary?.text).toContain('Sent today')
+    expect(summary?.text).toContain('Going next')
   })
 })
 

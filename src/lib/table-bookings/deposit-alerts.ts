@@ -88,6 +88,9 @@ export async function alertTableDepositNeedsAPerson(
     kind: input.kind,
     title,
     summary,
+    // Cash to hand back at the bar is work, not a PayPal fault, like the bar refunds of a
+    // cancelled event.
+    ...(input.kind === 'cash_refund_due' ? { subjectTag: 'REFUNDS TO HAND BACK' } : {}),
     context: {
       Amount: formatPounds(input.amountGbp ?? null),
       'PayPal order': input.orderId ?? null,

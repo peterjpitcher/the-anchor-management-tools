@@ -108,6 +108,8 @@ describe('raiseGuestChangeRequest', () => {
     const email = sent.emails[0]
     expect(email.to).toBe('manager@the-anchor.pub')
     expect(email.subject).toContain('A guest asked to change a paid event booking (4 to 2 places)')
+    // A guest asking is work, not a PayPal fault (owner, 2 November 2026).
+    expect(email.subject).toMatch(/^\[GUEST REQUEST\] /)
     expect(email.html).toContain('Tinsel &amp; Tipples')
     expect(email.html).toContain('£80.00 for 2 tickets')
     expect(email.html).toContain('https://management.orangejelly.co.uk/events/event-1')

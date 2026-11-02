@@ -1,4 +1,6 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
+import { HANDOVER_DAYS, weeklyChasersOn } from '@/lib/invoices/reminder-rules'
+import { invoiceRemindersGoLiveDate, invoiceWeeklyRemindersFrom } from '@/lib/invoices/release-switches'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { formatDateWithYear, formatDayDate, formatMoney, plural } from '../format'
 import { mergeSignals } from '../signals'
@@ -222,13 +224,26 @@ function handedToPrivateHireSignal(ctx: SectionContext, invoice: OpenInvoice, ev
   }
 }
 
-function neverEmailedSignal(ctx: SectionContext, invoice: OpenInvoice, withAction: boolean): InsightSignal {
+/**
+ * True when the reminder job chases an invoice it has no record of emailing: only with the
+ * weekly chasers, from 21 days overdue, and only while reminders are switched on at all
+ * (decideReminder in reminder-rules.ts). Read from the same switches the job reads.
+ */
+function weeklyChasesUnsentInvoices(today: string): boolean {
+  if (!invoiceRemindersGoLiveDate()) return false
+  return weeklyChasersOn({ today, weeklyFrom: invoiceWeeklyRemindersFrom() })
+}
+
+function neverEmailedSignal(ctx: SectionContext, invoice: OpenInvoice, withAction: boolean, weeklyChases: boolean): InsightSignal {
+  const details = [invoice.customer, money(invoice.outstanding), `due ${dueText(invoice.dueDate, ctx.windows.today)}`].filter(Boolean).join(', ')
   const signal: InsightSignal = {
     key: `invoices.never_emailed.${invoice.id}`,
     entity: `invoice:${invoice.id}`,
     rag: 'amber',
     kind: 'issue',
-    text: `The reminder system will never chase ${invoice.number} (${[invoice.customer, money(invoice.outstanding), `due ${dueText(invoice.dueDate, ctx.windows.today)}`].filter(Boolean).join(', ')}) because it was not emailed.`,
+    text: weeklyChases
+      ? `The reminder system will only chase ${invoice.number} (${details}) in the weekly emails, from ${HANDOVER_DAYS} days overdue, because it was not emailed.`
+      : `The reminder system will never chase ${invoice.number} (${details}) because it was not emailed.`,
     emailSafe: true,
   }
   if (!withAction) return signal
@@ -343,10 +358,12 @@ export async function buildInvoicesSection(ctx: SectionContext): Promise<Section
   // An overdue invoice that was never emailed keeps its line but not a second action when its
   // chase is merged into the list action or carried by Private hire, so each record still has
   // one primary action.
+  const weeklyChases = weeklyChasesUnsentInvoices(today)
   const emailSignals = neverEmailed.map((invoice) => neverEmailedSignal(
     ctx,
     invoice,
     !(invoice.daysOverdue > 0 && (merged || invoice.privateHireEvent !== null)),
+    weeklyChases,
   ))
   const signals = [...chaseSignals, ...handedOverSignals, ...emailSignals]
 
