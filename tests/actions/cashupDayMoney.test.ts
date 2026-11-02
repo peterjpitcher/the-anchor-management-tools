@@ -70,6 +70,26 @@ describe('money paid outside the till for a cash-up day', () => {
     })
   })
 
+  it('counts the discount staff recorded on a percentage voucher, not its estimate', async () => {
+    state.db = createFakeSupabase({
+      online_income_movements: [],
+      private_bookings: [],
+      private_booking_invoices: [],
+      private_booking_payments: [],
+      invoice_payments: [],
+      vouchers: [
+        // A 10% return-visit voucher: estimated at 6 pounds, 4.12 actually taken off the bill.
+        { value_pence: 600, redeemed_value_pence: 412, status: 'redeemed', redeemed_at: '2026-10-10T12:00:00.000Z' },
+        // Same type, no amount recorded: the estimate stands.
+        { value_pence: 600, redeemed_value_pence: null, status: 'redeemed', redeemed_at: '2026-10-10T13:00:00.000Z' },
+      ],
+    })
+
+    const result = await getCashupDayMoneyAction('2026-10-10')
+
+    expect(result.data?.vouchersRedeemed).toEqual({ count: 2, amount: 10.12 })
+  })
+
   function hireDay(hire: Record<string, unknown>, online: Array<Record<string, unknown>> = []) {
     state.db = createFakeSupabase({
       online_income_movements: online,

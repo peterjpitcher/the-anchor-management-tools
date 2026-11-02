@@ -23,6 +23,8 @@ function buildClient(options: {
   claimed: ClaimRow[]
   voucherRows?: Array<Record<string, unknown>>
   voucherLookupError?: boolean
+  digitalVoucherIds?: string[]
+  digitalLookupError?: boolean
 }) {
   const voucherSelectIn = vi.fn().mockResolvedValue(
     options.voucherLookupError
@@ -66,6 +68,17 @@ function buildClient(options: {
       }
       if (table === 'vouchers') {
         return { select: vi.fn().mockReturnValue({ in: voucherSelectIn }) }
+      }
+      if (table === 'marketing_campaign_recipients') {
+        return {
+          select: vi.fn().mockReturnValue({
+            in: vi.fn().mockResolvedValue(
+              options.digitalLookupError
+                ? { data: null, error: { message: 'boom' } }
+                : { data: (options.digitalVoucherIds ?? []).map((id) => ({ voucher_id: id })), error: null }
+            ),
+          }),
+        }
       }
       throw new Error(`Unexpected table: ${table}`)
     }),
@@ -183,5 +196,40 @@ describe('voucher reminder booking requirement', () => {
     await run()
 
     expect(sentEmailText()).toContain('to book')
+  })
+
+  it('reminds an emailed voucher by email with its number, never by text', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true, voucher_number: 'AN-2611-0042', won_at_label: 'Come back offer, touch 1' })],
+      digitalVoucherIds: ['voucher-1'],
+    })
+
+    await run()
+
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sentEmailText()).toContain('Your voucher number is AN-2611-0042.')
+    expect(sentEmailText()).toContain('show this email at the bar')
+    expect(sentEmailText()).not.toContain('Come back offer')
+  })
+
+  it('skips an emailed voucher whose address no longer works rather than texting', async () => {
+    buildClient({
+      claimed: [claimRow({ requires_booking: true, email: null })],
+      digitalVoucherIds: ['voucher-1'],
+    })
+
+    const totals = await run()
+
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(totals.skipped).toBe(1)
+  })
+
+  it('sends nothing when it cannot tell which vouchers were emailed', async () => {
+    buildClient({ claimed: [claimRow({ requires_booking: true })], digitalLookupError: true })
+
+    await expect(run()).rejects.toThrow(/sent by email/)
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(sendSMS).not.toHaveBeenCalled()
   })
 })

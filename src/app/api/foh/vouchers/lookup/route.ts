@@ -37,6 +37,9 @@ type TypeInfo = {
   alcohol?: boolean
   requires_booking?: boolean
   value_pence?: number | null
+  // Added with the return-visit vouchers (migration 20261102171000); older snapshots lack them.
+  discount_kind?: string
+  percent_off?: number | null
 }
 
 type LookupRow = {
@@ -55,7 +58,7 @@ type LookupRow = {
   cancelled_reason: string | null
   replaced_by_id: string | null
   customer: { id: string; first_name: string | null; last_name: string | null } | null
-  batch: { pdf_status: string; type_definitions: Record<string, TypeInfo> | null } | null
+  batch: { pdf_status: string; digital: boolean; type_definitions: Record<string, TypeInfo> | null } | null
   voucher_type: TypeInfo | null
 }
 
@@ -86,8 +89,8 @@ export async function GET(request: NextRequest) {
        issued_at, issued_by_name, won_at_label, expiry_date,
        redeemed_at, redeemed_by_name, cancelled_at, cancelled_reason, replaced_by_id,
        customer:customers!vouchers_customer_id_fkey(id, first_name, last_name),
-       batch:voucher_batches!vouchers_batch_id_fkey(pdf_status, type_definitions),
-       voucher_type:voucher_types!vouchers_type_id_fkey(display_title, entitlement_html, alcohol, requires_booking, value_pence)`
+       batch:voucher_batches!vouchers_batch_id_fkey(pdf_status, digital, type_definitions),
+       voucher_type:voucher_types!vouchers_type_id_fkey(display_title, entitlement_html, alcohol, requires_booking, value_pence, discount_kind, percent_off)`
     )
     .ilike('voucher_number', `%${normalised}%`)
     .order('voucher_number', { ascending: true })
@@ -170,7 +173,9 @@ export async function GET(request: NextRequest) {
       replacementNumber: row.replaced_by_id
         ? replacementNumbers.get(row.replaced_by_id) ?? null
         : null,
-      batchReady: row.batch?.pdf_status === 'ready'
+      batchReady: row.batch?.pdf_status === 'ready',
+      percentOff: typeInfo.discount_kind === 'percent' ? typeInfo.percent_off ?? null : null,
+      digital: row.batch?.digital ?? false
     }
   })
 

@@ -20,6 +20,7 @@ import {
 import { normaliseVoucherNumberInput, isFullVoucherNumber } from '@/lib/vouchers/numbering'
 import { quickAddVoucherCustomer, QuickAddCustomerError } from '@/lib/vouchers/customer-quick-add'
 import { completedLondonDaysSince, ageBucket, humaniseAge } from '@/lib/vouchers/age'
+import { MAX_DISCOUNT_GIVEN_PENCE } from '@/lib/vouchers/discount'
 import {
   mapVoucherRow,
   mapVoucherBatchRow,
@@ -70,6 +71,8 @@ export interface VoucherStockRow {
   expired: number
   cancelled: number
   lowStock: boolean
+  // Issued only by the return-visit emails, so it has no printed stock to run low.
+  digitalOnly: boolean
 }
 
 export interface VoucherNotPrintableBatch {
@@ -123,6 +126,8 @@ export interface VoucherLedgerRow {
   customerName: string | null
   eventName: string | null
   batchReady: boolean
+  // Issued by a return-visit email: no printed card, so never reprinted.
+  digital: boolean
   ageDays: number | null
   ageLabel: string | null
 }
@@ -144,6 +149,9 @@ export interface VoucherDetail {
   entitlementHtml: string | null
   batchPdfStatus: BatchPdfStatus | null
   batchCreatedAt: string | null
+  // Issued by a return-visit email: no printed card to reprint or replace.
+  batchDigital: boolean
+  marketingCampaign: { id: string; name: string } | null
   events: VoucherEvent[]
   reminders: VoucherReminder[]
   customer: { id: string; name: string; mobile: string | null } | null
@@ -408,6 +416,8 @@ const redeemSchema = z.object({
   employeeId: z.string().uuid('Choose the staff member taking the card'),
   transactionRef: z.string().trim().max(100).optional(),
   bookingRef: z.string().trim().max(100).optional(),
+  // The discount actually given on a percentage voucher, in pence.
+  redeemedValuePence: z.number().int().min(0).max(MAX_DISCOUNT_GIVEN_PENCE).optional(),
   idempotencyKey: idempotencyKeySchema,
 })
 
@@ -479,6 +489,18 @@ export async function createVoucherBatch(input: {
     return {
       error: `A batch can hold at most ${MAX_CARDS_PER_BATCH} cards. Split larger runs into separate batches.`,
     }
+  }
+
+  // Return-visit vouchers are issued one at a time by the emails and have no printed card.
+  // voucher_generate_batch does not know that, so the refusal lives here.
+  const typeIds = Array.from(new Set(parsed.data.items.map((item) => item.typeId)))
+  const { data: typeRows, error: typeError } = await createAdminClient()
+    .from('voucher_types')
+    .select('id, digital_only')
+    .in('id', typeIds)
+  if (typeError) return { error: 'Could not check the voucher types. Please try again.' }
+  if ((typeRows ?? []).some((row) => row.digital_only)) {
+    return { error: 'Return-visit vouchers are sent by email only and cannot be printed.' }
   }
 
   const rpc = await callVoucherRpc('voucher_generate_batch', {
@@ -572,6 +594,7 @@ export async function redeemVoucher(input: {
   employeeId: string
   transactionRef?: string
   bookingRef?: string
+  redeemedValuePence?: number
   idempotencyKey: string
 }): Promise<{ success?: boolean; error?: string; data?: VoucherMutationData }> {
   const ctx = await requireVouchersManage()
@@ -597,6 +620,7 @@ export async function redeemVoucher(input: {
     p_london_today: getTodayIsoDate(),
     p_source: 'management',
     p_idempotency_key: parsed.data.idempotencyKey,
+    p_redeemed_value_pence: parsed.data.redeemedValuePence ?? null,
   })
   if ('error' in rpc) return { error: rpc.error }
   if (!rpc.result.success || !rpc.result.voucher) return { error: rpcErrorMessage(rpc.result) }
@@ -606,6 +630,7 @@ export async function redeemVoucher(input: {
     await auditVoucherMutation(ctx, 'redeem', voucher.id, {
       voucher_number: voucher.voucherNumber,
       employee_id: parsed.data.employeeId,
+      redeemed_value_pence: parsed.data.redeemedValuePence ?? null,
     })
   }
   revalidateVoucherPaths(voucher.voucherNumber)
@@ -963,6 +988,7 @@ export async function getVoucherSummary(): Promise<{ success?: boolean; error?: 
       expired: 0,
       cancelled: 0,
       lowStock: false,
+      digitalOnly: type.digitalOnly,
     })
   }
 
@@ -1004,7 +1030,7 @@ export async function getVoucherSummary(): Promise<{ success?: boolean; error?: 
 
   const stock = Array.from(stockByType.values()).map((row) => ({
     ...row,
-    lowStock: row.inStock <= LOW_STOCK_THRESHOLD,
+    lowStock: !row.digitalOnly && row.inStock <= LOW_STOCK_THRESHOLD,
   }))
   const totals = stock.reduce(
     (acc, row) => ({
@@ -1056,7 +1082,7 @@ interface LedgerJoinRow extends VoucherRow {
   type: { display_title: string } | null
   customer: { id: string; first_name: string | null; last_name: string | null } | null
   event: { id: string; name: string | null } | null
-  batch: { pdf_status: BatchPdfStatus } | null
+  batch: { pdf_status: BatchPdfStatus; digital: boolean } | null
 }
 
 export async function getVoucherLedger(
@@ -1070,8 +1096,8 @@ export async function getVoucherLedger(
 
   const admin = createAdminClient()
   const batchEmbed = filters.batchReady
-    ? 'batch:voucher_batches!inner(pdf_status)'
-    : 'batch:voucher_batches(pdf_status)'
+    ? 'batch:voucher_batches!inner(pdf_status, digital)'
+    : 'batch:voucher_batches(pdf_status, digital)'
   let query = admin
     .from('vouchers')
     .select(
@@ -1132,6 +1158,7 @@ export async function getVoucherLedger(
       customerName,
       eventName: row.event?.name ?? null,
       batchReady: row.batch?.pdf_status === 'ready',
+      digital: row.batch?.digital ?? false,
       ageDays,
       ageLabel,
     }
@@ -1146,6 +1173,7 @@ interface DetailJoinRow extends VoucherRow {
     id: string
     pdf_status: BatchPdfStatus
     created_at: string
+    digital: boolean
     type_definitions: Record<string, unknown> | null
   } | null
   customer: {
@@ -1171,7 +1199,7 @@ export async function getVoucherDetail(
   const { data, error } = await admin
     .from('vouchers')
     .select(
-      '*, type:voucher_types(*), batch:voucher_batches(id, pdf_status, created_at, type_definitions), customer:customers(id, first_name, last_name, mobile_number, mobile_e164), event:events(id, name)'
+      '*, type:voucher_types(*), batch:voucher_batches(id, pdf_status, created_at, digital, type_definitions), customer:customers(id, first_name, last_name, mobile_number, mobile_e164), event:events(id, name)'
     )
     .eq('voucher_number', numberCheck.number)
     .maybeSingle()
@@ -1195,6 +1223,18 @@ export async function getVoucherDetail(
   ])
   if (eventsResult.error) return { error: 'Could not load the voucher timeline.' }
   if (remindersResult.error) return { error: 'Could not load the reminder history.' }
+
+  let marketingCampaign: { id: string; name: string } | null = null
+  if (voucher.marketingRecipientId) {
+    const { data: recipient, error: recipientError } = await admin
+      .from('marketing_campaign_recipients')
+      .select('campaign:marketing_campaigns(id, name)')
+      .eq('id', voucher.marketingRecipientId)
+      .maybeSingle()
+    if (recipientError) return { error: 'Could not load the email this voucher came from.' }
+    const campaign = (recipient as { campaign: { id: string; name: string } | null } | null)?.campaign
+    marketingCampaign = campaign ? { id: campaign.id, name: campaign.name } : null
+  }
 
   const linkedIds = [voucher.replacedById, voucher.replacesId].filter(Boolean) as string[]
   let replacedByNumber: string | null = null
@@ -1238,6 +1278,8 @@ export async function getVoucherDetail(
       entitlementHtml,
       batchPdfStatus: row.batch?.pdf_status ?? null,
       batchCreatedAt: row.batch?.created_at ?? null,
+      batchDigital: row.batch?.digital ?? false,
+      marketingCampaign,
       events: ((eventsResult.data ?? []) as VoucherEventRow[]).map(mapVoucherEventRow),
       reminders: ((remindersResult.data ?? []) as VoucherReminderRow[]).map(mapVoucherReminderRow),
       customer: row.customer

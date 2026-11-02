@@ -24770,6 +24770,7 @@ export type Database = {
           p_employee_name: string
           p_idempotency_key: string
           p_london_today: string
+          p_redeemed_value_pence?: number
           p_source: string
           p_transaction_ref: string
           p_user_id: string
