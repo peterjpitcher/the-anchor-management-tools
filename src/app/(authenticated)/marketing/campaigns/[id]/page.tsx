@@ -6,10 +6,12 @@ import {
   getMarketingCampaignAudienceDrift,
   getMarketingCampaignLinkPerformance,
   getMarketingCampaignStats,
+  getMarketingLifecycleStats,
   listMarketingCampaignRecipients,
 } from '@/app/actions/marketing-campaigns'
 import { Alert, PageLayout } from '@/ds'
 import { marketingContentSchema } from '@/lib/email/marketing/registry'
+import { contentHasMergeTokens, mergeCampaignContent, SAMPLE_MERGE_FIELDS } from '@/lib/email/marketing/merge'
 import { renderCampaignHtml } from '@/lib/email/marketing/render'
 
 import { MARKETING_BACK } from '../../_shared/nav'
@@ -70,6 +72,8 @@ export default async function MarketingCampaignDetailPage({
       ? (await getMarketingCampaignAudienceDrift(id)).data ?? null
       : null
 
+  const lifecycleStats = campaign.kind === 'lifecycle' ? await getMarketingLifecycleStats(id) : null
+
   // Rendered on the server so the renderer, which is server-only, never reaches the browser.
   // The schema is parsed rather than trusted: content that predates a renderer change can be
   // stored and still fail to render, and a blank preview is better than a crashed page.
@@ -78,7 +82,12 @@ export default async function MarketingCampaignDetailPage({
   const parsedContent = marketingContentSchema.safeParse(campaign.content)
   if (parsedContent.success) {
     try {
-      previewHtml = renderCampaignHtml(parsedContent.data)
+      // A return-visit email is shown filled in with the sample guest, as the test send is.
+      previewHtml = renderCampaignHtml(
+        contentHasMergeTokens(parsedContent.data)
+          ? mergeCampaignContent(parsedContent.data, SAMPLE_MERGE_FIELDS)
+          : parsedContent.data,
+      )
     } catch (error) {
       previewError = error instanceof Error ? error.message : 'The content could not be rendered'
     }
@@ -102,6 +111,8 @@ export default async function MarketingCampaignDetailPage({
       linkPerformanceError={linksResult.error ?? null}
       previewHtml={previewHtml}
       previewError={previewError}
+      lifecycleStats={lifecycleStats?.data ?? null}
+      lifecycleStatsError={lifecycleStats?.error ?? null}
       canSend={canSend}
     />
   )
