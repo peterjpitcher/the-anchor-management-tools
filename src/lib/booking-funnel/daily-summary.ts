@@ -159,8 +159,9 @@ export async function loadDailyFunnelSummary(supabase: AdminClient, date: string
 /**
  * What the security check did to guests who had started filling in a form. The website reports a
  * held-up check only for such a guest, and says `recovered` when the check finished for them after
- * all, so the difference is the guests it stopped. Clamped, because a check held up just before
- * midnight and finished just after is recovered on a day it was not held up.
+ * all, so the difference is the guests it stopped. A recovery is dated back to its stall, so both
+ * fall on the same day; clamped all the same, so a stall that reached us a moment after midnight
+ * can never make the count negative.
  */
 export function securityCheckStalls(lines: FormLine[]): { heldUp: number; gotThrough: number; neverThrough: number } {
   const count = (step: string) =>
