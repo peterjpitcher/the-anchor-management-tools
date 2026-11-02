@@ -3,6 +3,7 @@ import { createFakeDb } from '../../helpers/fakeSupabaseDb'
 import {
   buildDailyFunnelEmail,
   loadDailyFunnelSummary,
+  securityCheckStalls,
   summaryNeedsSending,
   type DailyFunnelSummary,
 } from '@/lib/booking-funnel/daily-summary'
@@ -45,6 +46,11 @@ const EVENTS = [
   event('2026-10-25T13:05:00.000Z', { source: 'ams', stage: 'availability', route: 'table-bookings/load', purpose: 'drinks', calculation_state: 'complete', slots_offered: 0 }),
   event('2026-10-25T13:10:00.000Z', { source: 'ams', stage: 'availability', route: 'table-bookings/load', purpose: 'drinks', calculation_state: 'unknown', slots_offered: 0 }),
   event('2026-10-25T13:15:00.000Z', { source: 'ams', stage: 'availability', route: 'table-bookings/load', purpose: 'drinks', calculation_state: 'unknown', slots_offered: 0, api_key_id: TEST_KEY }),
+  // Kept at the end so the indexes above stay put: a guest who started, was held up by the
+  // security check and got through after all.
+  event('2026-10-25T12:01:30.000Z', { stage: 'form', route: 'event_booking', reason_code: 'started' }),
+  event('2026-10-25T12:03:00.000Z', { stage: 'form', route: 'event_booking', reason_code: 'blocked', upstream_code: 'no_security_token' }),
+  event('2026-10-25T12:03:30.000Z', { stage: 'form', route: 'event_booking', reason_code: 'recovered', upstream_code: 'no_security_token' }),
 ]
 
 describe('loadDailyFunnelSummary', () => {
@@ -63,8 +69,10 @@ describe('loadDailyFunnelSummary', () => {
       { route: 'api/table-bookings', stage: 'refused', reason: 'SECURITY_CHECK_MISSING', upstreamCode: null, count: 1 },
     ])
     expect(summary.forms).toEqual([
-      { form: 'event_booking', step: 'blocked', reason: 'no_security_token', count: 1 },
+      { form: 'event_booking', step: 'blocked', reason: 'no_security_token', count: 2 },
       { form: 'event_booking', step: 'opened', reason: null, count: 2 },
+      { form: 'event_booking', step: 'recovered', reason: 'no_security_token', count: 1 },
+      { form: 'event_booking', step: 'started', reason: null, count: 1 },
       { form: 'event_booking', step: 'submit_pressed', reason: null, count: 1 },
     ])
     expect(summaryNeedsSending(summary)).toBe(true)
@@ -130,13 +138,16 @@ describe('buildDailyFunnelEmail', () => {
     expect(email.text).toContain('- Table bookings: Refused, no security check token: the check never loaded or was not finished. 1 time.')
     expect(email.text).toContain('- Table searches: 3.')
     expect(email.text).toContain('- Could not check (the guest was asked to try again or ring): 1.')
-    expect(email.text).toContain('- Event booking form: opened 2, submit pressed 1, sent 0.')
-    expect(email.text).toContain('- Event booking form: the security check stalled or failed on 1 visit.')
+    expect(email.text).toContain('- Event booking form: opened 2, started filling in 1, submit pressed 1, sent 0.')
+    expect(email.text).toContain(
+      '- Event booking form: the security check held up 2 guests who had started filling in the form. Got through after all: 1. Never got through: 1. A guest held up is shown a warning and our phone number.',
+    )
     expect(email.text).toContain('https://management.example/table-bookings/reports')
   })
 
   describe('only says turned away when someone was', () => {
-    // The numbers from the email of 31 October 2026, which was headed "turned away" with nobody refused.
+    // Friday 30 October 2026: two guests were held up by the security check and booked anyway, at
+    // 10:34 and 19:33. Under the old count they were two of seven "stalled" visits.
     const form = (step: string, count: number, reason: string | null = null) => ({ form: 'event_booking', step, reason, count })
     const friday = (overrides: Partial<DailyFunnelSummary> = {}): DailyFunnelSummary => ({
       date: '2026-10-30',
@@ -144,34 +155,68 @@ describe('buildDailyFunnelEmail', () => {
       refusedTotal: 0,
       failedTotal: 0,
       availability: { searches: 25, noTables: 0, couldNotCheck: 0 },
-      forms: [form('opened', 22), form('submit_pressed', 3), form('blocked', 7, 'no_security_token'), form('sent', 3)],
+      forms: [
+        form('opened', 22),
+        form('started', 4),
+        form('submit_pressed', 3),
+        form('blocked', 2, 'no_security_token'),
+        form('recovered', 2, 'no_security_token'),
+        form('sent', 3),
+      ],
       truncated: false,
       readError: null,
       ...overrides,
     })
 
-    it('names a stalled security check as what it is, and still sends', () => {
-      const summary = friday()
+    it('sends nothing when every guest the security check held up got through after all', () => {
+      expect(summaryNeedsSending(friday())).toBe(false)
+    })
+
+    it('sends nothing for a crawler that opens the form and never types', () => {
+      // Sunday 1 November 2026: 316 opens in a burst, nobody typed, nobody pressed book.
+      expect(summaryNeedsSending(friday({ date: '2026-11-01', forms: [form('opened', 316)] }))).toBe(false)
+    })
+
+    it('names the guests the security check stopped, and still sends', () => {
+      const summary = friday({
+        forms: [
+          form('opened', 22),
+          form('started', 5),
+          form('submit_pressed', 3),
+          form('blocked', 3, 'no_security_token'),
+          form('recovered', 1, 'no_security_token'),
+          form('sent', 3),
+        ],
+      })
       const email = buildDailyFunnelEmail(summary, null)
 
       expect(summaryNeedsSending(summary)).toBe(true)
-      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check stalled or failed on 7 visits')
+      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check held up 2 guests who never got through')
       for (const part of [email.subject, email.html, email.text]) {
         expect(part).not.toMatch(/turned away|blocked before sending/i)
         expect(part).not.toMatch(/undefined|NaN|Invalid Date|null/)
         expect(part).not.toContain(String.fromCharCode(8212))
       }
       expect(email.text).toContain('No booking was refused or failed on Friday 30 October.')
-      expect(email.text).toContain('- Event booking form: opened 22, submit pressed 3, sent 3.')
+      expect(email.text).toContain('- Event booking form: opened 22, started filling in 5, submit pressed 3, sent 3.')
       expect(email.text).toContain(
-        '- Event booking form: the security check stalled or failed on 7 visits. This counts even if nobody presses book: a guest may still book once the check finishes, and a robot counts the same as a person. A guest held up is shown a warning and our phone number.',
+        '- Event booking form: the security check held up 3 guests who had started filling in the form. Got through after all: 1. Never got through: 2. A guest held up is shown a warning and our phone number.',
       )
     })
 
-    it('says one visit in the singular', () => {
+    it('says one guest in the singular', () => {
       const email = buildDailyFunnelEmail(friday({ forms: [form('blocked', 1, 'no_security_token')] }), null)
 
-      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check stalled or failed on 1 visit')
+      expect(email.subject).toBe('No website bookings refused on Friday 30 October: security check held up 1 guest who never got through')
+      expect(email.text).toContain('the security check held up 1 guest who had started filling in the form. Got through after all: 0. Never got through: 1.')
+    })
+
+    it('never counts more guests through than were held up', () => {
+      // A stall that reached us a moment after midnight, its recovery dated back to just before it.
+      const lines = [form('blocked', 1, 'no_security_token'), form('recovered', 2, 'no_security_token')]
+
+      expect(securityCheckStalls(lines)).toEqual({ heldUp: 1, gotThrough: 1, neverThrough: 0 })
+      expect(summaryNeedsSending(friday({ forms: lines }))).toBe(false)
     })
 
     it('does not call a missing detail turned away', () => {
@@ -190,7 +235,9 @@ describe('buildDailyFunnelEmail', () => {
 
       expect(email.subject).toBe('Website bookings turned away on Friday 30 October: 1 refused')
       expect(email.text).toContain('What the website turned away on Friday 30 October.')
-      expect(email.text).toContain('the security check stalled or failed on 7 visits')
+      expect(email.text).toContain(
+        'the security check held up 2 guests who had started filling in the form. Got through after all: 2. Never got through: 0.',
+      )
     })
 
     it.each([

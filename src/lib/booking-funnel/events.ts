@@ -23,10 +23,31 @@ export const FUNNEL_CODE_PATTERN = /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/
 /** A path with every segment already reduced to a slug or a placeholder (`/events/:id`). */
 export const FUNNEL_PAGE_PATTERN = /^(\/[A-Za-z0-9._~:-]*)+$/
 
-/** The booking forms that send signals, and what they can say (BK-191). */
+/**
+ * The booking forms that send signals, and what they can say (BK-191).
+ *
+ * `started` is the visitor's first change to the form, and `recovered` says the security check
+ * finished after it had held that visitor up (2 November 2026). The website now reports a held-up
+ * check only for a visitor who had started, because on 1 November a crawler that never typed a
+ * thing opened the form 316 times and was counted as 308 guests held up.
+ */
 export const BOOKING_FORMS = ['event_booking'] as const
-export const BOOKING_FORM_STEPS = ['opened', 'submit_pressed', 'blocked', 'sent'] as const
+export const BOOKING_FORM_STEPS = ['opened', 'started', 'submit_pressed', 'blocked', 'recovered', 'sent'] as const
 export const BOOKING_FORM_REASONS = ['missing_fields', 'no_security_token', 'server_refused', 'network'] as const
+
+/** The steps whose reason is kept: why a form was stopped, and what it got past after all. */
+export function formStepKeepsReason(step: string): boolean {
+  return step === 'blocked' || step === 'recovered'
+}
+
+/**
+ * A `recovered` signal says how long the check had held the visitor up, and is dated back to the
+ * moment it held them up. The daily summary counts each day on its own, so a recovery dated when
+ * it arrived would answer a different guest's stall whenever the two fell either side of
+ * midnight, and a guest the check really stopped could go unreported. A week is far longer than
+ * anyone keeps a booking form open.
+ */
+export const MAX_HELD_SECONDS = 7 * 24 * 60 * 60
 
 export async function recordFunnelEvent(supabase: AdminClient, event: FunnelEventInsert): Promise<boolean> {
   try {

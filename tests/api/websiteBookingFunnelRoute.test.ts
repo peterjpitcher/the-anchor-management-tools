@@ -4,8 +4,8 @@ import { createFakeDb, type FakeDb } from '../helpers/fakeSupabaseDb'
 
 /**
  * BK-101 and BK-191 (customer bookings review of 24 October 2026): the website's refusals and
- * failures, and the event booking form's opened / submit pressed / blocked / sent signals, are
- * recorded here so they can be counted. Codes only: anything shaped like a guest's details is
+ * failures, and the event booking form's opened / started / submit pressed / blocked / recovered /
+ * sent signals, are recorded here so they can be counted. Codes only: anything shaped like a guest's details is
  * refused, and nothing a caller sends is echoed back.
  */
 
@@ -79,14 +79,53 @@ describe('POST /api/website/booking-funnel', () => {
     expect(db.rows('booking_funnel_events')[0]).toMatchObject({ stage: 'failed', reason_code: 'CONTRACT_DRIFT', upstream_code: 'PRICE_CHANGED' })
   })
 
-  it('records a form signal, keeping the reason only for a blocked form', async () => {
+  it('records a form signal, keeping the reason only for a blocked or recovered form', async () => {
     await POST(post({ type: 'form', form: 'event_booking', step: 'blocked', reason: 'no_security_token', page: '/events/tasting-night-2026-11-20' }))
     await POST(post({ type: 'form', form: 'event_booking', step: 'opened', page: '/events/tasting-night-2026-11-20' }))
+    await POST(post({ type: 'form', form: 'event_booking', step: 'started', reason: 'no_security_token' }))
+    await POST(post({ type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token', held_seconds: 12 }))
 
     expect(db.rows('booking_funnel_events')).toEqual([
       expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'blocked', upstream_code: 'no_security_token' }),
       expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'opened', upstream_code: null }),
+      expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'started', upstream_code: null }),
+      expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'recovered', upstream_code: 'no_security_token' }),
     ])
+  })
+
+  it('dates a recovery back to the stall it answers, so a stall and its recovery share a day', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      // 00:00:30 on Monday 2 November (GMT), after a check that held the guest up at 23:59:00 on Sunday.
+      vi.setSystemTime(new Date('2026-11-02T00:00:30.000Z'))
+      const response = await POST(
+        post({ type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token', held_seconds: 90 }),
+      )
+
+      expect(response.status).toBe(202)
+      expect(db.rows('booking_funnel_events')[0]).toMatchObject({
+        reason_code: 'recovered',
+        occurred_at: '2026-11-01T23:59:00.000Z',
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('leaves every other signal dated when it arrives', async () => {
+    await POST(post({ type: 'form', form: 'event_booking', step: 'blocked', reason: 'no_security_token' }))
+
+    expect(db.rows('booking_funnel_events')[0]).not.toHaveProperty('occurred_at')
+  })
+
+  it.each([
+    ['a recovery that does not say how long the guest was held', { type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token' }],
+    ['a held time on any other step', { type: 'form', form: 'event_booking', step: 'blocked', reason: 'no_security_token', held_seconds: 5 }],
+    ['a held time longer than a week', { type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token', held_seconds: 604801 }],
+    ['a negative held time', { type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token', held_seconds: -1 }],
+  ])('refuses %s', async (_label, body) => {
+    expect((await POST(post(body))).status).toBe(400)
+    expect(db.rows('booking_funnel_events')).toHaveLength(0)
   })
 
   it.each([
