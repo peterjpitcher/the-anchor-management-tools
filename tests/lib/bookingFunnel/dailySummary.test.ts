@@ -12,7 +12,7 @@ import {
  * BK-101 (customer bookings review of 24 October 2026), owner decision D17: website refusals go
  * to the manager inbox as one summary a day. The summary counts one London day of
  * booking_funnel_events, leaves out keys that cannot make bookings (test and preview traffic,
- * BK-193), and is sent only when something was turned away.
+ * BK-193), and since 2 November 2026 is sent only when there is a problem, not for a refusal alone.
  */
 
 const WEBSITE_KEY = '00000000-0000-4000-8000-0000000000a1'
@@ -97,7 +97,8 @@ describe('loadDailyFunnelSummary', () => {
     expect(summary.refusedTotal).toBe(1)
     expect(summary.forms).toEqual([{ form: 'event_booking', step: 'opened', reason: null, count: 1200 }])
     expect(summary.truncated).toBe(false)
-    expect(summaryNeedsSending(summary)).toBe(true)
+    // An ordinary refusal on its own is not a problem, so it sends nothing.
+    expect(summaryNeedsSending(summary)).toBe(false)
   })
 
   it('has nothing to send on a quiet day', async () => {
@@ -263,6 +264,59 @@ describe('buildDailyFunnelEmail', () => {
       )
 
       expect(email.subject).toBe('Website bookings turned away on Friday 30 October: 4 refused')
+    })
+
+    describe('sends only when there is a problem (owner, 2 November 2026)', () => {
+      const refused = (reason: string, count = 1) => ({ route: 'api/table-bookings', stage: 'refused' as const, reason, upstreamCode: null, count })
+
+      it.each([
+        ['spam and bots', [refused('SPAM_HONEYPOT', 3), refused('SECURITY_CHECK_MISSING', 5)]],
+        ['a time outside online booking hours', [refused('OUTSIDE_HOURS', 2)]],
+        ['a detail the guest corrected', [refused('VALIDATION_FAILED')]],
+        ['a full night', [{ route: 'api/event-bookings', stage: 'refused' as const, reason: 'no_table', upstreamCode: 'no_table', count: 4 }]],
+      ])('sends nothing for refusals alone: %s', (_label, refusals) => {
+        const refusedTotal = refusals.reduce((sum, line) => sum + line.count, 0)
+        expect(summaryNeedsSending(friday({ refusals, refusedTotal }))).toBe(false)
+      })
+
+      it('sends nothing when the booking system said no and the form echoed it', () => {
+        // 28 October 2026: four refusals for no table, each also reported by the form as server_refused.
+        const summary = friday({
+          refusals: [{ route: 'api/event-bookings', stage: 'refused', reason: 'no_table', upstreamCode: 'no_table', count: 4 }],
+          refusedTotal: 4,
+          forms: [form('submit_pressed', 4), form('blocked', 4, 'server_refused')],
+        })
+        expect(summaryNeedsSending(summary)).toBe(false)
+      })
+
+      it('sends nothing for a missing detail', () => {
+        expect(summaryNeedsSending(friday({ forms: [form('blocked', 2, 'missing_fields')] }))).toBe(false)
+      })
+
+      it('sends for a failure on our side, and lists the day\'s refusals with it', () => {
+        const summary = friday({
+          refusals: [
+            { route: 'api/table-bookings', stage: 'failed', reason: 'UNEXPECTED_ERROR', upstreamCode: null, count: 1 },
+            refused('OUTSIDE_HOURS', 2),
+          ],
+          refusedTotal: 2,
+          failedTotal: 1,
+        })
+        expect(summaryNeedsSending(summary)).toBe(true)
+        expect(buildDailyFunnelEmail(summary, null).text).toContain('a time outside online booking hours')
+      })
+
+      it.each([
+        ['lost on the way', 'network'],
+        ['stopped for a reason this code does not know', 'a_new_reason'],
+        ['stopped with no reason recorded', null],
+      ])('sends for a form %s', (_label, reason) => {
+        expect(summaryNeedsSending(friday({ forms: [form('blocked', 1, reason)] }))).toBe(true)
+      })
+
+      it('sends when an availability check could not be worked out', () => {
+        expect(summaryNeedsSending(friday({ availability: { searches: 25, noTables: 0, couldNotCheck: 1 } }))).toBe(true)
+      })
     })
 
     it.each([
