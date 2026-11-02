@@ -27,6 +27,7 @@ import type { MarketingCampaignStats, MarketingCampaignStatus } from '@/types/ma
 
 import {
   CampaignStatusBadge,
+  LifecycleBadge,
   formatCountWithRate,
   formatDateTimeInLondon,
 } from './_shared/marketing-ui'
@@ -218,7 +219,10 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
                       <div className="text-xs text-text-muted">{campaign.subject}</div>
                     </TableCell>
                     <TableCell>
-                      <CampaignStatusBadge status={campaign.status} />
+                      <div className="flex flex-wrap gap-1">
+                        <CampaignStatusBadge status={campaign.status} />
+                        {campaign.kind === 'lifecycle' && <LifecycleBadge />}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {campaign.scheduledFor ? (

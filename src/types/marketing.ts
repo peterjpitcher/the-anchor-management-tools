@@ -65,6 +65,19 @@ export type MarketingSkipReason =
   | 'not_eligible'
   | 'campaign_cancelled'
   | 'already_booked'
+  /** Lifecycle only: the guest booked a table after they were selected, so no voucher. */
+  | 'booked_since_selection'
+  /** Lifecycle only: the control group, sent nothing so the lift can be measured. */
+  | 'holdout'
+  /** Lifecycle only: the kitchen is closed too much of the next 30 days for a voucher. */
+  | 'venue_closed'
+
+/**
+ * one_off: a single send to everyone eligible on `scheduledFor`.
+ * lifecycle: stays in sending and adds that day's audience on each London send day
+ * (the table-booking return-visit emails, migration 20261102210508).
+ */
+export type MarketingCampaignKind = 'one_off' | 'lifecycle'
 
 export type MarketingFailureClass = 'retryable' | 'terminal' | 'unknown'
 
@@ -130,6 +143,9 @@ export const MARKETING_SKIP_REASONS: readonly MarketingSkipReason[] = [
   'not_eligible',
   'campaign_cancelled',
   'already_booked',
+  'booked_since_selection',
+  'holdout',
+  'venue_closed',
 ]
 
 // ---------------------------------------------------------------------------
@@ -192,6 +208,24 @@ export interface BusinessContact {
 export interface MarketingAudience {
   includeTags: string[]
   excludeTags: string[]
+  /**
+   * The rule a lifecycle campaign selects by, kept exactly as stored (snake_case) because the
+   * database function reads it. Null for a one-off campaign. See `ReturnVisitFilter`.
+   */
+  customerFilter?: ReturnVisitFilter | null
+}
+
+/** `audience.customer_filter` for a table-booking return-visit campaign, as stored. */
+export interface ReturnVisitFilter {
+  rule: 'table_return_visit'
+  touch: 1 | 2
+  days_since_anchor_min?: number
+  days_since_anchor_max?: number
+  days_since_previous_touch_min?: number
+  previous_campaign_id?: string | null
+  include_no_shows?: boolean
+  voucher_type_id: string
+  voucher_valid_days?: number
 }
 
 export interface MarketingCampaign {
@@ -204,6 +238,18 @@ export interface MarketingCampaign {
   contentSchemaVersion: number
   rendererVersion: string
   contentHash: string | null
+
+  kind: MarketingCampaignKind
+  /** Lifecycle only: no guest is selected again by this campaign within this many days. */
+  cooldownDays: number | null
+  /** Lifecycle only: ISO weekdays (1 Monday to 7 Sunday) on which it adds that day's guests. */
+  sendDays: number[] | null
+  /** Lifecycle only: London time after which a send day's guests are added, "16:00:00". */
+  promoteAtLocal: string | null
+  /** Lifecycle only: the London date it last added guests. */
+  lastPromotedOn: string | null
+  /** Lifecycle only: share of the audience held back as the control group, 0 to 50. */
+  holdoutPercent: number
 
   /** Which list this goes to. Decides eligibility rules, not just who is picked. */
   audienceType: MarketingAudienceType
@@ -256,6 +302,11 @@ export interface MarketingCampaignRecipient {
 
   status: MarketingRecipientStatus
   skipReason: MarketingSkipReason | null
+
+  /** Lifecycle only: the visit that selected this guest, the voucher issued, and merge values. */
+  lifecycleAnchorDate: string | null
+  voucherId: string | null
+  mergeFields: Record<string, unknown> | null
 
   emailMessageId: string | null
   providerMessageId: string | null
@@ -552,12 +603,26 @@ export function mapMarketingAudience(value: DbRow): MarketingAudience {
   return {
     includeTags: toStringArray(value?.include_tags),
     excludeTags: toStringArray(value?.exclude_tags),
+    customerFilter:
+      value?.customer_filter && typeof value.customer_filter === 'object' && value.customer_filter.rule === 'table_return_visit'
+        ? (value.customer_filter as ReturnVisitFilter)
+        : null,
   }
 }
 
 /** Back to the stored shape. The database and the RPCs read snake_case keys. */
-export function audienceToDb(audience: MarketingAudience): { include_tags: string[]; exclude_tags: string[] } {
-  return { include_tags: audience.includeTags, exclude_tags: audience.excludeTags }
+export function audienceToDb(audience: MarketingAudience): {
+  include_tags: string[]
+  exclude_tags: string[]
+  customer_filter?: ReturnVisitFilter
+} {
+  return {
+    include_tags: audience.includeTags,
+    exclude_tags: audience.excludeTags,
+    // Dropping this on an edit would turn a lifecycle campaign into one with no rule, which the
+    // database refuses; keeping it means an edit to the copy leaves the audience alone.
+    ...(audience.customerFilter ? { customer_filter: audience.customerFilter } : {}),
+  }
 }
 
 export function mapMarketingCampaign(row: DbRow): MarketingCampaign {
@@ -571,6 +636,13 @@ export function mapMarketingCampaign(row: DbRow): MarketingCampaign {
     contentSchemaVersion: row.content_schema_version,
     rendererVersion: row.renderer_version,
     contentHash: row.content_hash ?? null,
+
+    kind: row.kind === 'lifecycle' ? 'lifecycle' : 'one_off',
+    cooldownDays: row.cooldown_days ?? null,
+    sendDays: Array.isArray(row.send_days) ? row.send_days.map(Number) : null,
+    promoteAtLocal: row.promote_at_local ?? null,
+    lastPromotedOn: row.last_promoted_on ?? null,
+    holdoutPercent: Number(row.holdout_percent ?? 0),
 
     audienceType: row.audience_type === 'customer' ? 'customer' : 'business',
     audience: mapMarketingAudience(row.audience),
@@ -610,6 +682,10 @@ export function mapMarketingCampaignRecipient(row: DbRow): MarketingCampaignReci
 
     status: row.status,
     skipReason: row.skip_reason ?? null,
+
+    lifecycleAnchorDate: row.lifecycle_anchor_date ?? null,
+    voucherId: row.voucher_id ?? null,
+    mergeFields: row.merge_fields && typeof row.merge_fields === 'object' ? row.merge_fields : null,
 
     emailMessageId: row.email_message_id ?? null,
     providerMessageId: row.provider_message_id ?? null,

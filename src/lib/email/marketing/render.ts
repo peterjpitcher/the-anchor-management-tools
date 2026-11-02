@@ -74,6 +74,12 @@ export interface DeliveryContext {
    * records it on the click, which is what makes a click attributable to a person.
    */
   recipientRef?: string
+  /**
+   * This guest's last party size, added to links to the booking page as `party_size` so the
+   * form opens on their usual table. Lifecycle campaigns only. The redirector passes the
+   * parameter through to the destination.
+   */
+  bookingPartySize?: number | null
 }
 
 /** Absolute URLs in href attributes, ignoring mailto and tel. */
@@ -153,6 +159,21 @@ function withRecipientRef(url: string, recipientRef: string | undefined): string
   }
 }
 
+const BOOKING_PAGE = /^https?:\/\/(www\.)?the-anchor\.pub\/book-table(\/|$|\?|#)/i
+
+/** Adds `party_size` to a link, unless the link already sets one. */
+function withPartySize(url: string, partySize: number | null | undefined): string {
+  if (!partySize) return url
+  try {
+    const parsed = new URL(url)
+    if (parsed.searchParams.has('party_size')) return url
+    parsed.searchParams.set('party_size', String(partySize))
+    return parsed.toString()
+  } catch {
+    return url
+  }
+}
+
 /** Delivery stage. Substitutes the unsubscribe URL and rewrites campaign links. */
 export function applyDeliveryTransforms(html: string, context: DeliveryContext): string {
   if (!context.unsubscribeUrl) {
@@ -167,13 +188,14 @@ export function applyDeliveryTransforms(html: string, context: DeliveryContext):
     if (rawUrl === context.unsubscribeUrl) return match
 
     const decoded = rawUrl.replace(/&amp;/g, '&')
+    const partySize = BOOKING_PAGE.test(decoded) ? context.bookingPartySize : null
     const mapped = context.linkMap?.[decoded]
     if (mapped) {
-      const tracked = withRecipientRef(mapped, context.recipientRef)
+      const tracked = withPartySize(withRecipientRef(mapped, context.recipientRef), partySize)
       return `href="${tracked.replace(/&/g, '&amp;')}"`
     }
 
-    const tagged = applyUtm(decoded, context.utm)
+    const tagged = withPartySize(applyUtm(decoded, context.utm), partySize)
     return `href="${tagged.replace(/&/g, '&amp;')}"`
   })
 
