@@ -29,7 +29,13 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendEmail } from '@/lib/email/emailService'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
-import { getIsoWeekday, getTodayIsoDate, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import {
+  getIsoWeekday,
+  getTodayIsoDate,
+  parseLondonDateTimeLocalToIso,
+  shiftIsoDate,
+  toLocalIsoDate,
+} from '@/lib/dateUtils'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { getAppUrl } from '@/lib/env'
 import { getErrorMessage } from '@/lib/errors'
@@ -124,6 +130,12 @@ const CHASER_EMAIL_KINDS = new Set(['chase', 'reminder_weekly', 'reminder_combin
  * to: the first run after it was added, or when the earlier runs cannot be read.
  */
 const COPIES_LOOKBACK_DAYS = 7
+
+/** Rows per page of the copies check: the most Supabase returns in one read. */
+const COPIES_PAGE_SIZE = 1000
+
+/** Pages the copies check reads before it gives up and leaves its marker where it was. */
+const COPIES_MAX_PAGES = 20
 
 // The vendor columns are the ones the invoice PDF prints and the pay online line checks. The
 // reminder says "I've attached another copy", so the copy must match the original: the old job
@@ -497,30 +509,51 @@ async function loadEarlierRuns(supabase: AdminClient, today: string): Promise<Ea
 async function loadCopiesLeftOff(context: RunContext, checkedTo: string | null): Promise<SummaryCopiesLeftOffEntry[]> {
   const { supabase, today } = context
   const from = checkedTo && checkedTo < today ? checkedTo : shiftIsoDate(today, -COPIES_LOOKBACK_DAYS) ?? today
-
-  const { data: emails, error: emailsError } = await supabase
-    .from('email_messages')
-    .select('invoice_id, subject, status, metadata, created_at')
-    .eq('direction', 'outbound')
-    .not('invoice_id', 'is', null)
-    // A day early, because a London date can begin the evening before in UTC. Each email is then
-    // placed on the London date of the same column below, so none can fall between two runs.
-    .gte('created_at', `${shiftIsoDate(from, -1) ?? from}T00:00:00.000Z`)
-    .order('created_at', { ascending: true })
-    .limit(1000)
-
-  if (emailsError) {
-    throw new Error(`Could not read recent invoice emails: ${emailsError.message}`)
+  // The London days themselves, as instants: a London date can begin the evening before in UTC.
+  const fromInstant = parseLondonDateTimeLocalToIso(`${from}T00:00`)
+  const todayInstant = parseLondonDateTimeLocalToIso(`${today}T00:00`)
+  if (!fromInstant || !todayInstant) {
+    throw new Error(`Could not work out the days to check (${from} to ${today})`)
   }
 
   type EmailRow = {
+    id?: string | null
     invoice_id?: string | null
     subject?: string | null
     status?: string | null
     metadata?: unknown
     created_at?: string | null
   }
-  const leftOff = ((emails ?? []) as EmailRow[]).flatMap((row) => {
+  // Every row, page by page, until a page comes back empty: the marker moves on only once the
+  // whole period has been read, or a copy left off past one page would never be reported. An
+  // empty page, not a short one, ends it, so a lower row cap on the server cannot stop it early.
+  // Past the cap it fails, and the next summary tries the same days again.
+  const emails: EmailRow[] = []
+  for (let page = 0; ; page += 1) {
+    if (page >= COPIES_MAX_PAGES) {
+      throw new Error(`More than ${COPIES_MAX_PAGES * COPIES_PAGE_SIZE} invoice emails to check, so the check was not finished`)
+    }
+    const { data, error } = await supabase
+      .from('email_messages')
+      .select('id, invoice_id, subject, status, metadata, created_at')
+      .eq('direction', 'outbound')
+      .not('invoice_id', 'is', null)
+      .gte('created_at', fromInstant)
+      .lt('created_at', todayInstant)
+      // Ordered on a unique column too, so no row can move between pages.
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(emails.length, emails.length + COPIES_PAGE_SIZE - 1)
+
+    if (error) {
+      throw new Error(`Could not read recent invoice emails: ${error.message}`)
+    }
+    const rows = (data ?? []) as EmailRow[]
+    if (rows.length === 0) break
+    emails.push(...rows)
+  }
+
+  const leftOff = emails.flatMap((row) => {
     const date = londonDateOf(row.created_at)
     // An email that never went is reported as a failure elsewhere; its copies do not matter.
     if (!row.invoice_id || !date || date < from || date >= today || !countsAsCustomerInvoiceEmail(row)) return []
