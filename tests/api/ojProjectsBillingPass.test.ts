@@ -544,9 +544,9 @@ describe('OJ billing cron: a pass cut short is carried on the next weekday', () 
 
   // An earlier attempt raised the invoice and failed before emailing it. The retry sends that
   // same draft; it must not raise a second invoice.
-  it('re-sends a draft left by a failed attempt, in the new wording, without a second invoice', async () => {
+  function deltaDraftLeftByAFailedAttempt() {
     at('2026-11-03T09:05:00Z')
-    const db = makeDb({
+    return makeDb({
       cron_job_runs: [passRecord('running')],
       invoice_vendors: [vendor('vendor-d', 'Delta Ltd')],
       oj_billing_runs: [
@@ -587,6 +587,10 @@ describe('OJ billing cron: a pass cut short is carried on the next weekday', () 
         },
       ],
     })
+  }
+
+  it('re-sends a draft left by a failed attempt, in the new wording, without a second invoice', async () => {
+    const db = deltaDraftLeftByAFailedAttempt()
     vi.mocked(resolveInvoiceGreetingName).mockResolvedValue(null)
     vi.mocked(createAdminClient).mockReturnValue(db.client as any)
 
@@ -602,6 +606,42 @@ describe('OJ billing cron: a pass cut short is carried on the next weekday', () 
     expect(body).not.toContain('breakdown')
     expect(body).not.toContain('Delta Ltd')
     expect(options).toEqual({ emailKind: 'invoice' })
+  })
+
+  // The sender leaves a copied address on the block list off the email, and says so.
+  const copiedWithOneBlocked = { to: 'accounts@example.com', cc: ['ops@example.com', 'bounced@example.com'] }
+  const sentWithoutTheBlockedCopy = { success: true, ccKept: ['ops@example.com'], ccDropped: ['bounced@example.com'] }
+  const loggedFor = (db: ReturnType<typeof makeDb>, invoiceId: string) =>
+    db.tables.invoice_email_logs.filter((row) => row.invoice_id === invoiceId).map((row) => [row.sent_to, row.status])
+
+  it('logs only the copies a new invoice email actually went to, never a blocked one', async () => {
+    const db = tuesdayAfterACutShortMonday()
+    vi.mocked(createAdminClient).mockReturnValue(db.client as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue(copiedWithOneBlocked)
+    vi.mocked(sendInvoiceEmail).mockResolvedValue(sentWithoutTheBlockedCopy)
+
+    await run()
+
+    const invoice = db.tables.invoices.find((row) => row.vendor_id === 'vendor-b')!
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][4]).toEqual(copiedWithOneBlocked.cc)
+    expect(loggedFor(db, invoice.id)).toEqual([
+      ['accounts@example.com', 'sent'],
+      ['ops@example.com', 'sent'],
+    ])
+  })
+
+  it('logs only the copies a re-sent draft actually went to, never a blocked one', async () => {
+    const db = deltaDraftLeftByAFailedAttempt()
+    vi.mocked(createAdminClient).mockReturnValue(db.client as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue(copiedWithOneBlocked)
+    vi.mocked(sendInvoiceEmail).mockResolvedValue(sentWithoutTheBlockedCopy)
+
+    await run()
+
+    expect(loggedFor(db, 'invoice-d')).toEqual([
+      ['accounts@example.com', 'sent'],
+      ['ops@example.com', 'sent'],
+    ])
   })
 
   it('leaves the pass open when a client is still in flight in another invocation', async () => {

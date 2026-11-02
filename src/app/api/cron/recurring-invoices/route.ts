@@ -454,7 +454,7 @@ export async function GET(request: Request) {
         // accepted (below), the order the OJ Projects billing run uses. Marking it first left an
         // invoice whose email failed looking delivered, with no sent_at, so it was never retried
         // and never chased.
-        const emailResult: { success: boolean; error?: string; uncertain?: boolean } = emailDraft
+        const emailResult: { success: boolean; error?: string; uncertain?: boolean; ccKept?: string[] } = emailDraft
           ? await sendInvoiceEmail(
               fullInvoice as InvoiceWithDetails,
               recipientResult.to,
@@ -549,6 +549,8 @@ export async function GET(request: Request) {
           )
         }
 
+        // Copies from what the sender actually used: a blocked address was left off the email
+        // and must not be logged as sent to.
         const { error: sentEmailLogError } = await supabase
           .from('invoice_email_logs')
           .insert([
@@ -560,7 +562,7 @@ export async function GET(request: Request) {
               body,
               status: 'sent'
             },
-            ...recipientResult.cc.map((cc) => ({
+            ...(emailResult.ccKept ?? []).map((cc) => ({
               invoice_id: fullInvoice.id,
               sent_to: cc,
               sent_by: null,

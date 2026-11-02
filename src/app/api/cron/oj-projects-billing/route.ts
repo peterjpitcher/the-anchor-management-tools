@@ -2844,9 +2844,13 @@ export async function GET(request: Request) {
 
         let claimHeld = sendClaim.state === 'claimed'
         const skipEmailSend = sendClaim.state === 'replay'
+        // The copies the email actually went to, for the log below. A blocked address is left
+        // off by the sender and must not be logged as sent to.
+        let copiedTo: string[] = []
 
         if (!skipEmailSend) {
           const sendRes = await sendInvoiceEmail(invoice, recipients.to, subject, body, recipients.cc, additionalAttachments, { emailKind: 'invoice' })
+          copiedTo = sendRes.ccKept ?? []
           if (!sendRes.success) {
             if (claimHeld) {
               try {
@@ -3013,7 +3017,7 @@ export async function GET(request: Request) {
           if (toLogError) {
             console.error('Failed to write OJ billing invoice send log (to):', toLogError)
           }
-          for (const cc of recipients.cc) {
+          for (const cc of copiedTo) {
             const { error: ccLogError } = await supabase.from('invoice_email_logs').insert({
               invoice_id: invoice.id,
               sent_to: cc,
@@ -3731,9 +3735,13 @@ export async function GET(request: Request) {
 
       let claimHeld = sendClaim.state === 'claimed'
       const skipEmailSend = sendClaim.state === 'replay'
+      // The copies the email actually went to, for the log below. A blocked address is left off
+      // by the sender and must not be logged as sent to.
+      let copiedTo: string[] = []
 
       if (!skipEmailSend) {
         const sendRes = await sendInvoiceEmail(fullInvoice, recipients.to, subject, body, recipients.cc, additionalAttachments, { emailKind: 'invoice' })
+        copiedTo = sendRes.ccKept ?? []
         if (!sendRes.success) {
           if (claimHeld) {
             try {
@@ -3895,7 +3903,7 @@ export async function GET(request: Request) {
         if (toLogError) {
           console.error('Failed to write OJ billing invoice send log (to):', toLogError)
         }
-        for (const cc of recipients.cc) {
+        for (const cc of copiedTo) {
           const { error: ccLogError } = await supabase.from('invoice_email_logs').insert({
             invoice_id: invoiceId,
             sent_to: cc,

@@ -171,16 +171,33 @@ describe('sendInvoiceEmail copied addresses', () => {
       cc_dropped: ['bounced@example.com'],
       cc: ['ops@example.com'],
     })
+    // The caller is told too, so its own log can say who was really copied.
+    expect(result).toMatchObject({ ccKept: ['ops@example.com'], ccDropped: ['bounced@example.com'] })
   })
 
   it('keeps a copied address when the block list cannot be read', async () => {
     mocks.getEmailSuppressionStatus.mockResolvedValue('unavailable')
 
-    await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body', ['ops@example.com'])
+    const result = await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body', ['ops@example.com'])
 
     const payload = sentPayload()
     expect(payload.cc).toEqual(['ops@example.com'])
     expect(payload.metadata).toMatchObject({ cc_dropped: [], cc: ['ops@example.com'] })
+    expect(result).toMatchObject({ ccKept: ['ops@example.com'], ccDropped: [] })
+  })
+
+  it('tells the caller which copies were used even when the provider refuses the email', async () => {
+    mocks.getEmailSuppressionStatus.mockImplementation(async (address: string) =>
+      address === 'bounced@example.com' ? 'suppressed' : 'clear',
+    )
+    mocks.sendEmail.mockResolvedValueOnce({ success: false, error: 'Mailbox unavailable' })
+
+    const result = await sendInvoiceEmail(invoice(), 'accounts@example.com', 'Subject', 'Body', [
+      'ops@example.com',
+      'bounced@example.com',
+    ])
+
+    expect(result).toMatchObject({ success: false, ccKept: ['ops@example.com'], ccDropped: ['bounced@example.com'] })
   })
 
   it('keeps a copied address and still sends when the check itself throws', async () => {
