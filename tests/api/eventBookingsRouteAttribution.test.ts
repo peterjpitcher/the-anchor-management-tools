@@ -473,7 +473,6 @@ describe('POST /api/event-bookings: attribution labels', () => {
       ['a phone number that is too short', { phone: '123' }],
       ['no seats', { seats: 0 }],
       ['too many seats', { seats: 21 }],
-      ['a malformed email', { email: 'not-an-email' }],
       ['an unknown seating preference', { seating_preference: 'floor' }],
       ['a malformed expected date', { expected_event_date: '01/01/2999' }],
       ['an unknown dining request', { dining_request: 'promised_meal' }],
@@ -483,6 +482,16 @@ describe('POST /api/event-bookings: attribution labels', () => {
 
       expect(response.status).toBe(400)
       expect((await response.json()).error.code).toBe('VALIDATION_ERROR')
+      expect(claimIdempotencyKey).not.toHaveBeenCalled()
+      expect(EventBookingService.createBooking).not.toHaveBeenCalled()
+    })
+
+    // Its own code, so the website asks the guest to fix it instead of reporting a rules mismatch.
+    it('a malformed email', async () => {
+      const response = await POST(buildRequest({ ...BASE_BOOKING, ...GOOD_TAGS, email: 'not-an-email' }))
+
+      expect(response.status).toBe(400)
+      expect((await response.json()).error.code).toBe('INVALID_EMAIL')
       expect(claimIdempotencyKey).not.toHaveBeenCalled()
       expect(EventBookingService.createBooking).not.toHaveBeenCalled()
     })

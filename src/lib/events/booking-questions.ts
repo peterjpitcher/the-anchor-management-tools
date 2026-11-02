@@ -77,6 +77,8 @@ export const staffEventAttendeesInputSchema = z.array(staffEventAttendeeInputSch
 export type StaffEventAttendeeInput = z.infer<typeof staffEventAttendeeInputSchema>
 
 export const INVALID_GUEST_PHONE_MESSAGE = 'Please check the guest mobile numbers'
+/** Its own code on the public route, like INVALID_PHONE (src/lib/phone/uk-mobile.ts): the guest's to correct, not a rules mismatch. */
+export const INVALID_GUEST_PHONE_CODE = 'INVALID_GUEST_PHONE'
 
 /**
  * Normalises one guest phone to E.164, or returns null for a blank one. Throws on a number that

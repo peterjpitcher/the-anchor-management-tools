@@ -109,7 +109,9 @@ describe('public paid guest boundary', () => {
   it('refuses a guest mobile that cannot be a phone number, before creating a customer', async () => {
     const response = await POST(request({ ...payload, attendees: [{ ...attendee, phone: '12' }] }))
     expect(response.status).toBe(400)
-    expect((await response.json()).error).toBe('Please check the guest mobile numbers')
+    const body = await response.json()
+    expect(body.error).toBe('Please check the guest mobile numbers')
+    expect(body.code).toBe('INVALID_GUEST_PHONE')
     expect(mocks.customer).not.toHaveBeenCalled()
     expect(mocks.create).not.toHaveBeenCalled()
   })
