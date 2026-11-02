@@ -110,6 +110,58 @@ describe('public booking routes: a number that cannot take texts', () => {
     expect(ensureCustomerForPhone).not.toHaveBeenCalled()
   })
 
+  // 2 November 2026: a North American number typed with its 1 but no plus cannot be read. The
+  // answer has its own code, because the website reports VALIDATION_ERROR as a rules mismatch.
+  it('table booking: an unreadable number has its own code and resolves no customer', async () => {
+    const response = await postTableBooking(tableRequest({ phone: '1 919 555 0123', email: 'pat@example.com' }) as any)
+    const payload = await response.json()
+
+    expect(response.status).toBe(400)
+    expect(payload).toMatchObject({ success: false, code: 'INVALID_PHONE' })
+    expect(JSON.stringify(payload)).toContain('start it with + and the country code')
+    expect(ensureCustomerForPhone).not.toHaveBeenCalled()
+  })
+
+  it('event booking: an unreadable number has its own code', async () => {
+    const request = new NextRequest('http://localhost/api/event-bookings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'idem-1' },
+      body: JSON.stringify({ event_id: '11111111-1111-4111-8111-111111111111', phone: '1 919 555 0123', email: 'pat@example.com', first_name: 'Pat', seats: 2 }),
+    })
+    const response = await postEventBooking(request as any)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'INVALID_PHONE' })
+    expect(ensureCustomerForPhone).not.toHaveBeenCalled()
+  })
+
+  it('table booking: an email the schema refuses has its own code', async () => {
+    const response = await postTableBooking(tableRequest({ phone: UK_MOBILE, email: 'pat@example.com.' }) as any)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ success: false, code: 'INVALID_EMAIL' })
+    expect(ensureCustomerForPhone).not.toHaveBeenCalled()
+  })
+
+  it('table booking: a bad email beside another bad field stays a general validation error', async () => {
+    const response = await postTableBooking(tableRequest({ phone: UK_MOBILE, email: 'pat@example.com.', time: '25:00' }) as any)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'VALIDATION_ERROR' })
+  })
+
+  it('event booking: an email the schema refuses has its own code', async () => {
+    const request = new NextRequest('http://localhost/api/event-bookings', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'idempotency-key': 'idem-1' },
+      body: JSON.stringify({ event_id: '11111111-1111-4111-8111-111111111111', phone: UK_MOBILE, email: 'pat..x@example.com', first_name: 'Pat', seats: 2 }),
+    })
+    const response = await postEventBooking(request as any)
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({ code: 'INVALID_EMAIL' })
+  })
+
   it('event waitlist: closed, so it writes nothing and says to call (BK-138)', async () => {
     const request = new NextRequest('http://localhost/api/event-waitlist', {
       method: 'POST',

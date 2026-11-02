@@ -25,6 +25,7 @@ import { attributionLabel, attributionNumber, attributionUrl, cleanAttributionUr
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
+import { INVALID_EMAIL_CODE, INVALID_EMAIL_MESSAGE, INVALID_PHONE_CODE, INVALID_PHONE_MESSAGE, isOnlyEmailInvalid } from '@/lib/bookings/contact-refusals'
 import { logger } from '@/lib/logger'
 import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/consent/validation'
 import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
@@ -34,7 +35,7 @@ import {
 } from '@/lib/events/sunday-lunch-only-policy'
 import { getEventAmountDueForBooking } from '@/lib/events/event-payments'
 import { EventBookingService } from '@/services/event-bookings'
-import { eventAttendeesInputSchema, bookingQuestionsSchema, INVALID_GUEST_PHONE_MESSAGE, normaliseAttendeePhones, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
+import { eventAttendeesInputSchema, bookingQuestionsSchema, INVALID_GUEST_PHONE_CODE, INVALID_GUEST_PHONE_MESSAGE, normaliseAttendeePhones, QUESTIONS_CHANGED_MESSAGE, requiresGuestDetails, validateEventAttendees } from '@/lib/events/booking-questions'
 import { normalizeAttendeeNames } from '@/lib/events/attendee-names'
 import { eventTicketTypesEnabled, type TicketSelectionInput } from '@/lib/events/ticket-types'
 import { getDefaultTicketTypeId, decideTicketSelectionHandling } from '@/lib/events/ticket-type-queries'
@@ -200,6 +201,9 @@ export async function POST(request: NextRequest) {
 
     const parsed = CreateEventBookingSchema.safeParse(body)
     if (!parsed.success) {
+      if (isOnlyEmailInvalid(parsed.error.issues)) {
+        return createErrorResponse(INVALID_EMAIL_MESSAGE, INVALID_EMAIL_CODE, 400, { issues: parsed.error.issues })
+      }
       return createErrorResponse(
         parsed.error.issues[0]?.message || 'Invalid event booking payload',
         'VALIDATION_ERROR',
@@ -214,7 +218,7 @@ export async function POST(request: NextRequest) {
         defaultCountryCode: parsed.data.default_country_code
       })
     } catch {
-      return createErrorResponse('Please enter a valid phone number', 'VALIDATION_ERROR', 400)
+      return createErrorResponse(INVALID_PHONE_MESSAGE, INVALID_PHONE_CODE, 400)
     }
 
     // A landline or non-UK number cannot take our texts, so without an email the guest would get
@@ -235,7 +239,7 @@ export async function POST(request: NextRequest) {
     // D5). Normalised to E.164 here; one that cannot be a phone number is the guest's to fix.
     const attendees = normaliseAttendeePhones(parsed.data.attendees)
     if (attendees === null) {
-      return createErrorResponse(INVALID_GUEST_PHONE_MESSAGE, 'VALIDATION_ERROR', 400)
+      return createErrorResponse(INVALID_GUEST_PHONE_MESSAGE, INVALID_GUEST_PHONE_CODE, 400)
     }
 
     const requestHash = computeIdempotencyRequestHash({
