@@ -54,6 +54,7 @@ import {
   type InvoiceEmailDraft,
   type InvoiceEmailKind,
 } from './email-copy'
+import { invoiceEmailKindLabel } from './email-history'
 import { countsAsCustomerInvoiceEmail, emailMetadata } from './email-log-rules'
 import { resolveInvoiceGreetingName } from './greeting'
 import { invoiceRemindersGoLiveDate, invoiceWeeklyRemindersFrom } from './release-switches'
@@ -76,6 +77,7 @@ import {
   parseRunState,
   serialiseRunState,
   type ReminderRunState,
+  type SummaryCopiesLeftOffEntry,
   type SummaryDelivery,
   type SummaryGoingNextEntry,
   type SummaryNeedsYouEntry,
@@ -116,6 +118,12 @@ const CHASER_LOOKBACK_DAYS = WEEKLY_GAP_DAYS + 1
 
 /** Logged emails that start a client's seven-day weekly clock. */
 const CHASER_EMAIL_KINDS = new Set(['chase', 'reminder_weekly', 'reminder_combined'])
+
+/**
+ * How far back the check for copies left off looks when no earlier summary records where it got
+ * to: the first run after it was added, or when the earlier runs cannot be read.
+ */
+const COPIES_LOOKBACK_DAYS = 7
 
 // The vendor columns are the ones the invoice PDF prints and the pay online line checks. The
 // reminder says "I've attached another copy", so the copy must match the original: the old job
@@ -412,6 +420,11 @@ interface EarlierRuns {
   previousNeedsYouKeys: string[] | null
   /** What the latest earlier run recorded, when its summary never reached the owner. */
   carriedOver: { sent: SummarySentEntry[]; problems: SummaryProblemEntry[] } | null
+  /**
+   * Where the latest summary that reached the owner stopped checking for copies left off, or
+   * null when none records it.
+   */
+  copiesCheckedTo: string | null
   readFailed: boolean
 }
 
@@ -426,7 +439,7 @@ async function loadEarlierRuns(supabase: AdminClient, today: string): Promise<Ea
 
   if (error) {
     console.error('[invoice-reminders] Could not read earlier runs:', error.message)
-    return { previousNeedsYouKeys: null, carriedOver: null, readFailed: true }
+    return { previousNeedsYouKeys: null, carriedOver: null, copiesCheckedTo: null, readFailed: true }
   }
 
   const states = ((data ?? []) as Array<{ result?: unknown }>).map((row) => parseRunState(row.result))
@@ -458,7 +471,96 @@ async function loadEarlierRuns(supabase: AdminClient, today: string): Promise<Ea
   // keys are what the owner's picture of the list should be.
   const lastSeen = states.find((state) => state && (state.summary === 'accepted' || state.summary === 'not_needed'))
 
-  return { previousNeedsYouKeys: lastSeen ? lastSeen.needs_you_keys : null, carriedOver, readFailed: false }
+  // Only a summary that reached the owner counts, so a lost one's copies left off are found
+  // again by the next check rather than carried.
+  const lastCopiesCheck = states.find(
+    (state) => state && (state.summary === 'accepted' || state.summary === 'not_needed') && state.copies_checked_to
+  )
+
+  return {
+    previousNeedsYouKeys: lastSeen ? lastSeen.needs_you_keys : null,
+    carriedOver,
+    copiesCheckedTo: lastCopiesCheck?.copies_checked_to ?? null,
+    readFailed: false,
+  }
+}
+
+/**
+ * Invoice emails sent on London dates from `checkedTo` up to yesterday that went without one or
+ * more of their copies, from every sender: the billing run, a manual send, a receipt, a chase,
+ * this job. The sender leaves a blocked copied address off and records it in the email's
+ * `metadata.cc_dropped`, but still reports the email as sent, so without this nobody is told.
+ *
+ * Today's emails, this run's own reminders among them, are left for the next run, so each day is
+ * checked once. Throws when the emails cannot be read.
+ */
+async function loadCopiesLeftOff(context: RunContext, checkedTo: string | null): Promise<SummaryCopiesLeftOffEntry[]> {
+  const { supabase, today } = context
+  const from = checkedTo && checkedTo < today ? checkedTo : shiftIsoDate(today, -COPIES_LOOKBACK_DAYS) ?? today
+
+  const { data: emails, error: emailsError } = await supabase
+    .from('email_messages')
+    .select('invoice_id, subject, status, metadata, created_at')
+    .eq('direction', 'outbound')
+    .not('invoice_id', 'is', null)
+    // A day early, because a London date can begin the evening before in UTC. Each email is then
+    // placed on the London date of the same column below, so none can fall between two runs.
+    .gte('created_at', `${shiftIsoDate(from, -1) ?? from}T00:00:00.000Z`)
+    .order('created_at', { ascending: true })
+    .limit(1000)
+
+  if (emailsError) {
+    throw new Error(`Could not read recent invoice emails: ${emailsError.message}`)
+  }
+
+  type EmailRow = {
+    invoice_id?: string | null
+    subject?: string | null
+    status?: string | null
+    metadata?: unknown
+    created_at?: string | null
+  }
+  const leftOff = ((emails ?? []) as EmailRow[]).flatMap((row) => {
+    const date = londonDateOf(row.created_at)
+    // An email that never went is reported as a failure elsewhere; its copies do not matter.
+    if (!row.invoice_id || !date || date < from || date >= today || !countsAsCustomerInvoiceEmail(row)) return []
+    const dropped = emailMetadata(row).cc_dropped
+    const copies = Array.isArray(dropped)
+      ? dropped.filter((value) => typeof value === 'string' && value.trim() !== '').length
+      : 0
+    return copies > 0 ? [{ row, invoiceId: row.invoice_id, date, copies }] : []
+  })
+  if (leftOff.length === 0) return []
+
+  const { data: invoices, error: invoicesError } = await supabase
+    .from('invoices')
+    .select('id, invoice_number, vendor:invoice_vendors(name)')
+    .in('id', [...new Set(leftOff.map((entry) => entry.invoiceId))])
+
+  if (invoicesError) {
+    throw new Error(`Could not read the invoices those emails were for: ${invoicesError.message}`)
+  }
+
+  type InvoiceRow = { id?: string | null; invoice_number?: string | null; vendor?: unknown }
+  const invoiceById = new Map<string, InvoiceRow>()
+  for (const invoice of (invoices ?? []) as InvoiceRow[]) {
+    if (invoice.id) invoiceById.set(invoice.id, invoice)
+  }
+
+  return leftOff.map(({ row, invoiceId, date, copies }) => {
+    const invoice = invoiceById.get(invoiceId)
+    const vendor = (Array.isArray(invoice?.vendor) ? invoice?.vendor[0] : invoice?.vendor) as { name?: unknown } | undefined
+    const recordedNumber = emailMetadata(row).invoice_number
+    return {
+      invoiceNumber:
+        invoice?.invoice_number?.trim() || (typeof recordedNumber === 'string' && recordedNumber.trim() ? recordedNumber : null),
+      clientName: typeof vendor?.name === 'string' && vendor.name.trim() ? vendor.name.trim() : null,
+      kindLabel: invoiceEmailKindLabel(row),
+      copies,
+      date,
+      url: invoiceUrl(context, invoiceId),
+    }
+  })
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1274,15 +1376,17 @@ async function attemptClientReminder(context: RunContext, batch: Candidate[]): P
   }
 
   // The older per-recipient log, which the Chase Payment dialog's "recent reminder" warning
-  // reads: one set of rows for each invoice the email covered. A failure here loses a log line,
-  // not an email.
+  // reads: one set of rows for each invoice the email covered. Copies are the ones the sender
+  // actually used: a blocked address was left off and must not be logged as sent to. A failure
+  // here loses a log line, not an email.
   try {
     const others = taken.length - 1
+    const copiedTo = result.ccKept ?? []
     const rows = taken.flatMap(({ candidate, stage }) => {
       const days = candidate.decision.action === 'send' ? candidate.decision.daysOverdue : 0
       const shared = others > 0 ? `, in one email with ${others} other ${others === 1 ? 'invoice' : 'invoices'}` : ''
       const body = `${stageTitle(stage)}, ${days} ${days === 1 ? 'day' : 'days'} overdue${shared}`
-      return [toAddress, ...recipients.cc].map((address) => ({
+      return [toAddress, ...copiedTo].map((address) => ({
         invoice_id: candidate.invoice.id,
         sent_to: address,
         sent_by: 'system',
@@ -1315,6 +1419,8 @@ interface RunCounts {
   going_next: number
   needs_you: number
   problems: number
+  /** Invoice emails reported as having gone without one or more of their copies. */
+  copies_left_off: number
   warnings: number
   summary: SummaryDelivery
 }
@@ -1601,6 +1707,21 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
     )
   }
 
+  // Not saved with the run: a summary that does not reach the owner leaves the check where it
+  // was, and the next run finds the same emails again.
+  let copiesLeftOff: SummaryCopiesLeftOffEntry[] = []
+  let copiesCheckedTo: string | null = null
+  try {
+    copiesLeftOff = await loadCopiesLeftOff(context, earlier.copiesCheckedTo)
+    copiesCheckedTo = today
+  } catch (error) {
+    addProblem(
+      context,
+      null,
+      `Could not check whether any invoice email went without one of its copies (${getErrorMessage(error)}). The next summary will check again`
+    )
+  }
+
   const summary = buildReminderSummary({
     today,
     remindersOn: Boolean(goLiveDate),
@@ -1610,6 +1731,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
     problems: context.problems,
     previousNeedsYouKeys: earlier.previousNeedsYouKeys,
     carriedOver: earlier.carriedOver,
+    copiesLeftOff,
   })
 
   const keys = needsYouKeys(needsYou)
@@ -1655,6 +1777,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
     needs_you_keys: keys,
     summary: delivery,
     ...(summaryError ? { error: summaryError } : {}),
+    ...(copiesCheckedTo ? { copies_checked_to: copiesCheckedTo } : {}),
   }
 
   // The run is complete whatever happened to the summary: the reminders have gone, and a
@@ -1675,6 +1798,7 @@ async function processRun(context: RunContext, runId: string): Promise<RunCounts
     going_next: goingNext.length,
     needs_you: needsYou.length,
     problems: context.problems.length,
+    copies_left_off: copiesLeftOff.length,
     warnings: context.warnings,
     summary: delivery,
   }
