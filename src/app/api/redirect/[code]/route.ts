@@ -59,6 +59,9 @@ const PASSTHROUGH_TRACKING_PARAMS = [
   // Feedback-funnel provenance: lets review SMS carry ?src= through
   // l.the-anchor.pub/feedback to the landing page and into submissions.
   'src',
+  // Return-visit emails open the booking form on the guest's usual party size. A destination
+  // that already names one keeps it (see below).
+  'party_size',
 ]
 
 type ShortLinkRow = {
@@ -116,7 +119,7 @@ function appendTrackingParams(destinationUrl: string, request: NextRequest, shor
     const incoming = request.nextUrl.searchParams.get(param)
     if (!incoming) continue
 
-    if (param.startsWith('utm_') && destination.searchParams.has(param)) {
+    if ((param.startsWith('utm_') || param === 'party_size') && destination.searchParams.has(param)) {
       continue
     }
 

@@ -40,6 +40,14 @@ import {
 } from '@/lib/email/marketing/config'
 import { marketingContentSchema, type MarketingContent } from '@/lib/email/marketing/registry'
 import { renderMarketingEmail } from '@/lib/email/marketing/render'
+import { bookingPartySize, mergeCampaignContent, MergeError } from '@/lib/email/marketing/merge'
+import {
+  cancelVoucherIfRecipientFailed,
+  evaluateLifecycleGate,
+  prepareLifecycleRecipient,
+  type LifecycleGate,
+} from '@/lib/email/marketing/lifecycle-send'
+import { reportCronFailure } from '@/lib/cron/alerting'
 // Lives outside this file because a Next.js route may only export its route handlers and
 // config; exporting the classifier from here fails the production build.
 import { classifySendFailure, type FailureClass } from '@/lib/email/marketing/send-failures'
@@ -74,6 +82,7 @@ interface ClaimedRecipient {
   contact_id: string | null
   customer_id: string | null
   email: string
+  merge_fields?: unknown
 }
 
 interface LoadedCampaign {
@@ -82,6 +91,7 @@ interface LoadedCampaign {
   content: MarketingContent
   linkMap: Record<string, string>
   utmCampaign: string
+  kind: 'one_off' | 'lifecycle'
 }
 
 type CampaignLoad =
@@ -120,7 +130,7 @@ async function loadCampaign(
 ): Promise<CampaignLoad> {
   const { data, error } = await supabase
     .from('marketing_campaigns')
-    .select('id, subject, content, link_map, utm_campaign')
+    .select('id, subject, content, link_map, utm_campaign, kind')
     .eq('id', campaignId)
     .maybeSingle()
 
@@ -137,6 +147,7 @@ async function loadCampaign(
     content: unknown
     link_map: unknown
     utm_campaign: string | null
+    kind: string | null
   }
 
   // Re-validated here even though it was validated when the campaign was written. A deploy
@@ -161,6 +172,7 @@ async function loadCampaign(
       content: parsed.data,
       linkMap: (row.link_map as Record<string, string> | null) ?? {},
       utmCampaign: row.utm_campaign ?? row.id,
+      kind: row.kind === 'lifecycle' ? 'lifecycle' : 'one_off',
     },
   }
 }
@@ -205,7 +217,13 @@ async function releaseClaim(
       error: new Error(rpcError.message),
       metadata: { recipientId, failureClass },
     })
+    return
   }
+
+  // A return-visit row that has now failed for good gives its voucher back. Checked for every
+  // row because a release does not say what it left behind; a one-off row has no voucher, so
+  // this is one read and nothing more.
+  await cancelVoucherIfRecipientFailed(supabase, recipientId)
 }
 
 async function finaliseSend(
@@ -284,6 +302,8 @@ async function handle(request: NextRequest) {
     failed: 0,
     deferred: 0,
     completed: 0,
+    vouchersIssued: 0,
+    closureSkipped: 0,
   }
 
   // 2. Recover leases left behind by a run that died mid-batch.
@@ -299,8 +319,27 @@ async function handle(request: NextRequest) {
   }
 
   // 3. Promote anything due. The RPC checks the send window and snapshots the audience in
-  // one transaction, so there is nothing to check here first.
-  const { data: promoted, error: promoteError } = await supabase.rpc('promote_due_marketing_campaigns')
+  // one transaction, so there is nothing to check here first, except the venue closure gate
+  // for return-visit campaigns: a voucher for food is no use while the kitchen is shut, so
+  // a long closure (or hours we cannot read) holds them for the day.
+  const lifecycleGate: LifecycleGate = await evaluateLifecycleGate(supabase)
+  if (lifecycleGate.error) {
+    logger.error('Marketing cron could not read the venue hours, return-visit emails are held', {
+      error: new Error(lifecycleGate.error),
+    })
+    await reportCronFailure('marketing-campaigns', new Error(lifecycleGate.error), {
+      stage: 'return_visit_closure_gate',
+      effect: 'Return-visit emails are held until the hours can be read',
+    })
+  } else if (!lifecycleGate.open) {
+    console.warn(
+      `[marketing-campaigns] kitchen closed or hours unknown on ${lifecycleGate.closedDays} of the next 30 days, return-visit emails are held`,
+    )
+  }
+
+  const { data: promoted, error: promoteError } = await supabase.rpc('promote_due_marketing_campaigns', {
+    p_include_lifecycle: lifecycleGate.open,
+  })
   if (promoteError) {
     logger.error('Marketing cron could not promote due campaigns', {
       error: new Error(promoteError.message),
@@ -408,16 +447,53 @@ async function handle(request: NextRequest) {
         // 4d. Attribute a resulting opt-out to this exact send.
         const unsubscribeUrl = withRecipientAttribution(baseUnsubscribeUrl, row.id)
 
-        // 4e. Render. A throw here is a fault in the stored content or an oversized email,
+        // 4e. A return-visit row gets its voucher now, after every check that could refuse the
+        // send (kill switches, opt-out link), so a voucher is only issued for an email that is
+        // about to go. A retry finds the voucher the first attempt issued.
+        let content = campaign.content
+        let partySize: number | null = null
+        if (campaign.kind === 'lifecycle') {
+          const prepared = await prepareLifecycleRecipient(supabase, row, lifecycleGate)
+          if (prepared.kind === 'skipped') {
+            result.closureSkipped++
+            continue
+          }
+          if (prepared.kind === 'release') {
+            await releaseClaim(
+              supabase,
+              row.id,
+              prepared.failureClass,
+              prepared.error,
+              prepared.failureClass === 'retryable' ? RETRY_BACKOFF_SECONDS : 0
+            )
+            result.failed++
+            continue
+          }
+          result.vouchersIssued++
+
+          try {
+            content = mergeCampaignContent(campaign.content, prepared.fields)
+          } catch (mergeError) {
+            // A missing or broken value is a fault in the row, not the moment.
+            const message = mergeError instanceof MergeError ? mergeError.message : errorMessage(mergeError)
+            await releaseClaim(supabase, row.id, 'terminal', `Merge failed: ${message}`, 0)
+            result.failed++
+            continue
+          }
+          partySize = bookingPartySize(prepared.fields)
+        }
+
+        // 4f. Render. A throw here is a fault in the stored content or an oversized email,
         // and neither fixes itself on a retry.
         let rendered
         try {
-          rendered = renderMarketingEmail(campaign.content, {
+          rendered = renderMarketingEmail(content, {
             unsubscribeUrl,
             linkMap: campaign.linkMap,
             // One short link serves the whole audience, so this parameter is the only thing
             // that tells a click apart from every other recipient's.
             recipientRef: row.id,
+            bookingPartySize: partySize,
             utm: {
               source: MARKETING_UTM_SOURCE,
               medium: MARKETING_UTM_MEDIUM,
@@ -430,7 +506,7 @@ async function handle(request: NextRequest) {
           continue
         }
 
-        // 4f. The provider call. Resend only: the idempotency key is what makes a retry safe,
+        // 4g. The provider call. Resend only: the idempotency key is what makes a retry safe,
         // and Graph has no equivalent.
         const sendResult = await sendEmail({
           to: row.email,
@@ -441,7 +517,12 @@ async function handle(request: NextRequest) {
           from: config.from,
           replyTo: config.replyTo,
           suppressionMode: 'fail_closed',
-          idempotencyKey: `marketing:${row.campaign_id}:${subjectId}`,
+          // A return-visit guest can be picked by the same campaign again a year later, so
+          // their key carries the row; a retry of the same row reuses it.
+          idempotencyKey:
+            campaign.kind === 'lifecycle'
+              ? `marketing:${row.campaign_id}:${subjectId}:${row.id}`
+              : `marketing:${row.campaign_id}:${subjectId}`,
           commType: 'marketing_campaign',
           businessContactId: row.contact_id,
           customerId: row.customer_id,
@@ -453,7 +534,7 @@ async function handle(request: NextRequest) {
 
         const providerMessageId = sendResult.messageId ?? null
 
-        // 4g. Outcomes.
+        // 4h. Outcomes.
         if (sendResult.success) {
           if (typeof sendResult.emailMessageId === 'string') {
             await finaliseSend(supabase, row.id, sendResult.emailMessageId, providerMessageId, false)
@@ -561,7 +642,11 @@ async function handle(request: NextRequest) {
     result.completed = Number(completed ?? 0)
   }
 
-  const body = { ...result, elapsedMs: elapsed() }
+  const body = {
+    ...result,
+    lifecycleGate: { open: lifecycleGate.open, closedDays: lifecycleGate.closedDays },
+    elapsedMs: elapsed(),
+  }
 
   // A failing claim RPC means the queue itself is broken, which is worth a cron alert. The
   // counters still go out so a partially successful run is not lost in the noise.
