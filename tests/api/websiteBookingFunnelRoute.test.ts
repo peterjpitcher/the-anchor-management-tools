@@ -79,13 +79,17 @@ describe('POST /api/website/booking-funnel', () => {
     expect(db.rows('booking_funnel_events')[0]).toMatchObject({ stage: 'failed', reason_code: 'CONTRACT_DRIFT', upstream_code: 'PRICE_CHANGED' })
   })
 
-  it('records a form signal, keeping the reason only for a blocked form', async () => {
+  it('records a form signal, keeping the reason only for a blocked or recovered form', async () => {
     await POST(post({ type: 'form', form: 'event_booking', step: 'blocked', reason: 'no_security_token', page: '/events/tasting-night-2026-11-20' }))
     await POST(post({ type: 'form', form: 'event_booking', step: 'opened', page: '/events/tasting-night-2026-11-20' }))
+    await POST(post({ type: 'form', form: 'event_booking', step: 'started', reason: 'no_security_token' }))
+    await POST(post({ type: 'form', form: 'event_booking', step: 'recovered', reason: 'no_security_token' }))
 
     expect(db.rows('booking_funnel_events')).toEqual([
       expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'blocked', upstream_code: 'no_security_token' }),
       expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'opened', upstream_code: null }),
+      expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'started', upstream_code: null }),
+      expect.objectContaining({ stage: 'form', route: 'event_booking', reason_code: 'recovered', upstream_code: 'no_security_token' }),
     ])
   })
 

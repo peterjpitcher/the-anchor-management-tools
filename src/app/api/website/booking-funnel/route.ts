@@ -8,6 +8,7 @@ import {
   BOOKING_FORMS,
   FUNNEL_CODE_PATTERN,
   FUNNEL_PAGE_PATTERN,
+  formStepKeepsReason,
   recordFunnelEvent,
 } from '@/lib/booking-funnel/events'
 import { applyDistributedRateLimit } from '@/lib/distributed-rate-limit'
@@ -22,7 +23,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
  * nowhere else, so nobody could count them. Each one now becomes a row in
  * booking_funnel_events, which the daily website refusals summary (one email to the manager
  * inbox, owner decision D17) and the table bookings funnel read. The event booking form also
- * reports opened, submit pressed, blocked and sent, so a form nobody can submit shows up.
+ * reports opened, started, submit pressed, blocked, recovered and sent, so a form nobody can
+ * submit shows up.
  *
  * Codes only, checked against fixed shapes, and the field list is closed: no name, phone number,
  * email address, booking reference or free text can be stored, and nothing is echoed back.
@@ -107,7 +109,7 @@ export async function POST(request: NextRequest): Promise<Response> {
               stage: 'form',
               route: event.form,
               reason_code: event.step,
-              upstream_code: event.step === 'blocked' ? event.reason ?? null : null,
+              upstream_code: formStepKeepsReason(event.step) ? event.reason ?? null : null,
               page_path: event.page ?? null,
               api_key_id: apiKey?.id ?? null,
             },
