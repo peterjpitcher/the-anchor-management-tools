@@ -23,6 +23,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/opt/postgresql@17/bin'))
 MIGRATION = ROOT / 'supabase/migrations/20261102171000_return_visit_lifecycle.sql'
+ROLLBACK = ROOT / 'supabase/rollbacks/20261102171000_return_visit_lifecycle.sql'
 
 SCHEMA = r"""
 CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role;
@@ -384,6 +385,37 @@ VALUES ({T2}, 'touch 2', 'draft', 'lifecycle',
             check(f"(SELECT status = 'issued' AND redeemed_value_pence IS NULL FROM vouchers WHERE voucher_number = '{number}')", 'undo clears the amount')
             check("""(SELECT count(*) = 1 AND bool_and(NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND has_function_privilege('service_role', p.oid, 'EXECUTE'))
                      FROM pg_proc p WHERE p.proname = 'voucher_redeem')""", 'one voucher_redeem remains, service_role only')
+
+            # The rollback refuses while return-visit data exists, then restores the old shape.
+            refused = subprocess.run(cmd, input=ROLLBACK.read_text(), text=True, capture_output=True)
+            check(f"{str('roll forward instead' in refused.stderr).lower()}", 'the rollback refuses while return-visit data exists')
+            check("(SELECT count(*) = 1 FROM information_schema.columns WHERE table_name = 'marketing_campaigns' AND column_name = 'kind')",
+                  'a refused rollback changes nothing')
+            sql("""DELETE FROM marketing_conversions WHERE conversion_type = 'table_booking';
+                   DELETE FROM voucher_reminders; DELETE FROM voucher_events;
+                   DELETE FROM vouchers WHERE type_id IN ('return-10', 'return-25');
+                   DELETE FROM voucher_batches WHERE digital;
+                   DELETE FROM marketing_campaign_recipients WHERE campaign_id IN (SELECT id FROM marketing_campaigns WHERE kind = 'lifecycle');
+                   DELETE FROM marketing_campaigns WHERE kind = 'lifecycle';""")
+            sql(ROLLBACK.read_text())
+            check("""(SELECT count(*) = 0 FROM information_schema.columns WHERE table_schema = 'public' AND (table_name, column_name) IN
+                     (('marketing_campaigns', 'kind'), ('marketing_campaigns', 'holdout_percent'), ('marketing_campaigns', 'send_days'),
+                      ('marketing_campaign_recipients', 'merge_fields'), ('marketing_campaign_recipients', 'voucher_id'),
+                      ('marketing_campaign_recipients', 'lifecycle_anchor_date'), ('voucher_types', 'discount_kind'),
+                      ('voucher_types', 'percent_off'), ('voucher_types', 'digital_only'), ('voucher_batches', 'digital'),
+                      ('voucher_batches', 'marketing_campaign_id'), ('vouchers', 'marketing_recipient_id'), ('vouchers', 'redeemed_value_pence')))""",
+                  'the rollback removes every added column')
+            check("""(SELECT array_agg(p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' ORDER BY p.proname) =
+                     ARRAY['promote_due_marketing_campaigns()',
+                           'voucher_redeem(p_voucher_number text, p_employee_id uuid, p_employee_name text, p_user_id uuid, p_transaction_ref text, p_booking_ref text, p_customer_id uuid, p_london_today date, p_source text, p_idempotency_key text)']
+                     FROM pg_proc p WHERE p.proname IN ('promote_due_marketing_campaigns', 'voucher_redeem'))""",
+                  'the rollback restores the old signatures')
+            check("""(SELECT count(*) = 0 FROM pg_proc WHERE proname IN ('issue_lifecycle_voucher', 'get_table_return_visit_audience', 'get_lifecycle_campaign_stats'))""",
+                  'the rollback drops the new functions')
+            check("(SELECT count(*) = 1 FROM pg_indexes WHERE indexname = 'mcr_campaign_customer_key')", 'the rollback restores the old index')
+            check("""(SELECT bool_and(NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE'))
+                     FROM pg_proc p WHERE p.proname IN ('promote_due_marketing_campaigns', 'claim_marketing_recipients', 'voucher_redeem', 'voucher_undo_redeem'))""",
+                  'restored functions stay service_role only')
             print('ALL PASS')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(cluster), '-m', 'immediate', 'stop'], capture_output=True)
