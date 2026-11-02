@@ -140,6 +140,13 @@ export async function GET(request: Request) {
       })
     })
 
+    // Owner, 2 November 2026: "I don't want to receive emails unless there's a problem". A task
+    // due today is an ordinary to-do on the checklist page; only a missed one sends this. When it
+    // does send, today's tasks are listed with it.
+    if (overdueCount === 0) {
+      return NextResponse.json({ success: true, message: 'Nothing overdue', dueToday: dueTodayCount }, { status: 200 })
+    }
+
     const todayDisplay = formatDateFull(new Date())
     const subject = `Event checklist reminder: ${todayDisplay}`
 

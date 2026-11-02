@@ -368,6 +368,8 @@ async function alertManagerToUnpaidHold(
     domain: 'private_bookings',
     bookingId: hold.id,
     kind: 'unpaid_hold_not_cancelled',
+    // No payment was made, so nothing is wrong with PayPal: the booking needs a person.
+    subjectTag: 'BOOKING ACTION NEEDED',
     title: `A private hire on ${eventText} has not paid its deposit`,
     summary: `The deposit hold on this private hire has run out without a payment. It has not been cancelled automatically, because ${reason}. Speak to the guest, then record the deposit, extend the hold or cancel the booking. No message has been sent to the customer.`,
     context: {
