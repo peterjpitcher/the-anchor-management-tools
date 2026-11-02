@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { buildInsightsReport } from '@/lib/insights/engine'
 import { buildInvoicesSection, invoicesSection } from '@/lib/insights/sections/invoices'
 import { privateHireSection } from '@/lib/insights/sections/private-hire'
@@ -177,6 +177,40 @@ describe('invoices section', () => {
       text: 'INV-Q (Quiet Ltd): £2,520 outstanding, due Sat 26 Sep. Never emailed.',
       href: `${TEST_APP_URL}/invoices/quiet`,
       rag: 'amber',
+    })
+  })
+
+  describe('when the weekly chasers are on', () => {
+    afterEach(() => {
+      vi.unstubAllEnvs()
+    })
+
+    const quiet = () => db([
+      invoice({ id: 'quiet', invoice_number: 'INV-Q', due_date: '2026-09-26', total_amount: 2520, sent_at: null, vendor: { name: 'Quiet Ltd' } }),
+    ])
+
+    it('says an unemailed invoice is only chased in the weekly emails, from 21 days overdue', async () => {
+      vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '2026-09-01')
+      vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-09-25')
+      const result = await build(quiet())
+      expect(result.signals[0].text).toBe(
+        'The reminder system will only chase INV-Q (Quiet Ltd, £2,520, due Sat 26 Sep) in the weekly emails, from 21 days overdue, because it was not emailed.',
+      )
+      expect(result.signals[0].action?.text).toBe('Send INV-Q (Quiet Ltd) to the customer, £2,520')
+    })
+
+    it('still says never while the weekly switch is set for a later date', async () => {
+      vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '2026-09-01')
+      vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-09-26')
+      const result = await build(quiet())
+      expect(result.signals[0].text).toContain('will never chase INV-Q')
+    })
+
+    it('still says never while reminders are switched off altogether', async () => {
+      vi.stubEnv('INVOICE_REMINDERS_GO_LIVE_DATE', '')
+      vi.stubEnv('INVOICE_WEEKLY_REMINDERS_FROM', '2026-09-01')
+      const result = await build(quiet())
+      expect(result.signals[0].text).toContain('will never chase INV-Q')
     })
   })
 
