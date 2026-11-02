@@ -312,3 +312,47 @@ describe('weekly chasers in the summary', () => {
     expect(parseRunState(serialiseRunState(state))).toEqual(state)
   })
 })
+
+describe('copies left off in the summary', () => {
+  const leftOff = {
+    invoiceNumber: 'INV-003X5',
+    clientName: 'Barons Pubs Ltd',
+    kindLabel: 'Invoice',
+    copies: 1,
+    date: MONDAY,
+    url: `${APP_URL}/invoices/inv-5`,
+  }
+
+  it('gets its own section and count, even on a day with nothing else to say', () => {
+    const summary = buildReminderSummary(input({ copiesLeftOff: [leftOff] }))
+
+    expect(summary?.subject).toBe('Invoice reminders, Tuesday 13 October: 1 copy not sent')
+    expect(summary?.text).toContain('Copies not sent')
+    expect(summary?.text).toContain('- INV-003X5, Barons Pubs Ltd: invoice on Monday 12 October, 1 copy left off')
+    expect(summary?.text).toContain(`  ${APP_URL}/invoices/inv-5`)
+    assertCleanText(summary?.subject ?? '')
+    assertCleanText(summary?.text ?? '')
+  })
+
+  it('counts every copy left off in the subject, and still labels an invoice it cannot name', () => {
+    const summary = buildReminderSummary(
+      input({ copiesLeftOff: [leftOff, { ...leftOff, invoiceNumber: null, clientName: null, kindLabel: 'Receipt', copies: 2 }] })
+    )
+
+    expect(summary?.subject).toContain('3 copies not sent')
+    expect(summary?.text).toContain('- An invoice: receipt on Monday 12 October, 2 copies left off')
+  })
+
+  it('reads back where the check got to, and ignores a damaged value', () => {
+    const state: ReminderRunState = {
+      v: 1,
+      sent: [],
+      problems: [],
+      needs_you_keys: [],
+      summary: 'accepted',
+      copies_checked_to: TUESDAY,
+    }
+    expect(parseRunState(serialiseRunState(state))).toEqual(state)
+    expect(parseRunState({ ...state, copies_checked_to: 'Tuesday' })).not.toHaveProperty('copies_checked_to')
+  })
+})

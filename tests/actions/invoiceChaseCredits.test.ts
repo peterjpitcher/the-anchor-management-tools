@@ -4,6 +4,7 @@ import { getInvoice } from '@/app/actions/invoices'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { sendInvoiceEmail } from '@/lib/microsoft-graph'
+import { resolveManualInvoiceRecipients } from '@/lib/invoice-recipients'
 import { INVOICE_SIGN_OFF } from '@/lib/invoices/email-copy'
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn(async () => ({ auth: { getUser: async () => ({ data: { user: { id: 'user' } } }) } })) }))
@@ -13,7 +14,7 @@ vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 vi.mock('@/app/actions/invoices', () => ({ getInvoice: vi.fn() }))
 vi.mock('@/app/actions/quotes', () => ({ getQuote: vi.fn() }))
 vi.mock('@/lib/microsoft-graph', () => ({ isGraphConfigured: () => true, sendInvoiceEmail: vi.fn(), sendQuoteEmail: vi.fn(), testEmailConnection: vi.fn() }))
-vi.mock('@/lib/invoice-recipients', () => ({ parseRecipientList: () => ['test@example.com'], resolveManualInvoiceRecipients: async () => ({ to: 'test@example.com', cc: [] }) }))
+vi.mock('@/lib/invoice-recipients', () => ({ parseRecipientList: () => ['test@example.com'], resolveManualInvoiceRecipients: vi.fn(async () => ({ to: 'test@example.com', cc: [] })) }))
 vi.mock('@/lib/api/idempotency', () => ({ claimIdempotencyKey: async () => ({ state: 'claimed' }), computeIdempotencyRequestHash: () => 'hash', releaseIdempotencyClaim: vi.fn(), persistIdempotencyResponse: vi.fn() }))
 vi.mock('@/lib/dateUtils', () => ({ getTodayIsoDate: () => '2026-09-18' }))
 
@@ -159,6 +160,58 @@ it('returns the warnings from a send whose follow-up writes failed, so the dialo
 
   expect(result).toMatchObject({ success: true, warnings: ['Chase email sent but delivery log persistence failed'] })
   consoleError.mockRestore()
+})
+
+/** An admin client that accepts every read and write, and keeps the rows logged as sent. */
+function loggingDatabase(): Array<Record<string, unknown>> {
+  const logged: Array<Record<string, unknown>> = []
+  const from = (table: string) => {
+    const chain: Record<string, unknown> = {}
+    for (const method of ['select', 'eq', 'is', 'not', 'order', 'update']) chain[method] = () => chain
+    chain.limit = async () => ({ data: [], error: null })
+    chain.maybeSingle = async () => ({ data: null, error: null })
+    chain.single = async () => ({ data: null, error: null })
+    chain.then = (resolve: (value: unknown) => unknown) => resolve({ data: null, error: null })
+    chain.insert = async (rows: unknown) => {
+      if (table === 'invoice_email_logs') logged.push(...(Array.isArray(rows) ? rows : [rows]))
+      return { error: null }
+    }
+    return chain
+  }
+  vi.mocked(createAdminClient).mockReturnValue({ from } as unknown as ReturnType<typeof createAdminClient>)
+  return logged
+}
+
+// The sender left the copied address off: it is on the block list.
+const sentWithoutTheBlockedCopy = { success: true, messageId: 'message-1', ccKept: ['ops@client.example'], ccDropped: ['bounced@client.example'] }
+
+it('logs only the copies a manual send actually went to, never a blocked one', async () => {
+  const logged = loggingDatabase()
+  vi.mocked(resolveManualInvoiceRecipients).mockResolvedValueOnce({ to: 'test@example.com', cc: ['ops@client.example', 'bounced@client.example'] })
+  vi.mocked(sendInvoiceEmail).mockResolvedValue(sentWithoutTheBlockedCopy)
+  vi.mocked(getInvoice).mockResolvedValue({ invoice: { ...overdueInvoice, due_date: '2026-10-09' } } as Awaited<ReturnType<typeof getInvoice>>)
+
+  await sendInvoiceViaEmail(form({ subject: 'Invoice INV-1', body: 'Hi,\n\nAttached.' }))
+
+  expect(vi.mocked(sendInvoiceEmail).mock.calls[0][4]).toEqual(['ops@client.example', 'bounced@client.example'])
+  expect(logged.map((row) => [row.sent_to, row.status])).toEqual([
+    ['test@example.com', 'sent'],
+    ['ops@client.example', 'sent'],
+  ])
+})
+
+it('logs only the copies a chase actually went to, never a blocked one', async () => {
+  const logged = loggingDatabase()
+  vi.mocked(resolveManualInvoiceRecipients).mockResolvedValueOnce({ to: 'test@example.com', cc: ['ops@client.example', 'bounced@client.example'] })
+  vi.mocked(sendInvoiceEmail).mockResolvedValue(sentWithoutTheBlockedCopy)
+  vi.mocked(getInvoice).mockResolvedValue({ invoice: overdueInvoice } as Awaited<ReturnType<typeof getInvoice>>)
+
+  await sendChasePaymentEmail(form({ subject: 'About INV-1', body: 'Hi,\n\nA reminder.' }))
+
+  expect(logged.map((row) => [row.sent_to, row.status])).toEqual([
+    ['test@example.com', 'sent'],
+    ['ops@client.example', 'sent'],
+  ])
 })
 
 it('resolves the draft context for the dialogs: first name and booking date, nothing else', async () => {

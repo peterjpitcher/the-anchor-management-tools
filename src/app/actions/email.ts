@@ -395,6 +395,8 @@ export async function sendInvoiceViaEmail(formData: FormData) {
         warnings.push('Email sent, but it could not be saved to the invoice history')
       }
 
+      // Copies from what the sender actually used: a blocked address was left off the email and
+      // must not be logged as sent to.
       const logRows = [
         {
           invoice_id: validatedData.invoiceId,
@@ -404,7 +406,7 @@ export async function sendInvoiceViaEmail(formData: FormData) {
           body,
           status: 'sent' as const
         },
-        ...ccAddresses.map((cc) => ({
+        ...(result.ccKept ?? []).map((cc) => ({
           invoice_id: validatedData.invoiceId,
           sent_to: cc,
           sent_by: senderId,
@@ -688,7 +690,8 @@ export async function sendChasePaymentEmail(formData: FormData) {
 
       // No `email_type` here: invoice_email_logs has no such column, and the field made this
       // insert fail every time, so no manual chase was ever logged and the "recent reminder"
-      // warning could not see one. The subject line is what identifies a chase.
+      // warning could not see one. The subject line is what identifies a chase. Copies come
+      // from what the sender actually used, so a blocked address is not logged as sent to.
       const logRows = [
         {
           invoice_id: validatedData.invoiceId,
@@ -698,7 +701,7 @@ export async function sendChasePaymentEmail(formData: FormData) {
           body: finalBody,
           status: 'sent' as const
         },
-        ...ccAddresses.map((cc) => ({
+        ...(result.ccKept ?? []).map((cc) => ({
           invoice_id: validatedData.invoiceId,
           sent_to: cc,
           sent_by: senderId,

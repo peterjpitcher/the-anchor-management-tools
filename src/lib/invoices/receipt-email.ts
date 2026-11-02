@@ -256,10 +256,16 @@ export async function sendInvoiceReceipt(
     claimHeld = false
   }
 
-  const writeLog = async (status: 'sent' | 'failed', errorMessage?: string): Promise<boolean> => {
+  const writeLog = async (
+    status: 'sent' | 'failed',
+    errorMessage?: string,
+    copiedTo: string[] = []
+  ): Promise<boolean> => {
     if (!recipients?.to) return false
     // A sent receipt is logged once per address, as invoices are. A failed one is logged once.
-    const addresses = status === 'sent' ? [recipients.to, ...recipients.cc] : [recipients.to]
+    // Copies are the ones the sender actually used: a blocked address was left off the email
+    // and must not be logged as sent to.
+    const addresses = status === 'sent' ? [recipients.to, ...copiedTo] : [recipients.to]
     try {
       const { error } = await admin.from('invoice_email_logs').insert(
         addresses.map((address) => ({
@@ -446,7 +452,7 @@ export async function sendInvoiceReceipt(
 
     if (verdict === 'accepted' || verdict === 'accepted_unrecorded') {
       accepted = true
-      const logged = await writeLog('sent')
+      const logged = await writeLog('sent', undefined, result.ccKept ?? [])
       // The claim is what stops a second send when the log row above could not be written.
       const settled = await settleClaim('sent')
       await audit('receipt_sent')

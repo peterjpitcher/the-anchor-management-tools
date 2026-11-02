@@ -170,7 +170,12 @@ beforeEach(() => {
   mocks.claims.clear()
   mocks.claimFails = false
   mocks.isGraphConfigured.mockReturnValue(true)
-  mocks.sendInvoiceEmail.mockResolvedValue(accepted)
+  // As the real sender answers when no copied address is blocked: every copy asked for is kept.
+  mocks.sendInvoiceEmail.mockImplementation(async (...args: unknown[]) => ({
+    ...accepted,
+    ccKept: (args[4] as string[] | undefined) ?? [],
+    ccDropped: [],
+  }))
   mocks.greeting.mockResolvedValue('Sam')
   mocks.reportCronFailure.mockResolvedValue(undefined)
   mocks.logAuditEvent.mockResolvedValue(undefined)
@@ -230,6 +235,26 @@ describe('sendInvoiceReceipt', () => {
       expect.objectContaining({ payment_id: 'pay-1', sent_to: 'ledger@client.example', status: 'sent' }),
     ])
     expect(mocks.claims.get('invoice-receipt:pay-1')?.response.state).toBe('sent')
+  })
+
+  it('logs only the copies the receipt actually went to, never a blocked one', async () => {
+    const db = createDb({
+      invoices: [invoice()],
+      invoice_vendor_contacts: [
+        { vendor_id: 'vendor-1', email: 'sam@client.example', is_primary: true, receive_invoice_copy: false, created_at: '2026-01-01' },
+        { vendor_id: 'vendor-1', email: 'ledger@client.example', is_primary: false, receive_invoice_copy: true, created_at: '2026-01-02' },
+      ],
+    })
+    // The sender left the copied address off: it is on the block list.
+    mocks.sendInvoiceEmail.mockResolvedValueOnce({ ...accepted, ccKept: [], ccDropped: ['ledger@client.example'] })
+
+    const outcome = await sendInvoiceReceipt(db.client, { invoiceId: 'inv-1', paymentId: 'pay-1', sentByUserId: 'user-1' })
+
+    expect(outcome).toEqual({ outcome: 'sent', invoiceNumber: 'INV-003WK' })
+    expect(mocks.sendInvoiceEmail.mock.calls[0][4]).toEqual(['ledger@client.example'])
+    expect(db.tables.invoice_email_logs).toEqual([
+      expect.objectContaining({ payment_id: 'pay-1', sent_to: 'sam@client.example', status: 'sent' }),
+    ])
   })
 
   it('never uses the old wording, the company name as a greeting, or the pub landline', async () => {

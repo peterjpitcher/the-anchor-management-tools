@@ -285,6 +285,31 @@ describe('recurring invoices cron A-046', () => {
     expect(reportCronFailure).not.toHaveBeenCalled()
   })
 
+  it('logs only the copies the email actually went to, never a blocked one', async () => {
+    const { supabase, emailLogInsert } = makeSupabase()
+    vi.mocked(createAdminClient).mockReturnValue(supabase as any)
+    vi.mocked(resolveVendorInvoiceRecipients).mockResolvedValue({
+      to: 'billing@example.com',
+      cc: ['ops@example.com', 'bounced@example.com'],
+    })
+    // The sender left the copied address off: it is on the block list.
+    vi.mocked(sendInvoiceEmail).mockResolvedValue({
+      success: true,
+      ccKept: ['ops@example.com'],
+      ccDropped: ['bounced@example.com'],
+    })
+
+    await run()
+
+    expect(vi.mocked(sendInvoiceEmail).mock.calls[0][4]).toEqual(['ops@example.com', 'bounced@example.com'])
+    expect(emailLogInsert).toHaveBeenCalledTimes(1)
+    const rows = emailLogInsert.mock.calls[0][0] as Array<Record<string, unknown>>
+    expect(rows.map((row) => [row.sent_to, row.status])).toEqual([
+      ['billing@example.com', 'sent'],
+      ['ops@example.com', 'sent'],
+    ])
+  })
+
   it('leaves the invoice a draft and alerts the owner when the client has no address', async () => {
     const { supabase, invoiceUpdate } = makeSupabase()
     vi.mocked(createAdminClient).mockReturnValue(supabase as any)
