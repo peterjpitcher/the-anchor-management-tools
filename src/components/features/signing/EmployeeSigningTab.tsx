@@ -51,6 +51,11 @@ export interface EmployeeSigningTabProps {
   canSend: boolean
   /** Why the list could not be loaded, if it could not. */
   loadError?: string | null
+  /**
+   * Why nothing new can be sent (a former employee). The page also passes canSend false; this
+   * says why, so the missing button is not a mystery.
+   */
+  closedReason?: string | null
 }
 
 /**
@@ -58,7 +63,7 @@ export interface EmployeeSigningTabProps {
  * options for the five staff document kinds. Policies are sent to everyone at once from the
  * policies page, and listed here once sent.
  */
-export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents, canSend, loadError }: EmployeeSigningTabProps): React.JSX.Element {
+export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents, canSend, loadError, closedReason }: EmployeeSigningTabProps): React.JSX.Element {
   const router = useRouter()
   const [kind, setKind] = useState<StaffKind | null>(null)
   const [pending, startTransition] = useTransition()
@@ -158,7 +163,9 @@ export function EmployeeSigningTab({ employeeId, isUnder18, hasEmail, documents,
 
   return (
     <div className="space-y-4">
-      {!hasEmail ? (
+      {closedReason ? <Alert tone="info">{closedReason}</Alert> : null}
+
+      {!hasEmail && !closedReason ? (
         <Alert tone="info">
           There is no email address on this record, so nothing can be emailed. Send the document, then use &quot;Sign in person&quot;.
         </Alert>

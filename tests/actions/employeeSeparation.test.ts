@@ -45,10 +45,10 @@ function shiftsQuery(data: unknown, error: unknown = null) {
 
 function leaveQuery(data: unknown, error: unknown = null) {
   const order = vi.fn().mockResolvedValue({ data, error })
-  const secondEq = vi.fn().mockReturnValue({ order })
-  const gte = vi.fn().mockReturnValue({ eq: secondEq })
+  const statusIn = vi.fn().mockReturnValue({ order })
+  const gte = vi.fn().mockReturnValue({ in: statusIn })
   const firstEq = vi.fn().mockReturnValue({ gte })
-  return { select: vi.fn().mockReturnValue({ eq: firstEq }) }
+  return { select: vi.fn().mockReturnValue({ eq: firstEq }), statusIn }
 }
 
 function mutationClient(rpcData: unknown, rpcError: unknown = null) {
@@ -114,7 +114,12 @@ describe('employee separation actions', () => {
           },
         ])
       }
-      if (table === 'leave_days') return leaveQuery([{ leave_date: '2099-05-20' }])
+      if (table === 'leave_days') {
+        return leaveQuery([
+          { leave_date: '2099-05-20', leave_requests: { status: 'approved' } },
+          { leave_date: '2099-05-27', leave_requests: [{ status: 'pending' }] },
+        ])
+      }
       throw new Error(`Unexpected table: ${table}`)
     })
     mockedAdmin.mockReturnValue({ from })
@@ -137,6 +142,7 @@ describe('employee separation actions', () => {
           acceptanceStatus: 'pending',
         }],
         futureLeaveDates: ['2099-05-20'],
+        pendingLeaveDates: ['2099-05-27'],
       },
     })
   })

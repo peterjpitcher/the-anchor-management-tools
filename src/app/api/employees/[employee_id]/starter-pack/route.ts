@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { generatePDFFromHTML } from '@/lib/pdf-generator'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { generateEmployeeStarterHTML } from '@/lib/employee-starter-template'
 import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
@@ -102,16 +103,18 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  // `employees.edit` is what gates financial details (NI number, bank details) in
-  // the employee record UI, see getEmployeeDetailData. The starter pack prints the
-  // NI number, so it has to honour the same gate or the PDF becomes a way around it.
+  // `employees.edit` is what gates financial details (NI number, bank details) and the right to
+  // work document reference in the employee record UI, see getEmployeeDetailData. The starter
+  // pack prints the address, date of birth, NI number and right to work reference, so the whole
+  // download needs that permission or the PDF becomes a way around it. The NI number keeps its
+  // own check so it can only ever print as "Withheld" if this gate is loosened later.
   const [hasViewPermission, hasDocPermission, hasFinancialPermission] = await Promise.all([
     checkUserPermission('employees', 'view'),
     checkUserPermission('employees', 'view_documents'),
     checkUserPermission('employees', 'edit'),
   ])
 
-  if (!hasViewPermission) {
+  if (!hasViewPermission || !hasFinancialPermission) {
     return new NextResponse('Permission denied', { status: 403 })
   }
 
@@ -132,7 +135,7 @@ export async function GET(
   // the permission that gates it in the UI.
   const [
     financialResult,
-    { data: rightToWorkRaw },
+    rightToWorkResult,
   ] = await Promise.all([
     hasFinancialPermission
       ? supabase
@@ -143,12 +146,23 @@ export async function GET(
       : Promise.resolve(null),
     supabase
       .from('employee_right_to_work')
-      .select('document_type, verification_date, document_expiry_date, document_reference, check_method, verified_by_user_id, photo_storage_path')
+      .select('document_type, verification_date, document_expiry_date, follow_up_date, document_reference, check_method, verified_by_user_id, photo_storage_path')
       .eq('employee_id', employeeId)
       .maybeSingle(),
   ])
 
+  // A failed read would print "Not recorded" for an NI number or a right to work check that is
+  // on file, so the pack is refused rather than printed wrong.
+  if (financialResult?.error || rightToWorkResult.error) {
+    console.error('[starter-pack] Failed to read the employee details:', {
+      financial: financialResult?.error?.message,
+      rightToWork: rightToWorkResult.error?.message,
+    })
+    return new NextResponse('Failed to load the employee details for the starter pack', { status: 500 })
+  }
+
   const financialDetails = financialResult?.data ?? null
+  const rightToWorkRaw = rightToWorkResult.data
 
   // Resolve verified_by user name if present
   let verifiedByName: string | null = null
@@ -184,6 +198,7 @@ export async function GET(
         document_reference: rightToWorkRaw.document_reference,
         check_method: rightToWorkRaw.check_method,
         verified_by_name: verifiedByName,
+        follow_up_date: rightToWorkRaw.follow_up_date,
       }
     : null
 
@@ -195,6 +210,7 @@ export async function GET(
     const html = generateEmployeeStarterHTML({
       employee,
       niDetails: financialDetails ?? null,
+      niWithheld: !hasFinancialPermission,
       rightToWork,
       rtwImageDataUrl,
       logoUrl,
@@ -224,6 +240,21 @@ export async function GET(
     if (rtwPdfBytes) {
       pdfBuffer = await mergePdfs(pdfBuffer, rtwPdfBytes)
     }
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email ?? undefined,
+      operation_type: 'download',
+      resource_type: 'employee',
+      resource_id: employee.employee_id,
+      operation_status: 'success',
+      additional_info: {
+        action: 'download_starter_pack',
+        document_type: 'New starter pack',
+        // The pack embeds the right to work scan when the downloader may view documents.
+        includes_right_to_work_scan: Boolean(rtwImageDataUrl || rtwPdfBytes),
+      },
+    })
 
     const safeName = sanitizeFilename(
       `new-starter-${employee.last_name}-${employee.first_name}.pdf`,

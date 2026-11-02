@@ -100,7 +100,9 @@ describe('addEmployeeAttachment side-effect safety', () => {
 
     const result = await addEmployeeAttachment(null, formData)
 
-    expect(result).toEqual({ type: 'success', message: 'Attachment uploaded successfully!' })
+    // The upload stands; the email to the employee could not be confirmed, and the result says so.
+    expect(result).toMatchObject({ type: 'success', email: { status: 'failed' } })
+    expect(result?.message).toContain('Attachment uploaded')
     expect(storageRemove).not.toHaveBeenCalled()
   })
 })

@@ -97,6 +97,40 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------------
+// Leave and the end of employment
+//
+// Marking a leaver as Former is refused while any leave day sits after their last working day
+// (finalizeEmployeeSeparation), so leave booked past that day stalled the separation, and the
+// nightly job then skipped the person every night. Leave for someone on notice must end by their
+// last working day, and a former employee cannot be given leave at all. Read with the service role
+// so a manager without employees view, or the employee themselves, gets the same answer.
+// ---------------------------------------------------------------------------
+
+async function leaveEmploymentRefusal(employeeId: string, endDate: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data: employee, error } = await admin
+    .from('employees')
+    .select('status, employment_end_date')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('[leave] Failed to check the employment end date:', { code: error.code, message: error.message });
+    return 'Could not check the employee record, so the holiday was not saved. Please try again.';
+  }
+  if (!employee) return 'Employee not found';
+  if (employee.status === 'Former') return 'This person has left, so holiday cannot be booked for them.';
+  if (
+    employee.status === 'Started Separation'
+    && employee.employment_end_date
+    && endDate > employee.employment_end_date
+  ) {
+    return `Holiday cannot run past ${formatDateDdMmmmYyyy(employee.employment_end_date)}, the last working day before leaving.`;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // Approved leave can never sit on top of a rostered shift (spec F2, decision D1)
 //
 // Approval is refused while a clashing shift exists. There is no override. The
@@ -198,6 +232,9 @@ export async function submitLeaveRequest(input: z.infer<typeof SubmitLeaveSchema
   if (startDate < todayLocal) {
     return { success: false, error: 'Leave requests cannot be submitted for past dates' };
   }
+
+  const employmentRefusal = await leaveEmploymentRefusal(employeeId, endDate);
+  if (employmentRefusal) return { success: false, error: employmentRefusal };
 
   const supabase = await createClient();
 
@@ -333,6 +370,11 @@ export async function reviewLeaveRequest(
   const reviewedAt = new Date().toISOString();
 
   if (decision === 'approved') {
+    // Approved leave past a leaver's last working day stalls their separation, the same as
+    // booking it, so approving is refused on the same rule (FF-41, FF-45). Declining stays open.
+    const employmentRefusal = await leaveEmploymentRefusal(request.employee_id, request.end_date);
+    if (employmentRefusal) return { success: false, error: employmentRefusal };
+
     // Approving turns this into real leave, so the rota has to be clear (D1). The
     // check and the status change happen together inside the database, under the
     // employee leave lock, so a shift assignment landing at the same moment either
@@ -488,6 +530,9 @@ export async function bookApprovedHoliday(input: {
   if (new Date(endDate) < new Date(startDate)) {
     return { success: false, error: 'End date must be on or after start date' };
   }
+
+  const employmentRefusal = await leaveEmploymentRefusal(employeeId, endDate);
+  if (employmentRefusal) return { success: false, error: employmentRefusal };
 
   const supabase = await createClient();
 
@@ -866,6 +911,9 @@ export async function updateLeaveRequestDates(
   if (overlapping && overlapping.length > 0) {
     return { success: false, error: 'Employee already has leave covering some of these dates' };
   }
+
+  const employmentRefusal = await leaveEmploymentRefusal(request.employee_id, parsedEndDate);
+  if (employmentRefusal) return { success: false, error: employmentRefusal };
 
   // An edit to an already-approved request extends approved leave over the new dates,
   // so it has to clear the rota exactly as an approval does (D1). The whole resulting

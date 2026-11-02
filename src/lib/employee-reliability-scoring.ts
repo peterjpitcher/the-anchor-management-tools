@@ -225,6 +225,16 @@ export function calculateBusinessReliabilityScore(
   };
 }
 
+/**
+ * True when there is no shift signal at all: no shift accepted, rejected or missed. The formula
+ * still gives 45 then (the full discipline and holiday credits with no acceptance credit), and
+ * the leaderboard showed that as a red score for someone who had simply not been offered a
+ * shift yet. Screens show RELIABILITY_NO_SHIFTS_LABEL (employees/_shared/status-ui.ts) instead.
+ */
+export function hasNoShiftSignals(score: ReliabilityScoreBreakdown): boolean {
+  return score.counts.eligibleShiftSignals === 0;
+}
+
 export function eventTypeLabel(eventType: ReliabilityEventType): string {
   const labels: Record<ReliabilityEventType, string> = {
     shift_accepted: 'Accepted shift',

@@ -1,9 +1,10 @@
 'use client';
 
-import { Badge, Card, CardBody, CardHeader, DescriptionList, Empty, Stat } from '@/ds';
-import { RELIABILITY_LOW_SAMPLE_TONE, reliabilityEventTone } from '@/app/(authenticated)/employees/_shared/status-ui';
+import { Alert, Badge, Card, CardBody, CardHeader, DescriptionList, Empty, Stat } from '@/ds';
+import { RELIABILITY_LOW_SAMPLE_TONE, RELIABILITY_NO_SHIFTS_LABEL, reliabilityEventTone } from '@/app/(authenticated)/employees/_shared/status-ui';
 import {
   eventTypeLabel,
+  hasNoShiftSignals,
   type EmployeeReliabilityEvent,
   type ReliabilityScoreBreakdown,
 } from '@/lib/employee-reliability-scoring';
@@ -27,6 +28,19 @@ function formatPercent(value: number | null): string {
 }
 
 function ScoreCard({ title, score }: { title: string; score: ReliabilityScoreBreakdown }) {
+  // With no shifts the formula still gives 45 (full discipline and holiday credit), which read as a
+  // real, poor score. There is nothing to score yet, so say that instead.
+  if (hasNoShiftSignals(score)) {
+    return (
+      <Card>
+        <CardHeader title={title} />
+        <CardBody className="space-y-4">
+          <Stat label="Score" value={RELIABILITY_NO_SHIFTS_LABEL} />
+          <p className="text-sm text-text-muted">No shift has been accepted, rejected or missed in this period, so there is nothing to score.</p>
+        </CardBody>
+      </Card>
+    );
+  }
   return (
     <Card>
       <CardHeader
@@ -93,6 +107,15 @@ function eventDetail(event: EmployeeReliabilityEvent): string {
 }
 
 export default function EmployeeReliabilityTab({ reliability }: EmployeeReliabilityTabProps) {
+  // A failed read is said as such. Scores worked out from no events would look like a real record.
+  if (reliability.loadError) {
+    return (
+      <Alert tone="danger" title="Could not load reliability">
+        {reliability.loadError} Try again in a moment.
+      </Alert>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-text-muted">

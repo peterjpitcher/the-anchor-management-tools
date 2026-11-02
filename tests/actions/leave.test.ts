@@ -319,6 +319,22 @@ function mockHolidayUsageClient(options: {
   return { client, daysQuery }
 }
 
+/**
+ * The admin client for an edit that gets as far as the database: the employment check reads an
+ * Active employee (no last working day to respect), then the RPC runs.
+ */
+function adminWithRpc(rpc: Mock) {
+  const employeeQuery = chain()
+  employeeQuery.maybeSingle.mockResolvedValue({ data: { status: 'Active', employment_end_date: null }, error: null })
+  return {
+    rpc,
+    from: vi.fn((table: string) => {
+      if (table === 'employees') return employeeQuery
+      throw new Error(`Unexpected admin table: ${table}`)
+    }),
+  }
+}
+
 describe('leave actions', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -376,7 +392,7 @@ describe('leave actions', () => {
       mockedPermission.mockResolvedValue(true)
       mockUpdateClient()
       const rpc = vi.fn().mockResolvedValue({ data: { success: true }, error: null })
-      mockedCreateAdminClient.mockReturnValue({ rpc })
+      mockedCreateAdminClient.mockReturnValue(adminWithRpc(rpc))
 
       const result = await updateLeaveRequestDates(REQUEST_ID, '2026-03-30', '2026-04-02')
 
@@ -406,7 +422,7 @@ describe('leave actions', () => {
         data: { success: false, code: 'overlap', error: 'Employee already has leave covering some of these dates' },
         error: null,
       })
-      mockedCreateAdminClient.mockReturnValue({ rpc })
+      mockedCreateAdminClient.mockReturnValue(adminWithRpc(rpc))
 
       const result = await updateLeaveRequestDates(REQUEST_ID, '2026-06-16', '2026-06-24')
 
@@ -437,7 +453,7 @@ describe('leave actions', () => {
         },
         error: null,
       })
-      mockedCreateAdminClient.mockReturnValue({ rpc })
+      mockedCreateAdminClient.mockReturnValue(adminWithRpc(rpc))
 
       const result = await updateLeaveRequestDates(REQUEST_ID, '2026-06-16', '2026-06-24')
 

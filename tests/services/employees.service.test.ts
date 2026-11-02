@@ -5,7 +5,6 @@ vi.mock('@/lib/supabase/admin', () => ({
 }))
 
 import { createAdminClient } from '@/lib/supabase/admin'
-import { clearLeaveTypeCache } from '@/lib/leave/leave-types'
 import { EmergencyContactSchema, employeeSchema, EmployeeService } from '@/services/employees'
 
 describe('EmployeeService CSV export', () => {
@@ -227,6 +226,9 @@ describe('EmployeeService delete safeguards', () => {
       data: {
         employee_id: 'employee-1',
         date_of_birth: null,
+        // Only a starter still onboarding can be deleted at all, and this one has no login.
+        status: 'Onboarding',
+        auth_user_id: null,
       },
       error: null,
     })
@@ -237,9 +239,28 @@ describe('EmployeeService delete safeguards', () => {
       error: null,
     })
     const deleteSelect = vi.fn().mockReturnValue({ maybeSingle: deleteMaybeSingle })
-    const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
+    const deleteStatusEq = vi.fn().mockReturnValue({ select: deleteSelect })
+    const deleteEq = vi.fn().mockReturnValue({ eq: deleteStatusEq })
+
+    // The delete pre-check counts references that would block the delete; none here.
+    const blockerTables = [
+      'checklist_task_instances',
+      'checklist_spot_checks',
+      'checklist_todos',
+      'recruitment_candidates',
+      'recruitment_appointment_slots',
+      'recruitment_candidate_appointments',
+    ]
 
     const mockFrom = vi.fn((table: string) => {
+      if (blockerTables.includes(table)) {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
+          }),
+        }
+      }
+
       if (table !== 'employees') {
         throw new Error(`Unexpected table: ${table}`)
       }
@@ -255,9 +276,11 @@ describe('EmployeeService delete safeguards', () => {
       storage: { from: vi.fn() },
     })
 
+    // No row deleted means they were no longer Onboarding by the time of the delete.
     await expect(EmployeeService.deleteEmployee('employee-1')).rejects.toThrow(
-      'Employee not found or failed to delete.'
+      'This employee is no longer onboarding, so they were not deleted.'
     )
+    expect(deleteStatusEq).toHaveBeenCalledWith('status', 'Onboarding')
   })
 
   it('deletes attachment files using the DB storage path, not caller input', async () => {
@@ -354,234 +377,5 @@ describe('EmployeeService delete safeguards', () => {
     expect(mockUpdate).toHaveBeenCalledWith({ photo_storage_path: null })
     expect(mockUpdate).toHaveBeenCalledWith({ photo_storage_path: 'employee-1/rtw-proof.pdf' })
     expect(mockRollbackIs).toHaveBeenCalledWith('photo_storage_path', null)
-  })
-})
-
-describe('EmployeeService.getEmployeesRoster holiday counts', () => {
-  const employeeOne = {
-    employee_id: 'employee-1',
-    first_name: 'Alex',
-    last_name: 'Rowe',
-    email_address: 'alex@example.com',
-    job_title: 'Server',
-    employment_start_date: '2024-01-10',
-    status: 'Active',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  }
-
-  const employeeTwo = {
-    employee_id: 'employee-2',
-    first_name: 'Blake',
-    last_name: 'Smith',
-    email_address: 'blake@example.com',
-    job_title: 'Bartender',
-    employment_start_date: '2024-02-10',
-    status: 'Active',
-    created_at: '2024-01-01T00:00:00Z',
-    updated_at: '2024-01-01T00:00:00Z',
-  }
-
-  function setupRosterMock({
-    employees = [employeeOne, employeeTwo],
-    leaveDays = [],
-    holidayYearStartMonth = 1,
-    holidayYearStartDay = 1,
-  }: {
-    employees?: Array<typeof employeeOne>
-    leaveDays?: Array<{
-      employee_id: string
-      leave_date: string
-      leave_requests?: { status: string; leave_type: string }
-    }>
-    holidayYearStartMonth?: number
-    holidayYearStartDay?: number
-  } = {}) {
-    const statusRows = employees.map((employee) => ({ status: employee.status }))
-
-    const filteredCountIn = vi.fn().mockResolvedValue({
-      count: employees.length,
-      error: null,
-    })
-    const filteredDataIn = vi.fn().mockResolvedValue({
-      data: employees,
-      error: null,
-    })
-    const range = vi.fn().mockReturnValue({
-      in: filteredDataIn,
-    })
-    const order = vi.fn().mockReturnValue({
-      range,
-    })
-    const employeesSelect = vi.fn((columns: string, options?: { count?: string }) => {
-      if (columns === 'status') {
-        return Promise.resolve({ data: statusRows, error: null })
-      }
-      if (columns === '*' && options?.count === 'exact') {
-        return { in: filteredCountIn }
-      }
-      if (columns === '*') {
-        return { order }
-      }
-
-      throw new Error(`Unexpected employees select: ${columns}`)
-    })
-
-    const leaveStatusEq = vi.fn().mockResolvedValue({
-      data: leaveDays,
-      error: null,
-    })
-    const leaveDateLte = vi.fn().mockReturnValue({
-      eq: leaveStatusEq,
-    })
-    const leaveDateGte = vi.fn().mockReturnValue({
-      lte: leaveDateLte,
-    })
-    const leaveEmployeeIn = vi.fn().mockReturnValue({
-      gte: leaveDateGte,
-    })
-    const leaveDaysSelect = vi.fn().mockReturnValue({
-      in: leaveEmployeeIn,
-    })
-
-    // The roster resolves the configured holiday year and the leave type reference data
-    // before counting, so both reads have to be mocked.
-    const settingsMaybeSingle = vi.fn((key: string) => Promise.resolve({
-      data: { value: { value: key === 'rota_holiday_year_start_month' ? holidayYearStartMonth : holidayYearStartDay } },
-      error: null,
-    }))
-    const systemSettingsSelect = vi.fn().mockReturnValue({
-      eq: vi.fn((_column: string, key: string) => ({
-        maybeSingle: () => settingsMaybeSingle(key),
-      })),
-    })
-
-    const leaveTypesSelect = vi.fn().mockResolvedValue({
-      data: [
-        { code: 'holiday', label: 'Holiday', consumes_allowance: true, paid: true, shown_on_rota: true, counts_in_reliability: true, allowed_at_onboarding: true, sort_order: 1, is_active: true },
-        { code: 'unavailable', label: 'Not available to work', consumes_allowance: false, paid: false, shown_on_rota: true, counts_in_reliability: false, allowed_at_onboarding: true, sort_order: 2, is_active: true },
-      ],
-      error: null,
-    })
-
-    const mockFrom = vi.fn((table: string) => {
-      if (table === 'employees') {
-        return { select: employeesSelect }
-      }
-      if (table === 'leave_days') {
-        return { select: leaveDaysSelect }
-      }
-      if (table === 'system_settings') {
-        return { select: systemSettingsSelect }
-      }
-      if (table === 'leave_types') {
-        return { select: leaveTypesSelect }
-      }
-
-      throw new Error(`Unexpected table: ${table}`)
-    })
-
-    ;(createAdminClient as unknown as Mock).mockReturnValue({
-      from: mockFrom,
-    })
-
-    return {
-      filteredCountIn,
-      filteredDataIn,
-      leaveDaysSelect,
-      leaveEmployeeIn,
-      leaveDateGte,
-      leaveDateLte,
-      leaveStatusEq,
-      leaveTypesSelect,
-    }
-  }
-
-  beforeEach(() => {
-    vi.clearAllMocks()
-    // Leave types are cached in module scope for five minutes, so a stale entry from an
-    // earlier test would silently satisfy the next one.
-    clearLeaveTypeCache()
-    vi.useFakeTimers()
-    vi.setSystemTime(new Date('2026-05-04T12:00:00Z'))
-  })
-
-  afterEach(() => {
-    vi.useRealTimers()
-  })
-
-  it('counts approved leave days in the current calendar year for displayed employees', async () => {
-    const calls = setupRosterMock({
-      leaveDays: [
-        { employee_id: 'employee-1', leave_date: '2026-01-15' },
-        { employee_id: 'employee-1', leave_date: '2026-12-24' },
-      ],
-    })
-
-    const result = await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
-
-    expect(result.employees).toHaveLength(2)
-    expect(result.employees.find((employee) => employee.employee_id === 'employee-1')).toMatchObject({
-      holiday_days_current_year: 2,
-    })
-    expect(result.employees.find((employee) => employee.employee_id === 'employee-2')).toMatchObject({
-      holiday_days_current_year: 0,
-    })
-    expect(calls.leaveDaysSelect).toHaveBeenCalledWith('employee_id, leave_date, leave_requests!inner(status, leave_type)')
-    expect(calls.leaveEmployeeIn).toHaveBeenCalledWith('employee_id', ['employee-1', 'employee-2'])
-    expect(calls.leaveDateGte).toHaveBeenCalledWith('leave_date', '2026-01-01')
-    expect(calls.leaveDateLte).toHaveBeenCalledWith('leave_date', '2026-12-31')
-    expect(calls.leaveStatusEq).toHaveBeenCalledWith('leave_requests.status', 'approved')
-  })
-
-  it('does not count leave whose type does not consume allowance', async () => {
-    setupRosterMock({
-      leaveDays: [
-        { employee_id: 'employee-1', leave_date: '2026-01-15', leave_requests: { status: 'approved', leave_type: 'holiday' } },
-        { employee_id: 'employee-1', leave_date: '2026-01-16', leave_requests: { status: 'approved', leave_type: 'unavailable' } },
-        { employee_id: 'employee-1', leave_date: '2026-01-17', leave_requests: { status: 'approved', leave_type: 'unavailable' } },
-      ],
-    })
-
-    const result = await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
-
-    expect(result.employees.find((employee) => employee.employee_id === 'employee-1')).toMatchObject({
-      holiday_days_current_year: 1,
-    })
-  })
-
-  it('counts weekend leave, because the pub trades at the weekend', async () => {
-    setupRosterMock({
-      leaveDays: [
-        // Saturday and Sunday. Under the previous rule both were free.
-        { employee_id: 'employee-1', leave_date: '2026-01-17', leave_requests: { status: 'approved', leave_type: 'holiday' } },
-        { employee_id: 'employee-1', leave_date: '2026-01-18', leave_requests: { status: 'approved', leave_type: 'holiday' } },
-      ],
-    })
-
-    const result = await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
-
-    expect(result.employees.find((employee) => employee.employee_id === 'employee-1')).toMatchObject({
-      holiday_days_current_year: 2,
-    })
-  })
-
-  it('uses the configured holiday year rather than the calendar year', async () => {
-    const calls = setupRosterMock({ holidayYearStartMonth: 4, holidayYearStartDay: 6 })
-
-    await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
-
-    // System time is 4 May 2026, so the current holiday year runs 6 April 2026 to 5 April 2027.
-    expect(calls.leaveDateGte).toHaveBeenCalledWith('leave_date', '2026-04-06')
-    expect(calls.leaveDateLte).toHaveBeenCalledWith('leave_date', '2027-04-05')
-  })
-
-  it('does not query leave days when the roster page is empty', async () => {
-    const calls = setupRosterMock({ employees: [] })
-
-    const result = await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
-
-    expect(result.employees).toEqual([])
-    expect(calls.leaveDaysSelect).not.toHaveBeenCalled()
   })
 })

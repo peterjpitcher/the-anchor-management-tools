@@ -25,6 +25,7 @@ import type { SigningDocumentStatus, SigningKind } from '@/lib/signing/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { computeAgeAt } from '@/lib/worker-agreement'
+import { displayNameWithLegal } from '@/lib/employees/display-name'
 
 /**
  * Sending staff documents for signature: the worker agreement, changes to terms, consent forms
@@ -54,20 +55,44 @@ interface StaffEmployee {
   employee_id: string
   first_name: string | null
   last_name: string | null
+  preferred_name: string | null
   email_address: string | null
   date_of_birth: string | null
   status: string
 }
 
+const STAFF_EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, email_address, date_of_birth, status'
+
+/** The legal name: what the documents print and what the signer signs as. */
 function employeeName(employee: Pick<StaffEmployee, 'first_name' | 'last_name'>): string {
   return [employee.first_name, employee.last_name].map((part) => part?.trim()).filter(Boolean).join(' ')
+}
+
+/**
+ * The name staff see on screen: the name the team uses, with the legal name alongside where they
+ * differ ("Mandy (Amanda Smith)"), as on the employee list. The policies page used to show the
+ * legal name only, so people were listed under names nobody calls them.
+ */
+function staffScreenName(employee: Pick<StaffEmployee, 'first_name' | 'last_name' | 'preferred_name'>): string {
+  return displayNameWithLegal(employee, 'Unnamed')
+}
+
+/**
+ * Someone who has left cannot be sent anything new to sign: the documents govern working here,
+ * and the link would go to a former employee's inbox. The screens hide the buttons for them; this
+ * is the server's own check, so a stale page or a crafted call cannot get round it.
+ */
+const FORMER_EMPLOYEE_REFUSAL = 'This person has left, so documents can no longer be sent to them to sign.'
+
+function isFormer(employee: Pick<StaffEmployee, 'status'>): boolean {
+  return employee.status === 'Former'
 }
 
 async function loadEmployee(employeeId: string): Promise<StaffEmployee | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('employee_id, first_name, last_name, email_address, date_of_birth, status')
+    .select(STAFF_EMPLOYEE_COLUMNS)
     .eq('employee_id', employeeId)
     .maybeSingle()
   if (error) throw new Error(`Could not read the employee: ${error.message}`)
@@ -139,6 +164,7 @@ export async function sendEmploymentAgreement(input: {
 
     const employee = await loadEmployee(parsed.data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
+    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
 
     // Whoever sends it signs for the business, so the agreement names them as issuing it.
     const built = await loadWorkerAgreement(employee.employee_id, {
@@ -245,6 +271,7 @@ export async function sendStaffTemplateDocument(input: StaffTemplateInput): Prom
 
     const employee = await loadEmployee(data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
+    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
     const name = employeeName(employee)
     if (!name) return { error: 'Add the employee\'s name to their record first.' }
     const age = computeAgeAt(employee.date_of_birth, getTodayIsoDate())
@@ -336,13 +363,14 @@ async function loadActiveStaff(): Promise<StaffEmployee[]> {
     (from, to) =>
       admin
         .from('employees')
-        .select('employee_id, first_name, last_name, email_address, date_of_birth, status')
+        .select(STAFF_EMPLOYEE_COLUMNS)
         .eq('status', 'Active')
         .order('employee_id', { ascending: true })
         .range(from, to),
     { label: 'active staff for policies' }
   )
-  return staff.sort((left, right) => employeeName(left).localeCompare(employeeName(right)))
+  // In the order of the names on screen.
+  return staff.sort((left, right) => staffScreenName(left).localeCompare(staffScreenName(right)))
 }
 
 export interface PolicyTemplateSummary {
@@ -434,7 +462,7 @@ export async function getPolicyOverview(slug: string): Promise<ActionResult<Poli
       else if (confirmed) state = 'outdated'
       return {
         employeeId: employee.employee_id,
-        name: employeeName(employee) || 'Unnamed',
+        name: staffScreenName(employee),
         email: employee.email_address,
         state,
         documentId: (state === 'confirmed' ? confirmed?.id : last?.id) ?? null,
@@ -458,7 +486,14 @@ const SendPolicySchema = z.object({
 })
 
 export interface PolicySendOutcome {
+  /** Emailed a link. */
   sent: number
+  /**
+   * Created, but with no email address on their record nothing was emailed: they read and
+   * confirm it in person, on a venue device or in the staff portal. These used to be counted as
+   * sent, so the page said a link had been emailed to people who got nothing.
+   */
+  signInPerson: Array<{ name: string }>
   failed: Array<{ name: string; reason: string }>
 }
 
@@ -473,12 +508,16 @@ export async function sendPolicyAcknowledgements(input: { slug: string; employee
     const auth = await authorise('policy_acknowledgement')
     if ('error' in auth) return auth
 
-    const outcome: PolicySendOutcome = { sent: 0, failed: [] }
+    const outcome: PolicySendOutcome = { sent: 0, signInPerson: [], failed: [] }
     for (const employeeId of parsed.data.employeeIds) {
       const employee = await loadEmployee(employeeId)
-      const name = employee ? employeeName(employee) || 'Unnamed' : 'Unknown'
+      const name = employee ? staffScreenName(employee) : 'Unknown'
       if (!employee) {
         outcome.failed.push({ name, reason: 'Employee not found.' })
+        continue
+      }
+      if (isFormer(employee)) {
+        outcome.failed.push({ name, reason: FORMER_EMPLOYEE_REFUSAL })
         continue
       }
       try {
@@ -486,7 +525,8 @@ export async function sendPolicyAcknowledgements(input: { slug: string; employee
           kind: 'policy_acknowledgement',
           slug: parsed.data.slug,
           subjectId: employee.employee_id,
-          mergeValues: { worker_name: name },
+          // The document carries the legal name, as every official record does.
+          mergeValues: { worker_name: employeeName(employee) || 'Unnamed' },
           parties: [workerParty(employee)],
           user: auth.user,
           summary: 'Please read this policy and confirm you have understood it. Ask your manager about anything that is unclear.',
@@ -495,6 +535,8 @@ export async function sendPolicyAcknowledgements(input: { slug: string; employee
         const delivery = result.deliveries[0]
         if (delivery?.email_status === 'failed') {
           outcome.failed.push({ name, reason: `Created, but the email failed: ${delivery.error ?? 'unknown error'}` })
+        } else if (delivery?.email_status === 'none') {
+          outcome.signInPerson.push({ name })
         } else {
           outcome.sent += 1
         }

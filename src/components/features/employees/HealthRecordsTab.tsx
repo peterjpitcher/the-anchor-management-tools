@@ -2,12 +2,16 @@
 
 import type { EmployeeHealthRecord } from '@/types/database';
 import { formatDateInLondon } from '@/lib/dateUtils';
-import { Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
+import { Alert, Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
 
 interface HealthRecordsTabProps {
   employeeId: string;
   healthRecord: EmployeeHealthRecord | null;
   canEdit: boolean;
+  /** The record was withheld from this viewer. Without this, every question read as "No". */
+  redacted?: boolean;
+  /** Why the record could not be loaded. Shown instead of a page of "No" answers. */
+  loadError?: string | null;
 }
 
 type DetailValue = string | undefined | null | boolean;
@@ -17,7 +21,7 @@ function displayValue(value: DetailValue): string {
   return value || 'N/A';
 }
 
-export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: HealthRecordsTabProps) {
+export default function HealthRecordsTab({ employeeId, healthRecord, canEdit, redacted, loadError }: HealthRecordsTabProps) {
   const hasAllergies = Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies)
 
   const details: Array<{ label: string; value: DetailValue }> = [
@@ -28,6 +32,7 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
     { label: 'Off Work 2+ Weeks (past 3 years)?', value: healthRecord?.had_absence_over_2_weeks_last_3_years ?? false },
     { label: 'Outpatient Treatment 3+ Months (past 3 years)?', value: healthRecord?.had_outpatient_treatment_over_3_months_last_3_years ?? false },
     { label: 'Absence/Treatment Details', value: healthRecord?.absence_or_treatment_details },
+    { label: 'Recent Treatment', value: healthRecord?.recent_treatment },
     { label: 'Additional Medical Notes', value: healthRecord?.illness_history },
   ];
 
@@ -71,7 +76,16 @@ export default function HealthRecordsTab({ employeeId, healthRecord, canEdit }: 
         ) : undefined}
       />
       <CardBody>
-        <DescriptionList items={items} />
+        {redacted ? (
+          <p className="text-sm text-text-muted">You do not have permission to see the health record.</p>
+        ) : loadError ? (
+          <Alert tone="danger" title="Could not load the health record">{loadError}</Alert>
+        ) : !healthRecord ? (
+          // No record at all is not a page of "No" answers.
+          <p className="text-sm text-text-muted">No health information has been recorded yet.</p>
+        ) : (
+          <DescriptionList items={items} />
+        )}
       </CardBody>
     </Card>
   );

@@ -26,6 +26,8 @@ export default function SendBirthdayRemindersButton() {
     }
   }
 
+  // Says what it does: today's reminder email, for birthdays exactly a week away. It was
+  // "Send Weekly Reminders", but the reminder goes daily and never covers the whole week.
   return (
     <Button 
       type="button" 
@@ -34,7 +36,7 @@ export default function SendBirthdayRemindersButton() {
       size="sm" 
       loading={sending}
     >
-      Send Weekly Reminders
+      Email Reminder for Birthdays in 7 Days
     </Button>
   )
 }

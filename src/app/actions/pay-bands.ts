@@ -5,7 +5,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { logAuditEvent } from '@/app/actions/audit';
-import { getTodayIsoDate } from '@/lib/dateUtils';
+import { getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils';
 
 export type PayAgeBand = {
   id: string;
@@ -290,10 +290,26 @@ export async function upsertEmployeePaySettings(input: z.infer<typeof PaySetting
   if (!canManage) return { success: false, error: 'Permission denied' };
 
   const parsed = PaySettingsSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) return { success: false, error: 'Check the pay settings and try again.' };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  // A former employee's pay is closed, the same as their rate overrides (FF-45).
+  const { data: employee, error: employeeError } = await supabase
+    .from('employees')
+    .select('status')
+    .eq('employee_id', parsed.data.employeeId)
+    .maybeSingle();
+  if (employeeError) {
+    console.error('[pay settings] Failed to load the employee:', { code: employeeError.code, message: employeeError.message });
+    return { success: false, error: 'Could not check the employee record. Please try again.' };
+  }
+  if (!employee) return { success: false, error: 'Employee not found.' };
+  if (employee.status === 'Former') {
+    return { success: false, error: 'This person has left, so their pay can no longer be changed.' };
+  }
+
   const { data: existing } = await supabase
     .from('employee_pay_settings')
     .select('*')
@@ -314,7 +330,10 @@ export async function upsertEmployeePaySettings(input: z.infer<typeof PaySetting
     .select('*')
     .single();
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    console.error('[pay settings] Write failed:', { code: error.code, message: error.message });
+    return { success: false, error: 'The pay settings could not be saved. Please try again.' };
+  }
   await logAuditEvent({
     user_id: user?.id,
     operation_type: existing ? 'update' : 'create',
@@ -354,7 +373,11 @@ export async function getEmployeeRateOverrides(employeeId: string): Promise<
     .eq('employee_id', employeeId)
     .order('effective_from', { ascending: false });
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    // The Pay tab shows this message; Postgres text ("permission denied for table ...") used to.
+    console.error('[rate override] Failed to load overrides:', { code: error.code, message: error.message });
+    return { success: false, error: 'The rate overrides could not be loaded. Refresh the page to try again.' };
+  }
   return { success: true, data: (data ?? []) as EmployeeRateOverride[] };
 }
 
@@ -364,6 +387,60 @@ const AddOverrideSchema = z.object({
   effectiveFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 });
 
+type SessionClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * A plain message for override input that failed validation. The raw Zod text (a JSON list of
+ * issues) used to reach the toast.
+ */
+function rateOverrideInputError(error: z.ZodError): string {
+  const field = error.issues[0]?.path[0];
+  if (field === 'hourlyRate') return 'Enter an hourly rate above zero, in pounds and pence.';
+  if (field === 'effectiveFrom') return 'Choose a valid effective-from date.';
+  return 'Check the rate override details and try again.';
+}
+
+/**
+ * A plain message for an override write the database refused. Postgres text used to reach the
+ * toast, including the constraint name when a second override was added for the same date.
+ */
+function rateOverrideWriteError(error: { code?: string; message?: string }): string {
+  if (error.code === '23505') {
+    return 'There is already a rate override starting on that date. Edit that one, or choose another date.';
+  }
+  console.error('[rate override] Write failed:', { code: error.code, message: error.message });
+  return 'The rate override could not be saved. Please try again.';
+}
+
+/**
+ * The checks every override write makes before it is saved: the rate cannot start in the past
+ * (London date), because pay already worked at the old rate would silently change, and a former
+ * employee's pay is closed. Returns a message to show, or null when the write may go ahead.
+ */
+async function checkRateOverrideAllowed(
+  supabase: SessionClient,
+  employeeId: string,
+  effectiveFrom: string,
+): Promise<string | null> {
+  if (!isValidIsoDate(effectiveFrom)) return 'Choose a valid effective-from date.';
+  if (effectiveFrom < getTodayIsoDate()) {
+    return 'A rate override cannot start in the past. Choose today or a later date.';
+  }
+
+  const { data: employee, error } = await supabase
+    .from('employees')
+    .select('status')
+    .eq('employee_id', employeeId)
+    .maybeSingle();
+  if (error) {
+    console.error('[rate override] Failed to load the employee:', { code: error.code, message: error.message });
+    return 'Could not check the employee record. Please try again.';
+  }
+  if (!employee) return 'Employee not found.';
+  if (employee.status === 'Former') return 'This person has left, so their pay can no longer be changed.';
+  return null;
+}
+
 export async function addEmployeeRateOverride(input: z.infer<typeof AddOverrideSchema>): Promise<
   { success: true; data: EmployeeRateOverride } | { success: false; error: string }
 > {
@@ -371,10 +448,13 @@ export async function addEmployeeRateOverride(input: z.infer<typeof AddOverrideS
   if (!canManage) return { success: false, error: 'Permission denied' };
 
   const parsed = AddOverrideSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) return { success: false, error: rateOverrideInputError(parsed.error) };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  const refusal = await checkRateOverrideAllowed(supabase, parsed.data.employeeId, parsed.data.effectiveFrom);
+  if (refusal) return { success: false, error: refusal };
 
   const { data, error } = await supabase
     .from('employee_rate_overrides')
@@ -387,7 +467,31 @@ export async function addEmployeeRateOverride(input: z.infer<typeof AddOverrideS
     .select('*')
     .single();
 
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: rateOverrideWriteError(error) };
+  await logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'create',
+    resource_type: 'employee_rate_override',
+    resource_id: data.id,
+    operation_status: 'success',
+    new_values: data as Record<string, unknown>,
+  }).catch(() => {});
+  // The employee's own audit trail only reads rows filed against the employee, so the change is
+  // filed there too or it never shows on their record.
+  await logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: parsed.data.employeeId,
+    operation_status: 'success',
+    new_values: { hourly_rate: data.hourly_rate, effective_from: data.effective_from },
+    additional_info: {
+      action: 'add_rate_override',
+      rate_override_id: data.id,
+      hourly_rate: data.hourly_rate,
+      effective_from: data.effective_from,
+    },
+  }).catch(() => {});
   revalidatePath(`/employees/${parsed.data.employeeId}`);
   return { success: true, data: data as EmployeeRateOverride };
 }
@@ -399,7 +503,7 @@ export async function updateEmployeeRateOverride(input: z.infer<typeof UpdateRat
   if (!canManage) return { success: false, error: 'Permission denied' };
 
   const parsed = UpdateRateSchema.safeParse(input);
-  if (!parsed.success) return { success: false, error: parsed.error.message };
+  if (!parsed.success) return { success: false, error: rateOverrideInputError(parsed.error) };
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -409,11 +513,17 @@ export async function updateEmployeeRateOverride(input: z.infer<typeof UpdateRat
     .eq('id', parsed.data.id)
     .maybeSingle();
 
-  if (loadError) return { success: false, error: loadError.message };
+  if (loadError) {
+    console.error('[rate override] Failed to load the override:', { code: loadError.code, message: loadError.message });
+    return { success: false, error: 'Could not load the rate override. Please try again.' };
+  }
   if (!existing) return { success: false, error: 'Rate override not found' };
   if (existing.effective_from <= getTodayIsoDate()) {
     return { success: false, error: 'Historical or current overrides cannot be edited. Add a new future override instead.' };
   }
+
+  const refusal = await checkRateOverrideAllowed(supabase, existing.employee_id, parsed.data.effectiveFrom);
+  if (refusal) return { success: false, error: refusal };
 
   const { data, error } = await supabase
     .from('employee_rate_overrides')
@@ -426,7 +536,7 @@ export async function updateEmployeeRateOverride(input: z.infer<typeof UpdateRat
     .select('*')
     .single();
 
-  if (error) return { success: false, error: error.message };
+  if (error) return { success: false, error: rateOverrideWriteError(error) };
   await logAuditEvent({
     user_id: user?.id,
     operation_type: 'update',
@@ -435,6 +545,23 @@ export async function updateEmployeeRateOverride(input: z.infer<typeof UpdateRat
     operation_status: 'success',
     old_values: existing as Record<string, unknown>,
     new_values: data as Record<string, unknown>,
+  }).catch(() => {});
+  await logAuditEvent({
+    user_id: user?.id,
+    operation_type: 'update',
+    resource_type: 'employee',
+    resource_id: data.employee_id,
+    operation_status: 'success',
+    old_values: { hourly_rate: existing.hourly_rate, effective_from: existing.effective_from },
+    new_values: { hourly_rate: data.hourly_rate, effective_from: data.effective_from },
+    additional_info: {
+      action: 'update_rate_override',
+      rate_override_id: data.id,
+      hourly_rate: data.hourly_rate,
+      effective_from: data.effective_from,
+      previous_hourly_rate: existing.hourly_rate,
+      previous_effective_from: existing.effective_from,
+    },
   }).catch(() => {});
   revalidatePath(`/employees/${data.employee_id}`);
   return { success: true, data: data as EmployeeRateOverride };

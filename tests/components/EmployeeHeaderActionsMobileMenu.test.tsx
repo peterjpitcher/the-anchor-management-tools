@@ -33,6 +33,7 @@ const EMPLOYEE_ID = '00000000-0000-4000-8000-000000000001'
 const preview = {
   employmentStartDate: '2026-01-01',
   futureLeaveDates: [],
+  pendingLeaveDates: [],
   shifts: [
     {
       id: '00000000-0000-4000-8000-000000000011',
@@ -48,13 +49,14 @@ const preview = {
   ],
 }
 
-function renderHeader(status: 'Active' | 'Started Separation') {
+function renderHeader(status: 'Onboarding' | 'Active' | 'Started Separation') {
   return render(
     <EmployeeHeaderActions
       employeeId={EMPLOYEE_ID}
       employeeName="Sam Example"
       status={status}
       employmentStartDate="2026-01-01"
+      employmentEndDate={null}
       canEdit
       canDelete
     />,
@@ -92,9 +94,10 @@ describe('employee header "More" menu on a phone', () => {
       // narrowest phones.
       const triggers = screen.getAllByRole('button', { name: 'More' })
       expect(triggers).toHaveLength(1)
-      // Edit and Delete stay in the header row beside the menu.
+      // Edit stays in the header row beside the menu. Delete is only for an Onboarding record
+      // (FF-40): anyone who has worked here leaves through the separation flow.
       expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', `/employees/${EMPLOYEE_ID}/edit`)
-      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
 
       await user.click(triggers[0])
       const menu = screen.getByRole('menu')
@@ -149,12 +152,12 @@ describe('employee header "More" menu on a phone', () => {
 
   it('opens the Delete Employee dialog from the header and still submits the delete form', async () => {
     const user = userEvent.setup()
-    renderHeader('Active')
+    renderHeader('Onboarding')
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Delete Employee' })
-    expect(within(dialog).getByText(/Are you sure you want to delete Sam Example\?/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Delete Sam Example\?/)).toBeInTheDocument()
     expect(deleteMock).not.toHaveBeenCalled()
 
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }))

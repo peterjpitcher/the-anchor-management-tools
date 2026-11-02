@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState, useEffect } from 'react'
+import { startTransition, useActionState, useEffect, useRef } from 'react'
+import type { FormEvent } from 'react'
 import { updateEmergencyContact } from '@/app/actions/employeeActions'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { Alert, Button, Field, Input, Modal, Select, Textarea } from '@/ds'
@@ -20,15 +21,26 @@ export default function EditEmergencyContactModal({
 }: EditEmergencyContactModalProps) {
   const [state, formAction, pending] = useActionState(updateEmergencyContact, null)
   const formId = `edit-emergency-contact-${contact.id}`
+  // Handle each success result once: it stays in state, and new callbacks from a re-render
+  // would otherwise run the effect (and the page refresh) again.
+  const handledState = useRef<typeof state>(null)
 
   useEffect(() => {
-    if (state?.type === 'success') {
+    if (state?.type === 'success' && handledState.current !== state) {
+      handledState.current = state
       onSuccess?.()
       onClose()
     }
   }, [state, onClose, onSuccess])
 
   if (!isOpen) return null
+
+  // onSubmit rather than a form action, so a refused save keeps what was typed.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const formData = new FormData(event.currentTarget)
+    startTransition(() => formAction(formData))
+  }
 
   const formFields = [
     { name: 'name', label: 'Full Name', type: 'text', required: true, defaultValue: contact.name },
@@ -56,7 +68,7 @@ export default function EditEmergencyContactModal({
         </>
       }
     >
-      <form id={formId} action={formAction} className="space-y-4">
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="contact_id" value={contact.id} />
         <input type="hidden" name="employee_id" value={contact.employee_id} />
         {formFields.map((field) => {
@@ -95,6 +107,8 @@ export default function EditEmergencyContactModal({
             </Field>
           )
         })}
+
+        <p className="text-xs text-text-muted">A primary contact needs a telephone or mobile number.</p>
 
         {state?.type === 'error' && !state.errors && (
           <Alert tone="danger" size="sm">{state.message}</Alert>

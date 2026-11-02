@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CreateAccountStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/CreateAccountStep'
 import PersonalStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/PersonalStep'
 import ReviewStep from '@/app/(employee-onboarding)/onboarding/[token]/steps/ReviewStep'
+import { allSections, filledOnboardingValues } from '../fixtures/onboarding/values'
 
 const createEmployeeAccount = vi.fn()
 const saveOnboardingSection = vi.fn()
@@ -92,8 +93,8 @@ describe('onboarding step errors', () => {
 
     render(<CreateAccountStep token="invite-token" email="staff@example.com" onSuccess={onSuccess} />)
 
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'password123' } })
-    fireEvent.change(screen.getByLabelText('Confirm Password'), { target: { value: 'password123' } })
+    fireEvent.change(screen.getByLabelText(/^Password/), { target: { value: 'a-long-password-1' } })
+    fireEvent.change(screen.getByLabelText(/^Confirm Password/), { target: { value: 'a-long-password-1' } })
     fireEvent.click(screen.getByRole('button', { name: 'Create Account & Continue' }))
 
     expect(await screen.findByText('Account service unavailable')).toBeInTheDocument()
@@ -108,6 +109,7 @@ describe('onboarding step errors', () => {
 
     fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Jane' } })
     fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Smith' } })
+    fireEvent.change(screen.getByLabelText(/Date of Birth/), { target: { value: '1990-05-01' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save & Continue' }))
 
     await waitFor(() => expect(saveOnboardingSection).toHaveBeenCalled())
@@ -119,17 +121,7 @@ describe('onboarding step errors', () => {
     submitOnboardingProfile.mockRejectedValue(new Error('Final submit failed'))
 
     render(
-      <ReviewStep
-        token="invite-token"
-        savedSections={{
-          personal: true,
-          time_off: true,
-          emergency_contacts: true,
-          financial: true,
-          health: true,
-          right_to_work_notice: true,
-        }}
-      />,
+      <ReviewStep token="invite-token" values={filledOnboardingValues()} savedSections={allSections(true)} />,
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Complete Profile' }))

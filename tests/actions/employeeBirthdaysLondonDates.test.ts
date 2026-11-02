@@ -27,7 +27,9 @@ vi.mock('@/lib/api/idempotency', () => ({
   releaseIdempotencyClaim: vi.fn().mockResolvedValue(undefined),
 }))
 
-import { getAllBirthdays, sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays'
+import { getAllBirthdays } from '@/app/actions/employee-birthdays'
+// The sender lives outside the 'use server' file, so it is not a browser-callable action.
+import { sendBirthdayRemindersInternal } from '@/lib/employees/birthday-reminders'
 
 // 00:30 BST on Friday 18 September 2026 in London; Thursday 17 September in UTC.
 const JUST_AFTER_MIDNIGHT_BST = '2026-09-17T23:30:00Z'

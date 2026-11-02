@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { sendBirthdayRemindersInternal } from '@/app/actions/employee-birthdays';
+import { sendBirthdayRemindersInternal } from '@/lib/employees/birthday-reminders';
 import { authorizeCronRequest } from '@/lib/cron-auth';
 import { logger } from '@/lib/logger';
 

@@ -28,11 +28,12 @@ type QueryResult = { data: unknown; error: { message: string } | null }
 
 /**
  * A PostgREST-style builder: every filter returns the builder, and awaiting it gives the result.
- * The leaderboard chains select/in/order on employees and select/order/in/gte on events.
+ * The leaderboard chains select/in/order/range on employees and select/gte/order/range on events
+ * (both are read in pages).
  */
 function query(result: QueryResult) {
   const builder: Record<string, unknown> = {}
-  for (const method of ['select', 'in', 'eq', 'gte', 'order', 'limit']) {
+  for (const method of ['select', 'in', 'eq', 'gte', 'order', 'limit', 'range']) {
     builder[method] = vi.fn(() => builder)
   }
   builder.then = (resolve: (value: QueryResult) => unknown, reject?: (reason: unknown) => unknown) =>
@@ -99,7 +100,7 @@ describe('/employees/reliability when the leaderboard cannot be read', () => {
     // Raised on our side too, with the database error.
     expect(consoleError).toHaveBeenCalledWith(
       '[employeeReliability] failed to fetch employees for leaderboard',
-      expect.objectContaining({ message: 'connection refused' }),
+      expect.objectContaining({ message: expect.stringContaining('connection refused') }),
     )
   })
 
@@ -114,7 +115,7 @@ describe('/employees/reliability when the leaderboard cannot be read', () => {
     expectFailureShown()
     expect(consoleError).toHaveBeenCalledWith(
       '[employeeReliability] failed to fetch events',
-      expect.objectContaining({ message: 'statement timeout' }),
+      expect.objectContaining({ message: expect.stringContaining('statement timeout') }),
     )
   })
 

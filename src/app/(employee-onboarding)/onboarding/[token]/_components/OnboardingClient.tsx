@@ -1,9 +1,10 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardBody, Stepper } from '@/ds'
 import { StandalonePageHeader, StandaloneShell } from '@/components/shells/StandaloneShell'
+import { AuthCard } from '@/app/auth/_components/AuthCard'
 import CreateAccountStep from '../steps/CreateAccountStep'
 import PersonalStep from '../steps/PersonalStep'
 import EmergencyContactsStep from '../steps/EmergencyContactsStep'
@@ -12,7 +13,14 @@ import HealthStep from '../steps/HealthStep'
 import TimeOffStep from '../steps/TimeOffStep'
 import RightToWorkNoticeStep from '../steps/RightToWorkNoticeStep'
 import ReviewStep from '../steps/ReviewStep'
+import { OnboardingSignInForm } from './OnboardingAccess'
 import type { InviteType, OnboardingSnapshot } from '@/app/actions/employeeInvite'
+import {
+  isEmergencyContactsComplete,
+  isFinancialComplete,
+  isPersonalComplete,
+  type OnboardingSectionKey,
+} from '@/lib/employees/onboarding-rules'
 
 interface OnboardingClientProps {
   token: string
@@ -22,7 +30,10 @@ interface OnboardingClientProps {
   initialData: OnboardingSnapshot | null
 }
 
-type SectionKey = 'personal' | 'emergency_contacts' | 'financial' | 'health' | 'time_off' | 'right_to_work_notice'
+type SectionKey = OnboardingSectionKey
+
+/** What the starter has saved, section by section: the snapshot without its completeness flags. */
+export type OnboardingValues = Omit<OnboardingSnapshot, 'completedSections'>
 
 const ONBOARDING_STEPS = [
   { key: 'create_account', title: 'Create Account' },
@@ -34,6 +45,8 @@ const ONBOARDING_STEPS = [
   { key: 'right_to_work_notice', title: 'Right to Work' },
   { key: 'review', title: 'Review & Submit' },
 ] as const
+
+type StepKey = (typeof ONBOARDING_STEPS)[number]['key']
 
 function firstIncompleteStepIndex(savedSections: Record<SectionKey, boolean>): number {
   const orderedSections: SectionKey[] = ['personal', 'time_off', 'emergency_contacts', 'financial', 'health', 'right_to_work_notice']
@@ -50,6 +63,18 @@ export default function OnboardingClient({
 }: OnboardingClientProps) {
   if (inviteType === 'portal_access') {
     return <PortalAccessSetup token={token} email={email} />
+  }
+
+  // The page shows its own error when the saved details cannot be loaded. The wizard never starts
+  // on empty forms, because saving an empty step would write blanks over what is stored.
+  if (!initialData) {
+    return (
+      <AuthCard
+        title="We Could Not Load Your Details"
+        lead="Please reload the page. If it keeps happening, contact your manager."
+        icon={{ name: 'alertCircle', tone: 'danger' }}
+      />
+    )
   }
 
   return (
@@ -88,18 +113,26 @@ function OnboardingFlow({
   email,
   hasAuthUser,
   initialData,
-}: Omit<OnboardingClientProps, 'inviteType'>) {
-  const initialSavedSections = initialData?.completedSections ?? {
-    personal: false,
-    time_off: false,
-    emergency_contacts: false,
-    financial: false,
-    health: false,
-    right_to_work_notice: false,
-  }
+}: {
+  token: string
+  email: string
+  hasAuthUser: boolean
+  initialData: OnboardingSnapshot
+}) {
+  const { completedSections: initialSavedSections, ...initialValues } = initialData
 
-  const [accountCreated, setAccountCreated] = useState(hasAuthUser)
+  // The last saved values of every section live here, not in the steps. A step is unmounted when
+  // the starter moves on, so a step that read the page-load data again after Back showed blanks
+  // for anything saved since, and saving it then wrote those blanks over the NI number, bank
+  // details and health answers.
+  const [values, setValues] = useState<OnboardingValues>(initialValues)
   const [savedSections, setSavedSections] = useState<Record<SectionKey, boolean>>(initialSavedSections)
+  const [accountCreated, setAccountCreated] = useState(hasAuthUser)
+  // Set when an action says the browser needs a session for this starter. The step stays where
+  // it is, and the card asks them to sign in first.
+  const [needsSignIn, setNeedsSignIn] = useState(false)
+  // Set by Edit on the review screen, so saving that step goes straight back to the review.
+  const [returnToReview, setReturnToReview] = useState(false)
 
   const visibleSteps = useMemo(
     () =>
@@ -109,22 +142,61 @@ function OnboardingFlow({
     [accountCreated],
   )
 
-  const initialStepIndex = accountCreated ? firstIncompleteStepIndex(initialSavedSections) : 0
-  const [currentStepIndex, setCurrentStepIndex] = useState(initialStepIndex)
+  const [currentStepIndex, setCurrentStepIndex] = useState(() =>
+    accountCreated ? firstIncompleteStepIndex(initialSavedSections) : 0,
+  )
 
-  const markSectionComplete = (section: SectionKey) => {
-    setSavedSections((prev) => ({ ...prev, [section]: true }))
+  const currentStep = visibleSteps[currentStepIndex] ?? visibleSteps[visibleSteps.length - 1]
+
+  const goToStep = (key: StepKey) => {
+    const index = visibleSteps.findIndex((step) => step.key === key)
+    if (index !== -1) setCurrentStepIndex(index)
   }
 
   const goToNextStep = () => {
+    if (returnToReview) {
+      setReturnToReview(false)
+      goToStep('review')
+      return
+    }
     setCurrentStepIndex((index) => Math.min(index + 1, visibleSteps.length - 1))
   }
 
+  // Back from a step opened with Edit on the review means the starter is moving around again, so
+  // Save and Continue goes to the next step, not straight back to the review past the one they
+  // meant to change.
   const goToPrevStep = () => {
+    setReturnToReview(false)
     setCurrentStepIndex((index) => Math.max(index - 1, 0))
   }
 
-  const currentStep = visibleSteps[currentStepIndex] ?? visibleSteps[visibleSteps.length - 1]
+  /** Keep what was saved, mark whether it is complete, and move on. */
+  const sectionSaved = <K extends SectionKey>(section: K, saved: OnboardingValues[K], complete: boolean) => {
+    setValues((prev) => ({ ...prev, [section]: saved }))
+    setSavedSections((prev) => ({ ...prev, [section]: complete }))
+    goToNextStep()
+  }
+
+  const requireSignIn = () => setNeedsSignIn(true)
+
+  // A new step: back to the top of the page, and focus on its heading, so a keyboard or screen
+  // reader user starts at the step they have just moved to rather than at the old Save button.
+  // Keyed on the step itself, so it never runs on the first render and steals focus on load.
+  const headerRef = useRef<HTMLDivElement | null>(null)
+  const viewKey = needsSignIn ? 'sign_in' : currentStep?.key
+  const lastViewKey = useRef(viewKey)
+  useEffect(() => {
+    if (lastViewKey.current === viewKey) return
+    lastViewKey.current = viewKey
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0 })
+    }
+    const heading = headerRef.current?.querySelector('h1')
+    if (heading) {
+      heading.tabIndex = -1
+      heading.focus({ preventScroll: true })
+    }
+  }, [viewKey])
 
   const stepperSteps = visibleSteps.map((step, i) => ({
     label: step.title,
@@ -142,9 +214,12 @@ function OnboardingFlow({
             token={token}
             email={email}
             onBack={onBack}
-            onSuccess={() => {
+            onSuccess={(signedIn) => {
               setAccountCreated(true)
               setCurrentStepIndex(0)
+              // The account is made either way. Without a session the next save would be
+              // refused, so ask them to sign in now rather than after they have typed a step.
+              if (!signedIn) setNeedsSignIn(true)
             }}
           />
         )
@@ -153,10 +228,12 @@ function OnboardingFlow({
           <PersonalStep
             token={token}
             onBack={onBack}
-            initialData={initialData?.personal}
-            onSuccess={() => {
-              markSectionComplete('personal')
-              goToNextStep()
+            initialData={values.personal}
+            saved={savedSections.personal}
+            onSignInRequired={requireSignIn}
+            onSuccess={(saved) => {
+              const personal = { ...values.personal, ...saved }
+              sectionSaved('personal', personal, isPersonalComplete(personal))
             }}
           />
         )
@@ -165,13 +242,12 @@ function OnboardingFlow({
           <TimeOffStep
             token={token}
             onBack={onBack}
-            initialAnswer={initialData?.time_off?.answer ?? null}
-            initialBlocks={initialData?.time_off?.blocks ?? []}
-            initialSubmissionVersion={initialData?.time_off?.submissionVersion ?? 0}
-            onSuccess={() => {
-              markSectionComplete('time_off')
-              goToNextStep()
-            }}
+            initialAnswer={values.time_off.answer}
+            initialBlocks={values.time_off.blocks}
+            initialSubmissionVersion={values.time_off.submissionVersion}
+            saved={savedSections.time_off}
+            onSignInRequired={requireSignIn}
+            onSuccess={(saved) => sectionSaved('time_off', saved, true)}
           />
         )
       case 'emergency_contacts':
@@ -179,11 +255,10 @@ function OnboardingFlow({
           <EmergencyContactsStep
             token={token}
             onBack={onBack}
-            initialData={initialData?.emergency_contacts}
-            onSuccess={() => {
-              markSectionComplete('emergency_contacts')
-              goToNextStep()
-            }}
+            initialData={values.emergency_contacts}
+            saved={savedSections.emergency_contacts}
+            onSignInRequired={requireSignIn}
+            onSuccess={(saved) => sectionSaved('emergency_contacts', saved, isEmergencyContactsComplete(saved.primary))}
           />
         )
       case 'financial':
@@ -191,11 +266,10 @@ function OnboardingFlow({
           <FinancialStep
             token={token}
             onBack={onBack}
-            initialData={initialData?.financial}
-            onSuccess={() => {
-              markSectionComplete('financial')
-              goToNextStep()
-            }}
+            initialData={values.financial}
+            saved={savedSections.financial}
+            onSignInRequired={requireSignIn}
+            onSuccess={(saved) => sectionSaved('financial', saved, isFinancialComplete(saved))}
           />
         )
       case 'health':
@@ -203,11 +277,10 @@ function OnboardingFlow({
           <HealthStep
             token={token}
             onBack={onBack}
-            initialData={initialData?.health}
-            onSuccess={() => {
-              markSectionComplete('health')
-              goToNextStep()
-            }}
+            initialData={values.health}
+            saved={savedSections.health}
+            onSignInRequired={requireSignIn}
+            onSuccess={(saved) => sectionSaved('health', saved, true)}
           />
         )
       case 'right_to_work_notice':
@@ -215,19 +288,25 @@ function OnboardingFlow({
           <RightToWorkNoticeStep
             token={token}
             onBack={onBack}
-            initialAcknowledged={initialData?.right_to_work_notice?.acknowledged ?? false}
-            onSuccess={() => {
-              markSectionComplete('right_to_work_notice')
-              goToNextStep()
-            }}
+            initialAcknowledged={values.right_to_work_notice.acknowledged}
+            saved={savedSections.right_to_work_notice}
+            onSignInRequired={requireSignIn}
+            onSuccess={() => sectionSaved('right_to_work_notice', { acknowledged: true }, true)}
           />
         )
       case 'review':
         return (
           <ReviewStep
             token={token}
+            values={values}
             savedSections={savedSections}
             onBack={onBack}
+            onSignInRequired={requireSignIn}
+            onEdit={(section) => {
+              setReturnToReview(true)
+              goToStep(section)
+            }}
+            onIncomplete={(section) => setSavedSections((prev) => ({ ...prev, [section]: false }))}
           />
         )
       default:
@@ -237,7 +316,9 @@ function OnboardingFlow({
 
   return (
     <StandaloneShell label="Employee Onboarding" width="wide">
-      <StandalonePageHeader title={currentStep?.title ?? ''} />
+      <div ref={headerRef}>
+        <StandalonePageHeader title={needsSignIn ? 'Sign In to Carry On' : (currentStep?.title ?? '')} />
+      </div>
 
       {/* The Stepper is the rail of every step beside the form on a wide screen, and one line
           ("Step 2 of 8" with a bar) above the form on a phone, so it carries the step count at
@@ -246,7 +327,14 @@ function OnboardingFlow({
         <Stepper steps={stepperSteps} />
 
         <Card>
-          <CardBody>{renderStepContent()}</CardBody>
+          <CardBody>
+            {needsSignIn ? (
+              <OnboardingSignInForm token={token} email={email} onSignedIn={() => setNeedsSignIn(false)} />
+            ) : null}
+            {/* Hidden rather than unmounted while they sign in, so what they typed into the step
+                is still there to save afterwards. */}
+            <div hidden={needsSignIn}>{renderStepContent()}</div>
+          </CardBody>
         </Card>
       </div>
     </StandaloneShell>

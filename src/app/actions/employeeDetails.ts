@@ -41,15 +41,27 @@ export interface AuditLogEntry {
   additional_info: Record<string, unknown> | null
 }
 
+/**
+ * Which sections were withheld from this viewer. A withheld section reaches the page as null, so
+ * the page needs to know it was withheld rather than missing: it then says the viewer cannot see
+ * it, instead of "Has allergies? No" or a "Bank details missing" warning.
+ */
+interface EmployeeRedactions {
+  financial: boolean
+  health: boolean
+  /** The right to work document reference and details (the record itself still shows). */
+  rightToWorkDocument: boolean
+}
+
 export interface EmployeeDetailResult {
-  data?: EmployeeDetailData & { permissions: EmployeePermissions }
+  data?: EmployeeDetailData & { permissions: EmployeePermissions; redacted: EmployeeRedactions }
   error?: string
   notFound?: boolean
   unauthorized?: boolean
 }
 
 export interface EmployeeEditResult {
-  data?: EmployeeEditData & { canViewDocuments: boolean }
+  data?: EmployeeEditData & { canViewDocuments: boolean; canUploadDocuments: boolean; canDeleteDocuments: boolean }
   error?: string
   notFound?: boolean
   unauthorized?: boolean
@@ -103,15 +115,37 @@ export async function getEmployeeDetailData(employeeId: string): Promise<Employe
     // exposed to anyone who only holds employees.view.
     const filteredFinancialDetails = canAccessFinancial ? employeeData.financialDetails : null;
     const filteredHealthRecord = canAccessHealth ? employeeData.healthRecord : null;
+    // The right to work document number (passport, share code) and its notes identify the person
+    // as much as an NI number does, so they follow the same gate. Whether a check was done, and
+    // when, still shows.
+    const canAccessRightToWorkDocument = canEdit;
+    const filteredRightToWork = employeeData.rightToWork && !canAccessRightToWorkDocument
+      ? { ...employeeData.rightToWork, document_reference: null, document_details: null }
+      : employeeData.rightToWork;
+
+    // A withheld section has nothing to fail, so its load error is dropped with it.
+    const { financial: financialLoadError, health: healthLoadError, ...otherLoadErrors } = employeeData.loadErrors;
+    const loadErrors: EmployeeDetailData['loadErrors'] = {
+      ...otherLoadErrors,
+      ...(canAccessFinancial && financialLoadError ? { financial: financialLoadError } : {}),
+      ...(canAccessHealth && healthLoadError ? { health: healthLoadError } : {}),
+    };
 
     return {
       data: {
         ...employeeData,
         financialDetails: filteredFinancialDetails,
         healthRecord: filteredHealthRecord,
+        rightToWork: filteredRightToWork,
         attachments: filteredAttachments,
         attachmentCategories: filteredCategories,
-        permissions
+        loadErrors,
+        permissions,
+        redacted: {
+          financial: !canAccessFinancial,
+          health: !canAccessHealth,
+          rightToWorkDocument: !canAccessRightToWorkDocument,
+        },
       }
     };
   } catch (error: unknown) {
@@ -124,9 +158,11 @@ export async function getEmployeeDetailData(employeeId: string): Promise<Employe
 }
 
 export async function getEmployeeEditData(employeeId: string): Promise<EmployeeEditResult> {
-  const [canEdit, canViewDocuments] = await Promise.all([
+  const [canEdit, canViewDocuments, canUploadDocuments, canDeleteDocuments] = await Promise.all([
     checkUserPermission('employees', 'edit'),
     checkUserPermission('employees', 'view_documents'),
+    checkUserPermission('employees', 'upload_documents'),
+    checkUserPermission('employees', 'delete_documents'),
   ]);
 
   if (!canEdit) {
@@ -135,7 +171,7 @@ export async function getEmployeeEditData(employeeId: string): Promise<EmployeeE
 
   try {
     const employeeData = await EmployeeService.getEmployeeByIdForEdit(employeeId);
-    return { data: { ...employeeData, canViewDocuments } };
+    return { data: { ...employeeData, canViewDocuments, canUploadDocuments, canDeleteDocuments } };
   } catch (error: unknown) {
     console.error('[employeeEdit] unexpected error', error);
     if (getErrorMessage(error) === 'Employee not found.') {

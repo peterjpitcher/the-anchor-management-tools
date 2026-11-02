@@ -1,10 +1,10 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from 'react';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
+import type { ActionFormState } from '@/types/actions';
 import type { EmployeeHealthRecord } from '@/types/database';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FormFooter, Input, LinkButton, Textarea, toast } from '@/ds';
 
 interface HealthRecordsFormProps {
@@ -14,37 +14,29 @@ interface HealthRecordsFormProps {
   cancelHref?: string;
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      loading={pending}
-      variant="primary"
-    >
-      Save Health Records
-    </Button>
-  );
-}
-
 export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref }: HealthRecordsFormProps) {
-  const [state, formAction] = useActionState(upsertHealthRecord, null);
+  const [state, formAction, pending] = useActionState(upsertHealthRecord, null);
   const [hasAllergies, setHasAllergies] = useState(Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies));
   const [hadAbsence, setHadAbsence] = useState(Boolean(healthRecord?.had_absence_over_2_weeks_last_3_years));
   const [hadOutpatient, setHadOutpatient] = useState(Boolean(healthRecord?.had_outpatient_treatment_over_3_months_last_3_years));
   const [isRegisteredDisabled, setIsRegisteredDisabled] = useState(healthRecord?.is_registered_disabled || false);
-  const pathname = usePathname();
   const router = useRouter();
-  const isNewEmployee = pathname?.includes('/employees/new');
+  const handledState = useRef<ActionFormState | null>(null);
 
   useEffect(() => {
-    if (state?.type === 'success') {
-      if (!isNewEmployee) {
-        toast.success(state.message || 'Health record updated successfully.');
-        router.push(`/employees/${employeeId}`);
-      }
-    }
-  }, [state, isNewEmployee, router, employeeId]);
+    if (state?.type !== 'success' || handledState.current === state) return;
+    handledState.current = state;
+    toast.success(state.message || 'Health record updated successfully.');
+    router.push(`/employees/${employeeId}`);
+  }, [state, router, employeeId]);
+
+  // onSubmit rather than a form action: a React 19 form action resets the form after every
+  // submit, so a refused save wiped the answers.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   interface FieldConfig {
     name: string;
@@ -104,7 +96,9 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
   const generalFields: FieldConfig[] = [
       { name: 'doctor_name', label: 'Doctor Name', defaultValue: healthRecord?.doctor_name },
       { name: 'doctor_address', label: 'Doctor Address', defaultValue: healthRecord?.doctor_address },
-      { name: 'illness_history', label: 'Additional Medical Notes', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
+      // The same two questions the employee answers in onboarding, under the same names.
+      { name: 'illness_history', label: 'Illness history', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
+      { name: 'recent_treatment', label: 'Recent treatment', type: 'textarea' as const, defaultValue: healthRecord?.recent_treatment },
   ];
 
   const questionnaireFields: FieldConfig[] = [
@@ -147,7 +141,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
   ];
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
 
       <Card>
@@ -195,6 +189,7 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
             onChange: (checked: boolean) => setIsRegisteredDisabled(checked)
           })}
 
+          {/* Unticking hides these, and the save clears them, so old details are not kept. */}
           {isRegisteredDisabled && (
             <div className="grid gap-4 sm:grid-cols-2">
               {disabilityFields.map(renderField)}
@@ -213,7 +208,9 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
             Cancel
           </LinkButton>
         )}
-        <SubmitButton />
+        <Button type="submit" loading={pending} variant="primary">
+          Save Health Records
+        </Button>
       </FormFooter>
     </form>
   );

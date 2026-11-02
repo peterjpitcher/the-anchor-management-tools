@@ -42,6 +42,10 @@ interface EmployeePayTabProps {
   initialOverrides: EmployeeRateOverride[];
   /** Current effective rate resolved by the pay calculator (for display). */
   currentRate: { rate: number; source: 'override' | 'age_band' } | null;
+  /** Why the current rate could not be worked out. Shown instead of a rate, never a guessed one. */
+  currentRateError?: string | null;
+  /** Why the pay details are read only (a former employee), shown above them. */
+  readOnlyReason?: string | null;
   /** Why the pay settings or rate overrides could not be loaded. The tab then says so. */
   loadError?: string | null;
 }
@@ -66,6 +70,8 @@ export default function EmployeePayTab({
   initialPaySettings,
   initialOverrides,
   currentRate,
+  currentRateError,
+  readOnlyReason,
   loadError,
 }: EmployeePayTabProps) {
   // Pay settings state
@@ -119,6 +125,7 @@ export default function EmployeePayTab({
     const rate = parseFloat(overrideRate);
     if (!rate || rate <= 0) { setOverrideError('Enter a valid hourly rate'); return; }
     if (!overrideEffectiveFrom) { setOverrideError('Choose an effective-from date'); return; }
+    if (overrideEffectiveFrom < getTodayIsoDate()) { setOverrideError('A rate override cannot start in the past. Choose today or a later date.'); return; }
     setOverrideError('');
 
     startOverrideTransition(async () => {
@@ -151,6 +158,7 @@ export default function EmployeePayTab({
     const rate = parseFloat(editOverrideRate);
     if (!rate || rate <= 0) { setEditOverrideError('Enter a valid hourly rate'); return; }
     if (!editOverrideEffectiveFrom) { setEditOverrideError('Choose an effective-from date'); return; }
+    if (editOverrideEffectiveFrom < getTodayIsoDate()) { setEditOverrideError('A rate override cannot start in the past. Choose today or a later date.'); return; }
     setEditOverrideError('');
 
     startOverrideTransition(async () => {
@@ -206,6 +214,14 @@ export default function EmployeePayTab({
           ) : undefined}
         />
         <CardBody className="space-y-4">
+          {readOnlyReason && (
+            <Alert tone="info" size="sm">{readOnlyReason}</Alert>
+          )}
+
+          {currentRateError && (
+            <Alert tone="danger" size="sm" title="Could not work out the current rate">{currentRateError}</Alert>
+          )}
+
           {currentRate && (
             <div className="flex items-center justify-between gap-4">
               {/* Green, as it was before the page contract: the rate in force today. */}
@@ -310,6 +326,7 @@ export default function EmployeePayTab({
                   <Input
                     id="override-eff"
                     type="date"
+                    min={getTodayIsoDate()}
                     value={overrideEffectiveFrom}
                     onChange={e => setOverrideEffectiveFrom(e.target.value)}
                   />
@@ -374,6 +391,7 @@ export default function EmployeePayTab({
                           <Input
                             type="date"
                             aria-label="Effective from"
+                            min={getTodayIsoDate()}
                             value={editOverrideEffectiveFrom}
                             onChange={e => setEditOverrideEffectiveFrom(e.target.value)}
                           />

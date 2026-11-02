@@ -4,10 +4,18 @@ import { useEffect, useState } from 'react'
 import { updateOnboardingChecklist, getOnboardingProgress } from '@/app/actions/employeeActions'
 import { Alert, Card, CardBody, CardHeader, Checkbox, Empty, PageLoading, ProgressBar, Spinner, toast } from '@/ds'
 import { formatDateInLondon } from '@/lib/dateUtils'
+import { isSigningOwnedChecklistField } from '@/lib/employees/checklist-rules'
 
 interface OnboardingChecklistTabProps {
   employeeId: string
   canEdit: boolean
+  /**
+   * When the starter was told, during onboarding, that they cannot be given shifts until their
+   * right to work check is done. A record that we told them, never evidence of a check.
+   */
+  rightToWorkNoticeAt?: string | null
+  /** Why the onboarding answers could not be loaded, if they could not. */
+  answersLoadError?: string | null
 }
 
 interface ChecklistItem {
@@ -17,7 +25,12 @@ interface ChecklistItem {
   date?: string | null
 }
 
-export default function OnboardingChecklistTab({ employeeId, canEdit }: OnboardingChecklistTabProps) {
+export default function OnboardingChecklistTab({
+  employeeId,
+  canEdit,
+  rightToWorkNoticeAt,
+  answersLoadError,
+}: OnboardingChecklistTabProps) {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
   const [progress, setProgress] = useState<{
@@ -51,24 +64,39 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
   }
 
   async function handleToggle(field: string, currentValue: boolean) {
-    if (!canEdit) {
+    if (!canEdit || isSigningOwnedChecklistField(field)) {
       return
     }
 
     setUpdating(field)
-    
-    const result = await updateOnboardingChecklist(employeeId, field, !currentValue)
-    
-    if (result.success) {
-      // Reload progress
-      await loadProgress()
-    } else {
-      // Show error
-      toast.error(result.error || 'Failed to update checklist')
+
+    // A thrown action (a network drop, say) used to leave the spinner turning for good.
+    try {
+      const result = await updateOnboardingChecklist(employeeId, field, !currentValue)
+
+      if (result.success) {
+        // Reload progress
+        await loadProgress()
+      } else {
+        // Show error
+        toast.error(result.error || 'Failed to update checklist')
+      }
+    } catch {
+      toast.error('Failed to update checklist')
+    } finally {
+      setUpdating(null)
     }
-    
-    setUpdating(null)
   }
+
+  // What the starter was told about the right to work check, and when. Shown with the checklist
+  // because it is part of onboarding; it is not the check itself.
+  const rightToWorkNotice = answersLoadError ? (
+    <Alert tone="danger" size="sm">{answersLoadError}</Alert>
+  ) : rightToWorkNoticeAt ? (
+    <Alert tone="info" size="sm" title="Told about the right to work check">
+      On {formatDateInLondon(rightToWorkNoticeAt)} they confirmed during onboarding that they understand they cannot be given shifts until their right to work check is done. This is not the check itself.
+    </Alert>
+  ) : null
 
   if (loading) {
     return (
@@ -92,14 +120,17 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
 
   if (!progress || !progress.items || progress.items.length === 0) {
     return (
-      <Card>
-        <CardHeader title="Onboarding Checklist" />
-        <Empty
-          size="sm"
-          title="No onboarding tasks yet"
-          description="The checklist appears here once it is set up."
-        />
-      </Card>
+      <div className="space-y-6">
+        <Card>
+          <CardHeader title="Onboarding Checklist" />
+          <Empty
+            size="sm"
+            title="No onboarding tasks yet"
+            description="The checklist appears here once it is set up."
+          />
+        </Card>
+        {rightToWorkNotice}
+      </div>
     )
   }
 
@@ -128,24 +159,34 @@ export default function OnboardingChecklistTab({ employeeId, canEdit }: Onboardi
           {progress.items.map((item) => {
             const date = item.date
             const isUpdating = updating === item.field
+            const setBySigning = isSigningOwnedChecklistField(item.field)
 
             return (
               <li key={item.field} className="flex items-start gap-2 px-pad-card py-4">
-                <Checkbox
-                  id={item.field}
-                  checked={item.completed}
-                  onChange={() => handleToggle(item.field, item.completed)}
-                  disabled={isUpdating || !canEdit}
-                  label={item.label}
-                  description={item.completed && date ? `Completed on ${formatDateInLondon(date)}` : undefined}
-                  className="flex-1"
-                />
+                <div className="min-w-0 flex-1 space-y-1">
+                  <Checkbox
+                    id={item.field}
+                    checked={item.completed}
+                    onChange={() => handleToggle(item.field, item.completed)}
+                    disabled={isUpdating || !canEdit || setBySigning}
+                    label={item.label}
+                    description={item.completed && date ? `Completed on ${formatDateInLondon(date)}` : undefined}
+                    className="flex-1"
+                  />
+                  {setBySigning && (
+                    <p className="text-xs text-text-muted">
+                      Ticked automatically when the worker agreement is signed. Send it from the Signing tab.
+                    </p>
+                  )}
+                </div>
                 {isUpdating && <Spinner size="sm" />}
               </li>
             )
           })}
         </ul>
       </Card>
+
+      {rightToWorkNotice}
 
       <Alert tone="info" title="Important Notes">
         <ul className="list-disc space-y-1 pl-5">

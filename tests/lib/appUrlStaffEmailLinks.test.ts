@@ -304,8 +304,10 @@ describe('employee invite chase cron', () => {
             id: 'invite-1',
             token: ONBOARDING_TOKEN,
             email: 'new.starter@example.com',
+            employee_id: 'employee-1',
             invite_type: 'onboarding',
             created_at: '2026-09-27T09:00:00.000Z',
+            expires_at: '2026-10-04T09:00:00.000Z',
             day3_chase_sent_at: null,
             day6_chase_sent_at: null,
           },
@@ -313,11 +315,18 @@ describe('employee invite chase cron', () => {
             id: 'invite-2',
             token: PORTAL_TOKEN,
             email: 'sam.taylor@example.com',
+            employee_id: 'employee-2',
             invite_type: 'portal_access',
             created_at: '2026-09-27T09:00:00.000Z',
+            expires_at: '2026-10-04T09:00:00.000Z',
             day3_chase_sent_at: null,
             day6_chase_sent_at: null,
           },
+        ],
+        // The cron chases a link only while it still belongs to its person (FF-19).
+        employees: [
+          { employee_id: 'employee-1', email_address: 'new.starter@example.com', status: 'Onboarding', auth_user_id: null },
+          { employee_id: 'employee-2', email_address: 'sam.taylor@example.com', status: 'Active', auth_user_id: null },
         ],
       })
     )
