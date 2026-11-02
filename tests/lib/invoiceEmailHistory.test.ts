@@ -197,7 +197,6 @@ describe('describeNextReminder', () => {
       invoice: invoice(),
       today: MONDAY,
       goLiveDate: '2026-10-01',
-      lastClientEmailDate: null,
       todayRunDone: true,
       ...overrides,
     }
@@ -247,13 +246,6 @@ describe('describeNextReminder', () => {
     const next = describeNextReminder(input({ invoice: invoice({ status: 'sent', dueDate: '2027-01-29' }) }))
 
     expect(next.line).toBe('Next automatic reminder: Wednesday 3 February (forecast)')
-  })
-
-  it('waits out the three quiet days after another email to the client', () => {
-    // Emailed on Monday 12th: quiet on the 12th, 13th and 14th.
-    const next = describeNextReminder(input({ lastClientEmailDate: '2026-10-12' }))
-
-    expect(next.line).toBe('Next automatic reminder: Thursday 15 October (forecast)')
   })
 
   it('says when reminders are held, and what follows the hold', () => {
@@ -354,18 +346,20 @@ describe('describeNextReminder', () => {
     const weekly = (overrides: Partial<NextReminderInput> = {}): NextReminderInput =>
       input({ weeklyFrom: '2026-10-01', goLiveDate: '2026-09-01', ...overrides })
 
-    it('names the weekly reminder that follows the second', () => {
+    it('names the weekly reminder that follows the second, on the next Monday', () => {
+      // Due Friday 25 September: 21 days overdue on Friday 16 October, so the first Monday is the 19th.
       const next = describeNextReminder(
         weekly({ invoice: invoice({ firstReminderDate: '2026-10-01', secondReminderDate: '2026-10-09', dueDate: '2026-09-25' }) })
       )
 
       expect(next).toEqual({
-        line: 'Next automatic reminder: Friday 16 October (forecast)',
+        line: 'Next automatic reminder: Monday 19 October (forecast)',
         detail: 'The weekly reminder. Everything is checked again before it is sent.',
       })
     })
 
     it('keeps chasing an invoice 21 days overdue instead of handing it over', () => {
+      // 21 days overdue on Monday 12th and today's run is over without sending it, so the next run makes it up.
       expect(describeNextReminder(weekly({ invoice: invoice({ dueDate: '2026-09-21' }) }))).toEqual({
         line: 'Next automatic reminder: Tuesday 13 October (forecast)',
         detail: 'The weekly reminder. Everything is checked again before it is sent.',

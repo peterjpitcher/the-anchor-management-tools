@@ -23,7 +23,6 @@ import { invoiceRemindersGoLiveDate, invoiceWeeklyRemindersFrom } from '@/lib/in
 import {
   INVOICE_REMINDERS_JOB,
   loadLastClientChaserDates,
-  loadLastClientEmailDates,
   toReminderInvoice,
 } from '@/lib/invoices/reminder-job'
 import { weeklyChasersOn } from '@/lib/invoices/reminder-rules'
@@ -305,17 +304,8 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
       // nothing about a next reminder: a forecast here would be a guess.
       if (bookingLinkError) throw new Error(bookingLinkError.message)
 
-      // Only sharpens the forecast (a client emailed in the last three days is left alone), so
-      // a failure here is not worth losing the line over.
-      let lastClientEmailDate: string | null = null
-      try {
-        const dates = await loadLastClientEmailDates(admin, [invoice.vendor_id], today)
-        lastClientEmailDate = dates.get(invoice.vendor_id) ?? null
-      } catch (error) {
-        console.warn('Could not read recent client emails for the reminder forecast:', getErrorMessage(error))
-      }
-
-      // Only sharpens the forecast of a weekly chaser, as above.
+      // Only sharpens the forecast of a weekly chaser (a client chased this week waits for the
+      // next Monday), so a failure here is not worth losing the line over.
       let lastClientChaserDate: string | null = null
       let bookingCancelled = false
       if (weeklyOn) {
@@ -342,7 +332,6 @@ export async function getInvoiceEmailHistory(invoiceId: string): Promise<Invoice
         invoice: toReminderInvoice(invoice, Boolean(bookingLink), invoiceBalanceDue(invoice), bookingCancelled),
         today,
         goLiveDate: invoiceRemindersGoLiveDate(),
-        lastClientEmailDate,
         weeklyFrom,
         lastClientChaserDate,
         todayRunDone: todayRun?.status === 'completed',

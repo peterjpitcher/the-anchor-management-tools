@@ -23,14 +23,19 @@
  *     emailing, join at 21 days (the first and second wordings would not be true for them)
  *   - a private hire invoice joins at 21 days, a week after the party (its first and second
  *     reminders stay off, because those windows land in the run-up to the event)
- *   - a client chased in the last week gets nothing else until the next weekly email, which
- *     then covers every invoice of theirs that is due
- *   - each weekly email goes at least 7 days after the invoice's own latest reminder and at
- *     least 7 days after the client's latest weekly email or hand-sent chase, so a client with
- *     several unpaid invoices gets one email a week, not one per invoice
+ *   - a client chased this week gets nothing else until the next weekly email, which then
+ *     covers every invoice of theirs that is due
  * Still never chased: nothing owed, paid, void, written off, a hold, a cancelled booking's
  * invoice (it waits for a credit note), and everything the job checks before sending (the
  * bank, an address, the email kill switches). See tasks/plan-2026-10-29-invoice-weekly-chasers.md.
+ *
+ * Every Monday (owner decision, 2 November 2026): "I need the monday emails to go out for old
+ * invoices regardless of anything else". The weekly email goes on Monday for every invoice that
+ * is 21 or more days overdue that day, whatever else the client was sent, and once a week only.
+ * An invoice that reaches 21 days later in the week waits for the next Monday. If Monday's email
+ * did not go (the run failed, or the email was refused), the next run that week sends it. The
+ * three quiet days after any invoice email, which held back the first Monday's emails, are
+ * gone for every stage.
  */
 
 export type ReminderStage = 'first' | 'second' | 'weekly'
@@ -44,14 +49,6 @@ export const SECOND_WINDOW = { from: 14, to: 20 } as const
 export const HANDOVER_DAYS = 21
 /** The second reminder waits at least this many days after the first. */
 export const SECOND_MIN_GAP_DAYS = 7
-/** A weekly chaser waits at least this many days after the last one, for the invoice and the client. */
-export const WEEKLY_GAP_DAYS = 7
-/**
- * A client who was sent any invoice email today or on either of the two London dates before
- * it is left alone. So an email on Friday blocks Friday, Saturday and Sunday, and Monday is
- * clear.
- */
-export const QUIET_DAYS = 3
 
 const UNCOLLECTABLE_STATUSES = new Set(['draft', 'paid', 'void', 'written_off'])
 
@@ -90,12 +87,6 @@ export interface ReminderContext {
    */
   goLiveDate: string | null
   /**
-   * London calendar date of the most recent invoice email this CLIENT was sent (any of their
-   * invoices: a new invoice, a reminder, a chase or a receipt). Only emails to the customer
-   * that were accepted for sending count. Null means none on record.
-   */
-  lastClientEmailDate?: string | null
-  /**
    * `INVOICE_WEEKLY_REMINDERS_FROM`. Null, unreadable or later than `today` means weekly
    * chasers are off and the schedule ends at 21 days, exactly as before.
    */
@@ -116,10 +107,10 @@ export type ReminderDecision =
       reason:
         | 'not_due_yet'
         | 'held'
-        | 'recent_client_email'
         | 'second_too_soon'
         | 'weekly_too_soon'
         | 'waiting_for_weekly'
+        | 'waiting_for_monday'
       daysOverdue: number
     }
   /** Nothing automatic will be sent. The owner should chase by hand. */
@@ -168,6 +159,14 @@ export function isWeekday(isoDate: string): boolean {
   return day >= 1 && day <= 5
 }
 
+/** The Monday of the Monday-to-Sunday week `isoDate` falls in. Null when it cannot be read. */
+export function mondayOf(isoDate: string): string | null {
+  const ms = isoToUtcMs(isoDate)
+  if (ms === null) return null
+  // getUTCDay counts Sunday as 0, so Sunday is six days after its Monday.
+  return addDays(isoDate, -((new Date(ms).getUTCDay() + 6) % 7))
+}
+
 /** The next date the job runs after `isoDate`: the next Monday to Friday. */
 export function nextRunDate(isoDate: string): string {
   let candidate = addDays(isoDate, 1)
@@ -184,14 +183,6 @@ function isHeld(invoice: ReminderInvoice, today: string): boolean {
   return remaining !== null && remaining >= 0
 }
 
-function clientEmailedRecently(context: ReminderContext): boolean {
-  if (!context.lastClientEmailDate) return false
-  const since = daysBetween(context.lastClientEmailDate, context.today)
-  // An email dated after "today" can only mean clock skew. Treat it as recent: when in doubt,
-  // do not send.
-  return since !== null && since < QUIET_DAYS
-}
-
 /**
  * True once weekly chasers are switched on for `today`. A date that cannot be read leaves them
  * off: failing closed here means today's behaviour, never an extra email.
@@ -203,35 +194,45 @@ export function weeklyChasersOn(context: Pick<ReminderContext, 'today' | 'weekly
 }
 
 /**
- * The weekly chaser for an invoice that is 21 or more days overdue. Fails closed: a reminder
- * date that cannot be read counts as recent, so it can hold an email back but never add one.
+ * The weekly chaser for an invoice that is 21 or more days overdue: Monday's email (see the
+ * file header). It is due on any run in a week whose Monday found it 21 or more days overdue,
+ * so a Monday that did not send it is made up later that week, and an invoice that reaches 21
+ * days mid-week waits for the next Monday. Once a week only. Fails closed: a chase date that
+ * cannot be read counts as this week's, so it can hold an email back but never add one.
  */
 function decideWeekly(invoice: ReminderInvoice, context: ReminderContext, daysOverdue: number): ReminderDecision {
   if (isHeld(invoice, context.today)) return { action: 'wait', reason: 'held', daysOverdue }
-  if (clientEmailedRecently(context)) return { action: 'wait', reason: 'recent_client_email', daysOverdue }
 
-  // A week after this invoice's own latest reminder, whichever stage that was.
-  for (const date of [invoice.firstReminderDate, invoice.secondReminderDate, invoice.lastWeeklyDate]) {
-    if (!date) continue
-    const since = daysBetween(date, context.today)
-    if (since === null || since < WEEKLY_GAP_DAYS) return { action: 'wait', reason: 'weekly_too_soon', daysOverdue }
+  const monday = mondayOf(context.today)
+  const overdueOnMonday = monday ? daysBetween(invoice.dueDate, monday) : null
+  if (overdueOnMonday === null || overdueOnMonday < HANDOVER_DAYS) {
+    return { action: 'wait', reason: 'waiting_for_monday', daysOverdue }
   }
 
-  if (clientChasedThisWeek(context)) return { action: 'wait', reason: 'weekly_too_soon', daysOverdue }
+  if (chasedThisWeek(invoice.lastWeeklyDate, context.today) || clientChasedThisWeek(context)) {
+    return { action: 'wait', reason: 'weekly_too_soon', daysOverdue }
+  }
 
   return { action: 'send', stage: 'weekly', daysOverdue }
 }
 
+/** True when `date` is on or after the Monday of `today`'s week, or cannot be read. */
+function chasedThisWeek(date: string | null | undefined, today: string): boolean {
+  if (!date) return false
+  const monday = mondayOf(today)
+  const since = monday ? daysBetween(monday, date) : null
+  return since === null || since >= 0
+}
+
 /**
- * True within a week of the client's latest weekly email or hand-sent chase, for any invoice.
- * That is what keeps a client with unpaid invoices to one email a week: an invoice that comes
- * due between two of them, at any stage, waits for the next and goes in the same email. A first
- * or second window that passes while it waits is picked up by the weekly emails at 21 days.
+ * True when the client has had a weekly email or a hand-sent chase since Monday, for any
+ * invoice. That is what keeps a client with unpaid invoices to one email a week: an invoice
+ * that comes due between two Mondays, at any stage, waits for the next and goes in the same
+ * email. A first or second window that passes while it waits is picked up by the weekly emails
+ * at 21 days.
  */
 function clientChasedThisWeek(context: ReminderContext): boolean {
-  if (!context.lastClientChaserDate) return false
-  const since = daysBetween(context.lastClientChaserDate, context.today)
-  return since === null || since < WEEKLY_GAP_DAYS
+  return chasedThisWeek(context.lastClientChaserDate, context.today)
 }
 
 /**
@@ -317,7 +318,6 @@ export function decideReminder(invoice: ReminderInvoice, context: ReminderContex
         : { action: 'needs_owner', reason: 'first_window_missed', daysOverdue }
     }
     if (isHeld(invoice, context.today)) return { action: 'wait', reason: 'held', daysOverdue }
-    if (clientEmailedRecently(context)) return { action: 'wait', reason: 'recent_client_email', daysOverdue }
     if (weekly && clientChasedThisWeek(context)) return { action: 'wait', reason: 'weekly_too_soon', daysOverdue }
     return { action: 'send', stage: 'first', daysOverdue }
   }
@@ -331,7 +331,6 @@ export function decideReminder(invoice: ReminderInvoice, context: ReminderContex
     return { action: 'wait', reason: 'second_too_soon', daysOverdue }
   }
   if (isHeld(invoice, context.today)) return { action: 'wait', reason: 'held', daysOverdue }
-  if (clientEmailedRecently(context)) return { action: 'wait', reason: 'recent_client_email', daysOverdue }
   if (weekly && clientChasedThisWeek(context)) return { action: 'wait', reason: 'weekly_too_soon', daysOverdue }
   return { action: 'send', stage: 'second', daysOverdue }
 }
