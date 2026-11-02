@@ -16,6 +16,11 @@ import { londonHour, managerReportPeriod, PARTIAL_SEND_HOUR_LONDON } from './sch
  * some marked "not checked"), the payload is frozen in `email_messages` and sent with a
  * stable Resend idempotency key; retries resend the identical payload.
  *
+ * Only a week with something to act on is sent (owner, 2 November 2026: "I don't want to
+ * receive emails unless there's a problem"): a red section, or a section that could not be
+ * read. A quiet week records a marker in `cron_job_runs` and sends nothing; /insights still
+ * shows the report.
+ *
  * Old-format reports frozen before the switch carry source references (checklist outbox,
  * recruitment communications, leave reminders, queued items). They are still finished
  * here, including source finalisation, before anything new is built.
@@ -219,6 +224,16 @@ export async function deliverManagerReport(
       return { success: true, sent, ...(sent === 0 ? { skipped: 'already_reported' } : {}), ...sentNotChecked() }
     }
 
+    // A quiet week was already found earlier today: build nothing again.
+    const quietKey = `quiet:${period.key}`
+    const { data: quiet, error: quietError } = await db.from('cron_job_runs').select('id')
+      .eq('job_name', 'manager-weekly-report').eq('run_key', quietKey).limit(1)
+    if (quietError) throw new Error(quietError.message)
+    if ((quiet ?? []).length > 0) {
+      completed = true
+      return { success: true, sent, skipped: 'nothing_to_act_on', ...sentNotChecked() }
+    }
+
     const to = managerRecipient()
     const appUrl = process.env.NEXT_PUBLIC_APP_URL
     const from = process.env.EMAIL_FROM_ADDRESS
@@ -231,6 +246,17 @@ export async function deliverManagerReport(
       console.error('Manager weekly report held back: sections not checked', { sections: report.notChecked })
       completed = true
       return { success: true, sent, skipped: 'waiting_for_sections', heldBackSections: report.notChecked, ...sentNotChecked() }
+    }
+
+    if (report.summary.counts.red === 0 && report.summary.counts.not_checked === 0) {
+      const stamp = now().toISOString()
+      const { error: markError } = await db.from('cron_job_runs').insert({
+        job_name: 'manager-weekly-report', run_key: quietKey, status: 'completed', started_at: stamp, finished_at: stamp,
+      }).select('id').single()
+      // A second run that found the same quiet week first has already recorded it.
+      if (markError && markError.code !== '23505') throw new Error(markError.message)
+      completed = true
+      return { success: true, sent, skipped: 'nothing_to_act_on', ...sentNotChecked() }
     }
 
     await renew()

@@ -216,8 +216,14 @@ export async function findPrivateHireToDo(input: { now: Date; db?: DbClient }): 
   return { textsAwaitingApproval: (data ?? []).length, refundsOwed, depositsDueBack, hiresToClose }
 }
 
-function hasToDo(toDo: PrivateHireToDo): boolean {
-  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0 || toDo.depositsDueBack.length > 0 || toDo.hiresToClose.length > 0
+/**
+ * The to-do items that send the email on their own: money owed back and texts a customer is
+ * waiting on. A hire not yet closed out does not (owner, 2 November 2026: "I don't want to
+ * receive emails unless there's a problem"); it is listed whenever the email goes for anything
+ * else.
+ */
+function toDoNeedsSending(toDo: PrivateHireToDo): boolean {
+  return toDo.textsAwaitingApproval > 0 || toDo.refundsOwed.length > 0 || toDo.depositsDueBack.length > 0
 }
 
 function toDoLines(toDo: PrivateHireToDo, appUrl: string): Array<{ text: string; url: string }> {
@@ -334,7 +340,7 @@ export async function runHireAttentionCheck(input: {
   } catch (error) {
     toDoError = error instanceof Error ? error.message : String(error)
   }
-  if (items.length === 0 && !hasToDo(toDo)) {
+  if (items.length === 0 && !toDoNeedsSending(toDo)) {
     return toDoError ? { listed: 0, emailed: false, error: toDoError } : { listed: 0, emailed: false }
   }
 

@@ -93,11 +93,20 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
         )}
 
         <dl className="mt-3 grid grid-cols-1 gap-x-6 gap-y-1 text-base sm:grid-cols-2">
-          {item.valuePence !== null && (
+          {/* A percentage voucher's stored value is only an estimate, so staff see the
+              percentage instead and record the real discount when they mark it used. */}
+          {item.percentOff !== null ? (
             <div className="flex justify-between gap-3 sm:block">
-              <dt className="text-text-muted">Value</dt>
-              <dd className="font-medium text-text">{formatPounds(item.valuePence)}</dd>
+              <dt className="text-text-muted">Discount</dt>
+              <dd className="font-medium text-text">{item.percentOff}% off food</dd>
             </div>
+          ) : (
+            item.valuePence !== null && (
+              <div className="flex justify-between gap-3 sm:block">
+                <dt className="text-text-muted">Value</dt>
+                <dd className="font-medium text-text">{formatPounds(item.valuePence)}</dd>
+              </div>
+            )
           )}
           {item.wonAtLabel && (
             <div className="flex justify-between gap-3 sm:block">
@@ -126,6 +135,12 @@ export function VoucherCard({ item, mode, onViewReplacement, children }: Voucher
             </div>
           )}
         </dl>
+
+        {actionable && mode === 'redeem' && item.digital && (
+          <Alert tone="info" role="status" className="mt-3">
+            Sent by email, so there is no card. Check the name on the booking matches the customer above.
+          </Alert>
+        )}
 
         {actionable && mode === 'redeem' && item.alcohol && (
           <Alert tone="info" role="status" className="mt-3">

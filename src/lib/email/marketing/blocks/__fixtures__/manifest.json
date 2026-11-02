@@ -11,6 +11,10 @@
     "additions": {
       "file": "docs/design/email-handover/anchor-email-blocks-additions.html",
       "sha256": "160e390c0b09bf55e01a53e9955889b3490aff19fdcefdcfcba6ee235f99dbff"
+    },
+    "voucher": {
+      "file": "docs/design/email-handover/anchor-email-blocks-voucher.html",
+      "sha256": "0e678a712a1585b8902d9089d9dc063268d536315b9027964dda2b00ceaa77ce"
     }
   },
   "campaign": [
@@ -295,6 +299,41 @@
       "endOffset": 46855,
       "sha256": "435cf49296c04bf2567f9978d9256060e9e61c9d689719fd8bf7fada07c588be",
       "fixture": "lib_grid_cards_linked_three.html"
+    },
+    {
+      "name": "voucher_card",
+      "startOffset": 1964,
+      "endOffset": 8455,
+      "sha256": "601466fd5ad93ad9ab63ee38116d38ab197630cbc7ed0444ef6fceee7f6b171a",
+      "fixture": "lib_voucher_card.html"
+    },
+    {
+      "name": "voucher_card_25",
+      "startOffset": 8525,
+      "endOffset": 15022,
+      "sha256": "8e9336aef712ef9bef42d9bbb930cb8165a0c5fb15ec613db98dcf187edf3497",
+      "fixture": "lib_voucher_card_25.html"
+    },
+    {
+      "name": "voucher_card_expiring",
+      "startOffset": 15092,
+      "endOffset": 21615,
+      "sha256": "18e9209aca6b86ebaab1652729e4688906308dae16df1ddece274d97239d4b9e",
+      "fixture": "lib_voucher_card_expiring.html"
+    },
+    {
+      "name": "voucher_card_no_name",
+      "startOffset": 21685,
+      "endOffset": 27966,
+      "sha256": "b368270eb9070224d93dd6d991de81edcb11abb5749af62a9f4639dcc1434de7",
+      "fixture": "lib_voucher_card_no_name.html"
+    },
+    {
+      "name": "voucher_card_logo",
+      "startOffset": 28036,
+      "endOffset": 34805,
+      "sha256": "5e0a53a5cc0ce1c0e81c6205c776e675dc2800eeafd1cb6c00bc30804121a2d1",
+      "fixture": "lib_voucher_card_logo.html"
     }
   ]
 }
