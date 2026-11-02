@@ -175,3 +175,27 @@ describe('voucher reminder text message', () => {
     expect(countSmsSeptets(body)).toBeLessThanOrEqual(GSM7_SINGLE_SEGMENT_LIMIT)
   })
 })
+
+describe('voucher reminder email for a voucher sent by email', () => {
+  it('repeats the number, says to show the email, and leaves out the internal label', () => {
+    const email = buildVoucherReminderEmail({
+      ...BASE,
+      ...GMT_EXPIRY,
+      kind: 'pre_expiry_3',
+      wonAtLabel: 'Come back offer, touch 1',
+      prizeLabel: '10% off your food',
+      requiresBooking: true,
+      digitalVoucherNumber: 'AN-2601-0042',
+    })
+
+    assertCleanRender(email)
+    expect(email.subject).toBe('Just a few days left to use your voucher: 10% off your food')
+    expect(email.text).toContain('Your voucher number is AN-2601-0042.')
+    expect(email.text).toContain('show this email at the bar when you pay')
+    expect(email.text).toContain('Book a table on 01753 682707 or at www.the-anchor.pub')
+    expect(email.text).toContain('24 January')
+    expect(email.text).not.toContain('Come back offer')
+    expect(email.text).not.toContain('show the card')
+  })
+})
+

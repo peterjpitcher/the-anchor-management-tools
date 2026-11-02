@@ -105,6 +105,13 @@ export async function POST(
   if (!batch) {
     return NextResponse.json({ error: 'Batch not found', code: 'NOT_FOUND' }, { status: 404 })
   }
+  // Return-visit vouchers live in the guest's email; there is no card to print.
+  if (batch.digital) {
+    return NextResponse.json(
+      { error: 'These vouchers were sent by email and have no printed card', code: 'DIGITAL_BATCH' },
+      { status: 409 }
+    )
+  }
 
   const { data: voucherRows, error: vouchersError } = await supabase
     .from('vouchers')

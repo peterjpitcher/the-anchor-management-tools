@@ -38,6 +38,8 @@ export type ReminderChannel = 'email' | 'sms'
 
 export type BatchPdfStatus = 'pending' | 'rendering' | 'ready' | 'failed'
 
+export type VoucherDiscountKind = 'fixed' | 'percent'
+
 // Machine error codes returned by voucher RPCs and the FOH API family
 // (spec section 4, F32, plus the RPC codes from migration 20260802000002)
 export type VoucherErrorCode =
@@ -83,6 +85,9 @@ export interface VoucherTypeRow {
   copy: Record<string, unknown> | null
   sort_order: number
   active: boolean
+  discount_kind: VoucherDiscountKind
+  percent_off: number | null
+  digital_only: boolean
   created_at: string
   updated_at: string
 }
@@ -110,6 +115,8 @@ export interface VoucherBatchRow {
   pdf_pages: number | null
   render_attempts: number
   render_error: string | null
+  digital: boolean
+  marketing_campaign_id: string | null
   updated_at: string
 }
 
@@ -139,6 +146,8 @@ export interface VoucherRow {
   cancelled_reason: string | null
   replaced_by_id: string | null
   replaces_id: string | null
+  marketing_recipient_id: string | null
+  redeemed_value_pence: number | null
   created_at: string
   updated_at: string
 }
@@ -187,6 +196,11 @@ export interface VoucherType {
   copy: Record<string, unknown> | null
   sortOrder: number
   active: boolean
+  // 'percent' types take their percentage from percentOff; value_pence is then an estimate.
+  discountKind: VoucherDiscountKind
+  percentOff: number | null
+  // Issued only by the return-visit emails, never printed.
+  digitalOnly: boolean
   createdAt: string
   updatedAt: string
 }
@@ -214,6 +228,9 @@ export interface VoucherBatch {
   pdfPages: number | null
   renderAttempts: number
   renderError: string | null
+  // A digital batch is created ready with no PDF, by a return-visit email.
+  digital: boolean
+  marketingCampaignId: string | null
   updatedAt: string
 }
 
@@ -243,6 +260,9 @@ export interface Voucher {
   cancelledReason: string | null
   replacedById: string | null
   replacesId: string | null
+  marketingRecipientId: string | null
+  // The discount actually given at redemption, when staff recorded it.
+  redeemedValuePence: number | null
   createdAt: string
   updatedAt: string
 }
@@ -292,6 +312,9 @@ export function mapVoucherTypeRow(row: VoucherTypeRow): VoucherType {
     copy: row.copy,
     sortOrder: row.sort_order,
     active: row.active,
+    discountKind: row.discount_kind,
+    percentOff: row.percent_off,
+    digitalOnly: row.digital_only,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -323,6 +346,8 @@ export function mapVoucherBatchRow(row: VoucherBatchRow): VoucherBatch {
     pdfPages: row.pdf_pages,
     renderAttempts: row.render_attempts,
     renderError: row.render_error,
+    digital: row.digital,
+    marketingCampaignId: row.marketing_campaign_id,
     updatedAt: row.updated_at,
   }
 }
@@ -354,6 +379,8 @@ export function mapVoucherRow(row: VoucherRow): Voucher {
     cancelledReason: row.cancelled_reason,
     replacedById: row.replaced_by_id,
     replacesId: row.replaces_id,
+    marketingRecipientId: row.marketing_recipient_id,
+    redeemedValuePence: row.redeemed_value_pence,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }

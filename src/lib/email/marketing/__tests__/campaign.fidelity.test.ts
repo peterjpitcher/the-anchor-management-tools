@@ -10,6 +10,7 @@ import { renderCampaignHtml } from '../render'
 import { applyEventLinkLabel } from './eventLinkLabel'
 import { applyButtonCentring, findLeftAlignedButtonRows } from './buttonAlignment'
 import { applyGoldContrastChange, findCharcoalOnGold } from './goldContrast'
+import { applyVoucherShellRules } from './voucherShellRules'
 
 /**
  * The block tests prove each piece is a faithful transcription. This proves the pieces go
@@ -30,6 +31,7 @@ const HANDOVER_CAMPAIGN = path.join(
   'docs/design/email-handover/anchor-christmas-and-lunch.html',
 )
 const HANDOVER_BLOCKS = path.join(REPO_ROOT, 'docs/design/email-handover/anchor-email-blocks.html')
+const HANDOVER_VOUCHER = path.join(REPO_ROOT, 'docs/design/email-handover/anchor-email-blocks-voucher.html')
 
 /** See the note in `blocks.fidelity.test.ts`: duplicated so each fidelity file stands alone. */
 function firstDifference(rendered: string, fixture: string): string {
@@ -85,11 +87,14 @@ const campaignContent = {
 
 describe('renderCampaignHtml, against the designer\'s own file', () => {
   it('rebuilds the Christmas campaign byte for byte, so what ships is what was signed off', () => {
-    // Two documented departures, and only two. The footer copy above, because the designer's
-    // line claims every recipient enquired with us, and the gold surfaces below, because the
-    // owner asked for white text on gold. Both are applied to the designer's file rather than
-    // relaxed in the comparison, so any third difference still fails this test.
-    const expected = applyEventLinkLabel(applyButtonCentring(applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8'))))
+    // Documented departures only. The footer copy above, because the designer's line claims
+    // every recipient enquired with us; the gold surfaces, because the owner asked for white
+    // text on gold; and the voucher card's two phone rules, which its own handover asks us to
+    // add to the shell. All are applied to the designer's file rather than relaxed in the
+    // comparison, so any other difference still fails this test.
+    const expected = applyVoucherShellRules(
+      applyEventLinkLabel(applyButtonCentring(applyGoldContrastChange(readFileSync(HANDOVER_CAMPAIGN, 'utf8')))),
+    )
     const rendered = renderCampaignHtml(campaignContent)
     expect(rendered, firstDifference(rendered, expected)).toBe(expected)
   })
@@ -125,6 +130,10 @@ describe('the extraction manifest', () => {
 
   it('was cut from the block library file that is still on disk', () => {
     expect(sha256(HANDOVER_BLOCKS), RERUN).toBe(manifest.generatedFrom.blocks.sha256)
+  })
+
+  it('was cut from the voucher card file that is still on disk', () => {
+    expect(sha256(HANDOVER_VOUCHER), RERUN).toBe(manifest.generatedFrom.voucher.sha256)
   })
 
   it('points at the paths the extraction script actually reads', () => {

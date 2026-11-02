@@ -18,6 +18,11 @@ import { escapeEmailText } from '../escape'
  *   correctly from inline styles alone.
  * - The hidden preheader div is the ~85 characters shown next to the subject line in the
  *   inbox. The zero-width joiners after it stop body copy leaking into that preview.
+ *
+ * The two `vc-` rules are the November 2026 voucher card's, added on the designer's
+ * instruction. Without them the card still fits a 375px phone; they exist so 320px holds.
+ * The campaign fidelity test applies the same insertion to the Christmas handover file
+ * (`__tests__/voucherShellRules.ts`), so no other change to the shell can slip through.
  */
 
 /** Padding that stops the inbox preview spilling into body copy. Count is from the source. */
@@ -55,6 +60,8 @@ export function renderShellHead(data: ShellData): string {
     .wrap{width:100% !important;max-width:100% !important;}
     .stack{display:block !important;width:100% !important;max-width:100% !important;box-sizing:border-box !important;}
     .gutter{padding-left:20px !important;padding-right:20px !important;}
+    .vc-num{font-size:32px !important;line-height:40px !important;letter-spacing:3px !important;}
+    .vc-date{font-size:18px !important;line-height:26px !important;}
   }
 </style>
 </head>
