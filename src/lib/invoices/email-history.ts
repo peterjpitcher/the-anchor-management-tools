@@ -248,8 +248,6 @@ export interface NextReminderInput {
   /** London calendar date. */
   today: string
   goLiveDate: string | null
-  /** London date of the client's latest invoice email, when known. */
-  lastClientEmailDate: string | null
   /** `INVOICE_WEEKLY_REMINDERS_FROM`, or null while weekly chasers are off. */
   weeklyFrom?: string | null
   /** London date of the client's latest weekly chaser or hand-sent chase, when known. */
@@ -273,7 +271,6 @@ export function describeNextReminder(input: NextReminderInput): NextReminderLine
   const context: ReminderContext = {
     today,
     goLiveDate,
-    lastClientEmailDate: input.lastClientEmailDate,
     weeklyFrom: input.weeklyFrom ?? null,
     lastClientChaserDate: input.lastClientChaserDate ?? null,
   }
