@@ -179,6 +179,12 @@ export function securityCheckStalls(lines: FormLine[]): { heldUp: number; gotThr
 const ORDINARY_FORM_STOPS = new Set(['no_security_token', 'missing_fields', 'server_refused'])
 
 /**
+ * Refusals that are our fault, not the guest's. Cloudflare out of reach turns every guest away and
+ * the website sends no live alert for it, so this summary is the only place it shows up.
+ */
+const OUR_SIDE_REFUSALS = new Set(['SECURITY_CHECK_UNAVAILABLE'])
+
+/**
  * Only a problem sends the summary: a failure on our side, a guest the security check stopped, a
  * form lost on the way, an availability check that could not be worked out, or a day that could not
  * be counted in full. A refusal alone does not: the website already sorts its answers into refusals
@@ -190,8 +196,11 @@ export function summaryNeedsSending(summary: DailyFunnelSummary): boolean {
     .reduce((sum, line) => sum + line.count, 0)
   // A held-up check that finished after all stopped nobody, so only the guests it stopped count.
   const { neverThrough } = securityCheckStalls(summary.forms)
+  const ourSideRefusals = summary.refusals
+    .filter((line) => line.stage === 'refused' && OUR_SIDE_REFUSALS.has(line.reason))
+    .reduce((sum, line) => sum + line.count, 0)
   return (
-    summary.failedTotal + summary.availability.couldNotCheck + formsLost + neverThrough > 0 ||
+    summary.failedTotal + summary.availability.couldNotCheck + formsLost + neverThrough + ourSideRefusals > 0 ||
     // A day too busy to read in full is itself worth an email.
     summary.truncated ||
     Boolean(summary.readError)

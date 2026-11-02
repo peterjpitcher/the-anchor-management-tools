@@ -293,6 +293,11 @@ describe('buildDailyFunnelEmail', () => {
         expect(summaryNeedsSending(friday({ forms: [form('blocked', 2, 'missing_fields')] }))).toBe(false)
       })
 
+      it('sends when the security check could not be reached, because nothing else reports it', () => {
+        const summary = friday({ refusals: [refused('SECURITY_CHECK_UNAVAILABLE')], refusedTotal: 1 })
+        expect(summaryNeedsSending(summary)).toBe(true)
+      })
+
       it('sends for a failure on our side, and lists the day\'s refusals with it', () => {
         const summary = friday({
           refusals: [
