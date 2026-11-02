@@ -944,8 +944,17 @@ export async function POST(request: Request) {
       throw new Error('Failed to update email message from Resend webhook')
     }
 
+    // AN EVENT FOR AN EMAIL THIS APP DID NOT SEND CHANGES NOTHING HERE. The Resend account is
+    // shared with the other Orange Jelly apps (BaronsHub, The Dukes Head, the website, CheersAI,
+    // MixerAI), and Resend sends this endpoint their events too. Acting on them let BaronsHub's
+    // weekly update, which Resend refuses for an old bounce, put a Barons invoice contact back on
+    // this app's block list every Monday, so her copies of our invoices were dropped (9 October
+    // and 2 November 2026). The event is kept as evidence and goes no further: no block list, no
+    // customer or contact health, no click record, no text fallback.
     if ((updatedMessages ?? []).length === 0) {
       await quarantineUnmatchedEvent(adminClient, event, emailId, recipient)
+      await finishResendWebhookClaim(adminClient, svixId, 'processed')
+      return NextResponse.json({ success: true, unmatched: true })
     }
 
     if (event.type === 'email.clicked') {
