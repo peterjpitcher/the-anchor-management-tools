@@ -22,6 +22,7 @@ vi.mock('@/lib/dateUtils', async (importOriginal) => {
 })
 
 import {
+  createVoucherBatch,
   issueVoucher,
   redeemVoucher,
   undoVoucherRedeem,
@@ -164,6 +165,21 @@ describe('redeemVoucher: not paying out twice', () => {
       p_idempotency_key: 'redeem-key-1',
       p_user_id: 'user-1',
     }))
+  })
+
+  it('passes the discount given to the database function, and nothing when none was typed', async () => {
+    await redeemVoucher({ ...input, redeemedValuePence: 412 })
+    expect(rpc).toHaveBeenLastCalledWith('voucher_redeem', expect.objectContaining({ p_redeemed_value_pence: 412 }))
+
+    await redeemVoucher(input)
+    expect(rpc).toHaveBeenLastCalledWith('voucher_redeem', expect.objectContaining({ p_redeemed_value_pence: null }))
+  })
+
+  it('refuses a negative discount before calling the database', async () => {
+    const result = await redeemVoucher({ ...input, redeemedValuePence: -1 })
+
+    expect(result.error).toBeTruthy()
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('does not write a second audit entry when the database reports a replay', async () => {
@@ -322,3 +338,41 @@ describe('undoVoucherRedeem and cancelVoucher', () => {
     expect(rpc).not.toHaveBeenCalled()
   })
 })
+
+describe('createVoucherBatch: email-only vouchers are never printed', () => {
+  function setTypes(rows: Array<{ id: string; digital_only: boolean }> | null, error: unknown = null) {
+    rpc = vi.fn().mockResolvedValue({ data: { success: true, batch_id: 'b-9', total_count: 1 }, error: null })
+    const typesChain: any = {
+      select: vi.fn().mockReturnThis(),
+      in: vi.fn().mockResolvedValue({ data: rows, error }),
+    }
+    mockedAdmin.mockReturnValue({ from: vi.fn(() => typesChain), rpc })
+  }
+
+  it('refuses a batch that includes a return-visit type and generates nothing', async () => {
+    setTypes([
+      { id: 'food-10', digital_only: false },
+      { id: 'return-10', digital_only: true },
+    ])
+
+    const result = await createVoucherBatch({
+      items: [
+        { typeId: 'food-10', quantity: 5 },
+        { typeId: 'return-10', quantity: 5 },
+      ],
+    })
+
+    expect(result.error).toMatch(/sent by email only/)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the types cannot be read, rather than printing blind', async () => {
+    setTypes(null, { message: 'boom' })
+
+    const result = await createVoucherBatch({ items: [{ typeId: 'food-10', quantity: 5 }] })
+
+    expect(result.error).toMatch(/could not check/i)
+    expect(rpc).not.toHaveBeenCalled()
+  })
+})
+

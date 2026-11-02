@@ -5,7 +5,9 @@
 // normally valid one month from issue, so both land inside that window.
 //
 // Channel: email is preferred, SMS is the fallback for customers with no usable
-// email address. 'Usable' means well-shaped, not hard-failed on the customer
+// email address. A voucher sent by a return-visit email is the exception: it goes
+// by email only (diners are never texted, owner rule of 15 September 2026), and its
+// copy carries the voucher number because there is no card to show. 'Usable' means well-shaped, not hard-failed on the customer
 // record, and not in email_suppressions (sendEmail refuses suppressed addresses
 // outright, so committing to email there would burn the attempt and strand the
 // customer). If an address is suppressed between the batch lookup and the send,
@@ -129,6 +131,11 @@ interface ReminderCopyInput {
    * could not honour.
    */
   requiresBooking: boolean
+  /**
+   * Set for a voucher issued by a return-visit email. There is no card: the guest shows the
+   * email, so the reminder repeats the number, and "won at" (an internal label) is left out.
+   */
+  digitalVoucherNumber?: string | null
 }
 
 export interface VoucherReminderEmailCopy {
@@ -230,7 +237,10 @@ export function buildVoucherReminderSms(input: ReminderCopyInput): string {
 }
 
 export function buildVoucherReminderEmail(input: ReminderCopyInput): VoucherReminderEmailCopy {
-  const { firstName, prize, origin, expiry } = resolveCopyParts(input)
+  const parts = resolveCopyParts(input)
+  const { firstName, prize, expiry } = parts
+  const digitalNumber = input.digitalVoucherNumber?.trim() || null
+  const origin = digitalNumber ? '' : parts.origin
   const finalNudge = input.kind === 'pre_expiry_3'
 
   // The prize goes after a colon. Interpolating it into the sentence read "Your A drink on us
@@ -247,11 +257,14 @@ export function buildVoucherReminderEmail(input: ReminderCopyInput): VoucherRemi
 
   // What the guest has to DO, which for three of the seven voucher types is not "turn up".
   // The wording follows the terms printed on those vouchers.
-  const howToUse = input.requiresBooking
-    ? `Give us a ring on ${GUEST_CONTACT.phoneDisplay} to book, because availability is not guaranteed without one, and your visit needs to be on or before ${expiry}.`
-    : 'Just show the card at the bar and we will sort you out.'
+  const howToUse = digitalNumber
+    ? `Book a table on ${GUEST_CONTACT.phoneDisplay} or at ${GUEST_CONTACT.website.replace(/^https:\/\//, '')} for a visit on or before ${expiry}, then show this email at the bar when you pay.`
+    : input.requiresBooking
+      ? `Give us a ring on ${GUEST_CONTACT.phoneDisplay} to book, because availability is not guaranteed without one, and your visit needs to be on or before ${expiry}.`
+      : 'Just show the card at the bar and we will sort you out.'
 
   const bodyLines = [`Hi ${firstName},`, opening, `${deadline} ${howToUse}`]
+  if (digitalNumber) bodyLines.push(`Your voucher number is ${digitalNumber}.`)
 
   return {
     subject,
@@ -423,6 +436,36 @@ async function loadSuppressedEmails(
  * telling a booking-only holder to turn up is a guest arriving on a full Sunday with a
  * voucher we cannot honour.
  */
+/**
+ * Which claimed vouchers were issued by a return-visit email. issue_lifecycle_voucher writes
+ * the voucher id onto the email's recipient row, so that row is the record.
+ *
+ * A failed lookup throws: guessing either way is wrong (texting a diner breaks the owner's SMS
+ * rule; email-only copy for a printed card tells the guest to show an email they never got).
+ * The claimed rows stay pending and the next run takes them again.
+ */
+async function loadDigitalVoucherIds(
+  supabase: AdminClient,
+  voucherIds: string[]
+): Promise<Set<string>> {
+  const digital = new Set<string>()
+  if (voucherIds.length === 0) return digital
+
+  const { data, error } = await supabase
+    .from('marketing_campaign_recipients')
+    .select('voucher_id')
+    .in('voucher_id', voucherIds)
+
+  if (error) {
+    throw new Error(`Could not tell which vouchers were sent by email: ${error.message}`)
+  }
+
+  for (const row of (data ?? []) as Array<{ voucher_id: string | null }>) {
+    if (row.voucher_id) digital.add(row.voucher_id)
+  }
+  return digital
+}
+
 async function loadBookingRequirements(
   supabase: AdminClient,
   voucherIds: string[]
@@ -492,14 +535,16 @@ type ReminderTarget =
 function resolveChannel(
   row: ClaimedVoucherReminder,
   emailBlocked: Set<string>,
-  suppressedEmails: Set<string>
+  suppressedEmails: Set<string>,
+  emailOnly = false
 ): ReminderTarget {
   if (!row.customer_id) {
     return { channel: null, reason: 'no customer attached to the voucher' }
   }
 
   const mobile = row.mobile_e164?.trim() || null
-  const smsTo = mobile && row.sms_opt_in === true ? mobile : null
+  // A voucher sent by email is reminded by email or not at all: diners are not texted.
+  const smsTo = !emailOnly && mobile && row.sms_opt_in === true ? mobile : null
 
   const email = row.email?.trim().toLowerCase() || null
   if (
@@ -515,6 +560,9 @@ function resolveChannel(
     return { channel: 'sms', to: smsTo, smsFallbackTo: null }
   }
 
+  if (emailOnly) {
+    return { channel: null, reason: 'voucher was sent by email and the address is no longer usable' }
+  }
   if (mobile) {
     return { channel: null, reason: 'customer has not opted in to SMS and has no usable email' }
   }
@@ -556,7 +604,8 @@ async function sendOneReminder(
   target: { channel: VoucherReminderChannel; to: string; smsFallbackTo: string | null },
   londonToday: string,
   expiryDate: string,
-  requiresBooking: boolean
+  requiresBooking: boolean,
+  digital: boolean
 ): Promise<VoucherReminderChannel | null> {
   const copyInput: ReminderCopyInput = {
     kind: toCopyKind(row.reminder_kind),
@@ -565,7 +614,8 @@ async function sendOneReminder(
     wonAtLabel: row.won_at_label,
     expiryDate,
     londonToday,
-    requiresBooking
+    requiresBooking,
+    digitalVoucherNumber: digital ? row.voucher_number : null
   }
   const metadata = {
     template_key: TEMPLATE_KEY,
@@ -660,10 +710,11 @@ export async function sendDueVoucherReminders(params: {
       )
     )
 
-    const [emailBlocked, suppressedEmails, bookingRequirements] = await Promise.all([
+    const [emailBlocked, suppressedEmails, bookingRequirements, digitalVoucherIds] = await Promise.all([
       loadEmailBlocks(supabase, emailCandidateIds),
       loadSuppressedEmails(supabase, Array.from(emailCandidates)),
-      loadBookingRequirements(supabase, unclassifiedVoucherIds)
+      loadBookingRequirements(supabase, unclassifiedVoucherIds),
+      loadDigitalVoucherIds(supabase, Array.from(new Set(rows.map((row) => row.voucher_id))))
     ])
 
     for (const row of rows) {
@@ -676,7 +727,8 @@ export async function sendDueVoucherReminders(params: {
           continue
         }
 
-        const target = resolveChannel(row, emailBlocked, suppressedEmails)
+        const digital = digitalVoucherIds.has(row.voucher_id)
+        const target = resolveChannel(row, emailBlocked, suppressedEmails, digital)
         if (target.channel === null) {
           await markReminderOutcome(supabase, row.reminder_id, 'skipped', {
             errorText: target.reason
@@ -693,7 +745,8 @@ export async function sendDueVoucherReminders(params: {
           row.expiry_date,
           typeof row.requires_booking === 'boolean'
             ? row.requires_booking
-            : bookingRequirements.get(row.voucher_id) ?? true
+            : bookingRequirements.get(row.voucher_id) ?? true,
+          digital
         )
 
         if (sentVia === 'email') {

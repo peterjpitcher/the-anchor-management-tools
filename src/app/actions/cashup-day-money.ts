@@ -4,6 +4,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidIsoDate, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
+import { redeemedVoucherPence } from '@/lib/vouchers/discount'
 
 /**
  * Money for one London day that was paid outside the till (BK-119, customer bookings review of 24
@@ -67,7 +68,7 @@ export async function getCashupDayMoneyAction(
         .limit(100),
       db
         .from('vouchers')
-        .select('value_pence')
+        .select('value_pence, redeemed_value_pence')
         .eq('status', 'redeemed')
         .gte('redeemed_at', dayStart.toISOString())
         .lt('redeemed_at', dayEnd.toISOString())
@@ -161,7 +162,8 @@ export async function getCashupDayMoneyAction(
 
     for (const voucher of vouchersResult.data ?? []) {
       money.vouchersRedeemed.count += 1
-      money.vouchersRedeemed.amount = pounds(money.vouchersRedeemed.amount + Number(voucher.value_pence ?? 0) / 100)
+      // The discount staff recorded at the till when there is one, else the type's estimate.
+      money.vouchersRedeemed.amount = pounds(money.vouchersRedeemed.amount + redeemedVoucherPence(voucher) / 100)
     }
 
     money.total = pounds(

@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react'
 import { Alert, Button, ConfirmDialog, Input } from '@/ds'
 import { UNDO_WINDOW_SECONDS } from '@/lib/vouchers/constants'
+import { parseDiscountGiven } from '@/lib/vouchers/discount'
 import {
   newIdempotencyKey,
   postVoucherAction,
@@ -32,6 +33,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
   const [selected, setSelected] = useState<FohVoucherLookupItem | null>(null)
   const [bookingRef, setBookingRef] = useState('')
   const [transactionRef, setTransactionRef] = useState('')
+  const [discountGiven, setDiscountGiven] = useState('')
   const [customer, setCustomer] = useState<FohCustomerRef | null>(null)
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -57,6 +59,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
     setSelected(item)
     setBookingRef('')
     setTransactionRef('')
+    setDiscountGiven('')
     setCustomer(null)
     setOutcome(null)
   }
@@ -83,7 +86,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
   }
 
   async function confirmRedeem() {
-    if (!selected || !staffId || submitting) {
+    if (!selected || !staffId || submitting || !discount.ok) {
       return
     }
     setSubmitting(true)
@@ -93,6 +96,7 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
       transactionRef: transactionRef.trim() || undefined,
       bookingRef: bookingRef.trim() || undefined,
       customerId: customer?.id,
+      redeemedValuePence: discount.pence ?? undefined,
       idempotencyKey: newIdempotencyKey()
     })
     setSubmitting(false)
@@ -148,7 +152,10 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
   // Booking-type vouchers still show the reference field so it can be recorded,
   // but a missing reference never blocks a redemption (owner decision 2026-07-30).
   const showBookingRef = Boolean(selected && isActionable(selected, 'redeem') && selected.requiresBooking)
-  const canMarkUsed = Boolean(canEdit && staffId && selected && isActionable(selected, 'redeem'))
+  // Percentage vouchers only: the stored value is an estimate, so cash-up wants the real figure.
+  const showDiscountGiven = Boolean(selected && isActionable(selected, 'redeem') && selected.percentOff !== null)
+  const discount = showDiscountGiven ? parseDiscountGiven(discountGiven) : ({ ok: true, pence: null } as const)
+  const canMarkUsed = Boolean(canEdit && staffId && selected && isActionable(selected, 'redeem') && discount.ok)
 
   // Blocks flow straight into the screen's own stack (VouchersFohClient).
   return (
@@ -238,6 +245,22 @@ export function RedeemPanel({ canEdit, staffId, onMutated }: RedeemPanelProps) {
                   autoComplete="off"
                   value={bookingRef}
                   onChange={(event) => setBookingRef(event.target.value)}
+                  className="h-12 text-base"
+                />
+              )}
+
+              {showDiscountGiven && (
+                <Input
+                  id="foh-redeem-discount-given"
+                  label="Discount given in pounds (optional)"
+                  type="text"
+                  inputMode="decimal"
+                  autoComplete="off"
+                  placeholder="6.50"
+                  value={discountGiven}
+                  onChange={(event) => setDiscountGiven(event.target.value)}
+                  hint="The amount taken off the food bill on the till. Cash-up uses it."
+                  error={discount.ok ? undefined : discount.error}
                   className="h-12 text-base"
                 />
               )}

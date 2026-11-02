@@ -12,7 +12,8 @@ venue event and Christmas exclusion, the 45-day edge, later and future bookings,
 bounce, do-not-contact and suppression), promotion (once a day, holdout stable and recorded,
 no duplicates, one lifecycle email in 30 days, merge fields), the claim (booked since
 selection, frequency cap deferral), issuing (one voucher per recipient on retry, expiry,
-source, digital batch, 3-day reminder only), touch 2, completion, grants and the stats.
+source, digital batch, 3-day reminder only), touch 2, completion, the discount given at
+redemption, grants and the stats.
 """
 import os
 from pathlib import Path
@@ -90,7 +91,8 @@ CREATE TABLE public.vouchers (
   batch_id uuid NOT NULL REFERENCES voucher_batches, status text NOT NULL, value_pence integer, terms_version text NOT NULL,
   issued_at timestamptz, issued_by uuid REFERENCES employees(employee_id), issued_by_name text, issued_by_user_id uuid,
   event_id uuid, won_at_label text, expiry_date date, customer_id uuid REFERENCES customers, redeemed_at timestamptz,
-  redeemed_by_name text, cancelled_at timestamptz, cancelled_reason text,
+  redeemed_by uuid, redeemed_by_name text, redeemed_by_user_id uuid, transaction_ref text, booking_ref text,
+  cancelled_at timestamptz, cancelled_reason text,
   created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT vouchers_issued_fields CHECK (status <> ALL (ARRAY['issued','redeemed','expired']) OR
     (issued_at IS NOT NULL AND issued_by_name IS NOT NULL AND won_at_label IS NOT NULL AND expiry_date IS NOT NULL)));
@@ -103,6 +105,7 @@ CREATE TABLE public.voucher_reminders (
   reminder_kind text NOT NULL, status text NOT NULL DEFAULT 'pending', scheduled_for date NOT NULL, attempts integer NOT NULL DEFAULT 0,
   last_error text, channel text, updated_at timestamptz NOT NULL DEFAULT now(), UNIQUE (voucher_id, reminder_kind));
 
+CREATE FUNCTION public.voucher_redeem(text, uuid, text, uuid, text, text, uuid, date, text, text) RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;
 CREATE FUNCTION public.marketing_send_window_open(p_audience_type text) RETURNS boolean LANGUAGE sql AS 'SELECT true';
 """
 
@@ -346,7 +349,8 @@ VALUES ({T2}, 'touch 2', 'draft', 'lifecycle',
             check("""(SELECT bool_and(NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE')
                        AND has_function_privilege('service_role', p.oid, 'EXECUTE') AND p.prosecdef AND p.proconfig = '{search_path=public}')
                      FROM pg_proc p WHERE p.proname IN ('get_table_return_visit_audience', 'promote_due_marketing_campaigns', 'complete_finished_marketing_campaigns',
-                       'claim_marketing_recipients', 'voucher_reminders_recompute', 'issue_lifecycle_voucher', 'get_lifecycle_campaign_stats'))""",
+                       'claim_marketing_recipients', 'voucher_reminders_recompute', 'issue_lifecycle_voucher', 'get_lifecycle_campaign_stats',
+                       'voucher_redeem', 'voucher_undo_redeem'))""",
                   'every new or replaced function is service_role only, security definer, search_path pinned')
             check(f"(SELECT (get_lifecycle_campaign_stats({T1}) ->> 'vouchers_issued')::int = 2 AND (get_lifecycle_campaign_stats({T1}) ->> 'vouchers_redeemed')::int = 1)",
                   'the stats count vouchers issued and redeemed')
@@ -355,6 +359,21 @@ VALUES ({T2}, 'touch 2', 'draft', 'lifecycle',
             err = subprocess.run(cmd, input=f"INSERT INTO marketing_campaign_recipients (campaign_id, customer_id, email) VALUES ({ONE_OFF}, {cust(1)}, 'a'), ({ONE_OFF}, {cust(1)}, 'a');",
                                  text=True, capture_output=True)
             check(f"{str('mcr_campaign_customer_anchor_key' in err.stderr).lower()}", 'a one-off campaign still holds one row per customer')
+            # Redemption records the discount given, and undo clears it.
+            number = sql(f"SELECT voucher_number FROM vouchers WHERE marketing_recipient_id = '{second}';")
+            staff = "'e0000000-0000-0000-0000-000000000001'"
+            redeem = (f"SELECT voucher_redeem(p_voucher_number => '{number}', p_employee_id => {staff}, p_employee_name => 'Bar', "
+                      f"p_user_id => NULL, p_transaction_ref => NULL, p_booking_ref => NULL, p_customer_id => NULL, "
+                      f"p_london_today => london_today(), p_source => 'foh', p_idempotency_key => 'key-1'{{extra}})")
+            check(f"({redeem.format(extra=', p_redeemed_value_pence => -1')} ->> 'error_code' = 'VALIDATION_ERROR')", 'a negative discount is refused')
+            check(f"(({redeem.format(extra=', p_redeemed_value_pence => 450')} ->> 'success')::boolean)", 'a voucher redeems with the discount given')
+            check(f"(SELECT status = 'redeemed' AND redeemed_value_pence = 450 FROM vouchers WHERE voucher_number = '{number}')", 'the discount given is stored on the voucher')
+            check(f"(SELECT (detail ->> 'redeemed_value_pence')::int = 450 FROM voucher_events WHERE action = 'redeemed')", 'the redeemed event records the amount')
+            check(f"(({redeem.format(extra='')} ->> 'idempotent_replay')::boolean)", 'a caller that sends no amount still works, here as a replay')
+            sql(f"SELECT voucher_undo_redeem('{number}', NULL, {staff}, 'Bar', true, NULL, 'foh', 'undo-1');")
+            check(f"(SELECT status = 'issued' AND redeemed_value_pence IS NULL FROM vouchers WHERE voucher_number = '{number}')", 'undo clears the amount')
+            check("""(SELECT count(*) = 1 AND bool_and(NOT has_function_privilege('anon', p.oid, 'EXECUTE') AND has_function_privilege('service_role', p.oid, 'EXECUTE'))
+                     FROM pg_proc p WHERE p.proname = 'voucher_redeem')""", 'one voucher_redeem remains, service_role only')
             print('ALL PASS')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(cluster), '-m', 'immediate', 'stop'], capture_output=True)
