@@ -1,4 +1,4 @@
--- Rollback for 20261102200000_employee_rate_overrides_rls.sql: restores the policy and grants production held on 2 November 2026.
+-- Rollback for 20261102230000_employee_rate_overrides_rls.sql: restores the policy and grants production held on 2 November 2026.
 
 DROP POLICY employee_rate_overrides_select ON public.employee_rate_overrides;
 DROP POLICY employee_rate_overrides_insert ON public.employee_rate_overrides;

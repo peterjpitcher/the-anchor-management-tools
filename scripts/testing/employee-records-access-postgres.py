@@ -18,7 +18,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261102200100_employee_records_access.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261102230100_employee_records_access.sql'
 ROLLBACK = ROOT / 'tasks/employee-records-access/rollback.sql'
 PORTAL = '10000000-0000-0000-0000-000000000001'     # an employee's portal login, no role
 EMPLOYEES = '10000000-0000-0000-0000-000000000002'  # employees view
