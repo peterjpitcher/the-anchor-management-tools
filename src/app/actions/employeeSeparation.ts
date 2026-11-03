@@ -33,13 +33,13 @@ export type EmployeeSeparationShift = SeparationShiftSummary & {
 export type EmployeeSeparationPreview = {
   employmentStartDate: string | null
   shifts: EmployeeSeparationShift[]
-  /** Approved leave from today on. */
-  futureLeaveDates: string[]
   /**
-   * Leave from today on that is still waiting for a decision. Its days are already on the rota
-   * (leave_days), so marking the person as Former is refused while any sit after the last
-   * working day, exactly as for approved leave.
+   * Every approved leave day, past ones included: the last working day can be set in the past,
+   * and leave between it and today is removed when they are marked as Former just as later leave
+   * is. The dialog keeps the days after the last working day it is showing.
    */
+  futureLeaveDates: string[]
+  /** As futureLeaveDates, for leave still waiting for a decision. */
   pendingLeaveDates: string[]
 }
 
@@ -206,7 +206,6 @@ export async function getEmployeeSeparationPreview(
       .from('leave_days')
       .select('leave_date, leave_requests!inner(status)')
       .eq('employee_id', employeeId)
-      .gte('leave_date', today)
       .in('leave_requests.status', ['approved', 'pending'])
       .order('leave_date', { ascending: true }),
   ])

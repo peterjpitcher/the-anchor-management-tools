@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { logAuditEvent } from '@/app/actions/audit';
-import { formatDate, getTodayIsoDate } from '@/lib/dateUtils';
+import { formatDate, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -37,6 +37,151 @@ export type FinalizeEmployeeSeparationResult =
  */
 function listDates(dates: string[]): string {
   return [...new Set(dates)].map((date) => formatDate(date)).join(', ');
+}
+
+/** A leave request that ran past the last working day, and what was done to it. */
+type LeaveAfterLastDay = {
+  requestId: string;
+  status: 'pending' | 'approved';
+  startDate: string;
+  endDate: string;
+  /** The first day taken off: the request's start, or the day after the last working day. */
+  removedFrom: string;
+  /** True when the whole request was after the last working day and was deleted. */
+  deleted: boolean;
+};
+
+type LeaveRequestPastLastDay = {
+  id: string;
+  status: 'pending' | 'approved';
+  start_date: string;
+  end_date: string;
+};
+
+/**
+ * Leave cannot be taken after the last working day: they no longer work here. Marking a leaver as
+ * Former used to be refused while any leave sat after today, so holiday booked before they handed
+ * in their notice stalled the nightly job for good (3 November 2026: a last working day of 28
+ * October, approved holiday from 1 to 8 November booked in August). Leave between the last working
+ * day and today was not even looked at, and still counted against their allowance.
+ *
+ * Done when they become Former and not when the separation starts, so a separation that is
+ * cancelled keeps its holiday. A request that runs past the last working day is cut to end on it;
+ * one that starts after it is deleted, as a manager's Delete does. Then every leave day after the
+ * last working day goes, which also clears days left behind by a declined request. Pending
+ * requests are treated the same way: nobody can approve leave after someone has left.
+ */
+async function removeLeaveAfterLastWorkingDay(
+  adminClient: AdminClient,
+  employeeId: string,
+  lastWorkingDay: string,
+  actorUser: ActorUser | null | undefined,
+): Promise<{ success: true; removed: LeaveAfterLastDay[] } | { success: false; error: string; code: string }> {
+  const failure = {
+    success: false as const,
+    error: 'Could not remove the holiday booked after their last working day, so they have not been marked as Former. Please try again.',
+    code: 'leave_removal_failed',
+  };
+  const dayAfter = shiftIsoDate(lastWorkingDay, 1);
+  if (!dayAfter) return failure;
+
+  const { data: requests, error: requestsError } = await adminClient
+    .from('leave_requests')
+    .select('id, status, start_date, end_date')
+    .eq('employee_id', employeeId)
+    .in('status', ['pending', 'approved'])
+    .gt('end_date', lastWorkingDay)
+    .order('start_date', { ascending: true });
+
+  if (requestsError) {
+    console.error('[finalizeEmployeeSeparation] Failed to load leave after the last working day:', {
+      employeeId,
+      code: requestsError.code,
+      message: requestsError.message,
+    });
+    return { success: false, error: 'Failed to check booked leave.', code: 'leave_check_failed' };
+  }
+
+  const removed: LeaveAfterLastDay[] = [];
+  for (const request of (requests ?? []) as LeaveRequestPastLastDay[]) {
+    const deleted = request.start_date > lastWorkingDay;
+    if (deleted) {
+      // leave_days cascades from leave_requests.
+      const requestDeleted = await settleWrite(
+        adminClient
+          .from('leave_requests')
+          .delete()
+          .eq('id', request.id)
+          .eq('employee_id', employeeId),
+        { table: 'leave_requests', what: 'Deleting leave after the last working day', ids: { employeeId, requestId: request.id } },
+      );
+      if (!requestDeleted) return failure;
+    } else {
+      // A plain update, not update_leave_request_dates: that re-checks every kept day against the
+      // rota, so a clash on a day that stays could refuse this every night. Only days are taken
+      // away here. The start date stays, so the holiday year does too; the days go below.
+      const requestCut = await settleWrite(
+        adminClient
+          .from('leave_requests')
+          .update({ end_date: lastWorkingDay })
+          .eq('id', request.id)
+          .eq('employee_id', employeeId),
+        { table: 'leave_requests', what: 'Cutting leave back to the last working day', ids: { employeeId, requestId: request.id } },
+      );
+      if (!requestCut) return failure;
+    }
+
+    removed.push({
+      requestId: request.id,
+      status: request.status,
+      startDate: request.start_date,
+      endDate: request.end_date,
+      removedFrom: deleted ? request.start_date : dayAfter,
+      deleted,
+    });
+
+    try {
+      await logAuditEvent({
+        user_id: actorUser?.user_id ?? undefined,
+        user_email: actorUser?.user_email ?? undefined,
+        operation_type: deleted ? 'delete' : 'update',
+        resource_type: 'leave_request',
+        resource_id: request.id,
+        operation_status: 'success',
+        old_values: { start_date: request.start_date, end_date: request.end_date, status: request.status },
+        new_values: deleted ? undefined : { start_date: request.start_date, end_date: lastWorkingDay, status: request.status },
+        additional_info: { source: 'employee_separation', reason: 'after_last_working_day', employee_id: employeeId },
+      });
+    } catch (auditError) {
+      console.error('[finalizeEmployeeSeparation] Audit log for removed leave failed:', auditError);
+    }
+  }
+
+  // The days of every request cut back above, and any a declined request left behind (they are
+  // cleared after the decline, in a separate write that can fail).
+  const strayDaysCleared = await settleWrite(
+    adminClient
+      .from('leave_days')
+      .delete()
+      .eq('employee_id', employeeId)
+      .gt('leave_date', lastWorkingDay),
+    { table: 'leave_days', what: 'Clearing leave days after the last working day', ids: { employeeId } },
+  );
+  if (!strayDaysCleared) return failure;
+
+  return { success: true, removed };
+}
+
+/** "1 November 2026 to 8 November 2026 (approved, 8 days)", one entry per request. */
+function describeRemovedLeave(entry: LeaveAfterLastDay): string {
+  const from = new Date(`${entry.removedFrom}T12:00:00Z`).getTime();
+  const to = new Date(`${entry.endDate}T12:00:00Z`).getTime();
+  const days = Math.round((to - from) / 86_400_000) + 1;
+  const range = entry.removedFrom === entry.endDate
+    ? formatDate(entry.endDate)
+    : `${formatDate(entry.removedFrom)} to ${formatDate(entry.endDate)}`;
+  const status = entry.status === 'approved' ? 'approved' : 'waiting for a decision';
+  return `${range} (${status}, ${days} day${days === 1 ? '' : 's'})`;
 }
 
 export async function finalizeEmployeeSeparation(
@@ -86,14 +231,18 @@ export async function finalizeEmployeeSeparation(
     };
   }
 
+  const employmentEndDate = employee.employment_end_date ?? today;
+
   // Up to three, so the refusal can name them: "still has future rota shifts" alone left the
-  // nightly job's skip unexplained and gave nobody anything to go and fix.
+  // nightly job's skip unexplained and gave nobody anything to go and fix. Scheduled shifts only:
+  // a shift marked sick is not work anyone has to cover, and begin_employee_separation never
+  // releases sick shifts, so one dated after the last working day stalled the nightly job.
   const shiftDateFilter = options.blockShiftsOnOrAfterToday
     ? adminClient
         .from('rota_shifts')
         .select('id, shift_date')
         .eq('employee_id', employeeId)
-        .neq('status', 'cancelled')
+        .eq('status', 'scheduled')
         .gte('shift_date', today)
         .order('shift_date', { ascending: true })
         .limit(3)
@@ -101,12 +250,12 @@ export async function finalizeEmployeeSeparation(
         .from('rota_shifts')
         .select('id, shift_date')
         .eq('employee_id', employeeId)
-        .neq('status', 'cancelled')
+        .eq('status', 'scheduled')
         .gt('shift_date', today)
         .order('shift_date', { ascending: true })
         .limit(3);
 
-  const [openSessionResult, blockingShiftResult] = await Promise.all([
+  const [openSessionResult, blockingShiftResult, lateClockInResult] = await Promise.all([
     adminClient
       .from('timeclock_sessions')
       .select('id')
@@ -114,6 +263,15 @@ export async function finalizeEmployeeSeparation(
       .is('clock_out_at', null)
       .limit(1),
     shiftDateFilter,
+    // Clocking in after the last working day means they worked after it: either the date is wrong
+    // or their final pay has hours after it. Said, not refused, so the separation still finishes.
+    adminClient
+      .from('timeclock_sessions')
+      .select('work_date')
+      .eq('employee_id', employeeId)
+      .gt('work_date', employmentEndDate)
+      .order('work_date', { ascending: true })
+      .limit(3),
   ]);
 
   if (openSessionResult.error) {
@@ -141,27 +299,26 @@ export async function finalizeEmployeeSeparation(
     };
   }
 
-  // Future rota shifts and open timeclock sessions were already blocking, but booked leave was
-  // not, so a leaver could keep holiday sitting on the rota after their last day.
-  const { data: futureLeave, error: futureLeaveError } = await adminClient
-    .from('leave_days')
-    .select('leave_date')
-    .eq('employee_id', employeeId)
-    .gt('leave_date', today)
-    .order('leave_date', { ascending: true })
-    .limit(3);
-
-  if (futureLeaveError) {
-    return { success: false, error: 'Failed to check future booked leave.', code: 'leave_check_failed' };
+  // Removed rather than refused (see removeLeaveAfterLastWorkingDay). If it fails, stop here and
+  // leave the employee in their current status so the action can be retried.
+  const leaveRemoval = await removeLeaveAfterLastWorkingDay(adminClient, employeeId, employmentEndDate, options.actorUser);
+  if (!leaveRemoval.success) {
+    return { success: false, error: leaveRemoval.error, code: leaveRemoval.code };
   }
 
-  if ((futureLeave ?? []).length > 0) {
-    const dates = listDates((futureLeave as Array<{ leave_date: string }>).map(row => row.leave_date));
-    return {
-      success: false,
-      error: `This employee still has leave booked on ${dates} (approved or waiting for a decision). Cancel or decline that leave before marking them as Former.`,
-      code: 'future_booked_leave',
-    };
+  if (leaveRemoval.removed.length > 0) {
+    // Written now, not after the status change, so the record says what happened to their
+    // holiday even if a later step stops the separation and it is tried again.
+    await settleWrite(
+      adminClient
+        .from('employee_notes')
+        .insert({
+          employee_id: employeeId,
+          note_text: `Holiday booked after their last working day (${formatDate(employmentEndDate)}) was removed because they have left: ${leaveRemoval.removed.map(describeRemovedLeave).join('; ')}.`,
+          created_by_user_id: options.actorUser?.user_id ?? null,
+        }),
+      { table: 'employee_notes', what: 'Adding the removed leave note', ids: { employeeId } },
+    );
   }
 
   // Clear future template pre-assignments before status changes so old templates
@@ -220,7 +377,6 @@ export async function finalizeEmployeeSeparation(
     };
   }
 
-  const employmentEndDate = employee.employment_end_date ?? today;
   const { data: updatedRows, error: updateError } = await adminClient
     .from('employees')
     .update({
@@ -243,17 +399,51 @@ export async function finalizeEmployeeSeparation(
     return { success: false, error: 'Employee status could not be updated.', code: 'status_update_empty' };
   }
 
+  const warnings: string[] = [];
+  if (lateClockInResult.error) {
+    console.error('[finalizeEmployeeSeparation] Failed to check clock-ins after the last working day:', {
+      employeeId,
+      code: lateClockInResult.error.code,
+      message: lateClockInResult.error.message,
+    });
+  } else if ((lateClockInResult.data ?? []).length > 0) {
+    const dates = listDates((lateClockInResult.data as Array<{ work_date: string }>).map(row => row.work_date));
+    warnings.push(`They clocked in on ${dates}, after their last working day of ${formatDate(employmentEndDate)}. Check that date and their final pay.`);
+  }
+
+  // Their open-shift requests can no longer be approved (approve_rota_open_shift_request refuses
+  // anyone not Active or on notice) but stayed pending in the manager's queue for good.
+  await settleWrite(
+    adminClient
+      .from('rota_open_shift_requests')
+      .update({
+        status: 'declined',
+        decided_at: now,
+        decided_by: options.actorUser?.user_id ?? null,
+        manager_note: 'Declined automatically because they have left.',
+        updated_at: now,
+      })
+      .eq('employee_id', employeeId)
+      .eq('status', 'pending'),
+    { table: 'rota_open_shift_requests', what: 'Declining the leaver\'s pending open shift requests', ids: { employeeId } },
+  );
+
   // The link to the login is cleared only once the login is gone. Clearing it after a failed
   // delete left a live login that nothing pointed at, so nobody could find it to remove it. Their
   // roles were removed above, so a login left behind has no access while it waits.
+  //
+  // A soft delete, not a hard one. Anyone who has used the app is named on audit_logs and other
+  // records whose foreign keys to auth.users have no ON DELETE action (every current member of
+  // staff with a login on 3 November 2026), so a hard delete always failed. A soft delete keeps
+  // the row those records point at, scrambles the email so it can be used again, signs them out
+  // and stops any further sign-in. Like a hard delete, it cannot be undone.
   let authUserDeleted = false;
   let authLinkCleared = false;
-  let warning: string | undefined;
   if (employee.auth_user_id) {
-    const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id);
+    const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(employee.auth_user_id, true);
     if (authDeleteError) {
       console.error('[finalizeEmployeeSeparation] Failed to delete auth user:', authDeleteError);
-      warning = 'They are now Former and their permissions are removed, but their login could not be deleted. Ask an administrator to delete it.';
+      warnings.unshift('They are now Former and their permissions are removed, but their login could not be deleted. Ask an administrator to delete it.');
     } else {
       authUserDeleted = true;
       authLinkCleared = await settleWrite(
@@ -300,6 +490,17 @@ export async function finalizeEmployeeSeparation(
       additional_info: {
         source,
         ...(employee.auth_user_id ? { auth_user_deleted: authUserDeleted } : {}),
+        ...(leaveRemoval.removed.length > 0
+          ? {
+              leave_removed: leaveRemoval.removed.map((entry) => ({
+                leave_request_id: entry.requestId,
+                status: entry.status,
+                removed_from: entry.removedFrom,
+                removed_to: entry.endDate,
+                request_deleted: entry.deleted,
+              })),
+            }
+          : {}),
       },
     });
   } catch (auditError) {
@@ -311,5 +512,6 @@ export async function finalizeEmployeeSeparation(
   revalidatePath('/rota');
   revalidatePath('/timeclock');
 
+  const warning = warnings.length > 0 ? warnings.join(' ') : undefined;
   return { success: true, employmentEndDate, authUserDeleted, ...(warning ? { warning } : {}) };
 }
