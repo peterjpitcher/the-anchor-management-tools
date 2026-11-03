@@ -17,10 +17,14 @@ Every step below that touches production needs the owner's explicit yes at the t
 
 Through the `prod-migrate` skill, one at a time, owner's yes each time:
 
-- [ ] `20261103090000_training_tables.sql` (seven tables, private `training` bucket, purge function)
-- [ ] `20261103090100_training_signing_kinds.sql` (the two signing kinds)
-- [ ] `20261103090300_retire_policy_drafts_replaced_by_training.sql` (switches off the four policy
+- [x] `20261103141837_training_tables.sql` (seven tables, private `training` bucket, purge function)
+- [x] `20261103141853_training_signing_kinds.sql` (the two signing kinds)
+- [x] `20261103141905_retire_policy_drafts_replaced_by_training.sql` (switches off the four policy
       drafts the courses replace)
+
+Applied 3 November 2026 and recorded by production under those versions; the files were drafted
+as `20261103090000`, `090100` and `090300` and renamed to match. Each ledger entry hashes to its
+file exactly.
 
 These go before the code because the employees insights section and the employee Training tab read
 the training tables as soon as the code is live.

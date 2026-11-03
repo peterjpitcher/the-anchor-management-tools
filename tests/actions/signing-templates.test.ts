@@ -186,7 +186,7 @@ describe('switching a template on', () => {
 })
 
 describe('the policies staff training replaced', () => {
-  // Migration 20261103090300 marks each with a [[RETIRED: ...]] line, but that line can be edited
+  // Migration 20261103141905 marks each with a [[RETIRED: ...]] line, but that line can be edited
   // out. These rows have finished wording and no marker at all: the slug alone must stop them.
   it.each(['health-and-safety', 'allergens', 'challenge-25', 'data-protection'])(
     'refuses to switch %s on, says it was replaced by staff training, and writes nothing',

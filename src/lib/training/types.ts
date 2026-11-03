@@ -20,7 +20,7 @@ import type {
  */
 
 // ---------------------------------------------------------------------------------------------
-// Fixed lists (each mirrors a CHECK constraint in 20261103090000_training_tables.sql)
+// Fixed lists (each mirrors a CHECK constraint in 20261103141837_training_tables.sql)
 // ---------------------------------------------------------------------------------------------
 
 /** Training groups. A course for `[]` groups is for everyone. */

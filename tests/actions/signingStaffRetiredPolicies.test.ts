@@ -1,5 +1,5 @@
 // @vitest-environment node
-// The four policy drafts that staff training replaced (migration 20261103090300) can never be
+// The four policy drafts that staff training replaced (migration 20261103141905) can never be
 // sent again, so the Policies page does not list them.
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeDb } from '../helpers/fakeSupabaseDb'

@@ -22,10 +22,10 @@ import { publicSchemaColumns } from '../helpers/generatedSchema'
 
 const ROOT = process.cwd()
 const MIGRATIONS = join(ROOT, 'supabase/migrations')
-const TABLES_MIGRATION = '20261103090000_training_tables.sql'
-const KINDS_MIGRATION = '20261103090100_training_signing_kinds.sql'
+const TABLES_MIGRATION = '20261103141837_training_tables.sql'
+const KINDS_MIGRATION = '20261103141853_training_signing_kinds.sql'
 const PERMISSIONS_MIGRATION = '20261103090200_training_permissions.sql'
-const RETIRE_MIGRATION = '20261103090300_retire_policy_drafts_replaced_by_training.sql'
+const RETIRE_MIGRATION = '20261103141905_retire_policy_drafts_replaced_by_training.sql'
 const GENERATED_TYPES = readFileSync(join(ROOT, 'src/types/database.generated.ts'), 'utf8')
 
 const EXPECTED_TABLES = [

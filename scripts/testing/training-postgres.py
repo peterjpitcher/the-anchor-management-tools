@@ -8,10 +8,10 @@ tables (permissions, roles, role_permissions with production's columns and uniqu
 2 November 2026). It applies the signing migrations the training tables depend on, then the four
 training migrations, each twice:
 
-  20261103090000_training_tables.sql
-  20261103090100_training_signing_kinds.sql
+  20261103141837_training_tables.sql
+  20261103141853_training_signing_kinds.sql
   20261103090200_training_permissions.sql
-  20261103090300_retire_policy_drafts_replaced_by_training.sql
+  20261103141905_retire_policy_drafts_replaced_by_training.sql
 
 and checks: nothing is granted to anon, authenticated or PUBLIC on any training table or
 function (despite the default privileges); the CHECKs; the unique indexes (one open cycle, one
@@ -34,10 +34,10 @@ MIGRATIONS = ROOT / 'supabase/migrations'
 SIGNING_FOUNDATION = MIGRATIONS / '20261013080854_document_signing_foundation.sql'
 SIGNING_DRAFTS = MIGRATIONS / '20261013080952_document_signing_template_drafts.sql'
 SIGNING_DEDUCTION_KIND = MIGRATIONS / '20261014084753_signing_deposit_deduction_agreement.sql'
-TABLES = MIGRATIONS / '20261103090000_training_tables.sql'
-KINDS = MIGRATIONS / '20261103090100_training_signing_kinds.sql'
+TABLES = MIGRATIONS / '20261103141837_training_tables.sql'
+KINDS = MIGRATIONS / '20261103141853_training_signing_kinds.sql'
 PERMISSIONS = MIGRATIONS / '20261103090200_training_permissions.sql'
-RETIRE = MIGRATIONS / '20261103090300_retire_policy_drafts_replaced_by_training.sql'
+RETIRE = MIGRATIONS / '20261103141905_retire_policy_drafts_replaced_by_training.sql'
 
 TRAINING_TABLES = [
     'training_courses', 'training_course_versions', 'training_profiles', 'training_assignments',
