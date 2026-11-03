@@ -171,8 +171,11 @@ export function useEmployeeStatusActions({
         setSeparationNote('');
         setShiftPolicy(null);
         if (result.warning) {
-          // The separation email did not go, or may have gone: the message says which.
+          // The separation email did not go or may have gone, or a last day already past could not
+          // be finished yet: the message says which.
           toast.warning(result.warning, WARNING_TOAST);
+        } else if (result.markedFormer) {
+          toast.success('Their last working day has passed, so they have been marked as Former.');
         } else {
           toast.success(
             `Separation started. ${result.retainedShiftCount} shift${result.retainedShiftCount === 1 ? '' : 's'} retained and ${result.releasedShiftCount} released.`,
@@ -320,6 +323,9 @@ export function useEmployeeStatusActions({
             min={minimumEndDate ?? undefined}
             onChange={(event) => setSeparationEndDate(event.target.value)}
             error={dateError ?? undefined}
+            hint={separationEndDate && separationEndDate < getTodayIsoDate()
+              ? 'This day has passed, so they are marked as Former as soon as the separation starts.'
+              : undefined}
             required
           />
 
