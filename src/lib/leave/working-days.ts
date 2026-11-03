@@ -95,3 +95,84 @@ export function getHolidayYearBounds(
 
   return { startDate, endDate };
 }
+
+/** What one person is entitled to in one holiday year. */
+export type HolidayEntitlement = {
+  /** Days they are entitled to this year, to one decimal place. */
+  entitlement: number;
+  /** The yearly allowance it was worked out from. */
+  fullAllowance: number;
+  /** True when they are employed for only part of the year, so entitlement is below the allowance. */
+  proRated: boolean;
+  /** The first and last days of the year they are employed for; null when they are employed for none of it. */
+  employedFrom: string | null;
+  employedTo: string | null;
+};
+
+/** One decimal place, so 11.37 reads 11.4 and a whole allowance stays whole. */
+function roundToTenth(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+/**
+ * The holiday a person is entitled to in one holiday year: the yearly allowance scaled by the share
+ * of that year's days they are employed for. Someone who starts or leaves part way through the year
+ * is entitled to that share, not the whole allowance, and that share is what a leaver's untaken
+ * holiday is worked out from (Working Time Regulations 1998, regulations 13 and 14).
+ *
+ * Calendar days, to match how leave is counted (every day, weekends included). Rounded to one
+ * decimal place and never to a whole or half day: rounding is a pay decision this app does not make.
+ */
+export function getHolidayEntitlement(input: {
+  allowance: number;
+  holidayYear: number;
+  startMonth: number;
+  startDay: number;
+  employmentStartDate?: string | null;
+  employmentEndDate?: string | null;
+}): HolidayEntitlement {
+  const fullAllowance = Math.max(0, input.allowance);
+  const { startDate: yearStart, endDate: yearEnd } = getHolidayYearBounds(
+    input.holidayYear,
+    input.startMonth,
+    input.startDay,
+  );
+
+  const employedFrom = input.employmentStartDate && input.employmentStartDate > yearStart
+    ? input.employmentStartDate
+    : yearStart;
+  const employedTo = input.employmentEndDate && input.employmentEndDate < yearEnd
+    ? input.employmentEndDate
+    : yearEnd;
+
+  if (employedFrom > employedTo) {
+    return { entitlement: 0, fullAllowance, proRated: fullAllowance > 0, employedFrom: null, employedTo: null };
+  }
+
+  const daysInYear = countRequestDays(yearStart, yearEnd);
+  const daysEmployed = countRequestDays(employedFrom, employedTo);
+  const proRated = daysEmployed < daysInYear;
+
+  return {
+    entitlement: proRated ? roundToTenth((fullAllowance * daysEmployed) / daysInYear) : fullAllowance,
+    fullAllowance,
+    proRated,
+    employedFrom,
+    employedTo,
+  };
+}
+
+/**
+ * Holiday a leaver has earned but not taken by their last working day: their entitlement for the
+ * holiday year up to that day, less the allowance days they took in it. Negative when they took more
+ * than they had earned. One decimal place, as the entitlement.
+ */
+export function getUntakenHoliday(entitlement: number, takenDays: number): number {
+  return roundToTenth(entitlement - takenDays);
+}
+
+/** "1 day", "0.5 days", "14.4 days". */
+export function formatHolidayDays(days: number): string {
+  const value = roundToTenth(days);
+  return `${value} ${value === 1 ? 'day' : 'days'}`;
+}
