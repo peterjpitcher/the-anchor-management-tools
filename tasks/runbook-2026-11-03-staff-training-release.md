@@ -31,9 +31,11 @@ the training tables as soon as the code is live.
 
 - [ ] Merge the PR into main and let Vercel deploy production.
 - [ ] Confirm the production deployment id serves the merge commit (`deploy-verify` skill).
-- [ ] Release by 10 November. Both new crons (`training-daily`, `signing-reminders`) are watched
-      from 9 November; a later release would raise one false "no completed run" alert unless
-      `monitoredFrom` in `src/lib/cron/monitored-jobs.ts` is moved.
+- [ ] Deploy production before 09:00 UTC on 10 November. The new `training-daily` cron and the
+      existing `signing-reminders` cron (now recorded run by run) are watched from 9 November, and
+      each needs one completed run before the 07:40 UTC check on 11 November. A later release would
+      raise one false "no completed run" alert unless `monitoredFrom` in
+      `src/lib/cron/monitored-jobs.ts` is moved to the release day.
 
 ## 3. Database, after the deploy
 
@@ -77,8 +79,10 @@ straight away. People who started in the 14 days before launch have Essentials d
 
 ## 6. Emails
 
-The training emails switch ships off, so nothing is sent. One switch covers staff reminders and the
-manager training email.
+The training emails switch ships off. One switch covers the staff reminders and the manager's daily
+training email. It does not cover the emails sent the moment someone confirms: certificate copies,
+sign-off copies and the "Signed" or "Declined" notices to the manager still go whatever the switch
+says (only `SUSPEND_ALL_EMAIL` stops those).
 
 - [ ] When every course you want live is published and groups are right, turn the switch on
       (Employees, Training, Courses). The next daily run (09:00 UTC) sends each person with an open course
@@ -95,6 +99,12 @@ manager training email.
 
 ## If something goes wrong
 
-- Turn the training emails switch off first; that stops every training email at the next run.
+- Turn the training emails switch off first; that stops the reminders and the manager's daily
+  training email from the next run.
 - Reverting the merge commit takes the screens away. The tables and their rows can stay: nothing
   else in the app writes to them, and keeping them keeps the training history.
+- Straight after a revert, and before the next `signing-reminders` run (09:30 UTC), withdraw every
+  open training certificate and sign-off (signing documents of kind `training_completion` or
+  `training_signoff` still sent or part signed). Without the training kinds, the old reminders
+  code would email reminder links for them at 3 and 7 days. This is a live database write and
+  needs the owner's yes.
