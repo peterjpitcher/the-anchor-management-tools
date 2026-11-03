@@ -59,7 +59,7 @@ export function TrainingEmailsSwitch({ enabled: initial, loadError }: TrainingEm
             <p className="text-sm text-text-muted">
               {enabled
                 ? 'Staff are reminded about training that is due, and the manager is emailed about new problems.'
-                : 'Nothing is emailed about training. Staff still see their training in the staff portal.'}
+                : 'No training reminders or manager training emails are sent. Certificates and signed copies are still emailed when someone confirms, and staff still see their training in the staff portal.'}
               {canPublish ? '' : ' Only someone who can publish courses can change this.'}
             </p>
           </>

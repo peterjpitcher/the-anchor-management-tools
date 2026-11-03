@@ -24,6 +24,7 @@ import { courseAppliesTo } from '@/lib/training/sync'
 import { PAY_REPORT_MAX_DAYS, TrainingService, type TrainingPerson } from '@/services/training'
 import {
   TRAINING_GROUPS,
+  TRAINING_IN_SCOPE_STATUSES,
   TRAINING_PAUSE_REASONS,
   TrainingError,
   type ActivityPage,
@@ -225,6 +226,24 @@ async function loadOpenAssignment(assignmentId: string): Promise<TrainingAssignm
 async function loadPerson(employeeId: string): Promise<TrainingPerson> {
   const [person] = await TrainingService.getTrainingPeople([employeeId])
   if (!person) throw new TrainingError('not_found', 'That employee could not be found.')
+  return person
+}
+
+/**
+ * The person, refused unless they are current staff (Active or Started Separation). Training is
+ * only set up once someone is Active: a starter still onboarding must have no training rows, or
+ * deleteEmployee (Onboarding only) can never remove a starter who did not take up the job.
+ */
+async function loadCurrentStaff(employeeId: string): Promise<TrainingPerson> {
+  const person = await loadPerson(employeeId)
+  if (!(TRAINING_IN_SCOPE_STATUSES as readonly string[]).includes(person.status)) {
+    throw new TrainingError(
+      'not_allowed',
+      person.status === 'Onboarding'
+        ? 'Training is set up once they are Active, so nothing was changed.'
+        : 'Training can only be changed for current staff, so nothing was changed.'
+    )
+  }
   return person
 }
 
@@ -574,7 +593,7 @@ export async function setTrainingGroups(input: {
   const groups = TRAINING_GROUPS.filter((group) => parsed.data.groups.includes(group))
   const actor = actorOf(user)
   try {
-    await loadPerson(employeeId)
+    await loadCurrentStaff(employeeId)
     const before = await TrainingService.getProfile(employeeId)
     await TrainingService.upsertProfile(employeeId, {
       groups,
@@ -617,7 +636,7 @@ export async function setTrainingAdjustmentNote(input: { employeeId: string; not
   const { employeeId } = parsed.data
   const note = parsed.data.note ? parsed.data.note : null
   try {
-    await loadPerson(employeeId)
+    await loadCurrentStaff(employeeId)
     await TrainingService.upsertProfile(employeeId, { adjustmentNote: note })
     await audit(user, 'update', 'training_profile', employeeId, { adjustment_note_set: note !== null })
     revalidateTraining([employeeId])
@@ -642,7 +661,7 @@ export async function pauseTraining(input: {
   if (until !== null && until < from) return { error: 'The pause must end on or after the day it starts.' }
   if (until !== null && until < today) return { error: 'The pause must end today or later.' }
   try {
-    await loadPerson(employeeId)
+    await loadCurrentStaff(employeeId)
     await TrainingService.upsertProfile(employeeId, { pausedFrom: from, pausedUntil: until, pauseReason: reason })
     await recordEventAfterChange({
       eventType: 'paused',
