@@ -85,6 +85,25 @@ describe('the daily signing run', () => {
     expect(mocks.alert).not.toHaveBeenCalled()
   })
 
+  it('never chases a training document: the training daily job is its only chaser', async () => {
+    seed(
+      [
+        { id: 'certificate', kind: 'training_completion', status: 'sent', sent_at: daysAgo(8), expires_at: inDays(22), final_pdf_path: null, completion_applied_at: null },
+        { id: 'signoff', kind: 'training_signoff', status: 'part_signed', sent_at: daysAgo(8), expires_at: inDays(22), final_pdf_path: null, completion_applied_at: null },
+        { id: 'agreement', kind: 'employment_agreement', status: 'sent', sent_at: daysAgo(8), expires_at: inDays(22), final_pdf_path: null, completion_applied_at: null },
+      ],
+      [
+        { id: 'p-certificate', document_id: 'certificate', status: 'pending', email: 'a@example.com', reminder_count: 0, role: 'worker' },
+        { id: 'p-signoff', document_id: 'signoff', status: 'pending', email: 'a@example.com', reminder_count: 0, role: 'worker' },
+        { id: 'p-agreement', document_id: 'agreement', status: 'pending', email: 'a@example.com', reminder_count: 0, role: 'worker' },
+      ]
+    )
+
+    const run = await runSigningReminders(NOW)
+    expect(mocks.resend.mock.calls.map((call) => call[0].partyId)).toEqual(['p-agreement'])
+    expect(run).toMatchObject({ remindersSent: 1, errors: [] })
+  })
+
   it('closes a request that has run out of time, records it and tells the sender', async () => {
     seed(
       [{ id: 'late', status: 'sent', title: 'Worker agreement', sent_at: daysAgo(31), expires_at: daysAgo(1), created_by: 'user-1', subject_type: 'employee', subject_id: 'emp-1', final_pdf_path: null, completion_applied_at: null }],

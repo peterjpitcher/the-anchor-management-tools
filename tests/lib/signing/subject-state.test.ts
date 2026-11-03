@@ -444,6 +444,49 @@ describe('a document for a member of staff', () => {
   })
 })
 
+describe('a training document', () => {
+  const ASSIGNMENT = '88888888-8888-4888-8888-888888888888'
+  const training = (kind: 'training_completion' | 'training_signoff', context: Record<string, unknown> = { training: { assignment_id: ASSIGNMENT } }) =>
+    workerAgreement({ kind, context })
+
+  it('still stands while its training item is waiting for it', async () => {
+    for (const status of ['assigned', 'in_progress', 'awaiting_confirmation', 'declined']) {
+      useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Active' }], training_assignments: [{ id: ASSIGNMENT, status }] })
+      expect(await findSubjectClosure(training('training_completion')), status).toBeNull()
+      expect(await findSubjectClosure(training('training_signoff')), status).toBeNull()
+    }
+  })
+
+  it('is withdrawn when the item is cancelled, waived, already complete or gone', async () => {
+    for (const [status, reason] of [
+      ['cancelled', 'The training was cancelled'],
+      ['waived', 'The training was waived'],
+      ['completed', 'The training is already complete'],
+    ] as const) {
+      useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Active' }], training_assignments: [{ id: ASSIGNMENT, status }] })
+      expect(await findSubjectClosure(training('training_completion')), status).toBe(reason)
+      expect(await findSubjectClosure(training('training_signoff')), status).toBe(reason)
+    }
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Active' }], training_assignments: [] })
+    expect(await findSubjectClosure(training('training_completion'))).toBe('The training record no longer exists')
+  })
+
+  it('is withdrawn once they have left, before the item is even read', async () => {
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Former' }], training_assignments: [{ id: ASSIGNMENT, status: 'awaiting_confirmation' }] })
+    expect(await findSubjectClosure(training('training_signoff'))).toBe('They no longer work here')
+  })
+
+  it('does not read training items for any other staff document', async () => {
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Active' }] })
+    expect(await findSubjectClosure(workerAgreement({ context: { training: { assignment_id: ASSIGNMENT } } }))).toBeNull()
+  })
+
+  it('stands when it names no training item, rather than guessing', async () => {
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Active' }] })
+    expect(await findSubjectClosure(training('training_completion', {}))).toBeNull()
+  })
+})
+
 describe('a job offer', () => {
   it('still stands while the application is at the offer stage', async () => {
     useDb({ recruitment_applications: [{ id: APPLICATION, status: 'offered' }] })

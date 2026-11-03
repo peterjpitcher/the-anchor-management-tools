@@ -1,4 +1,5 @@
 import crypto from 'crypto'
+import { COMPANY_DETAILS } from '@/lib/company-details'
 import { reportCronFailure } from '@/lib/cron/alerting'
 import { sendEmail } from '@/lib/email/emailService'
 import { invoiceEmailRouting } from '@/lib/email/invoice-sender'
@@ -9,13 +10,13 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { reportWriteError, settleWrite } from '@/lib/supabase/settle-write'
 import { buildAgreedText, buildCompanyAgreedText, isAcceptableTypedName } from './agreement-text'
 import { appendCertificate, renderCertificateHtml, type CertificateParty } from './certificate'
-import { runCompletionHook } from './completion-hooks'
+import { runCompletionHook, runDeclineHook } from './completion-hooks'
 import {
   buildSigningCompletedEmail,
   buildSigningRequestEmail,
   buildSigningStaffNoticeEmail,
 } from './emails'
-import { getSigningKind } from './kinds'
+import { getSigningKind, isInPersonOnlyKind, signingKindOptions } from './kinds'
 import { isUntrustedRender, readSigningRenderSpec, renderSigningPdf, type SigningRenderInput, type SigningRenderSpec } from './render'
 import { fillSignatureSlots } from './signature-slots'
 import { buildSignedFills, signingReference } from './slot-fills'
@@ -24,7 +25,6 @@ import { describeSigningSubject } from './subjects'
 import { buildSigningUrl, generateSigningToken, hashSigningToken, isWellFormedSigningToken, sha256Hex } from './tokens'
 import {
   SIGNED_DOCUMENTS_BUCKET,
-  SIGNING_EXPIRY_DAYS,
   SIGNING_OPEN_STATUSES,
   type SigningDocumentRow,
   type SigningEventName,
@@ -136,8 +136,13 @@ export interface CreateSigningRequestInput {
   /** The exact PDF the signers will be shown. */
   pdf: Buffer
   parties: SigningPartyInput[]
-  /** The staff member sending it. They are also the business's signatory where the kind has one. */
-  createdBy: string
+  /**
+   * The staff member sending it. They are also the business's signatory where the kind has one.
+   * Null for a document the app makes by itself (a training certificate, when the last section is
+   * passed): there is then no sender to tell, and a kind that signs for the business refuses it.
+   */
+  createdBy: string | null
+  /** Their name, recorded where the business signs. */
   createdByName: string
   /** Their job title, printed beside their name where the business signs. */
   createdByPosition?: string | null
@@ -241,8 +246,13 @@ async function sendSigningLinkEmail(input: {
  */
 export async function createSigningRequest(input: CreateSigningRequestInput): Promise<CreateSigningRequestResult> {
   const definition = getSigningKind(input.kind)
+  const options = signingKindOptions(input.kind)
   if (input.parties.length === 0) {
     throw new SigningError('no_parties', 'There is nobody to sign this document.')
+  }
+  if (definition.companySigns && !input.createdBy) {
+    // The business signs as it sends, in the sender's name. With no sender there is nobody to sign.
+    throw new SigningError('sender_required', 'A member of staff must send this document, because they sign it for the business.')
   }
   for (const party of input.parties) {
     if (!party.name.trim()) {
@@ -275,7 +285,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
   const storagePath = sourcePath({ id: documentId, ...subject })
   const sourceSha = sha256Hex(input.pdf)
   const now = new Date()
-  const expiresAt = new Date(now.getTime() + SIGNING_EXPIRY_DAYS * DAY_MS).toISOString()
+  const expiresAt = new Date(now.getTime() + options.linkExpiryDays * DAY_MS).toISOString()
 
   const { error: uploadError } = await admin.storage
     .from(SIGNED_DOCUMENTS_BUCKET)
@@ -341,7 +351,10 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
   const partyRows = input.parties.map((party, index) => {
     const email = party.email?.trim() || null
     let hashedToken: string | null = null
-    if (email) {
+    // A kind signed only in person gets its link from startInPersonSigning, on the manager's
+    // device. No link exists before that, so there is none to send or to find in a mailbox. The
+    // email address is still kept: the signed copy goes to it.
+    if (email && !options.inPersonOnly) {
       const rawToken = generateSigningToken()
       tokens.set(index, rawToken)
       hashedToken = hashSigningToken(rawToken)
@@ -423,7 +436,7 @@ export async function createSigningRequest(input: CreateSigningRequestInput): Pr
     const { data: signed, error: signError } = await admin.rpc('signing_record_signature', {
       p_party_id: companyParty.id,
       p_typed_name: input.createdByName,
-      p_agreed_text: buildCompanyAgreedText({ title: input.title }),
+      p_agreed_text: buildCompanyAgreedText({ title: input.title, kind: input.kind, context }),
       p_method: 'sender',
       p_auth_user_id: input.createdBy,
     })
@@ -582,15 +595,16 @@ export async function listOtherDocumentsToSign(context: SigningPartyContext): Pr
   const admin = createAdminClient()
   const { data: documents, error } = await admin
     .from('signing_documents')
-    .select('id, title, expires_at')
+    .select('id, kind, title, expires_at')
     .eq('subject_type', document.subject_type)
     .eq('subject_id', document.subject_id)
     .in('status', [...SIGNING_OPEN_STATUSES])
     .neq('id', document.id)
     .limit(50)
   if (error) throw new Error(`Could not read the other documents: ${error.message}`)
-  const open = ((documents ?? []) as Array<{ id: string; title: string; expires_at: string }>).filter(
-    (other) => new Date(other.expires_at).getTime() > Date.now()
+  const open = ((documents ?? []) as Array<{ id: string; kind?: string | null; title: string; expires_at: string }>).filter(
+    // One signed only in person is not theirs to go and sign: a manager hands them a device.
+    (other) => new Date(other.expires_at).getTime() > Date.now() && !isInPersonOnlyKind(other.kind)
   )
   if (open.length === 0) return []
 
@@ -873,7 +887,7 @@ export async function signSigningParty(input: {
   if (!isAcceptableTypedName(input.typedName)) {
     return { ok: false, reason: 'name_not_acceptable' }
   }
-  const expectedText = buildAgreedText({ mode: document.mode, title: document.title })
+  const expectedText = buildAgreedText({ mode: document.mode, title: document.title, kind: document.kind, context: document.context })
   if (input.agreedText !== expectedText) {
     // The page they agreed on is not the page we would show. Refuse and let them reload.
     return { ok: false, reason: 'agreement_text_changed' }
@@ -958,6 +972,14 @@ export async function declineSigningParty(input: {
   const result = data as { ok: boolean; reason?: string }
   if (!result.ok) return { ok: false, reason: result.reason ?? 'refused' }
 
+  // The refusal stands whatever happens next. The record it belongs to is told (a training item
+  // becomes Declined), and anything that fails here is raised; the training daily job also
+  // finds a declined document its item has not caught up with.
+  try {
+    await runDeclineHook({ ...document, status: 'declined' })
+  } catch (hookError) {
+    await alertSigningFault('declined but the record it belongs to was not updated', hookError, { documentId: document.id })
+  }
   try {
     await notifySender(admin, document, { outcome: 'declined', partyName: party.name, declineReason: input.reason })
   } catch (notifyError) {
@@ -982,24 +1004,38 @@ async function lookupUser(admin: AdminClient, userId: string | null): Promise<{ 
   }
 }
 
+/**
+ * The manager mailbox: where the app already sends the owner's notices (birthdays, onboarding,
+ * guest feedback). A document the app made by itself sends its "Signed:" notice here when its
+ * kind asks for that (`notifySenderOnCompletion`).
+ */
+export function signingManagerMailbox(): string {
+  return process.env.MANAGER_EMAIL?.trim() || COMPANY_DETAILS.email
+}
+
 async function notifySender(
   admin: AdminClient,
   document: SigningDocumentRow,
   input: { outcome: 'completed' | 'declined' | 'expired'; partyName?: string | null; declineReason?: string | null }
 ): Promise<boolean> {
-  // Nobody sent it (a system document): nobody to tell.
-  if (!document.created_by) return false
-  // Read here, not through lookupUser, which hides a failed read. "Could not find out who to
-  // tell" must fail loudly; it is not the same as "there is nobody to tell".
   let senderEmail: string | null
-  try {
-    const { data, error } = await admin.auth.admin.getUserById(document.created_by)
-    if (error) throw new Error(error.message)
-    senderEmail = data?.user?.email ?? null
-  } catch (lookupError) {
-    throw new Error(
-      `The address of whoever sent it could not be read: ${lookupError instanceof Error ? lookupError.message : String(lookupError)}`
-    )
+  if (!document.created_by) {
+    // Nobody sent it (the app made it). Nobody to tell, unless the kind says the manager mailbox
+    // hears instead.
+    if (signingKindOptions(document.kind).notifySenderOnCompletion !== 'sender_or_manager_mailbox') return false
+    senderEmail = signingManagerMailbox()
+  } else {
+    // Read here, not through lookupUser, which hides a failed read. "Could not find out who to
+    // tell" must fail loudly; it is not the same as "there is nobody to tell".
+    try {
+      const { data, error } = await admin.auth.admin.getUserById(document.created_by)
+      if (error) throw new Error(error.message)
+      senderEmail = data?.user?.email ?? null
+    } catch (lookupError) {
+      throw new Error(
+        `The address of whoever sent it could not be read: ${lookupError instanceof Error ? lookupError.message : String(lookupError)}`
+      )
+    }
   }
   if (!senderEmail) return false
   const sender = { email: senderEmail }
@@ -1314,6 +1350,7 @@ async function sendCompletedCopies(admin: AdminClient, document: SigningDocument
       mode: document.mode,
       recipientName: party.name,
       title: document.title,
+      kind: document.kind,
     })
     const result = await sendEmail({
       to: party.email,
@@ -1495,6 +1532,16 @@ export async function resendSigningLink(input: {
 }): Promise<void> {
   const admin = createAdminClient()
   const { party, document } = await requireOpenParty(admin, input.partyId)
+  if (!signingKindOptions(document.kind).allowSendNewLink) {
+    // Training chases its own items, and its documents are confirmed in the staff portal or in
+    // person, so a link by email is never sent for them: not by staff, not by the daily job.
+    throw new SigningError(
+      'no_new_link',
+      isInPersonOnlyKind(document.kind)
+        ? 'This is signed in person only. Use Sign in Person.'
+        : 'This is not sent by email. They confirm it in the staff portal, or use Sign in Person.'
+    )
+  }
   if (!party.email) throw new SigningError('no_email', 'There is no email address for this person.')
 
   const rawToken = generateSigningToken()

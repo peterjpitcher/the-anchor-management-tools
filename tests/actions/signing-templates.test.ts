@@ -30,6 +30,7 @@ vi.mock('@/lib/signing/staff', () => ({
 }))
 
 import { setSigningTemplateActive } from '@/app/actions/signing'
+import { RETIRED_TEMPLATE_MESSAGE } from '@/lib/signing/templates'
 
 const TEMPLATE = '11111111-1111-4111-8111-111111111111'
 const STAFF = { id: '99999999-9999-4999-8999-999999999999', email: 'peter@example.test', name: 'Peter Pitcher', position: 'Director' }
@@ -180,6 +181,43 @@ describe('switching a template on', () => {
     const result = await setSigningTemplateActive({ id: TEMPLATE, active: true, version: 3 })
 
     expect(result.data).toMatchObject({ is_active: true, version: 3 })
+    expect(stored().is_active).toBe(true)
+  })
+})
+
+describe('the policies staff training replaced', () => {
+  // Migration 20261103090300 marks each with a [[RETIRED: ...]] line, but that line can be edited
+  // out. These rows have finished wording and no marker at all: the slug alone must stop them.
+  it.each(['health-and-safety', 'allergens', 'challenge-25', 'data-protection'])(
+    'refuses to switch %s on, says it was replaced by staff training, and writes nothing',
+    async (slug) => {
+      seed(templateRow({ slug }))
+
+      const result = await setSigningTemplateActive({ id: TEMPLATE, active: true, version: 3 })
+
+      expect(result).toEqual({ error: RETIRED_TEMPLATE_MESSAGE })
+      expect(result.error).toContain('replaced by staff training')
+      expect(stored()).toMatchObject({ is_active: false, activated_at: null, activated_by: null, version: 3 })
+      expect(db.writes).toHaveLength(0)
+      expect(mocks.audit).not.toHaveBeenCalled()
+    }
+  )
+
+  it('still lets one be switched off, if it was ever switched on by hand', async () => {
+    seed(templateRow({ slug: 'allergens', is_active: true, activated_at: '2026-10-11T09:00:00.000Z', activated_by: EARLIER_STAFF }))
+
+    const result = await setSigningTemplateActive({ id: TEMPLATE, active: false, version: 3 })
+
+    expect(result.error).toBeUndefined()
+    expect(stored().is_active).toBe(false)
+  })
+
+  it('leaves the staff handbook alone', async () => {
+    seed(templateRow({ slug: 'staff-handbook' }))
+
+    const result = await setSigningTemplateActive({ id: TEMPLATE, active: true, version: 3 })
+
+    expect(result.error).toBeUndefined()
     expect(stored().is_active).toBe(true)
   })
 })
