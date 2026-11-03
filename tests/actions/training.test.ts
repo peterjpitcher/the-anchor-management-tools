@@ -1062,6 +1062,20 @@ describe('recordTrainedInPerson', () => {
     expect(events('in_person_recorded')[0]).toMatchObject({ assignment_id: A1, meta: expect.objectContaining({ previousStatus: 'locked' }) })
   })
 
+  it('counts them as trained on the current version, or the one an open item was started on, so a later redo reaches them', async () => {
+    // The sync passes over a completion with no version when it plans "ask everyone to redo".
+    const STARTED_ON = 'd1111111-1111-4111-8111-111111111111'
+    const CURRENT = 'd1111111-1111-4111-8111-222222222222'
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [PRACTICAL], trainedOn: '2026-11-01' })
+    expect(result.data?.recorded).toEqual([PRACTICAL])
+    expect(assignments()[0]).toMatchObject({ course_id: PRACTICAL, version_id: PRACTICAL_V1 })
+
+    seed({ training_assignments: [assignmentRow({ status: 'in_progress', version_id: STARTED_ON })] })
+    db.rows('training_courses').find((row) => row.id === ONLINE)!.current_version_id = CURRENT
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: '2026-11-09' })).data?.recorded).toEqual([ONLINE])
+    expect(assignments()[0]).toMatchObject({ id: A1, status: 'completed', version_id: STARTED_ON })
+  })
+
   it('records the rest and says why for each course it leaves alone', async () => {
     seed({
       training_assignments: [

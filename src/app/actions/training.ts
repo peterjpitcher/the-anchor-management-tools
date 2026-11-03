@@ -1251,6 +1251,9 @@ export async function recordTrainedInPerson(input: TrainedInPersonInput): Promis
         completedOn: trainedOn,
         expiresOn,
         windowOpensOn: computeWindowOpensOn(expiresOn, course.windowDays),
+        // The version they count as trained on: the one an open item was started on, or the
+        // course's current one. Without it a later "ask everyone to redo" would pass them by.
+        versionId: open?.versionId ?? course.currentVersionId,
         supervisedOnly,
         trainedInPerson: true,
         inPersonRecordedBy: user.id,
