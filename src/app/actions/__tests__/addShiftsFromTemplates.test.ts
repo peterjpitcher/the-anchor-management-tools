@@ -4,6 +4,8 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
+// The last-working-day check reads employees; it has its own tests (lastWorkingDayGuard.test.ts).
+vi.mock('@/lib/rota/last-working-day-guard', () => ({ shiftAfterLastWorkingDayRefusal: vi.fn().mockResolvedValue(null) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import { addShiftsFromTemplates } from '../rota'

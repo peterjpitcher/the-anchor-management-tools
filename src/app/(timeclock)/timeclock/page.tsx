@@ -1,6 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import TimeclockClient, { type KioskSession } from './_components/TimeclockClient'
+import { onClockScreen } from '@/lib/employees/current-staff'
 
 export const dynamic = 'force-dynamic'
 
@@ -13,19 +14,28 @@ export default async function TimeclockPage() {
       .from('employees')
       // preferred_name so the kiosk cards read as the name the team actually
       // uses. Nothing else about the row is exposed on this public screen.
-      .select('employee_id, first_name, last_name, preferred_name')
+      .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
       .in('status', ['Active', 'Started Separation'])
       .order('first_name')
       .order('last_name'),
     getOpenSessions(),
   ])
 
-  const activeEmployees = (employees ?? []) as {
-    employee_id: string
-    first_name: string | null
-    last_name: string | null
-    preferred_name: string | null
-  }[]
+  const clockedInIds = new Set(sessionsResult.success ? sessionsResult.data.map((session) => session.employee_id) : [])
+  // Someone on notice leaves the kiosk once their last working day has passed, unless they are
+  // still clocked in from it (a shift past midnight), so they can clock out. The status and end
+  // date are dropped here: this page is public and only the name may cross to the client.
+  const activeEmployees = onClockScreen(
+    (employees ?? []) as {
+      employee_id: string
+      first_name: string | null
+      last_name: string | null
+      preferred_name: string | null
+      status: string
+      employment_end_date: string | null
+    }[],
+    clockedInIds,
+  ).map(({ employee_id, first_name, last_name, preferred_name }) => ({ employee_id, first_name, last_name, preferred_name }))
   // getOpenSessions() selects the whole row for the authenticated FOH screens.
   // This page is public, and anything handed to a client component lands in the
   // RSC payload, so the session is narrowed to the fields the kiosk renders

@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendEmail } from '@/lib/email/emailService';
 import { buildStaffRotaEmailHtml, buildRotaChangeEmailHtml, type ShiftSummary, type ShiftChange } from '@/lib/rota/email-templates';
 import { displayName } from '@/lib/employees/display-name';
+import { isCurrentStaff } from '@/lib/employees/current-staff';
 import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 
 function addDays(isoDate: string, n: number): string {
@@ -45,7 +46,7 @@ export async function sendRotaWeekEmails(
   const [{ data: employees }, { data: shifts }, { data: openShifts }] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, preferred_name, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, email_address, status, employment_end_date')
       .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
@@ -75,8 +76,10 @@ export async function sendRotaWeekEmails(
   let sent = 0;
   let errors = 0;
 
+  // Someone on notice whose last working day has passed has left, even before the nightly job
+  // marks them Former: on 17 May 2026 one was emailed the next week's rota.
   const eligible = (employees ?? []).filter(
-    emp => emp.email_address && (shiftsByEmployee[emp.employee_id] ?? []).length > 0,
+    emp => isCurrentStaff(emp) && emp.email_address && (shiftsByEmployee[emp.employee_id] ?? []).length > 0,
   );
 
   const subject = (weekEndStr: string) =>
@@ -224,7 +227,7 @@ export async function sendRotaWeekChangeEmails(
   const [{ data: employees }, { data: openShifts }] = await Promise.all([
     supabase
       .from('employees')
-      .select('employee_id, first_name, last_name, preferred_name, email_address')
+      .select('employee_id, first_name, last_name, preferred_name, email_address, status, employment_end_date')
       .in('status', ['Active', 'Started Separation']),
     supabase
       .from('rota_published_shifts')
@@ -266,9 +269,9 @@ export async function sendRotaWeekChangeEmails(
 
   const emailSubject = `Your rota has been updated: ${fmtDate(weekStart, false)} to ${fmtDate(weekEnd, true)}`;
 
-  // Only include employees who have at least one change
+  // Only include employees who have at least one change, and who have not left.
   const eligible = (employees ?? []).filter(emp => {
-    if (!emp.email_address || !allEmployeeIds.has(emp.employee_id)) return false;
+    if (!isCurrentStaff(emp) || !emp.email_address || !allEmployeeIds.has(emp.employee_id)) return false;
     const changes = computeEmployeeChanges(
       prevByEmployee[emp.employee_id] ?? [],
       newByEmployee[emp.employee_id] ?? [],

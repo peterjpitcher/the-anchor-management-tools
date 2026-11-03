@@ -5,6 +5,7 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { verifyOpenShiftApprovalToken, type OpenShiftApprovalTokenPayload } from '@/lib/rota/open-shift-request-token';
+import { shiftAfterLastWorkingDayRefusal } from '@/lib/rota/last-working-day-guard';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -55,6 +56,21 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!canEdit || !canPublish) return NextResponse.redirect(new URL('/unauthorized', request.url));
 
   const admin = createAdminClient();
+
+  // The approval function checks the volunteer is still Active or on notice, not their last
+  // working day, so a request for a shift after it is refused here, as a stale approval. The
+  // request stays in the reassignment queue, where approving it gives the reason.
+  const lastDayRefusal = await shiftAfterLastWorkingDayRefusal(admin, [
+    { employeeId: payload.employeeId, shiftDate: payload.expected.shiftDate },
+  ]);
+  if (lastDayRefusal) {
+    console.warn('[openShiftRequestApprove] refused: shift after the last working day', {
+      requestId: payload.requestId,
+      shiftId: payload.shiftId,
+    });
+    return redirectToRota(request, payload, 'stale');
+  }
+
   const { data, error } = await admin.rpc('approve_rota_open_shift_request', {
     p_request_id: payload.requestId,
     p_shift_id: payload.shiftId,
