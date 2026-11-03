@@ -9,6 +9,7 @@ import {
 } from '@/lib/rota/email-templates';
 import { recordShiftReliabilityEvent } from '@/services/employee-reliability';
 import { displayName } from '@/lib/employees/display-name';
+import { hasLeft, isPastLastWorkingDay } from '@/lib/employees/current-staff';
 import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import {
   SHIFT_ACCEPTANCE_CUTOFF_DAYS,
@@ -53,6 +54,7 @@ type EmployeeRow = {
   preferred_name: string | null;
   email_address: string | null;
   status: string | null;
+  employment_end_date: string | null;
 };
 
 function addDays(date: Date, days: number): Date {
@@ -141,7 +143,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { data: employees, error: employeesError } = employeeIds.length > 0
     ? await supabase
         .from('employees')
-        .select('employee_id, first_name, last_name, preferred_name, email_address, status')
+        .select('employee_id, first_name, last_name, preferred_name, email_address, status, employment_end_date')
         .in('employee_id', employeeIds)
     : { data: [] as EmployeeRow[], error: null };
 
@@ -151,13 +153,14 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const employeeById = new Map((employees ?? []).map((employee: EmployeeRow) => [employee.employee_id, employee]));
 
-  // Someone already marked as Former can still be on the published rota, because finalising
-  // checks the working rota and not the published copy. On 18 July 2026 a Former employee was
-  // asked to accept shifts two days after they left. Their shifts are left pending for a manager:
-  // never emailed about and never auto-accepted in their name.
+  // Someone who has left can still be on the published rota, because finalising checks the
+  // working rota and not the published copy. On 18 July 2026 a Former employee was asked to
+  // accept shifts two days after they left. Their shifts are left pending for a manager: never
+  // emailed about and never auto-accepted in their name. "Left" includes someone on notice
+  // whose last working day has passed (src/lib/employees/current-staff.ts).
   const formerEmployeeIds = new Set(
     (employees ?? [])
-      .filter((employee: EmployeeRow) => employee.status === 'Former')
+      .filter((employee: EmployeeRow) => hasLeft(employee))
       .map((employee: EmployeeRow) => employee.employee_id),
   );
 
@@ -165,10 +168,20 @@ export async function GET(request: Request): Promise<NextResponse> {
   const autoAcceptShifts: PendingShiftRow[] = [];
   let heldForLatePublishGrace = 0;
   let skippedFormerEmployee = 0;
+  let skippedAfterLastWorkingDay = 0;
 
   for (const shift of pendingShifts) {
     if (formerEmployeeIds.has(shift.employee_id)) {
       skippedFormerEmployee += 1;
+      continue;
+    }
+
+    // A shift after the last working day of someone still on notice is the same mistake one
+    // step earlier: they cannot work it, so they are not asked to accept it and it is not
+    // accepted for them.
+    const employee = employeeById.get(shift.employee_id);
+    if (employee && isPastLastWorkingDay(employee, shift.shift_date)) {
+      skippedAfterLastWorkingDay += 1;
       continue;
     }
 
@@ -427,6 +440,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       autoAcceptMissingLiveShift,
       heldForLatePublishGrace,
       skippedFormerEmployee,
+      skippedAfterLastWorkingDay,
       employeeLookupError: employeesError?.message ?? null,
     },
     // Drift between the snapshot and the live rota cannot be repaired by running

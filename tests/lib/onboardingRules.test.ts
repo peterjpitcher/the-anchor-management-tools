@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
   isEmergencyContactsComplete,
   isFinancialComplete,
@@ -88,5 +88,18 @@ describe('invite link rules', () => {
     expect(inviteTokenProblem({
       inviteType: 'portal_access', tokenEmail: 'starter@example.com', employee: { ...active, auth_user_id: 'auth-1' },
     })).toBe('has_login')
+  })
+
+  it('lets someone on notice use a portal link up to their last working day, and not after', () => {
+    const onNotice = { ...employee, status: 'Started Separation', employment_end_date: '2026-11-07' }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(new Date('2026-11-07T20:00:00.000Z'))
+      expect(inviteTokenProblem({ inviteType: 'portal_access', tokenEmail: 'starter@example.com', employee: onNotice })).toBeNull()
+      vi.setSystemTime(new Date('2026-11-08T00:30:00.000Z'))
+      expect(inviteTokenProblem({ inviteType: 'portal_access', tokenEmail: 'starter@example.com', employee: onNotice })).toBe('not_active')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

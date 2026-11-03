@@ -8,6 +8,7 @@ import type { VoucherErrorCode, VoucherRow, VoucherStatus } from '@/types/vouche
 import { UNDO_WINDOW_SECONDS } from '@/lib/vouchers/constants'
 import { normaliseVoucherNumberInput, isFullVoucherNumber } from '@/lib/vouchers/numbering'
 import { displayName } from '@/lib/employees/display-name'
+import { isCurrentStaff } from '@/lib/employees/current-staff'
 
 type AdminClient = ReturnType<typeof createAdminClient>
 
@@ -99,12 +100,13 @@ export async function getActiveEmployee(
 ): Promise<{ id: string; name: string } | null> {
   const { data, error } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name')
+    .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
     .eq('employee_id', employeeId)
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle()
 
-  if (error || !data) {
+  // Someone on notice past their last working day has left, the same as a former employee.
+  if (error || !data || !isCurrentStaff(data)) {
     return null
   }
 

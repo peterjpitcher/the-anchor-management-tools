@@ -49,6 +49,45 @@ describe('/api/portal/calendar-feed', () => {
     expect(verifyCalendarTokenMock).toHaveBeenCalledWith('employee-1', 'valid')
   })
 
+  describe('someone on notice (today is 1 June 2026)', () => {
+    /** Every table answers with the given row for the employee and nothing else. */
+    function adminFor(employee: Record<string, unknown>) {
+      const tables: string[] = []
+      const chain = (result: { data: unknown; error: null }): Record<string, unknown> => {
+        const query: Record<string, unknown> = {}
+        for (const method of ['select', 'eq', 'gte', 'lte', 'or', 'order']) query[method] = () => query
+        query.maybeSingle = async () => result
+        query.then = (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve)
+        return query
+      }
+      createAdminClientMock.mockReturnValue({
+        from: vi.fn((table: string) => {
+          tables.push(table)
+          return table === 'employees' ? chain({ data: employee, error: null }) : chain({ data: [], error: null })
+        }),
+      })
+      return tables
+    }
+
+    it('still serves the calendar on their last working day', async () => {
+      const tables = adminFor({ first_name: 'Sam', last_name: 'Taylor', status: 'Started Separation', employment_end_date: '2026-06-01' })
+
+      const response = await GET(new NextRequest('http://localhost/api/portal/calendar-feed?employee_id=employee-1&token=valid'))
+
+      expect(response.status).toBe(200)
+      expect(tables).toContain('rota_published_shifts')
+    })
+
+    it('refuses the calendar once their last working day has passed, as for a former employee', async () => {
+      const tables = adminFor({ first_name: 'Sam', last_name: 'Taylor', status: 'Started Separation', employment_end_date: '2026-05-31' })
+
+      const response = await GET(new NextRequest('http://localhost/api/portal/calendar-feed?employee_id=employee-1&token=valid'))
+
+      expect(response.status).toBe(403)
+      expect(tables).toEqual(['employees'])
+    })
+  })
+
   it('includes cancellation events for removed staff shifts', async () => {
     const makeOrderedResult = (data: unknown[]) => {
       const secondOrder = vi.fn().mockResolvedValue({ data, error: null })

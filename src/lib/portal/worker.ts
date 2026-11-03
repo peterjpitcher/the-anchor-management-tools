@@ -1,3 +1,4 @@
+import { hasLeft } from '@/lib/employees/current-staff'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 
@@ -13,7 +14,10 @@ export interface PortalWorker {
   employeeId: string
 }
 
-/** Employee statuses that can use the portal. New starters count: they sign their agreement here. */
+/**
+ * Employee statuses that can use the portal. New starters count: they sign their agreement here.
+ * Someone on notice whose last working day has passed does not: they have left.
+ */
 const PORTAL_WORKER_STATUSES = ['Onboarding', 'Active', 'Started Separation'] as const
 
 /**
@@ -31,12 +35,12 @@ export async function getPortalWorker(): Promise<PortalWorker | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('employee_id')
+    .select('employee_id, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', [...PORTAL_WORKER_STATUSES])
     .maybeSingle()
   if (error) throw new Error(`Could not read your employee record: ${error.message}`)
-  if (!data) return null
+  if (!data || hasLeft(data)) return null
   return { userId: user.id, employeeId: data.employee_id as string }
 }
 

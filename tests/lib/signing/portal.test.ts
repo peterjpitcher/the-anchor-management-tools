@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createFakeDb, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
 const mocks = vi.hoisted(() => ({ client: null as unknown, sessionUser: null as { id: string } | null }))
@@ -23,6 +23,7 @@ beforeEach(() => {
       { id: 'a', employee_id: 'emp-me', auth_user_id: 'user-me', status: 'Onboarding' },
       { id: 'b', employee_id: 'emp-other', auth_user_id: 'user-other', status: 'Active' },
       { id: 'c', employee_id: 'emp-left', auth_user_id: 'user-left', status: 'Former' },
+      { id: 'd', employee_id: 'emp-notice', auth_user_id: 'user-notice', status: 'Started Separation', employment_end_date: '2026-11-07' },
     ],
     signing_documents: [
       { id: 'doc-1', title: 'Worker agreement', mode: 'sign', status: 'part_signed', sent_at: '2026-10-01T09:00:00.000Z', expires_at: '2026-10-31T09:00:00.000Z', completed_at: null },
@@ -48,6 +49,26 @@ describe('signing in the staff portal', () => {
     expect(await getPortalWorker()).toBeNull()
     mocks.sessionUser = null
     expect(await getPortalWorker()).toBeNull()
+  })
+
+  describe('someone on notice', () => {
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('is let in on their last working day', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-07T20:00:00.000Z'))
+      mocks.sessionUser = { id: 'user-notice' }
+      expect(await getPortalWorker()).toEqual({ userId: 'user-notice', employeeId: 'emp-notice' })
+    })
+
+    it('is turned away once it has passed, as a former employee is', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-08T00:30:00.000Z'))
+      mocks.sessionUser = { id: 'user-notice' }
+      expect(await getPortalWorker()).toBeNull()
+    })
   })
 
   it('lists only the documents addressed to this worker', async () => {

@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
 import { createFakeDb, type FakeDb } from '../../helpers/fakeSupabaseDb'
 
 const mocks = vi.hoisted(() => ({ client: null as unknown, sessionUser: null as { id: string } | null }))
@@ -37,6 +38,21 @@ describe('the shared portal worker', () => {
     mocks.sessionUser = { id: 'user-left' }
     expect(await getPortalWorker()).toBeNull()
     mocks.sessionUser = null
+    expect(await getPortalWorker()).toBeNull()
+  })
+
+  it('turns away someone on notice once their last working day has passed, but not on the day itself', async () => {
+    const today = getTodayIsoDate()
+    db = createFakeDb({
+      employees: [
+        { id: 'e', employee_id: 'emp-lastday', auth_user_id: 'user-lastday', status: 'Started Separation', employment_end_date: today },
+        { id: 'f', employee_id: 'emp-past', auth_user_id: 'user-past', status: 'Started Separation', employment_end_date: shiftIsoDate(today, -1) },
+      ],
+    })
+    mocks.client = db.client
+    mocks.sessionUser = { id: 'user-lastday' }
+    expect(await getPortalWorker()).toEqual({ userId: 'user-lastday', employeeId: 'emp-lastday' })
+    mocks.sessionUser = { id: 'user-past' }
     expect(await getPortalWorker()).toBeNull()
   })
 
