@@ -321,12 +321,13 @@ describe('CoursePlayer: live mode', () => {
     // The intro is already seen, so the learner has started: Continue, not Start.
     await user.click(screen.getByRole('button', { name: 'Continue' }))
     expect(heading()).toHaveTextContent('Fire first')
-    expect(document.activeElement).toHaveTextContent('Fire first')
+    // Focus moves in an effect after the screen changes, which can trail it on a busy machine.
+    await waitFor(() => expect(document.activeElement).toHaveTextContent('Fire first'))
 
     await user.click(screen.getByRole('button', { name: 'Next' }))
     expect(portal.saveTrainingProgress).toHaveBeenCalledWith({ assignmentId: 'asg-1', sectionKey: 'fire', card: 1 })
     expect(heading()).toHaveTextContent('Alarm points')
-    expect(document.activeElement).toHaveTextContent('Alarm points')
+    await waitFor(() => expect(document.activeElement).toHaveTextContent('Alarm points'))
 
     // Back saves nothing and keeps the place.
     await user.click(screen.getByRole('button', { name: 'Back' }))
@@ -377,7 +378,7 @@ describe('CoursePlayer: live mode', () => {
     expect(screen.getByRole('status')).toHaveTextContent('You passed this section.')
     expect(screen.getByText('Raise the alarm first, always.')).toBeInTheDocument()
     expect(screen.getByText('The meeting point is the car park.')).toBeInTheDocument()
-    expect(document.activeElement).toHaveTextContent('Your results')
+    await waitFor(() => expect(document.activeElement).toHaveTextContent('Your results'))
 
     await user.click(screen.getByRole('button', { name: 'Go to the next section' }))
     expect(heading()).toHaveTextContent('Greeting')

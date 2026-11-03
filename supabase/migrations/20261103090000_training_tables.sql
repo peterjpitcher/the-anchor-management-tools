@@ -288,6 +288,11 @@ CREATE TABLE IF NOT EXISTS public.training_assignments (
   signed_off_by_name text,
   signed_off_on date,
   supervised_only boolean NOT NULL DEFAULT false,
+  -- Training a manager says was given in person before (owner decision, 3 November 2026): the
+  -- cycle is completed on the day they name, by their word alone. Nobody signs anything.
+  trained_in_person boolean NOT NULL DEFAULT false,
+  in_person_recorded_by uuid,
+  in_person_recorded_by_name text,
   due_change_reason text,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -338,7 +343,7 @@ CREATE TABLE IF NOT EXISTS public.training_events (
     'course_draft_uploaded', 'course_published', 'course_retired', 'assigned', 'started', 'section_passed',
     'section_failed', 'locked', 'unlocked', 'extended', 'waived', 'paused', 'resumed', 'cancelled', 'declined',
     'confirmation_prepared', 'confirmation_failed', 'completed', 'reminder_sent', 'escalated',
-    'external_recorded', 'signoff_recorded', 'groups_changed', 'redo_requested')),
+    'external_recorded', 'signoff_recorded', 'in_person_recorded', 'groups_changed', 'redo_requested')),
   actor_id uuid,
   actor_name text,
   -- Ids and counts only: no contact details, no health details.

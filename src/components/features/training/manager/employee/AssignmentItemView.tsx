@@ -96,6 +96,9 @@ function detailLines(item: EmployeeAssignmentItem): string[] {
       `Signed off ${formatTrainingDate(a.signedOffOn)}${a.signedOffByName ? ` by ${a.signedOffByName}` : ''}${tasks > 0 ? ` (${tasks} ${tasks === 1 ? 'task' : 'tasks'})` : ''}`,
     )
   }
+  if (a.trainedInPerson) {
+    lines.push(`Trained in person, recorded by ${a.inPersonRecordedByName ?? 'a manager'} (no signature)`)
+  }
   if (a.waivedAt) lines.push(`Waived ${formatTrainingDate(a.waivedAt)}${a.waivedByName ? ` by ${a.waivedByName}` : ''}${a.waiveReason ? `: ${a.waiveReason}` : ''}`)
   if (a.cancelledAt) {
     lines.push(`Cancelled ${formatTrainingDate(a.cancelledAt)}${a.cancelReason ? `: ${TRAINING_CANCEL_REASON_BADGE[a.cancelReason].label}` : ''}`)

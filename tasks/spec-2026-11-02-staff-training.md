@@ -449,7 +449,11 @@ A Training tab beside Signing: training groups, current items with due dates and
 the full history across every cycle, each section's attempts (result, tries, time), certificates,
 external qualifications, and the manager actions (confirm groups, assign, extend, waive, pause,
 resume, unlock, prepare a confirmation again, record a practical sign-off, record an external
-qualification). The setup-incomplete alert gains "Induction training". Record tabs become linkable
+qualification, record training already given in person). Recording training in person (owner
+decision, 3 November 2026) marks each ticked online or practical course done on the day the
+manager names, with their name and "no signature", so staff trained before the app need not take it
+again. The age, age group and prerequisite rules still apply, a course already done and in date is
+left alone, and nothing is signed or sent. The setup-incomplete alert gains "Induction training". Record tabs become linkable
 (`?tab=training`) so the log and emails can point straight at a tab.
 
 ### 9.3 Reports

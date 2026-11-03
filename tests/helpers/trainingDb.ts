@@ -17,7 +17,7 @@ const NULLABLE: Record<string, string[]> = {
     'certificate_number', 'signing_document_id', 'confirmed_at', 'locked_at', 'locked_section', 'declined_at',
     'waived_at', 'waived_by', 'waived_by_name', 'waive_reason', 'cancelled_at', 'cancel_reason', 'external_issuer',
     'external_reference', 'external_issued_on', 'external_file_path', 'signoff_tasks', 'signed_off_by',
-    'signed_off_by_name', 'signed_off_on', 'due_change_reason',
+    'signed_off_by_name', 'signed_off_on', 'in_person_recorded_by', 'in_person_recorded_by_name', 'due_change_reason',
   ],
   training_profiles: [
     'groups_confirmed_at', 'groups_confirmed_by', 'groups_confirmed_by_name', 'paused_from', 'paused_until',
@@ -33,7 +33,7 @@ function defaultsFor(table: string): Row | null {
   const nulls = Object.fromEntries((NULLABLE[table] ?? []).map((column) => [column, null]))
   switch (table) {
     case 'training_assignments':
-      return { ...nulls, progress: {}, supervised_only: false, created_at: now, updated_at: now }
+      return { ...nulls, progress: {}, supervised_only: false, trained_in_person: false, created_at: now, updated_at: now }
     case 'training_profiles':
       return { ...nulls, groups: [], created_at: now, updated_at: now }
     case 'training_events':

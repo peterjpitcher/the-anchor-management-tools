@@ -138,6 +138,9 @@ function assignmentRow(overrides: Partial<TrainingAssignmentRow> = {}): Training
     signed_off_by_name: null,
     signed_off_on: null,
     supervised_only: false,
+    trained_in_person: false,
+    in_person_recorded_by: null,
+    in_person_recorded_by_name: null,
     due_change_reason: null,
     created_at: '2026-11-03T08:00:00.000Z',
     updated_at: '2026-11-03T09:00:00.000Z',
@@ -321,6 +324,9 @@ describe('mapAssignmentRow', () => {
       signedOffByName: 'Peter',
       signedOffOn: '2026-11-04',
       supervisedOnly: true,
+      trainedInPerson: false,
+      inPersonRecordedBy: null,
+      inPersonRecordedByName: null,
       dueChangeReason: null,
       createdAt: '2026-11-03T08:00:00.000Z',
       updatedAt: '2026-11-03T09:00:00.000Z',
@@ -332,6 +338,13 @@ describe('mapAssignmentRow', () => {
     expect(() => mapAssignmentRow(assignmentRow({ status: 'done' }))).toThrow('training_assignments.status')
     expect(() => mapAssignmentRow(assignmentRow({ reason: 'induction' }))).toThrow('training_assignments.reason')
     expect(() => mapAssignmentRow(assignmentRow({ cancel_reason: 'sacked' }))).toThrow('training_assignments.cancel_reason')
+  })
+
+  it('reads a record of training given in person', () => {
+    const mapped = mapAssignmentRow(
+      assignmentRow({ trained_in_person: true, in_person_recorded_by: 'user-2', in_person_recorded_by_name: 'Billy Summers' })
+    )
+    expect(mapped).toMatchObject({ trainedInPerson: true, inPersonRecordedBy: 'user-2', inPersonRecordedByName: 'Billy Summers' })
   })
 
   it('reads empty or partial progress with starting values', () => {
@@ -359,6 +372,14 @@ describe('assignmentPatchToRow', () => {
       due_on: null,
       due_change_reason: 'Holiday',
       signed_off_by: 'user-1',
+    })
+  })
+
+  it('writes the trained in person fields as their columns', () => {
+    expect(assignmentPatchToRow({ trainedInPerson: true, inPersonRecordedBy: 'user-2', inPersonRecordedByName: 'Billy Summers' })).toEqual({
+      trained_in_person: true,
+      in_person_recorded_by: 'user-2',
+      in_person_recorded_by_name: 'Billy Summers',
     })
   })
 

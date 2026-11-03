@@ -40,6 +40,7 @@ vi.mock('@/app/actions/training', () => ({
   prepareConfirmationAgain: vi.fn(),
   recordPracticalSignoff: vi.fn(),
   recordExternalQualification: vi.fn(),
+  recordTrainedInPerson: vi.fn(),
 }))
 vi.mock('@/app/actions/training-courses', () => ({ listTrainingCourses: vi.fn() }))
 vi.mock('@/app/actions/signing', () => ({
@@ -101,7 +102,7 @@ describe('EmployeeTrainingTab', () => {
     render(<EmployeeTrainingTab employeeId="emp-1" />)
     await screen.findByText('Current Training')
 
-    for (const name of ['Assign Training', 'Confirm Groups', 'Set Adjustment', 'Pause Training', 'Record External Qualification']) {
+    for (const name of ['Assign Training', 'Confirm Groups', 'Set Adjustment', 'Pause Training', 'Record Trained In Person', 'Record External Qualification']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
     expect(screen.queryByRole('button', { name: /Waive/ })).not.toBeInTheDocument()
@@ -115,8 +116,30 @@ describe('EmployeeTrainingTab', () => {
     expect(screen.getByRole('button', { name: 'Assign Training' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Confirm Groups' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Pause Training' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Record Trained In Person' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Extend Due Date: Essentials' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Waive: Essentials' })).toBeInTheDocument()
+  })
+
+  it('shows training recorded in person with who recorded it and that nobody signed', async () => {
+    const recorded = item({
+      assignment: {
+        id: 'assign-in-person',
+        status: 'completed',
+        completedOn: '2026-03-01',
+        expiresOn: '2027-03-01',
+        trainedInPerson: true,
+        inPersonRecordedBy: 'user-billy',
+        inPersonRecordedByName: 'Billy Summers',
+      },
+      state: 'done',
+      sections: [],
+    })
+    mocks.getEmployeeTraining.mockResolvedValue({ success: true, data: employeeViewFixture({ current: [], history: [recorded] }) })
+    render(<EmployeeTrainingTab employeeId="emp-1" />)
+
+    expect(await screen.findByText('Trained in person, recorded by Billy Summers (no signature)')).toBeInTheDocument()
+    expect(screen.getByText('Completed 1 Mar 2026, refresher due by 1 Mar 2027')).toBeInTheDocument()
   })
 
   // Training is only set up for current staff: a starter still onboarding must get no training
@@ -132,7 +155,7 @@ describe('EmployeeTrainingTab', () => {
     await screen.findByText('Current Training')
 
     expect(screen.getByRole('status')).toHaveTextContent(reason)
-    for (const name of ['Assign Training', 'Confirm Groups', 'Set Adjustment', 'Pause Training', 'Record External Qualification']) {
+    for (const name of ['Assign Training', 'Confirm Groups', 'Set Adjustment', 'Pause Training', 'Record Trained In Person', 'Record External Qualification']) {
       expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
     }
   })

@@ -8,6 +8,7 @@ import { isValidIsoDate } from '@/lib/dateUtils'
 import { getSigningStaffUser, type SigningStaffUser } from '@/lib/signing/staff'
 import { SIGNING_OPEN_STATUSES } from '@/lib/signing/types'
 import {
+  ageOn,
   computeExpiresOn,
   computeInitialDueOn,
   computeWindowOpensOn,
@@ -20,7 +21,7 @@ import {
 import { createPracticalSignoff, prepareTrainingCertificate } from '@/lib/training/signing'
 import { isOpenStatus, prerequisiteMet, withSectionUnlocked, type PrerequisiteCourse } from '@/lib/training/states'
 import { EXTERNAL_CERTIFICATE_MAX_BYTES, formatMegabytes, uploadExternalCertificate } from '@/lib/training/storage'
-import { courseAppliesTo, minimumAgeRefusal, signoffMinimumAgeRefusal } from '@/lib/training/sync'
+import { courseAppliesTo, minimumAgeFor, minimumAgeRefusal, signoffMinimumAgeRefusal } from '@/lib/training/sync'
 import { PAY_REPORT_MAX_DAYS, TrainingService, type TrainingPerson } from '@/services/training'
 import {
   TRAINING_GROUPS,
@@ -69,6 +70,22 @@ export interface AssignCourseResult {
    * a course with an age rule.
    */
   skipped: Array<{ employeeId: string; reason: 'already_open' | 'not_in_scope' | 'not_applicable' | 'under_minimum_age' | 'dob_missing' }>
+}
+
+export interface TrainedInPersonInput {
+  employeeId: string
+  /** Live online or practical courses. One that needs another of them first is recorded after it. */
+  courseIds: string[]
+  /** London date they were last trained; today or earlier. Refreshers are worked out from it. */
+  trainedOn: string
+  note?: string
+}
+
+export interface TrainedInPersonResult {
+  /** Course ids recorded as done. */
+  recorded: string[]
+  /** Courses not recorded, each with why in words for the manager. */
+  skipped: Array<{ courseId: string; title: string; reason: string }>
 }
 
 export interface PracticalSignoffInput {
@@ -138,6 +155,13 @@ const ExternalSchema = z.object({
   reference: z.string().trim().max(120, 'Keep the reference under 120 characters.'),
   issuedOn: IsoDateSchema,
   expiresOn: IsoDateSchema.nullable(),
+})
+
+const InPersonSchema = z.object({
+  employeeId: UuidSchema,
+  courseIds: z.array(UuidSchema).min(1, 'Tick at least one course.').max(50, 'Tick at most 50 courses at a time.'),
+  trainedOn: IsoDateSchema,
+  note: OptionalNoteSchema,
 })
 
 const PayReportSchema = z.object({ from: IsoDateSchema, to: IsoDateSchema })
@@ -1082,4 +1106,211 @@ export async function recordExternalQualification(formData: FormData): Promise<T
   } catch (error) {
     return failure(error, 'external qualification')
   }
+}
+
+/**
+ * The courses to record, each one after any of the others it needs first (Essentials before Team
+ * training before the practicals), so one go can record a whole set. Otherwise in the order given.
+ */
+function inPrerequisiteOrder(courses: readonly TrainingCourse[]): TrainingCourse[] {
+  const chosen = new Map(courses.map((course) => [course.id, course]))
+  const depthOf = (course: TrainingCourse, seen: Set<string>): number => {
+    const before = course.prerequisiteCourseId ? chosen.get(course.prerequisiteCourseId) : undefined
+    if (!before || seen.has(before.id)) return 0
+    return depthOf(before, new Set(seen).add(course.id)) + 1
+  }
+  return courses
+    .map((course, index) => ({ course, index, depth: depthOf(course, new Set()) }))
+    .sort((a, b) => a.depth - b.depth || a.index - b.index)
+    .map((entry) => entry.course)
+}
+
+/**
+ * Whether the person's latest completion of a course is in date and its refresher window has not
+ * opened, so recording it again would only duplicate it. Inside the window a refresher given in
+ * person can be recorded.
+ */
+function completionStillCurrent(cycles: readonly TrainingAssignment[], today: string): boolean {
+  const latest = cycles
+    .filter((cycle) => cycle.status === 'completed')
+    .reduce<TrainingAssignment | null>((best, cycle) => (best === null || cycle.cycle > best.cycle ? cycle : best), null)
+  if (!latest) return false
+  if (latest.expiresOn !== null && latest.expiresOn < today) return false
+  return latest.windowOpensOn === null || latest.windowOpensOn > today
+}
+
+/**
+ * Why a course with a minimum age (16 or 18) cannot be recorded as trained in person, or null
+ * when it can. It is checked today and on the day they were trained, as a sign-off is: the record
+ * says they can do the job, and nobody can tell without a date of birth.
+ */
+function inPersonAgeRefusal(course: TrainingCourse, person: TrainingPerson, trainedOn: string, today: string): string | null {
+  const now = minimumAgeRefusal(course, { dateOfBirth: person.dateOfBirth, name: person.name }, today)
+  if (now) return now.message
+  if (!minimumAgeRefusal(course, { dateOfBirth: person.dateOfBirth, name: person.name }, trainedOn)) return null
+  return `${course.title} is only for people aged ${minimumAgeFor(course.audienceAge)} or over, and ${person.name} was younger on the day they were trained.`
+}
+
+/**
+ * training:manage. Records training a manager says was given in person before (owner decision,
+ * 3 November 2026), so staff trained before the app need not take it again. Each course is
+ * completed on `trainedOn`, with the manager's name, and its refresher is worked out from that
+ * date. An open item on the course is completed; otherwise a completed cycle is added. Nobody
+ * signs anything and nothing is sent to the person.
+ *
+ * The rules a sign-off follows still apply, course by course: the minimum age (today and on the
+ * day trained), the course's age group for a new cycle, and the course it needs first, in date.
+ * A course already done and in date, or waiting for the person to confirm it, is left alone.
+ * Each refusal comes back in `skipped`; the rest are still recorded.
+ */
+export async function recordTrainedInPerson(input: TrainedInPersonInput): Promise<TrainingActionResult<TrainedInPersonResult>> {
+  const user = await requireTrainingUser('manage')
+  const parsed = InPersonSchema.safeParse(input)
+  if (!parsed.success) return { error: firstIssue(parsed.error, 'Tick the courses and choose the day they were trained.') }
+  const { employeeId, trainedOn, note } = parsed.data
+  const today = trainingToday()
+  if (trainedOn > today) return { error: 'The day they were trained cannot be in the future.' }
+  const actor = actorOf(user)
+
+  let person: TrainingPerson
+  const courses: TrainingCourse[] = []
+  try {
+    person = await loadCurrentStaff(employeeId)
+    if (person.dateOfBirth && trainedOn < person.dateOfBirth) {
+      return { error: 'The day they were trained is before their date of birth. Check the date.' }
+    }
+    for (const courseId of new Set(parsed.data.courseIds)) {
+      const course = await loadLiveCourse(courseId)
+      if (course.kind === 'external') {
+        return { error: `${course.title} is an external qualification. Record it with its certificate instead.` }
+      }
+      courses.push(course)
+    }
+  } catch (error) {
+    return failure(error, 'trained in person: checks')
+  }
+
+  const result: TrainedInPersonResult = { recorded: [], skipped: [] }
+  let failed = 0
+  for (const course of inPrerequisiteOrder(courses)) {
+    const skip = (reason: string): void => {
+      result.skipped.push({ courseId: course.id, title: course.title, reason })
+    }
+    try {
+      const tooYoung = inPersonAgeRefusal(course, person, trainedOn, today)
+      if (tooYoung) {
+        skip(tooYoung)
+        continue
+      }
+      // Read again for each course, so a course recorded just before counts as done.
+      const assignments = await TrainingService.listAssignmentsForEmployee(employeeId)
+      const cycles = assignments.filter((cycle) => cycle.courseId === course.id)
+      const open = cycles.find((cycle) => isOpenStatus(cycle.status))
+      if (!open) {
+        if (!ageRuleAllows(course, person, today)) {
+          skip(`${course.title} is not for ${person.name}'s age group.`)
+          continue
+        }
+        if (completionStillCurrent(cycles, today)) {
+          skip(`${course.title} is already done and in date.`)
+          continue
+        }
+      } else if (open.status === 'awaiting_confirmation' && open.signingDocumentId) {
+        const documentStatus = await TrainingService.getSigningDocumentStatus(open.signingDocumentId)
+        if (documentStatus !== null && SIGNING_OPEN_STATUSES.includes(documentStatus)) {
+          skip(`${course.title} is waiting for ${person.name} to confirm it.`)
+          continue
+        }
+        if (documentStatus === 'completed' || documentStatus === 'superseded') {
+          skip(`${person.name} has already confirmed ${course.title}. Refresh the page.`)
+          continue
+        }
+      }
+      const before = course.prerequisiteCourseId ? await TrainingService.getCourseById(course.prerequisiteCourseId) : null
+      const prerequisite: PrerequisiteCourse | null = course.prerequisiteCourseId
+        ? { id: course.prerequisiteCourseId, refresherMonths: before?.refresherMonths ?? null }
+        : null
+      if (!prerequisiteMet(prerequisite, assignments, today)) {
+        skip(`${course.title} needs ${before?.title ?? 'another course'} done and in date first.`)
+        continue
+      }
+
+      let supervisedOnly = false
+      if (course.supervisedOnlyUnder18) {
+        const age = ageOn(person.dateOfBirth, trainedOn)
+        if (age === null) {
+          skip(`Add ${person.name}'s date of birth to their employee record first, so ${course.title} shows whether they must be supervised.`)
+          continue
+        }
+        supervisedOnly = age < 18
+      }
+
+      const expiresOn = computeExpiresOn(course.refresherMonths, trainedOn, null)
+      const fields = {
+        status: 'completed' as const,
+        completedOn: trainedOn,
+        expiresOn,
+        windowOpensOn: computeWindowOpensOn(expiresOn, course.windowDays),
+        supervisedOnly,
+        trainedInPerson: true,
+        inPersonRecordedBy: user.id,
+        inPersonRecordedByName: user.name,
+      }
+      const saved = open
+        ? await TrainingService.updateAssignment(
+            open.id,
+            // A lock or a confirmation that ran out no longer applies once it is done.
+            { ...fields, lockedAt: null, lockedSection: null, signingDocumentId: null },
+            { expectedStatuses: [open.status], expectedUpdatedAt: open.updatedAt }
+          )
+        : await TrainingService.createAssignment({
+            employeeId,
+            courseId: course.id,
+            cycle: nextCycle(assignments, course.id),
+            reason: 'manual',
+            status: 'completed',
+            assignedOn: trainedOn,
+            dueOn: null,
+            extra: fields,
+          })
+
+      // Saved: from here nothing may count it as failed.
+      result.recorded.push(course.id)
+      await recordEventAfterChange({
+        eventType: 'in_person_recorded',
+        employeeId,
+        courseId: course.id,
+        assignmentId: saved.id,
+        actor,
+        note: note ?? null,
+        meta: { trainedOn, expiresOn, supervisedOnly, cycle: saved.cycle, previousStatus: open?.status ?? null },
+      })
+      try {
+        await audit(user, 'record_in_person', 'training_assignment', saved.id, {
+          course_id: course.id,
+          trained_on: trainedOn,
+          expires_on: expiresOn,
+          supervised_only: supervisedOnly,
+        })
+      } catch (error) {
+        console.error('Trained in person saved, but its audit row could not be written:', { assignmentId: saved.id, error })
+      }
+    } catch (error) {
+      if (error instanceof TrainingError && error.code === 'conflict') {
+        skip(`${course.title} changed while you were recording it. Refresh the page and check it.`)
+        continue
+      }
+      failed += 1
+      console.error('Recording training in person failed for one course:', { employeeId, courseId: course.id, error })
+    }
+  }
+
+  revalidateTraining(result.recorded.length > 0 ? [employeeId] : [])
+  if (failed > 0) {
+    return {
+      error: `${result.recorded.length} recorded, but ${failed} could not be. Refresh the page and try again for ${failed === 1 ? 'that one' : 'those'}.`,
+      data: result,
+    }
+  }
+  return { success: true, data: result }
 }
