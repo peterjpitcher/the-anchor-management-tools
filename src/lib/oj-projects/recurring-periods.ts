@@ -11,6 +11,8 @@
  * extra has to be stored on the charge itself.
  */
 
+import { addMonthsToIsoDate } from '@/lib/dateUtils'
+
 export type RecurringBillingPeriod = {
   period_start: string
   period_end: string
@@ -29,20 +31,8 @@ export function getRecurringChargeIntervalMonths(frequency: string | null | unde
   return FREQUENCY_INTERVAL_MONTHS[key] ?? 1
 }
 
-/**
- * Adds whole months to an ISO date, clamping to the last day of the target
- * month (31 Jan + 1 month = 28/29 Feb).
- */
-export function addMonthsToIsoDate(isoDate: string, months: number): string {
-  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return isoDate
-  const year = Number(match[1])
-  const monthIndex = Number(match[2]) - 1
-  const day = Number(match[3])
-  const lastDayOfTarget = new Date(Date.UTC(year, monthIndex + months + 1, 0)).getUTCDate()
-  const target = new Date(Date.UTC(year, monthIndex + months, Math.min(day, lastDayOfTarget)))
-  return target.toISOString().slice(0, 10)
-}
+// The month rule lives in dateUtils now; re-exported so existing callers keep working.
+export { addMonthsToIsoDate }
 
 /**
  * Returns the period to bill this recurring charge under, or null when the

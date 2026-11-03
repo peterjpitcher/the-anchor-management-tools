@@ -101,6 +101,10 @@ function toMs(value: string | null | undefined): number | null {
  * once run recording has been on for longer than the job allows (`watchedSinceMs`, the first run
  * any such job recorded). Without that, the first morning after this went live would report every
  * daily job that had not yet had its first run.
+ *
+ * A job added to the watch list later has the same problem on the morning after its own release,
+ * so `newJobSinceMs` (its `monitoredFrom`, passed only while it has never recorded a completed
+ * run) holds the alert back the same way, whatever the job records through.
  */
 export function findMissedRun(
   completedAtMs: number[],
@@ -108,13 +112,15 @@ export function findMissedRun(
   nowMs: number,
   windowStartMs: number,
   watchedSinceMs: number | null = null,
+  newJobSinceMs: number | null = null,
 ): MissedRun | null {
   const allowedMs = allowedGapMinutes(job) * 60_000
   const points = [...completedAtMs].sort((a, b) => a - b)
 
   if (points.length === 0) {
-    const tooSoonToTell = job.recording !== 'own' && (watchedSinceMs === null || nowMs - watchedSinceMs <= allowedMs)
-    if (tooSoonToTell) return null
+    const newToTheList = newJobSinceMs !== null && nowMs - newJobSinceMs <= allowedMs
+    const recordingTooNew = job.recording !== 'own' && (watchedSinceMs === null || nowMs - watchedSinceMs <= allowedMs)
+    if (newToTheList || recordingTooNew) return null
     return { from: null, until: null, minutes: Math.round((nowMs - windowStartMs) / 60_000) }
   }
 
@@ -197,8 +203,27 @@ async function checkJob(supabase: AdminClient, job: MonitoredCronJob, now: Date,
     }
   }
 
-  finding.missedRun = findMissedRun(completedAt, job, nowMs, windowStartMs, watchedSinceMs)
+  const newJobSinceMs = completedAt.length === 0 ? await newJobSince(supabase, job) : null
+  finding.missedRun = findMissedRun(completedAt, job, nowMs, windowStartMs, watchedSinceMs, newJobSinceMs)
   return finding
+}
+
+/**
+ * A job's `monitoredFrom`, while it has never recorded a completed run; otherwise null. Once it
+ * has run, a silence is judged by its runs alone, so a job that ran once and then stopped is not
+ * held back by its date. A failed read gives null, which leans towards reporting.
+ */
+async function newJobSince(supabase: AdminClient, job: MonitoredCronJob): Promise<number | null> {
+  const monitoredFromMs = toMs(job.monitoredFrom)
+  if (monitoredFromMs === null) return null
+  const { data, error } = await supabase
+    .from('cron_job_runs')
+    .select('id')
+    .eq('job_name', job.jobName)
+    .eq('status', 'completed')
+    .limit(1)
+  if (error || (data ?? []).length > 0) return null
+  return monitoredFromMs
 }
 
 /** When run recording through withCronRun began: the first run any wrapped job recorded. */

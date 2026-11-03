@@ -6,7 +6,7 @@ import Image from 'next/image'
 import { Alert, Badge, Button, Card, CardBody, CardHeader, Input, LinkButton, Modal, Textarea, toast } from '@/ds'
 import { sendSigningReminder, startInPersonSigningAction, voidSigningRequest } from '@/app/actions/signing'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
-import { getSigningKind, signingRoleLabel } from '@/lib/signing/kinds'
+import { getSigningKind, signingKindOptions, signingRoleLabel } from '@/lib/signing/kinds'
 import type { SigningDocumentSummary } from '@/lib/signing/service'
 import { SIGNING_OPEN_STATUSES } from '@/lib/signing/types'
 import {
@@ -126,6 +126,12 @@ export function SignaturePanel({
           <ul className="divide-y divide-border">
             {documents.map((document) => {
               const open = SIGNING_OPEN_STATUSES.includes(document.status)
+              // Some kinds are never sent a link by email (training: confirmed in the staff portal,
+              // or signed in person). The server refuses a new link for them, so none is offered.
+              const options = signingKindOptions(document.kind)
+              const notEmailed = options.inPersonOnly
+                ? 'Not yet signed: sign in person'
+                : 'Not yet confirmed: they confirm it in the staff portal, or sign in person'
               return (
                 <li key={document.id} className="space-y-3 py-4 first:pt-0 last:pb-0">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -159,11 +165,15 @@ export function SignaturePanel({
                                   ? 'Opened the document, not yet signed'
                                   : party.first_opened_at
                                     ? 'Opened the link, not yet read the document'
-                                    : party.email
-                                      ? 'Link sent, not yet opened'
-                                      : 'No email address: sign in person'}
+                                    : !options.allowSendNewLink
+                                      ? notEmailed
+                                      : party.email
+                                        ? 'Link sent, not yet opened'
+                                        : 'No email address: sign in person'}
                             {party.identity_check !== 'none' && !party.identity_checked_at && party.identity_check_failures >= 5 && party.status === 'pending'
-                              ? '. Locked after wrong dates of birth: send a new link'
+                              ? options.allowSendNewLink
+                                ? '. Locked after wrong dates of birth: send a new link'
+                                : '. Locked after wrong dates of birth: sign in person'
                               : ''}
                           </p>
                         </div>
@@ -173,7 +183,7 @@ export function SignaturePanel({
                           </Badge>
                           {canSend && open && party.status === 'pending' && party.role !== 'company' ? (
                             <>
-                              {party.email ? (
+                              {party.email && options.allowSendNewLink ? (
                                 <Button
                                   size="sm"
                                   variant="secondary"
