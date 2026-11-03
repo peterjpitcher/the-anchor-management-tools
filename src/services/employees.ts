@@ -7,6 +7,7 @@ import { countAllowanceDays, getHolidayYear, getHolidayYearBounds } from '@/lib/
 import { consumesAllowance, getAllowanceConsumingTypes } from '@/lib/leave/leave-types';
 import { formatPhoneForStorage } from '@/lib/utils';
 import { displayName } from '@/lib/employees/display-name';
+import { EmployeeDeleteRefusedError } from '@/lib/employees/delete-refused-error';
 import { syncBirthdayCalendarEvent, deleteBirthdayCalendarEvent } from '@/lib/google-calendar-birthdays';
 import type { AuditLogEntry } from '@/app/actions/employeeDetails';
 import type { Employee, EmployeeAttachment, EmployeeFinancialDetails, EmployeeHealthRecord, EmployeeEmergencyContact, EmployeeRightToWork, AttachmentCategory, EmployeeNote, AuditLog } from '@/types/database';
@@ -609,6 +610,33 @@ export class EmployeeService {
 
   static async deleteEmployee(employeeId: string) {
     const adminClient = createAdminClient();
+
+    // Training records are kept when someone leaves, so a person with any must be marked as left.
+    // Each of these tables refers to the employee with ON DELETE RESTRICT (attempts and reminders
+    // are only written for someone who already has an assignment, so they need no check of their
+    // own). A check that errors, or gives no count, refuses too.
+    const trainingChecks = await Promise.all([
+        adminClient
+            .from('training_assignments')
+            .select('id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+        adminClient
+            .from('training_profiles')
+            .select('employee_id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+        adminClient
+            .from('training_events')
+            .select('id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+    ]);
+    // Both refusals use EmployeeDeleteRefusedError so the action shows the manager this wording
+    // rather than its generic 'Database error'.
+    if (trainingChecks.some((check) => check.error || typeof check.count !== 'number')) {
+        throw new EmployeeDeleteRefusedError('Could not check for training records, so the employee was not deleted. Please try again.');
+    }
+    if (trainingChecks.some((check) => (check.count ?? 0) > 0)) {
+        throw new EmployeeDeleteRefusedError('This person has training records. Mark them as left instead.');
+    }
 
     // Get employee details for audit logging in action and calendar sync
     const { data: employee, error: fetchError } = await adminClient

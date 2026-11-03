@@ -240,6 +240,10 @@ describe('EmployeeService delete safeguards', () => {
     const deleteEq = vi.fn().mockReturnValue({ select: deleteSelect })
 
     const mockFrom = vi.fn((table: string) => {
+      if (table === 'training_assignments' || table === 'training_profiles' || table === 'training_events') {
+        // The training pre-check: no training records, so the delete goes ahead.
+        return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ count: 0, error: null }) }) }
+      }
       if (table !== 'employees') {
         throw new Error(`Unexpected table: ${table}`)
       }
