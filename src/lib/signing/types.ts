@@ -1,7 +1,7 @@
 /**
  * Shared types for document signing. The lists here mirror the CHECK constraints in
  * supabase/migrations/20261013080854_document_signing_foundation.sql, with the kinds added since
- * (20261014084753_signing_deposit_deduction_agreement.sql, 20261103090100_training_signing_kinds.sql);
+ * (20261014084753_signing_deposit_deduction_agreement.sql, 20261103141853_training_signing_kinds.sql);
  * the guard test tests/guards/signing.test.ts fails if the two drift apart.
  */
 

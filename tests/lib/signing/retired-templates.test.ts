@@ -4,7 +4,7 @@ import { createFakeDb } from '../../helpers/fakeSupabaseDb'
 
 /**
  * The four policy acknowledgements the staff training courses replaced (owner decision,
- * 2 November 2026). Migration 20261103090300 switched them off and put a [[RETIRED: ...]] line at
+ * 2 November 2026). Migration 20261103141905 switched them off and put a [[RETIRED: ...]] line at
  * the top of each, but anyone editing the wording can delete that line. The code must refuse them
  * whatever the stored row says: never rendered, never sent, never switched on.
  */

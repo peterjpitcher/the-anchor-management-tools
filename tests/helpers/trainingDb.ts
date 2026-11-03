@@ -2,7 +2,7 @@ import { createFakeDb, type FakeDb } from './fakeSupabaseDb'
 
 /**
  * The in-memory fake database with the training tables' column defaults filled in on insert, as
- * Postgres does (supabase/migrations/20261103090000_training_tables.sql). Without them an inserted
+ * Postgres does (supabase/migrations/20261103141837_training_tables.sql). Without them an inserted
  * row comes back with missing columns, which the training mappers rightly refuse.
  *
  * Seeded rows get the same defaults. An upsert fills them only when it inserts; when it updates an existing row it changes

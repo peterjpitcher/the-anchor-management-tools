@@ -58,7 +58,7 @@ function kindAddition(file: string, seedsDrafts: boolean): KindAddition {
  */
 const KIND_ADDITIONS: KindAddition[] = [
   kindAddition('20261014084753_signing_deposit_deduction_agreement.sql', true),
-  kindAddition('20261103090100_training_signing_kinds.sql', false),
+  kindAddition('20261103141853_training_signing_kinds.sql', false),
 ]
 /** Every migration that seeds draft wording. */
 const DRAFT_SOURCES = [DRAFTS, ...KIND_ADDITIONS.filter((addition) => addition.seedsDrafts).map((addition) => addition.sql)]
