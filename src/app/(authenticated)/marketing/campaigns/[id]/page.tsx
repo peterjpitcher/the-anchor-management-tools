@@ -11,7 +11,8 @@ import {
 } from '@/app/actions/marketing-campaigns'
 import { Alert, PageLayout } from '@/ds'
 import { marketingContentSchema } from '@/lib/email/marketing/registry'
-import { contentHasMergeTokens, mergeCampaignContent, SAMPLE_MERGE_FIELDS } from '@/lib/email/marketing/merge'
+import { contentHasMergeTokens, mergeCampaignContent } from '@/lib/email/marketing/merge'
+import { sampleMergeFieldsFor } from '@/services/marketing-lifecycle'
 import { renderCampaignHtml } from '@/lib/email/marketing/render'
 
 import { MARKETING_BACK } from '../../_shared/nav'
@@ -85,7 +86,7 @@ export default async function MarketingCampaignDetailPage({
       // A return-visit email is shown filled in with the sample guest, as the test send is.
       previewHtml = renderCampaignHtml(
         contentHasMergeTokens(parsedContent.data)
-          ? mergeCampaignContent(parsedContent.data, SAMPLE_MERGE_FIELDS)
+          ? mergeCampaignContent(parsedContent.data, await sampleMergeFieldsFor(campaign))
           : parsedContent.data,
       )
     } catch (error) {
