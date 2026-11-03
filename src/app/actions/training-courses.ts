@@ -5,11 +5,17 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getTrainingEmailsSwitch, setTrainingEmailsSwitch } from '@/app/actions/training-settings'
+import {
+  getTrainingAutoAssignSwitch,
+  getTrainingEmailsSwitch,
+  setTrainingAutoAssignSwitch,
+  setTrainingEmailsSwitch,
+} from '@/app/actions/training-settings'
 import { getSigningStaffUser, type SigningStaffUser } from '@/lib/signing/staff'
 import { COURSE_IMAGE_EXTENSIONS, COURSE_KEY_PATTERN, defaultWindowDaysFor, listCourseImageSrcs, validateCourse } from '@/lib/training/course-schema'
 import { drawQuestions, toCheckQuestionViews } from '@/lib/training/draw'
 import { scoreAttempt, toCheckResultItems } from '@/lib/training/scoring'
+import { readTrainingAutoAssignSetting } from '@/lib/training/settings'
 import {
   COURSE_IMAGE_MAX_BYTES,
   courseImageProblem,
@@ -24,6 +30,7 @@ import {
   TRAINING_GROUPS,
   TrainingError,
   type Actor,
+  type AutoAssignPreview,
   type CheckResultView,
   type CourseContent,
   type CourseDetailView,
@@ -795,6 +802,10 @@ export async function uploadCourseDraft(formData: FormData): Promise<TrainingAct
  * After a version is frozen: the course row takes its details, the course goes live if this is
  * its first version, the events and audit are written, and everyone's training is brought in
  * line. A sync that fails is left to the daily sweep; the publish itself has happened.
+ *
+ * The automatic assignment switch is read once here and handed to the sync, so the result says
+ * what really happened: with it off (the default, and when it cannot be read) nobody is given the
+ * course or asked to redo it; managers assign it by hand.
  */
 async function finishPublish(input: {
   course: TrainingCourse
@@ -857,15 +868,20 @@ async function finishPublish(input: {
     },
   })
 
+  const setting = await readTrainingAutoAssignSetting()
+  if (!setting.readable) {
+    console.error('The automatic assignment setting could not be read after publishing; treated as off:', setting.error)
+  }
+  const autoAssign = setting.enabled
   let sync: SyncResult | null = null
   try {
-    sync = await TrainingService.syncAssignments({ actor })
+    sync = await TrainingService.syncAssignments({ actor, autoAssign })
   } catch (error) {
     console.error('Training sync after publishing failed; the daily sweep will catch up:', error)
   }
 
   revalidateCourse(course.slug)
-  return { versionId: version.id, major: version.major as number, minor: version.minor as number, sync }
+  return { versionId: version.id, major: version.major as number, minor: version.minor as number, sync, autoAssign }
 }
 
 /**
@@ -1271,12 +1287,12 @@ export async function previewScore(input: {
 }
 
 // ---------------------------------------------------------------------------------------------
-// The training emails switch
+// The training emails and automatic assignment switches
 // ---------------------------------------------------------------------------------------------
 
-// The switch itself lives in src/app/actions/training-settings.ts and src/lib/training/settings.ts
-// (stage B6). These two keep the names this file has always offered and hand straight over, so
-// there is one implementation.
+// The switches themselves live in src/app/actions/training-settings.ts and
+// src/lib/training/settings.ts (stage B6). These keep the names this file offers to the Courses
+// pages and hand straight over, so there is one implementation of each.
 
 /** training:view. Whether staff reminder emails and the manager training email are switched on (default off). */
 export async function getTrainingEmailsEnabled(): Promise<TrainingActionResult<{ enabled: boolean }>> {
@@ -1288,4 +1304,29 @@ export async function getTrainingEmailsEnabled(): Promise<TrainingActionResult<{
 /** training:publish. Switches staff reminder emails and the manager training email on or off. */
 export async function setTrainingEmailsEnabled(input: { enabled: boolean }): Promise<TrainingActionResult<{ enabled: boolean }>> {
   return setTrainingEmailsSwitch(input)
+}
+
+/** training:view. Whether courses are given to staff automatically (default off). */
+export async function getTrainingAutoAssignEnabled(): Promise<TrainingActionResult<{ enabled: boolean }>> {
+  const result = await getTrainingAutoAssignSwitch()
+  if (!result.data) return { error: result.error ?? 'The automatic assignment setting could not be read. Please try again.' }
+  return { success: true, data: { enabled: result.data.enabled } }
+}
+
+/** training:publish. Switches automatic assignment on or off. */
+export async function setTrainingAutoAssignEnabled(input: { enabled: boolean }): Promise<TrainingActionResult<{ enabled: boolean }>> {
+  return setTrainingAutoAssignSwitch(input)
+}
+
+/**
+ * training:publish. What switching automatic assignment on would give out at the next check, for
+ * the confirmation shown before it is switched on. Read only: nothing is assigned or recorded.
+ */
+export async function previewTrainingAutoAssign(): Promise<TrainingActionResult<AutoAssignPreview>> {
+  await requireTrainingUser('publish')
+  try {
+    return { success: true, data: await TrainingService.previewAutoAssign() }
+  } catch (error) {
+    return failure(error, 'automatic assignment preview')
+  }
 }

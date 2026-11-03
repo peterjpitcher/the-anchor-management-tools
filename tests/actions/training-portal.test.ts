@@ -777,6 +777,20 @@ describe('portal training: finishing', () => {
     expect(store.events.at(-1)).toMatchObject({ eventType: 'section_passed', meta: expect.objectContaining({ finished: true }) })
   })
 
+  it('extends a refresher done after a waived one from the expiry the waiver ran to', async () => {
+    // Completed to 20 July 2026, the 2026 refresher waived (one period, to 20 July 2027), and this
+    // refresher finished early in its window: the new expiry runs on from 20 July 2027.
+    store.assignments = [
+      makeAssignment({ id: UNKNOWN, cycle: 1, status: 'completed', completedOn: '2025-07-20', expiresOn: '2026-07-20' }),
+      makeAssignment({ id: 'a7777777-7777-4777-8777-777777777777', cycle: 2, reason: 'refresher', status: 'waived' }),
+      makeAssignment({ cycle: 3, reason: 'refresher' }),
+    ]
+    vi.useFakeTimers({ toFake: ['Date'], now: new Date('2027-06-30T23:30:00.000Z') })
+    await passSection('fire')
+    await passSection('allergens')
+    expect(mine()).toMatchObject({ status: 'awaiting_confirmation', completedOn: '2027-07-01', expiresOn: '2028-07-20', windowOpensOn: '2028-06-20' })
+  })
+
   it('returns the confirmation link when the certificate is ready', async () => {
     setUpRefresherCycle()
     await passSection('fire')

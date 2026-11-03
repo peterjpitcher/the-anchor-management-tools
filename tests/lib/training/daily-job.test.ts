@@ -132,6 +132,9 @@ function harness(options: {
   ledgerSeed?: string[]
   today?: string
   suspension?: 'all_comms' | 'all_email' | null
+  /** The automatic assignment switch; on unless said otherwise. */
+  autoAssign?: boolean
+  autoAssignReadable?: boolean
 } = {}): Harness {
   const ledger = makeLedger(options.ledgerSeed)
   let today = options.today ?? '2026-11-02'
@@ -144,6 +147,10 @@ function harness(options: {
       options.readable === false
         ? { readable: false, enabled: false, error: 'boom' }
         : { readable: true, enabled: options.enabled ?? true, updatedAt: null },
+    readAutoAssignSetting: async () =>
+      options.autoAssignReadable === false
+        ? { readable: false, enabled: false, error: 'auto boom' }
+        : { readable: true, enabled: options.autoAssign ?? true, updatedAt: null },
     suspensionReason: () => options.suspension ?? null,
     appUrl: () => 'https://management.example',
     managerEmail: () => 'manager@example.com',
@@ -227,7 +234,7 @@ describe('runTrainingDaily: the switch', () => {
     expect(h.deps.getManagerDailySnapshot).not.toHaveBeenCalled()
     expect(h.ledger.listReminderClaimKeys).not.toHaveBeenCalled()
     // The sweep and the finishing steps still run with the emails off.
-    expect(h.deps.syncAssignments).toHaveBeenCalledWith({ today: '2026-11-02', actor: expect.anything() })
+    expect(h.deps.syncAssignments).toHaveBeenCalledWith({ today: '2026-11-02', actor: expect.anything(), autoAssign: true })
     expect(h.deps.listConfirmationsToFinalise).toHaveBeenCalled()
     expect(h.deps.listCertificateRetries).toHaveBeenCalled()
     expect(run.errors).toEqual([])
@@ -241,6 +248,35 @@ describe('runTrainingDaily: the switch', () => {
     expect(run.failedStages).toEqual(['settings'])
     expect(h.sendEmail).not.toHaveBeenCalled()
     expect(h.ledger.rows.size).toBe(0)
+  })
+
+  it('passes the automatic assignment switch to the sweep and records it', async () => {
+    const on = harness({ autoAssign: true })
+    expect((await runTrainingDaily({ deps: on.deps })).autoAssignEnabled).toBe(true)
+    expect(on.deps.syncAssignments).toHaveBeenCalledWith({ today: '2026-11-02', actor: expect.anything(), autoAssign: true })
+
+    const off = harness({ autoAssign: false })
+    const run = await runTrainingDaily({ deps: off.deps })
+    expect(run.autoAssignEnabled).toBe(false)
+    expect(run.failedStages).toEqual([])
+    expect(off.deps.syncAssignments).toHaveBeenCalledWith({ today: '2026-11-02', actor: expect.anything(), autoAssign: false })
+  })
+
+  it('treats an automatic assignment switch it cannot read as off, reports it, and still sweeps', async () => {
+    const h = harness({ autoAssignReadable: false })
+    const run = await runTrainingDaily({ deps: h.deps })
+
+    expect(run.autoAssignEnabled).toBe(false)
+    expect(run.emailsEnabled).toBe(true)
+    expect(run.failedStages).toEqual(['settings'])
+    expect(run.errors).toEqual([expect.stringContaining('could not read training_auto_assign_enabled, automatic assignment treated as off (auto boom)')])
+    expect(h.deps.syncAssignments).toHaveBeenCalledWith({ today: '2026-11-02', actor: expect.anything(), autoAssign: false })
+  })
+
+  it('names the settings stage once when neither switch can be read', async () => {
+    const run = await runTrainingDaily({ deps: harness({ readable: false, autoAssignReadable: false }).deps })
+    expect(run.failedStages).toEqual(['settings'])
+    expect(run.errors).toHaveLength(2)
   })
 
   it('with a kill switch on plans, claims and sends nothing', async () => {

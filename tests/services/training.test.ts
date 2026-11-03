@@ -3,10 +3,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FakeDb } from '../helpers/fakeSupabaseDb'
 import { createTrainingDb } from '../helpers/trainingDb'
 
-const mocks = vi.hoisted(() => ({ client: null as unknown }))
+const mocks = vi.hoisted(() => ({ client: null as unknown, getTrainingAutoAssignEnabled: vi.fn() }))
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => mocks.client }))
-vi.mock('@/lib/training/settings', () => ({ getTrainingEmailsEnabled: vi.fn().mockResolvedValue(false) }))
+vi.mock('@/lib/training/settings', () => ({
+  getTrainingEmailsEnabled: vi.fn().mockResolvedValue(false),
+  getTrainingAutoAssignEnabled: mocks.getTrainingAutoAssignEnabled,
+}))
 
 import { validateCourse } from '@/lib/training/course-schema'
 import { emptyProgress } from '@/lib/training/mappers'
@@ -108,6 +111,8 @@ function events(type?: string): Array<Record<string, unknown>> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Most tests here are about what the sync does once it runs; the switch has its own tests.
+  mocks.getTrainingAutoAssignEnabled.mockResolvedValue(true)
   seed()
 })
 
@@ -173,6 +178,43 @@ describe('syncAssignments', () => {
     expect(await TrainingService.syncAssignments({ today: TODAY, employeeId: SAM })).toEqual({ created: 1, cancelled: 0, updated: 0 })
     expect(db.rows('training_assignments').find((row) => row.id === A_FORMER)?.status).toBe('assigned')
   })
+
+  it('gives nobody a course while automatic assignment is off, but still cancels for a leaver', async () => {
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue(false)
+    seed({ training_assignments: [assignmentRow({ id: A_FORMER, employee_id: FORMER })] })
+    expect(await TrainingService.syncAssignments({ today: TODAY })).toEqual({ created: 0, cancelled: 1, updated: 0 })
+    expect(mocks.getTrainingAutoAssignEnabled).toHaveBeenCalledTimes(1)
+    expect(db.rows('training_assignments').filter((row) => row.employee_id === SAM)).toEqual([])
+    expect(events('assigned')).toEqual([])
+    expect(db.rows('training_assignments').find((row) => row.id === A_FORMER)).toMatchObject({ status: 'cancelled', cancel_reason: 'left' })
+  })
+
+  it('takes the switch from the caller when given, without reading it', async () => {
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue(true)
+    expect(await TrainingService.syncAssignments({ today: TODAY, autoAssign: false })).toEqual({ created: 0, cancelled: 0, updated: 0 })
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue(false)
+    expect(await TrainingService.syncAssignments({ today: TODAY, autoAssign: true })).toEqual({ created: 1, cancelled: 0, updated: 0 })
+    expect(mocks.getTrainingAutoAssignEnabled).not.toHaveBeenCalled()
+  })
+})
+
+describe('previewAutoAssign', () => {
+  it('counts what switching on would give out, writing nothing, whatever the switch says now', async () => {
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue(false)
+    seed({ training_assignments: [assignmentRow({ id: A_FORMER, employee_id: FORMER })] })
+    expect(await TrainingService.previewAutoAssign({ today: TODAY })).toEqual({
+      people: 1,
+      items: 1,
+      firstCourses: 1,
+      refreshers: 0,
+      redos: 0,
+      released: 0,
+    })
+    // The leaver's cancellation happens either way, so it is not counted, and nothing is written.
+    expect(db.writes).toEqual([])
+    expect(events()).toEqual([])
+    expect(mocks.getTrainingAutoAssignEnabled).not.toHaveBeenCalled()
+  })
 })
 
 describe('getMatrix', () => {
@@ -182,6 +224,13 @@ describe('getMatrix', () => {
     expect(matrix.people[0].cells[ONLINE]).toMatchObject({ state: 'not_started', assignmentId: null })
     expect(matrix.people[0].flags).toEqual(['groups_not_confirmed'])
     expect(matrix.courses[0]).toMatchObject({ id: ONLINE, requiredCount: 1, completedCount: 0, completionRate: 0 })
+  })
+
+  it('leaves out of the count someone whose item is waived (owner decision, 3 November 2026)', async () => {
+    seed({ training_assignments: [assignmentRow({ status: 'waived', waived_at: '2026-11-02T09:00:00.000Z' })] })
+    const matrix = await TrainingService.getMatrix({ today: TODAY })
+    expect(matrix.people[0].cells[ONLINE].state).toBe('waived')
+    expect(matrix.courses[0]).toMatchObject({ id: ONLINE, requiredCount: 0, completedCount: 0 })
   })
 })
 
@@ -639,7 +688,7 @@ describe('a sign-off whose prerequisite has lapsed', () => {
   const A_PREREQ = 'a6666666-6666-4666-8666-666666666666'
   const A_SIGNOFF = 'a7777777-7777-4777-8777-777777777777'
 
-  function seedSignoff(prerequisiteExpiresOn: string): void {
+  function seedSignoff(prerequisiteExpiresOn: string, extra: Array<Record<string, unknown>> = []): void {
     seed({
       training_courses: [
         courseRow(),
@@ -658,6 +707,7 @@ describe('a sign-off whose prerequisite has lapsed', () => {
           window_opens_on: '2027-05-02',
           due_on: null,
         }),
+        ...extra,
       ],
     })
   }
@@ -680,6 +730,18 @@ describe('a sign-off whose prerequisite has lapsed', () => {
     seedSignoff('2026-11-01')
     const view = await TrainingService.getMyTraining(SAM, { today: TODAY })
     expect(view.done.find((item) => item.course.id === PRACTICAL_COURSE)?.state).toBe('waiting')
+  })
+
+  it('counts it as done while a waived refresher of the prerequisite covers its period', async () => {
+    // The prerequisite expired on 1 November 2026, but that year's refresher was waived.
+    seedSignoff('2026-11-01', [
+      assignmentRow({ id: 'a8888888-8888-4888-8888-888888888888', cycle: 2, reason: 'refresher', status: 'waived', due_on: '2026-11-01' }),
+    ])
+    const matrix = await TrainingService.getMatrix({ today: TODAY })
+    expect(matrix.people[0].cells[PRACTICAL_COURSE].state).toBe('done')
+    expect(matrix.courses.find((course) => course.id === PRACTICAL_COURSE)).toMatchObject({ requiredCount: 1, completedCount: 1 })
+    const view = await TrainingService.getMyTraining(SAM, { today: TODAY })
+    expect(view.done.find((item) => item.course.id === PRACTICAL_COURSE)?.state).toBe('done')
   })
 })
 

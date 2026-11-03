@@ -19,8 +19,14 @@ import { trainingDateText } from '../training-wording'
 /** Who issues a training certificate. */
 const TRAINING_CERTIFICATE_ISSUER = COMPANY_DETAILS.legalName
 
-/** The person named as signatory on every training certificate. One place, so it can change. */
-const TRAINING_CERTIFICATE_SIGNATORY = { name: 'Peter Pitcher', position: 'Director' } as const
+/**
+ * The people named as signatories on every training certificate and sign-off, jointly (owner
+ * decision, 3 November 2026: both directors). One place, so it can change.
+ */
+const TRAINING_CERTIFICATE_SIGNATORIES = [
+  { name: 'Peter Pitcher', position: 'Director' },
+  { name: 'Billy Summers', position: 'Director' },
+] as const
 
 /** Where the person works. */
 export const TRAINING_WORKPLACE = 'The Anchor, Stanwell Moor'
@@ -94,11 +100,14 @@ export function brandMark(): string {
     : `<div class="brand"><strong>${esc(TRAINING_CERTIFICATE_ISSUER)}</strong></div>`
 }
 
-/** Issuer and signatory, as printed on page 1. */
+/** Issuer and the joint signatories, as printed on page 1. */
 export function issuerBlock(): string {
+  const signatories = TRAINING_CERTIFICATE_SIGNATORIES.map(
+    (signatory) => `<br><strong>${esc(`${signatory.name}, ${signatory.position}`)}</strong>`
+  ).join('')
   return `<div class="issuer">
       <p>Issued by <strong>${esc(TRAINING_CERTIFICATE_ISSUER)}</strong><br>Workplace: ${esc(TRAINING_WORKPLACE)}</p>
-      <p style="text-align:right">Signatory<br><strong>${esc(`${TRAINING_CERTIFICATE_SIGNATORY.name}, ${TRAINING_CERTIFICATE_SIGNATORY.position}`)}</strong></p>
+      <p style="text-align:right">Signatories${signatories}</p>
     </div>`
 }
 

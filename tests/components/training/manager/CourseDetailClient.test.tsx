@@ -5,8 +5,9 @@ import type { CourseDetailView, TrainingCourseVersionMeta } from '@/lib/training
 
 /**
  * A course's page: the draft with what blocks publishing, the publish panel (first, a small
- * change, or ask everyone to redo, with a change note), and publish controls only for holders
- * of training publish.
+ * change, or ask everyone to redo, with a change note), publish controls only for holders of
+ * training publish, and wording that never promises to give a course out while automatic
+ * assignment is off.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -31,6 +32,7 @@ vi.mock('@/app/actions/training-courses', () => ({
   getCourseVersionJson: vi.fn(),
   uploadCourseDraft: vi.fn(),
   setTrainingEmailsEnabled: vi.fn(),
+  setTrainingAutoAssignEnabled: vi.fn(),
 }))
 
 import { CourseDetailClient } from '@/components/features/training/manager/CourseDetailClient'
@@ -91,6 +93,8 @@ function detail(patch: Partial<CourseDetailView> = {}): CourseDetailView {
 }
 
 const EMAILS = { enabled: false, error: null }
+const AUTO_ON = { enabled: true, error: null }
+const AUTO_OFF = { enabled: false, error: null }
 
 describe('CourseDetailClient', () => {
   beforeEach(() => {
@@ -99,7 +103,7 @@ describe('CourseDetailClient', () => {
   })
 
   it('offers the first publish as version 1.0 with no change choice', () => {
-    render(<CourseDetailClient detail={detail()} emails={EMAILS} />)
+    render(<CourseDetailClient detail={detail()} emails={EMAILS} autoAssign={AUTO_ON} />)
     expect(screen.getByRole('button', { name: 'Publish Version 1.0' })).toBeEnabled()
     expect(screen.queryByRole('radio', { name: 'Ask everyone to redo it' })).not.toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Preview Draft' })[0]).toHaveAttribute(
@@ -114,6 +118,7 @@ describe('CourseDetailClient', () => {
       <CourseDetailClient
         detail={detail({ current, versions: [current], course: { ...detail().course, status: 'live', currentVersionId: 'v-1' } })}
         emails={EMAILS}
+        autoAssign={AUTO_ON}
       />,
     )
 
@@ -128,7 +133,7 @@ describe('CourseDetailClient', () => {
 
   it('publishes the draft this page shows, so a draft replaced meanwhile is refused', async () => {
     mocks.publishCourseDraft.mockResolvedValue({ success: true, data: { major: 1, minor: 0, sync: null } })
-    render(<CourseDetailClient detail={detail()} emails={EMAILS} />)
+    render(<CourseDetailClient detail={detail()} emails={EMAILS} autoAssign={AUTO_ON} />)
     await userEvent.click(screen.getByRole('button', { name: 'Publish Version 1.0' }))
     await userEvent.click(await screen.findByRole('button', { name: 'Publish' }))
     expect(mocks.publishCourseDraft).toHaveBeenCalledWith({
@@ -152,6 +157,7 @@ describe('CourseDetailClient', () => {
           },
         })}
         emails={EMAILS}
+        autoAssign={AUTO_ON}
       />,
     )
 
@@ -163,11 +169,41 @@ describe('CourseDetailClient', () => {
 
   it('shows no publish, upload or retire controls without training publish', () => {
     mocks.permissions = new Set(['training:view'])
-    render(<CourseDetailClient detail={detail()} emails={EMAILS} />)
+    render(<CourseDetailClient detail={detail()} emails={EMAILS} autoAssign={AUTO_ON} />)
 
     expect(screen.queryByRole('button', { name: /Publish Version/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Retire Course' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Upload New Draft' })).not.toBeInTheDocument()
-    expect(screen.getByRole('switch')).toBeDisabled()
+    for (const control of screen.getAllByRole('switch')) expect(control).toBeDisabled()
+  })
+
+  it('promises nobody a course while automatic assignment is off', async () => {
+    render(<CourseDetailClient detail={detail()} emails={EMAILS} autoAssign={AUTO_OFF} />)
+    expect(
+      screen.getByText('Publishing makes the course live. Automatic assignment is off, so nobody is given it until a manager assigns it on their Training tab.'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/gives it to everyone it applies to/)).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Publish Version 1.0' }))
+    expect(
+      await screen.findByText('"Essentials" goes live. Automatic assignment is off, so nobody is given it until a manager assigns it on their Training tab.'),
+    ).toBeInTheDocument()
+  })
+
+  it('says a redo waits for the switch while automatic assignment is off', async () => {
+    const current = version({ id: 'v-1', state: 'published', major: 1, minor: 0, publishedAt: '2026-11-01T09:00:00.000Z', publishedByName: 'Sam Manager' })
+    render(
+      <CourseDetailClient
+        detail={detail({ current, versions: [current], course: { ...detail().course, status: 'live', currentVersionId: 'v-1' } })}
+        emails={EMAILS}
+        autoAssign={{ enabled: null, error: 'timeout' }}
+      />,
+    )
+    expect(screen.getByText(/nobody is asked to redo it yet/)).toBeInTheDocument()
+    expect(screen.queryByText(/Everyone who has done it gets it again, due in 14 days/)).not.toBeInTheDocument()
+  })
+
+  it('says publishing gives the course out while automatic assignment is on', () => {
+    render(<CourseDetailClient detail={detail()} emails={EMAILS} autoAssign={AUTO_ON} />)
+    expect(screen.getByText('Publishing makes the course live and gives it to everyone it applies to, with the due dates above.')).toBeInTheDocument()
   })
 })

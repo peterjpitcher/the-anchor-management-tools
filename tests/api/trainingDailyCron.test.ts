@@ -45,6 +45,7 @@ function run(overrides: Partial<TrainingDailyRun> = {}): TrainingDailyRun {
   return {
     today: '2026-11-02',
     emailsEnabled: false,
+    autoAssignEnabled: true,
     suspended: false,
     sweep: { created: 2, cancelled: 0, updated: 1 },
     finalised: 0,
@@ -91,7 +92,7 @@ describe('/api/cron/training-daily', () => {
     const body = await response.json()
 
     expect(response.status).toBe(200)
-    expect(body).toMatchObject({ success: true, created: 2, updated: 1, emailsEnabled: false, managerOutcome: 'off', failedItems: 0 })
+    expect(body).toMatchObject({ success: true, created: 2, updated: 1, emailsEnabled: false, autoAssignEnabled: true, managerOutcome: 'off', failedItems: 0 })
     expect(db.rows('cron_job_runs')).toEqual([
       expect.objectContaining({ job_name: 'training-daily', status: 'completed', result: expect.objectContaining({ created: 2, itemFailures: 0 }) }),
     ])

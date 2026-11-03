@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
- * The Training page switch for training emails: reading needs training:view, changing needs
- * training:publish, and every change (or failed change) is audited.
+ * The Training page switches for training emails and automatic assignment: reading needs
+ * training:view, changing needs training:publish, and every change (or failed change) is audited.
  */
 
 const mocks = vi.hoisted(() => ({
@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   checkUserPermission: vi.fn(),
   readTrainingEmailsSetting: vi.fn(),
   setTrainingEmailsEnabled: vi.fn(),
+  readTrainingAutoAssignSetting: vi.fn(),
+  setTrainingAutoAssignEnabled: vi.fn(),
   logAuditEvent: vi.fn(),
   revalidatePath: vi.fn(),
 }))
@@ -23,9 +25,16 @@ vi.mock('@/app/actions/audit', () => ({ logAuditEvent: mocks.logAuditEvent }))
 vi.mock('@/lib/training/settings', () => ({
   readTrainingEmailsSetting: mocks.readTrainingEmailsSetting,
   setTrainingEmailsEnabled: mocks.setTrainingEmailsEnabled,
+  readTrainingAutoAssignSetting: mocks.readTrainingAutoAssignSetting,
+  setTrainingAutoAssignEnabled: mocks.setTrainingAutoAssignEnabled,
 }))
 
-import { getTrainingEmailsSwitch, setTrainingEmailsSwitch } from '@/app/actions/training-settings'
+import {
+  getTrainingAutoAssignSwitch,
+  getTrainingEmailsSwitch,
+  setTrainingAutoAssignSwitch,
+  setTrainingEmailsSwitch,
+} from '@/app/actions/training-settings'
 
 function permissions(granted: Array<'view' | 'publish'>): void {
   mocks.checkUserPermission.mockImplementation(async (module: string, action: string) =>
@@ -38,6 +47,8 @@ beforeEach(() => {
   mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1', email: 'manager@example.com' } } })
   mocks.readTrainingEmailsSetting.mockResolvedValue({ readable: true, enabled: false, updatedAt: null })
   mocks.setTrainingEmailsEnabled.mockResolvedValue({ enabled: true, updatedAt: '2026-11-02T09:00:00.000Z' })
+  mocks.readTrainingAutoAssignSetting.mockResolvedValue({ readable: true, enabled: false, updatedAt: null })
+  mocks.setTrainingAutoAssignEnabled.mockResolvedValue({ enabled: true, updatedAt: '2026-11-03T09:00:00.000Z' })
 })
 
 describe('getTrainingEmailsSwitch', () => {
@@ -98,5 +109,60 @@ describe('setTrainingEmailsSwitch', () => {
     expect(await setTrainingEmailsSwitch({ enabled: true })).toEqual({ error: 'The setting could not be saved. Please try again.' })
     expect(mocks.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_status: 'failure' }))
     expect(mocks.revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('the automatic assignment switch', () => {
+  it('needs a session and training:view to read', async () => {
+    mocks.getUser.mockResolvedValue({ data: { user: null } })
+    await expect(getTrainingAutoAssignSwitch()).rejects.toThrow('Unauthorized')
+    mocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1', email: 'manager@example.com' } } })
+    permissions([])
+    await expect(getTrainingAutoAssignSwitch()).rejects.toThrow('Insufficient permissions')
+  })
+
+  it('shows its own setting, not the emails one, and whether this user may change it', async () => {
+    mocks.readTrainingEmailsSetting.mockResolvedValue({ readable: true, enabled: true, updatedAt: null })
+    permissions(['view'])
+    expect(await getTrainingAutoAssignSwitch()).toEqual({ success: true, data: { enabled: false, updatedAt: null, canChange: false } })
+    permissions(['view', 'publish'])
+    expect((await getTrainingAutoAssignSwitch()).data?.canChange).toBe(true)
+  })
+
+  it('says so when it cannot be read', async () => {
+    permissions(['view'])
+    mocks.readTrainingAutoAssignSetting.mockResolvedValue({ readable: false, enabled: false, error: 'timeout' })
+    expect(await getTrainingAutoAssignSwitch()).toEqual({ error: expect.stringContaining('automatic assignment setting could not be read') })
+  })
+
+  it('cannot be changed without training:publish', async () => {
+    permissions(['view'])
+    await expect(setTrainingAutoAssignSwitch({ enabled: true })).rejects.toThrow('Insufficient permissions')
+    expect(mocks.setTrainingAutoAssignEnabled).not.toHaveBeenCalled()
+  })
+
+  it('switches on, audited under its own key, and leaves the emails switch alone', async () => {
+    permissions(['view', 'publish'])
+    expect(await setTrainingAutoAssignSwitch({ enabled: true })).toEqual({ success: true, data: { enabled: true } })
+    expect(mocks.setTrainingAutoAssignEnabled).toHaveBeenCalledWith(true)
+    expect(mocks.setTrainingEmailsEnabled).not.toHaveBeenCalled()
+    expect(mocks.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      resource_type: 'training_settings',
+      resource_id: 'training_auto_assign_enabled',
+      operation_status: 'success',
+      old_values: { enabled: false },
+      new_values: { enabled: true },
+    }))
+    expect(mocks.revalidatePath).toHaveBeenCalledWith('/employees/training')
+  })
+
+  it('reports a failed save and audits the failure', async () => {
+    permissions(['view', 'publish'])
+    mocks.setTrainingAutoAssignEnabled.mockRejectedValue(new Error('permission denied'))
+    expect(await setTrainingAutoAssignSwitch({ enabled: false })).toEqual({ error: 'The setting could not be saved. Please try again.' })
+    expect(mocks.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      resource_id: 'training_auto_assign_enabled',
+      operation_status: 'failure',
+    }))
   })
 })

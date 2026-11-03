@@ -35,8 +35,12 @@ export type TrainingCourseKind = (typeof TRAINING_COURSE_KINDS)[number]
 export const COURSE_FILE_KINDS = ['online', 'practical'] as const
 type CourseFileKind = (typeof COURSE_FILE_KINDS)[number]
 
-/** Age rule: everyone, under-18s only, or 18 and over only (from date of birth). */
-export const TRAINING_AUDIENCE_AGES = ['all', 'under_18', 'adult'] as const
+/**
+ * Age rule, from date of birth: everyone, under-18s only, 16 and over only, or 18 and over only.
+ * `over_16` and `adult` are minimum ages: sync never assigns them below that age, and a manager
+ * can neither assign them nor record their sign-off for anyone younger or with no date of birth.
+ */
+export const TRAINING_AUDIENCE_AGES = ['all', 'under_18', 'over_16', 'adult'] as const
 export type TrainingAudienceAge = (typeof TRAINING_AUDIENCE_AGES)[number]
 
 export const TRAINING_COURSE_STATUSES = ['draft', 'live', 'retired'] as const
@@ -637,12 +641,37 @@ export interface SyncOptions {
   /** London date to sync as; defaults to today. */
   today?: string
   actor?: Actor
+  /**
+   * The `training_auto_assign_enabled` switch for this run. Left out, it is read once, at the
+   * start of the run (off when unreadable). Off: no cycle is created for any reason.
+   */
+  autoAssign?: boolean
 }
 
 export interface SyncResult {
   created: number
   cancelled: number
   updated: number
+}
+
+/**
+ * What switching automatic assignment on would give out at the next sync, worked out without
+ * changing anything (`TrainingService.previewAutoAssign`). `items` is the total; the four counts
+ * after it split it by kind.
+ */
+export interface AutoAssignPreview {
+  /** People who would be given at least one item. */
+  people: number
+  /** Items given out: new ones plus waiting ones released. */
+  items: number
+  /** First goes at a course: new starters, existing staff and newly published courses. */
+  firstCourses: number
+  /** Yearly refreshers and qualification renewals. */
+  refreshers: number
+  /** Redo requests for a course version that asks everyone to do it again. */
+  redos: number
+  /** Waiting items released because the course they need is now done. */
+  released: number
 }
 
 /** The standard server action result (workspace rule). */
@@ -685,7 +714,7 @@ export interface MatrixCourse extends CourseRef {
   kind: TrainingCourseKind
   isEssentials: boolean
   displayOrder: number
-  /** People the course applies to, paused people left out. */
+  /** People the course applies to, paused people and people whose item is waived left out. */
   requiredCount: number
   /** Of those, how many hold a valid completion. */
   completedCount: number
@@ -919,6 +948,8 @@ export interface PublishCourseResult {
   major: number
   minor: number
   sync: SyncResult | null
+  /** Whether automatic assignment was on for the sync after publishing (off when unreadable). */
+  autoAssign: boolean
 }
 
 // ---------------------------------------------------------------------------------------------

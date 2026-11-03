@@ -31,6 +31,8 @@ const SKIP_REASON_TEXT: Record<AssignCourseResult['skipped'][number]['reason'], 
   already_open: 'already has it open',
   not_in_scope: 'is not an active member of staff',
   not_applicable: 'is not in the course audience',
+  under_minimum_age: 'is younger than the minimum age for this course',
+  dob_missing: 'has no date of birth on their employee record, and this course has an age rule',
 }
 
 function describeResult(result: AssignCourseResult, names: Map<string, string>): string {

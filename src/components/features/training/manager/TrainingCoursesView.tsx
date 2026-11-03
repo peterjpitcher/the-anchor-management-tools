@@ -28,6 +28,7 @@ import {
 import type { CourseListItem, UploadCourseDraftResult } from '@/lib/training/types'
 import { CourseUploadButton, UploadResult } from './CourseUpload'
 import { NewExternalCourseDialog } from './NewExternalCourseDialog'
+import { TrainingAutoAssignSwitch } from './TrainingAutoAssignSwitch'
 import { TrainingEmailsSwitch } from './TrainingEmailsSwitch'
 import { useTrainingPermissions } from './use-training-permissions'
 import { trainingCourseHref } from './views'
@@ -41,6 +42,7 @@ interface TrainingCoursesViewProps {
   courses: CourseListItem[] | null
   error: string | null
   emails: { enabled: boolean | null; error: string | null }
+  autoAssign: { enabled: boolean | null; error: string | null }
 }
 
 function versionText(course: CourseListItem): string {
@@ -75,7 +77,7 @@ function CourseBadges({ course }: { course: CourseListItem }): React.JSX.Element
  * publish upload drafts here and add external qualification types; each course's own page holds
  * the preview, publishing, downloads and retiring.
  */
-export function TrainingCoursesView({ courses, error, emails }: TrainingCoursesViewProps): React.JSX.Element {
+export function TrainingCoursesView({ courses, error, emails, autoAssign }: TrainingCoursesViewProps): React.JSX.Element {
   const router = useRouter()
   const { canPublish } = useTrainingPermissions()
   const [uploadResult, setUploadResult] = useState<UploadCourseDraftResult | null>(null)
@@ -203,6 +205,8 @@ export function TrainingCoursesView({ courses, error, emails }: TrainingCoursesV
           </>
         )}
       </Card>
+
+      <TrainingAutoAssignSwitch enabled={autoAssign.enabled} loadError={autoAssign.error} />
 
       <TrainingEmailsSwitch enabled={emails.enabled} loadError={emails.error} />
 

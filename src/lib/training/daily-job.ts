@@ -15,7 +15,12 @@ import {
   type ManagerDailyItem,
   type PlannedStaffEmail,
 } from './reminders'
-import { readTrainingEmailsSetting, type TrainingEmailsSetting } from './settings'
+import {
+  readTrainingAutoAssignSetting,
+  readTrainingEmailsSetting,
+  type TrainingAutoAssignSetting,
+  type TrainingEmailsSetting,
+} from './settings'
 import { onTrainingSigningCompleted, onTrainingSigningDeclined, prepareTrainingCertificate } from './signing'
 import { SYSTEM_ACTOR, type SyncResult } from './types'
 
@@ -24,14 +29,17 @@ import { SYSTEM_ACTOR, type SyncResult } from './types'
  * /api/cron/training-daily at 09:00 UTC. Four stages, each in its own error boundary so one
  * failing stage never stops the others:
  *
- *   1. sweep: `syncAssignments` for everyone (new cycles, refreshers, redo cycles, leavers);
+ *   1. sweep: `syncAssignments` for everyone (new cycles, refreshers, redo cycles, leavers). New
+ *      cycles only while `training_auto_assign_enabled` is on (off by default); with it off, or
+ *      unreadable, the sweep only cancels, releases a manager's waiting cycles and ends pauses;
  *   2. finalise: records any training signing document that completed or was declined while the
  *      record did not catch up, then retries every certificate pack that could not be prepared;
  *   3. staff reminders: one email per person per London day listing every step due;
  *   4. manager email: at most one a day, and only with problems not told before.
  *
  * Stages 3 and 4 run only while `training_emails_enabled` is on (off by default). With it off,
- * or unreadable, they read nothing and send nothing.
+ * or unreadable, they read nothing and send nothing. Both switches are read once, at the start,
+ * and recorded on the run.
  *
  * THE LEDGER IS THE IDEMPOTENCY. Every step, the per-person day cap, the manager day and every
  * manager problem has its own `training_reminders` claim, inserted BEFORE the send; a held claim
@@ -112,6 +120,7 @@ export interface TrainingDailyDeps {
   now: () => Date
   today: () => string
   readEmailsSetting: () => Promise<TrainingEmailsSetting>
+  readAutoAssignSetting: () => Promise<TrainingAutoAssignSetting>
   suspensionReason: () => EmailSuspensionReason
   appUrl: () => string
   managerEmail: () => string
@@ -138,6 +147,7 @@ function defaultDeps(): TrainingDailyDeps {
     now: () => new Date(),
     today: () => getTodayIsoDate(),
     readEmailsSetting: () => readTrainingEmailsSetting(),
+    readAutoAssignSetting: () => readTrainingAutoAssignSetting(),
     suspensionReason: () => currentEmailSuspensionReason(),
     appUrl: () => getAppUrl(),
     managerEmail: () => trainingManagerEmail(),
@@ -163,6 +173,8 @@ function defaultDeps(): TrainingDailyDeps {
 export interface TrainingDailyRun {
   today: string
   emailsEnabled: boolean
+  /** The `training_auto_assign_enabled` switch the sweep ran with (false when unreadable). */
+  autoAssignEnabled: boolean
   /** A kill switch was on when the run planned its emails. */
   suspended: boolean
   sweep: SyncResult | null
@@ -208,6 +220,7 @@ export async function runTrainingDaily(options: { deps?: Partial<TrainingDailyDe
   const run: TrainingDailyRun = {
     today,
     emailsEnabled: false,
+    autoAssignEnabled: false,
     suspended: false,
     sweep: null,
     finalised: 0,
@@ -228,7 +241,7 @@ export async function runTrainingDaily(options: { deps?: Partial<TrainingDailyDe
   }
 
   const stageFailed = (stage: TrainingDailyStage, error: unknown) => {
-    run.failedStages.push(stage)
+    if (!run.failedStages.includes(stage)) run.failedStages.push(stage)
     run.errors.push(`${stage}: ${messageOf(error)}`)
   }
   const itemFailed = (what: string, error: unknown) => {
@@ -246,10 +259,21 @@ export async function runTrainingDaily(options: { deps?: Partial<TrainingDailyDe
   } catch (error) {
     stageFailed('settings', error)
   }
-
-  // 1. Sweep.
+  // Not knowing it is not a reason to give anyone a course either, so unreadable is off.
   try {
-    run.sweep = await deps.syncAssignments({ today, actor: SYSTEM_ACTOR })
+    const setting = await deps.readAutoAssignSetting()
+    if (setting.readable) {
+      run.autoAssignEnabled = setting.enabled
+    } else {
+      stageFailed('settings', new Error(`could not read training_auto_assign_enabled, automatic assignment treated as off (${setting.error})`))
+    }
+  } catch (error) {
+    stageFailed('settings', error)
+  }
+
+  // 1. Sweep, with the switch as read above (the sync does not read it again).
+  try {
+    run.sweep = await deps.syncAssignments({ today, actor: SYSTEM_ACTOR, autoAssign: run.autoAssignEnabled })
   } catch (error) {
     stageFailed('sweep', error)
   }

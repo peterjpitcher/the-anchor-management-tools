@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   courseAppliesTo,
   effectiveTrainingGroups,
+  minimumAgeFor,
+  minimumAgeRefusal,
   planAssignmentSync,
+  signoffMinimumAgeRefusal,
   suggestTrainingGroups,
+  summariseAutoAssignChanges,
   summariseSyncActions,
   type SyncAction,
   type SyncAssignment,
@@ -11,6 +15,7 @@ import {
   type SyncEmployee,
   type SyncPerson,
 } from '@/lib/training/sync'
+import { expiryToExtendFrom } from '@/lib/training/states'
 import type { TrainingGroup, TrainingProfile } from '@/lib/training/types'
 
 const TODAY = '2026-11-03'
@@ -30,6 +35,8 @@ function course(overrides: Partial<SyncCourse> = {}): SyncCourse {
     wentLiveOn: TODAY,
     assignAutomatically: true,
     latestRedoVersion: null,
+    refresherMonths: 12,
+    windowDays: 30,
     ...overrides,
   }
 }
@@ -99,8 +106,8 @@ function person(input: { employee?: Partial<SyncEmployee>; profile?: TrainingPro
   return { employee: employee(input.employee), profile: input.profile ?? null, assignments: input.assignments ?? [] }
 }
 
-function plan(people: SyncPerson[], courses: SyncCourse[], today = TODAY): SyncAction[] {
-  return planAssignmentSync({ today, people, courses })
+function plan(people: SyncPerson[], courses: SyncCourse[], today = TODAY, autoAssign = true): SyncAction[] {
+  return planAssignmentSync({ today, people, courses, autoAssign })
 }
 
 describe('suggestTrainingGroups', () => {
@@ -166,12 +173,74 @@ describe('courseAppliesTo', () => {
     expect(courseAppliesTo(course({ audienceAge: 'adult' }), turning, '2026-11-04').applies).toBe(true)
   })
 
+  it('switches the 16 and over rule on the 16th birthday', () => {
+    const turning = { groups: [] as TrainingGroup[], dateOfBirth: '2010-11-04' }
+    expect(courseAppliesTo(course({ audienceAge: 'over_16' }), turning, TODAY).applies).toBe(false)
+    expect(courseAppliesTo(course({ audienceAge: 'over_16' }), turning, '2026-11-04').applies).toBe(true)
+    // A 16 year old gets a 16 and over course but not an adult one, and is still under 18.
+    expect(courseAppliesTo(course({ audienceAge: 'adult' }), turning, '2026-11-04').applies).toBe(false)
+    expect(courseAppliesTo(course({ audienceAge: 'under_18' }), turning, '2026-11-04').applies).toBe(true)
+    // An adult meets a 16 and over rule too.
+    expect(courseAppliesTo(course({ audienceAge: 'over_16' }), { groups: [], dateOfBirth: '1995-06-15' }, TODAY).applies).toBe(true)
+  })
+
   it('does not apply an age-restricted course without a date of birth, and says so', () => {
     const unknown = { groups: ['bar'] as TrainingGroup[], dateOfBirth: null }
+    expect(courseAppliesTo(course({ audienceAge: 'over_16' }), unknown, TODAY)).toEqual({ applies: false, dobMissing: true })
     expect(courseAppliesTo(course({ audienceAge: 'adult' }), unknown, TODAY)).toEqual({ applies: false, dobMissing: true })
     expect(courseAppliesTo(course({ audienceAge: 'all' }), unknown, TODAY)).toEqual({ applies: true, dobMissing: false })
     // Outside the course groups, the missing date of birth does not matter.
     expect(courseAppliesTo(course({ audienceAge: 'adult', audienceGroups: ['kitchen'] }), unknown, TODAY)).toEqual({ applies: false, dobMissing: false })
+  })
+})
+
+describe('minimum ages', () => {
+  it('gives 16 for 16 and over, 18 for adult, and none for the rest', () => {
+    expect(minimumAgeFor('over_16')).toBe(16)
+    expect(minimumAgeFor('adult')).toBe(18)
+    expect(minimumAgeFor('all')).toBeNull()
+    expect(minimumAgeFor('under_18')).toBeNull()
+  })
+
+  it('refuses someone under the minimum, or with no date of birth, and nobody else', () => {
+    const kegs = { audienceAge: 'over_16' as const, title: 'Changing kegs' }
+    expect(minimumAgeRefusal(kegs, { dateOfBirth: '2010-11-04', name: 'Robin Young' }, TODAY)).toEqual({
+      reason: 'under_minimum_age',
+      message: 'Changing kegs is only for people aged 16 or over, and Robin Young is 15.',
+    })
+    expect(minimumAgeRefusal(kegs, { dateOfBirth: '2010-11-04', name: 'Robin Young' }, '2026-11-04')).toBeNull()
+    expect(minimumAgeRefusal(kegs, { dateOfBirth: null, name: 'Sam Example' }, TODAY)).toEqual({
+      reason: 'dob_missing',
+      message: 'Changing kegs is only for people aged 16 or over, and Sam Example has no date of birth on their employee record. Add it there first.',
+    })
+    expect(minimumAgeRefusal({ audienceAge: 'adult', title: 'Serving alcohol' }, { dateOfBirth: '2009-03-01' }, TODAY)).toEqual({
+      reason: 'under_minimum_age',
+      message: 'Serving alcohol is only for people aged 18 or over, and this person is 17.',
+    })
+    // No minimum: no refusal, even with no date of birth.
+    expect(minimumAgeRefusal({ audienceAge: 'all', title: 'Essentials' }, { dateOfBirth: null }, TODAY)).toBeNull()
+    expect(minimumAgeRefusal({ audienceAge: 'under_18', title: 'Alcohol (under 18)' }, { dateOfBirth: null }, TODAY)).toBeNull()
+  })
+
+  it('checks a sign-off on the day they were watched as well as today', () => {
+    const kegs = { audienceAge: 'over_16' as const, title: 'Changing kegs' }
+    const robin = { dateOfBirth: '2010-11-04', name: 'Robin Young' }
+    // Watched on 20 October 2026 at 15, recorded on 5 November 2026 at 16.
+    expect(signoffMinimumAgeRefusal(kegs, robin, '2026-10-20', '2026-11-05')).toEqual({
+      reason: 'under_minimum_age',
+      message: 'Changing kegs is only for people aged 16 or over, and Robin Young was 15 on the day you watched them.',
+    })
+    // Watched on the 16th birthday: allowed.
+    expect(signoffMinimumAgeRefusal(kegs, robin, '2026-11-04', '2026-11-05')).toBeNull()
+    // Under the minimum today: today's refusal, as before.
+    expect(signoffMinimumAgeRefusal(kegs, robin, TODAY, TODAY)).toEqual(minimumAgeRefusal(kegs, robin, TODAY))
+    expect(signoffMinimumAgeRefusal(kegs, { dateOfBirth: null, name: 'Sam' }, TODAY, TODAY)?.reason).toBe('dob_missing')
+    // A date before they were born is refused, not read as a missing date of birth.
+    expect(signoffMinimumAgeRefusal(kegs, robin, '2010-01-01', '2026-11-05')).toEqual({
+      reason: 'under_minimum_age',
+      message: "The day you watched them is before Robin Young's date of birth. Check the date.",
+    })
+    expect(signoffMinimumAgeRefusal({ audienceAge: 'all', title: 'Ramp' }, robin, '2010-01-01', TODAY)).toBeNull()
   })
 })
 
@@ -303,6 +372,13 @@ describe('planAssignmentSync: courses and audiences', () => {
     expect(plan([person()], [under, adult])).toEqual([expect.objectContaining({ type: 'create', courseId: 'alcohol' })])
   })
 
+  it('gives a 16 and over course from the 16th birthday', () => {
+    const kegs = course({ id: 'kegs', audienceAge: 'over_16' })
+    const fifteen = person({ employee: { dateOfBirth: '2010-11-04' } })
+    expect(plan([fifteen], [kegs])).toEqual([])
+    expect(plan([fifteen], [kegs], '2026-11-04')).toEqual([expect.objectContaining({ type: 'create', courseId: 'kegs' })])
+  })
+
   it('moves someone to the adult course on their 18th birthday', () => {
     const under = course({ id: 'alcohol-u18', audienceAge: 'under_18' })
     const adult = course({ id: 'alcohol', audienceAge: 'adult' })
@@ -364,10 +440,57 @@ describe('planAssignmentSync: prerequisites', () => {
     expect(plan([person({ assignments })], [course(), kegs])).toEqual([{ type: 'release', assignmentId: 'k1', employeeId: 'e1', courseId: 'kegs', dueOn: null }])
   })
 
+  it('releases a waiting practical refresher due 14 days later, even when the course has no due rule', () => {
+    const kegs = course({ id: 'kegs', kind: 'practical', isEssentials: false, prerequisiteCourseId: 'essentials', newStarterDueDays: null, existingStaffDueDays: null })
+    const assignments = [
+      done(),
+      done({ id: 'k1', courseId: 'kegs', completedOn: '2025-11-01', expiresOn: '2026-11-01', windowOpensOn: '2026-10-02' }),
+      cycle({ id: 'k2', courseId: 'kegs', cycle: 2, reason: 'refresher', status: 'waiting', dueOn: null }),
+    ]
+    expect(plan([person({ assignments })], [course(), kegs])).toEqual([
+      { type: 'release', assignmentId: 'k2', employeeId: 'e1', courseId: 'kegs', dueOn: '2026-11-17' },
+    ])
+  })
+
   it('keeps waiting while the prerequisite has expired', () => {
     const expired = done({ expiresOn: '2026-11-02', windowOpensOn: '2026-10-03' })
     const assignments = [expired, cycle({ id: 'ref', cycle: 2, status: 'in_progress' }), cycle({ id: 'w1', courseId: 'walk', status: 'waiting', dueOn: null })]
     expect(plan([person({ assignments })], [course(), walkthrough])).toEqual([])
+  })
+
+  describe('a waived prerequisite refresher still covers its period (owner decision, 3 November 2026)', () => {
+    // Team training done once, expiring 1 November 2026; that year's refresher was waived. The keg
+    // sign-off, which needs Team training, expires 20 November 2026 and its window is open.
+    const team = teamTraining()
+    const kegs = course({ id: 'kegs', kind: 'practical', isEssentials: false, prerequisiteCourseId: 'team', newStarterDueDays: null, existingStaffDueDays: null })
+    const teamDone = done({ id: 't1', courseId: 'team', completedOn: '2025-11-01', expiresOn: '2026-11-01', windowOpensOn: '2026-10-02' })
+    const teamWaived = cycle({ id: 't2', courseId: 'team', cycle: 2, reason: 'refresher', status: 'waived', dueOn: '2026-11-01' })
+    const kegsDone = done({ id: 'k1', courseId: 'kegs', completedOn: '2025-11-20', expiresOn: '2026-11-20', windowOpensOn: '2026-10-21' })
+
+    it('opens the keg refresher assigned, with its due date, after the old Team training expiry', () => {
+      expect(plan([person({ assignments: [teamDone, teamWaived, kegsDone] })], [team, kegs])).toEqual([
+        { type: 'create', employeeId: 'e1', courseId: 'kegs', cycle: 2, reason: 'refresher', status: 'assigned', assignedOn: TODAY, dueOn: '2026-11-20' },
+      ])
+    })
+
+    it('releases a keg refresher left waiting, and stops once the covered period has passed', () => {
+      const waitingKegs = cycle({ id: 'k2', courseId: 'kegs', cycle: 2, reason: 'refresher', status: 'waiting', dueOn: null })
+      const assignments = [teamDone, teamWaived, kegsDone, waitingKegs]
+      expect(plan([person({ assignments })], [team, kegs])).toEqual([
+        { type: 'release', assignmentId: 'k2', employeeId: 'e1', courseId: 'kegs', dueOn: '2026-11-17' },
+      ])
+      // 2 November 2027: the year the waiver covered is over, so the keg refresher waits again.
+      // (Team training's own next refresher is open by then.)
+      expect(plan([person({ assignments })], [team, kegs], '2027-11-02')).toEqual([
+        expect.objectContaining({ type: 'create', courseId: 'team', cycle: 3, reason: 'refresher' }),
+      ])
+    })
+
+    it('still waits when the waived Team training was a first cycle', () => {
+      const firstWaived = cycle({ id: 't1', courseId: 'team', status: 'waived', dueOn: null })
+      const waitingKegs = cycle({ id: 'k1', courseId: 'kegs', reason: 'manual', status: 'waiting', dueOn: null })
+      expect(plan([person({ assignments: [firstWaived, waitingKegs] })], [team, kegs])).toEqual([])
+    })
   })
 })
 
@@ -398,6 +521,60 @@ describe('planAssignmentSync: refreshers and redo', () => {
     expect(plan([person({ assignments: [done({ expiresOn: null, windowOpensOn: null })] })], [course()])).toEqual([])
     const waivedLatest = [done({ expiresOn: '2026-11-20', windowOpensOn: '2026-10-21' }), cycle({ id: 'w', cycle: 2, status: 'waived' })]
     expect(plan([person({ assignments: waivedLatest })], [course()])).toEqual([])
+  })
+
+  describe('a waived refresher covers one period', () => {
+    // Completed once, expiring 1 November 2026; that year's refresher was waived.
+    const completed = done({ completedOn: '2025-11-01', expiresOn: '2026-11-01', windowOpensOn: '2026-10-02' })
+    const waived = cycle({ id: 'w2', cycle: 2, reason: 'refresher', status: 'waived', dueOn: '2026-11-01' })
+
+    it('opens the next refresher a year on, when its window opens, due on the new expiry', () => {
+      const assignments = [completed, waived]
+      expect(plan([person({ assignments })], [course()])).toEqual([])
+      expect(plan([person({ assignments })], [course()], '2027-10-01')).toEqual([])
+      expect(plan([person({ assignments })], [course()], '2027-10-02')).toEqual([
+        { type: 'create', employeeId: 'e1', courseId: 'essentials', cycle: 3, reason: 'refresher', status: 'assigned', assignedOn: '2027-10-02', dueOn: '2027-11-01' },
+      ])
+      // Missed altogether: due the day it is noticed.
+      expect(plan([person({ assignments })], [course()], '2027-12-01')).toEqual([expect.objectContaining({ reason: 'refresher', dueOn: '2027-12-01' })])
+    })
+
+    it('counts one period per waiver, and calls an external one a renewal', () => {
+      const twice = [completed, waived, cycle({ id: 'w3', cycle: 3, reason: 'refresher', status: 'waived', dueOn: '2027-11-01' })]
+      expect(plan([person({ assignments: twice })], [course()], '2027-10-02')).toEqual([])
+      expect(plan([person({ assignments: twice })], [course()], '2028-10-02')).toEqual([expect.objectContaining({ cycle: 4, reason: 'refresher', dueOn: '2028-11-01' })])
+      const fireMarshal = course({ id: 'ext', kind: 'external', isEssentials: false, refresherMonths: 36 })
+      const external = [
+        done({ courseId: 'ext', completedOn: '2023-11-01', expiresOn: '2026-11-01', windowOpensOn: '2026-10-02', versionNumber: null }),
+        cycle({ id: 'r2', courseId: 'ext', cycle: 2, reason: 'renewal', status: 'waived', dueOn: '2026-11-01' }),
+      ]
+      expect(plan([person({ assignments: external })], [fireMarshal], '2029-10-01')).toEqual([])
+      expect(plan([person({ assignments: external })], [fireMarshal], '2029-10-02')).toEqual([expect.objectContaining({ cycle: 3, reason: 'renewal', dueOn: '2029-11-01' })])
+    })
+
+    it('keeps a waived first cycle, redo or manual cycle waived', () => {
+      for (const reason of ['existing_staff', 'redo', 'manual'] as const) {
+        const assignments = [completed, cycle({ id: 'w2', cycle: 2, reason, status: 'waived' })]
+        expect(plan([person({ assignments })], [course()], '2030-01-01')).toEqual([])
+      }
+      expect(plan([person({ assignments: [cycle({ status: 'waived' })] })], [course()], '2030-01-01')).toEqual([])
+    })
+
+    it('lets the refresher done after a waiver extend from the expiry the waiver ran to', () => {
+      // Done early in the window: the new expiry is a year after 1 November 2027, not after the
+      // completion date, so finishing early loses nothing.
+      expect(expiryToExtendFrom([completed, waived], 3, 12)).toBe('2027-11-01')
+      expect(expiryToExtendFrom([completed, waived, cycle({ id: 'w3', cycle: 3, reason: 'refresher', status: 'waived' })], 4, 12)).toBe('2028-11-01')
+      // Only cycles before the one being finished count, and a waived redo or first cycle covers no period.
+      expect(expiryToExtendFrom([completed, waived], 2, 12)).toBe('2026-11-01')
+      expect(expiryToExtendFrom([completed, cycle({ id: 'w2', cycle: 2, reason: 'redo', status: 'waived' })], 3, 12)).toBe('2026-11-01')
+      expect(expiryToExtendFrom([cycle({ status: 'waived' })], 2, 12)).toBeNull()
+      expect(expiryToExtendFrom([completed, waived], 3, null)).toBe('2026-11-01')
+    })
+
+    it('opens nothing for a course that never expires', () => {
+      expect(plan([person({ assignments: [completed, waived] })], [course({ refresherMonths: null })], '2030-01-01')).toEqual([])
+    })
   })
 
   it('opens a redo cycle when a newer version asks everyone to redo it', () => {
@@ -459,6 +636,56 @@ describe('planAssignmentSync: pauses', () => {
   })
 })
 
+describe('planAssignmentSync: automatic assignment off', () => {
+  const off = (people: SyncPerson[], courses: SyncCourse[], today = TODAY) => plan(people, courses, today, false)
+
+  it('creates nothing for anyone and raises no date of birth flag', () => {
+    const adult = course({ id: 'alcohol', audienceAge: 'adult' })
+    const redoCourse = teamTraining({ latestRedoVersion: { id: 'v2', major: 1, minor: 1 } })
+    const people = [
+      person({ employee: { employeeId: 'starter', employmentStartDate: '2026-11-09' } }),
+      person({ employee: { employeeId: 'nodob', dateOfBirth: null } }),
+      person({ employee: { employeeId: 'refresh' }, assignments: [done({ expiresOn: '2026-11-20', windowOpensOn: '2026-10-21' })] }),
+      person({ employee: { employeeId: 'redo' }, assignments: [done({ courseId: 'team' })] }),
+    ]
+    expect(off(people, [course(), adult, redoCourse])).toEqual([])
+  })
+
+  it('still cancels for a leaver, a retired course and a group removed', () => {
+    const leaver = person({ employee: { employeeId: 'gone', status: 'Former' }, assignments: [cycle({ id: 'x1' })] })
+    const retired = person({ employee: { employeeId: 'r' }, assignments: [cycle({ id: 'x2', courseId: 'old' })] })
+    const moved = person({ employee: { employeeId: 'm' }, profile: profile({ employeeId: 'm', groups: ['bar'], groupsConfirmedAt: '2026-11-01T09:00:00Z' }), assignments: [cycle({ id: 'x3', courseId: 'kitchen' })] })
+    const actions = off([leaver, retired, moved], [course({ id: 'old', status: 'retired' }), course({ id: 'kitchen', audienceGroups: ['kitchen'] })])
+    expect(actions).toEqual([
+      { type: 'cancel', assignmentId: 'x1', employeeId: 'gone', courseId: 'essentials', reason: 'left' },
+      { type: 'cancel', assignmentId: 'x2', employeeId: 'r', courseId: 'old', reason: 'course_retired' },
+      { type: 'cancel', assignmentId: 'x3', employeeId: 'm', courseId: 'kitchen', reason: 'group_removed' },
+    ])
+  })
+
+  it('releases a waiting cycle a manager assigned, but not one the sync made', () => {
+    const walk = course({ id: 'walk', kind: 'practical', isEssentials: false, prerequisiteCourseId: 'essentials', newStarterDueDays: 14, existingStaffDueDays: 28 })
+    const manual = [done(), cycle({ id: 'm1', courseId: 'walk', reason: 'manual', status: 'waiting', dueOn: null })]
+    expect(off([person({ assignments: manual })], [course(), walk])).toEqual([
+      { type: 'release', assignmentId: 'm1', employeeId: 'e1', courseId: 'walk', dueOn: '2026-11-17' },
+    ])
+    const automatic = [done(), cycle({ id: 'c1', courseId: 'walk', reason: 'course_added', status: 'waiting', dueOn: null })]
+    expect(off([person({ assignments: automatic })], [course(), walk])).toEqual([])
+  })
+
+  it('still ends a pause and re-dates open cycles', () => {
+    const paused = profile({ pausedFrom: '2026-09-01', pausedUntil: '2026-11-02', pauseReason: 'parental_leave' })
+    const actions = off([person({ profile: paused, assignments: [cycle({ dueOn: '2026-10-01' })] })], [course()])
+    expect(actions).toEqual([{ type: 'end_pause', employeeId: 'e1', resumedOn: TODAY, dueChanges: [{ assignmentId: 'a1', dueOn: '2026-11-17' }] }])
+  })
+
+  it('refuses to guess when it is not told', () => {
+    expect(() => planAssignmentSync({ today: TODAY, people: [], courses: [] } as unknown as Parameters<typeof planAssignmentSync>[0])).toThrow(
+      'Say whether courses are assigned automatically'
+    )
+  })
+})
+
 describe('planAssignmentSync: order and counts', () => {
   it('gives the same actions in the same order for the same input', () => {
     const people = [
@@ -489,5 +716,41 @@ describe('planAssignmentSync: order and counts', () => {
     ]
     expect(summariseSyncActions(actions)).toEqual({ created: 2, cancelled: 1, updated: 2 })
     expect(summariseSyncActions([])).toEqual({ created: 0, cancelled: 0, updated: 0 })
+  })
+})
+
+describe('summariseAutoAssignChanges', () => {
+  it('counts what switching on adds: creates by kind, and releases only the switch makes', () => {
+    const team = teamTraining()
+    const walkthrough = course({ id: 'walk', kind: 'practical', isEssentials: false, prerequisiteCourseId: 'essentials' })
+    const people = [
+      // Nothing yet: Essentials and Team training, and the walkthrough waiting for Essentials.
+      person({ employee: { employeeId: 'e1' } }),
+      // Essentials done long ago (refresher owed), and a walkthrough sync left waiting, now releasable.
+      person({
+        employee: { employeeId: 'e2' },
+        assignments: [
+          done({ id: 'e2-ess', expiresOn: '2026-11-20', windowOpensOn: '2026-10-21' }),
+          done({ id: 'e2-team', courseId: 'team' }),
+          cycle({ id: 'e2-walk', courseId: 'walk', reason: 'existing_staff', status: 'waiting', dueOn: null }),
+        ],
+      }),
+      // A manager's waiting walkthrough is released with the switch off too, so it is not counted.
+      person({
+        employee: { employeeId: 'e3' },
+        assignments: [
+          done({ id: 'e3-ess' }),
+          done({ id: 'e3-team', courseId: 'team' }),
+          cycle({ id: 'e3-walk', courseId: 'walk', reason: 'manual', status: 'waiting', dueOn: null }),
+        ],
+      }),
+      // A leaver: cancelled either way, never counted.
+      person({ employee: { employeeId: 'e4', status: 'Former' }, assignments: [cycle({ id: 'e4-ess' })] }),
+    ]
+    const courses = [course(), team, walkthrough]
+    const on = plan(people, courses, TODAY, true)
+    const off = plan(people, courses, TODAY, false)
+    expect(summariseAutoAssignChanges(on, off)).toEqual({ people: 2, items: 5, firstCourses: 3, refreshers: 1, redos: 0, released: 1 })
+    expect(summariseAutoAssignChanges(off, off)).toEqual({ people: 0, items: 0, firstCourses: 0, refreshers: 0, redos: 0, released: 0 })
   })
 })

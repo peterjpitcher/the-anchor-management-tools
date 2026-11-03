@@ -4,14 +4,16 @@ import {
   REDO_DUE_DAYS,
   ageOn,
   computeInitialDueOn,
+  computeWindowOpensOn,
   isNewStarter,
   refresherDueOn,
   resumeDueOn,
 } from './dates'
-import { isOpenStatus, prerequisiteMet } from './states'
+import { expiryToExtendFrom, isOpenStatus, prerequisiteMet, prerequisiteOf } from './states'
 import {
   TRAINING_GROUPS,
   TrainingError,
+  type AutoAssignPreview,
   type SyncResult,
   type TrainingAssignment,
   type TrainingAssignmentReason,
@@ -79,6 +81,10 @@ export interface SyncCourse {
   assignAutomatically: boolean
   /** The newest published version with `redo_required`, or null. */
   latestRedoVersion: { id: string; major: number; minor: number } | null
+  /** Months a completion lasts, or null when it never expires. Read for a waived refresher. */
+  refresherMonths: number | null
+  /** Days before the expiry the refresher window opens. Read for a waived refresher. */
+  windowDays: number
 }
 
 export interface SyncInput {
@@ -86,6 +92,12 @@ export interface SyncInput {
   today: string
   people: SyncPerson[]
   courses: SyncCourse[]
+  /**
+   * The `training_auto_assign_enabled` switch (src/lib/training/settings.ts). Off: no cycle is
+   * created for any reason and no date of birth flag is raised. Cancelling, releasing a waiting
+   * cycle a manager created, and ending pauses still happen.
+   */
+  autoAssign: boolean
 }
 
 /** One change `syncAssignments` makes. */
@@ -103,7 +115,10 @@ export type SyncAction =
     }
   /** An open cycle closed: the person left, left the audience, or the course was retired. */
   | { type: 'cancel'; assignmentId: string; employeeId: string; courseId: string; reason: TrainingCancelReason }
-  /** A waiting cycle whose prerequisite is now valid: status `assigned`, due today + 14 (or none). */
+  /**
+   * A waiting cycle whose prerequisite is now valid: status `assigned`, due today + 14. Only a
+   * first cycle on a course with no due date rule is released with none.
+   */
   | { type: 'release'; assignmentId: string; employeeId: string; courseId: string; dueOn: string | null }
   /**
    * A pause that has run its course (`pausedUntil` before today): the profile's pause is cleared
@@ -168,8 +183,36 @@ export function effectiveTrainingGroups(
 }
 
 /**
+ * The youngest age a course allows, or null when it has no minimum: 16 for `over_16`, 18 for
+ * `adult`. `under_18` is a maximum, not a minimum.
+ */
+export function minimumAgeFor(audienceAge: TrainingAudienceAge): number | null {
+  switch (audienceAge) {
+    case 'over_16':
+      return 16
+    case 'adult':
+      return 18
+    case 'all':
+    case 'under_18':
+      return null
+    default: {
+      const unknownAge: never = audienceAge
+      throw new TrainingError('invalid', `Unknown audience age ${String(unknownAge)}`)
+    }
+  }
+}
+
+/** Whether a person of `age` meets a course's age rule. */
+function ageRuleMet(audienceAge: TrainingAudienceAge, age: number): boolean {
+  if (audienceAge === 'under_18') return age < 18
+  const minimum = minimumAgeFor(audienceAge)
+  return minimum === null || age >= minimum
+}
+
+/**
  * Whether a course applies to a person today: the course is live, the person's groups meet the
- * course's groups (empty = everyone), and the age rule matches. A missing date of birth means an
+ * course's groups (empty = everyone), and the age rule matches (`under_18` below 18, `over_16`
+ * from the 16th birthday, `adult` from the 18th). A missing date of birth means an
  * age-restricted course does not apply and `dobMissing` is true. The group rule is checked first,
  * so `dobMissing` is only raised for a course the person would otherwise get.
  */
@@ -186,7 +229,63 @@ export function courseAppliesTo(
   if (course.audienceAge === 'all') return { applies: true, dobMissing: false }
   const age = ageOn(person.dateOfBirth, today)
   if (age === null) return { applies: false, dobMissing: true }
-  return { applies: course.audienceAge === 'under_18' ? age < 18 : age >= 18, dobMissing: false }
+  return { applies: ageRuleMet(course.audienceAge, age), dobMissing: false }
+}
+
+/**
+ * Why a manager may not give a person a course with a minimum age (`over_16` or `adult`), or
+ * null when they may: the person is younger than the minimum, or their date of birth is missing
+ * so nobody can tell. Used before a manager assigns a course or records a practical sign-off.
+ */
+export function minimumAgeRefusal(
+  course: Pick<SyncCourse, 'audienceAge'> & { title: string },
+  person: { dateOfBirth: string | null; name?: string | null },
+  today: string
+): { reason: 'dob_missing' | 'under_minimum_age'; message: string } | null {
+  const minimum = minimumAgeFor(course.audienceAge)
+  if (minimum === null) return null
+  const who = person.name?.trim() || 'this person'
+  const age = ageOn(person.dateOfBirth, today)
+  if (age === null) {
+    return {
+      reason: 'dob_missing',
+      message: `${course.title} is only for people aged ${minimum} or over, and ${who} has no date of birth on their employee record. Add it there first.`,
+    }
+  }
+  if (age < minimum) {
+    return {
+      reason: 'under_minimum_age',
+      message: `${course.title} is only for people aged ${minimum} or over, and ${who} is ${age}.`,
+    }
+  }
+  return null
+}
+
+/**
+ * Why a practical sign-off for tasks watched on `observedOn` may not be recorded today, or null
+ * when it may. The minimum age is checked today and on the day the manager watched them, so a
+ * task watched before a 16th birthday cannot be signed off once they are 16 (owner decision,
+ * 3 November 2026: under-16s are never given the keg, gas, BIB or chemicals sign-offs).
+ */
+export function signoffMinimumAgeRefusal(
+  course: Pick<SyncCourse, 'audienceAge'> & { title: string },
+  person: { dateOfBirth: string | null; name?: string | null },
+  observedOn: string,
+  today: string
+): { reason: 'dob_missing' | 'under_minimum_age'; message: string } | null {
+  const now = minimumAgeRefusal(course, person, today)
+  if (now) return now
+  if (!minimumAgeRefusal(course, person, observedOn)) return null
+  const who = person.name?.trim() || 'this person'
+  const ageThen = ageOn(person.dateOfBirth, observedOn)
+  const minimum = minimumAgeFor(course.audienceAge)
+  return {
+    reason: 'under_minimum_age',
+    message:
+      ageThen === null
+        ? `The day you watched them is before ${who}'s date of birth. Check the date.`
+        : `${course.title} is only for people aged ${minimum} or over, and ${who} was ${ageThen} on the day you watched them.`,
+  }
 }
 
 function isNewer(a: { major: number; minor: number }, b: { major: number; minor: number }): boolean {
@@ -197,6 +296,25 @@ function addDays(isoDate: string, days: number): string {
   const moved = shiftIsoDate(isoDate, days)
   if (moved === null) throw new TrainingError('invalid', `Cannot move ${isoDate} by ${days} days`)
   return moved
+}
+
+/** Reasons a cycle is a person's first go at a course rather than a refresher, renewal or redo. */
+const FIRST_CYCLE_REASONS: ReadonlySet<TrainingAssignmentReason> = new Set(['new_starter', 'existing_staff', 'course_added', 'manual'])
+
+/**
+ * The refresher a waived refresher or renewal moves on to: due on the expiry from
+ * `expiryToExtendFrom`, with its window opening `windowDays` before that. Null when there is no
+ * completed cycle to count from, or the course never expires.
+ */
+function refresherAfterWaivers(
+  cycles: readonly SyncAssignment[],
+  course: Pick<SyncCourse, 'refresherMonths' | 'windowDays'>
+): { expiresOn: string; windowOpensOn: string } | null {
+  if (course.refresherMonths === null) return null
+  const expiresOn = expiryToExtendFrom(cycles, Number.POSITIVE_INFINITY, course.refresherMonths)
+  const windowOpensOn = computeWindowOpensOn(expiresOn, course.windowDays)
+  if (!expiresOn || !windowOpensOn) return null
+  return { expiresOn, windowOpensOn }
 }
 
 /** The reason for a first cycle (contract section 3, "No assignment yet"). */
@@ -227,15 +345,30 @@ function firstCycleReason(employee: SyncEmployee, course: SyncCourse, today: str
  *   the person is flagged instead, so a data slip never throws away progress.
  * - When a redo and a refresher are both owed, the redo is created (due today + 14); finishing it
  *   on or before the old expiry extends from that expiry, so nothing is lost.
- * - Any new cycle whose prerequisite is not valid starts `waiting`. A release is due today + 14
- *   when the course has any due date rule, else it has none.
+ * - Any new cycle whose prerequisite is not valid starts `waiting`. A release is due today + 14,
+ *   except a first cycle (new starter, existing staff, course added, manual) on a course with no
+ *   due date rule, which is released with none. A released refresher, renewal or redo always gets
+ *   a due date, so it can go overdue (owner decision, 3 November 2026).
+ * - A waived refresher or renewal covers one refresher period only (owner decision, 3 November
+ *   2026): the next refresher opens as if the waived one had been done on time, from the previous
+ *   expiry plus the refresher months, less the window, and for that period the course still
+ *   meets the prerequisite of anything that needs it (`trainingCurrent`). Any other waived latest
+ *   cycle (a first cycle, a redo, a manual cycle) stays waived and counts for nothing: nothing new
+ *   until a manager assigns it, and a course that needs it waits.
  * - Courses in `draft` are ignored. A course that is not assigned automatically gets no new
  *   cycles, but its open ones are still cancelled for the same reasons as any other.
+ *
+ * With `autoAssign` off (the `training_auto_assign_enabled` switch, off by default) nothing is
+ * created for anyone and no date of birth flag is raised. Cancelling, ending pauses and releasing a
+ * waiting cycle that a manager created (`manual`) still happen; a waiting cycle sync made itself
+ * stays waiting until the switch is on again.
  */
 export function planAssignmentSync(input: SyncInput): SyncAction[] {
-  const { today, people, courses } = input
+  const { today, people, courses, autoAssign } = input
+  if (typeof autoAssign !== 'boolean') throw new TrainingError('invalid', 'Say whether courses are assigned automatically')
   if (!shiftIsoDate(today, 0)) throw new TrainingError('invalid', `Today is not a real date: ${String(today)}`)
   const actions: SyncAction[] = []
+  const courseById = new Map(courses.map((course) => [course.id, course]))
 
   for (const person of people) {
     const { employee, profile } = person
@@ -270,7 +403,7 @@ export function planAssignmentSync(input: SyncInput): SyncAction[] {
       }
 
       const { applies, dobMissing } = courseAppliesTo(course, { groups, dateOfBirth: employee.dateOfBirth }, today)
-      if (dobMissing) personActions.push({ type: 'flag', employeeId, courseId: course.id, flag: 'dob_missing' })
+      if (dobMissing && autoAssign) personActions.push({ type: 'flag', employeeId, courseId: course.id, flag: 'dob_missing' })
 
       if (!applies) {
         if (open && !dobMissing && open.reason !== 'manual') {
@@ -280,25 +413,28 @@ export function planAssignmentSync(input: SyncInput): SyncAction[] {
         continue
       }
 
-      const prerequisiteValid = prerequisiteMet(course.prerequisiteCourseId, person.assignments, today)
+      const prerequisiteValid = prerequisiteMet(prerequisiteOf(course, courseById), person.assignments, today)
 
       if (open) {
-        if (open.status === 'waiting' && prerequisiteValid) {
+        // With automatic assignment off, only a cycle a manager made is released.
+        if (open.status === 'waiting' && prerequisiteValid && (autoAssign || open.reason === 'manual')) {
           const hasDueRule = course.newStarterDueDays !== null || course.existingStaffDueDays !== null
+          const noDueDate = FIRST_CYCLE_REASONS.has(open.reason) && !hasDueRule
           personActions.push({
             type: 'release',
             assignmentId: open.id,
             employeeId,
             courseId: course.id,
-            dueOn: hasDueRule ? addDays(today, PREREQUISITE_DUE_DAYS) : null,
+            dueOn: noDueDate ? null : addDays(today, PREREQUISITE_DUE_DAYS),
           })
           handled.add(open.id)
         }
         continue
       }
 
-      // Nothing new for someone working their notice, or for a course recorded by hand only.
-      if (employee.status !== 'Active' || !course.assignAutomatically) continue
+      // Nothing new while automatic assignment is off, for someone working their notice, or for a
+      // course recorded by hand only.
+      if (!autoAssign || employee.status !== 'Active' || !course.assignAutomatically) continue
 
       const nextCycle = cycles.reduce((highest, assignment) => Math.max(highest, assignment.cycle), 0) + 1
       const latest = cycles.filter((assignment) => assignment.status !== 'cancelled').sort((a, b) => b.cycle - a.cycle)[0]
@@ -324,8 +460,17 @@ export function planAssignmentSync(input: SyncInput): SyncAction[] {
           reason = course.kind === 'external' ? 'renewal' : 'refresher'
           dueOn = refresherDueOn(latest.expiresOn, today)
         }
+      } else if (latest.status === 'waived' && (latest.reason === 'refresher' || latest.reason === 'renewal')) {
+        // The waiver covered one period: the next refresher runs on from the latest completed
+        // cycle, one period on for each waived refresher since it. It takes whatever version is
+        // current then, so no redo is raised for the waived period.
+        const next = refresherAfterWaivers(cycles, course)
+        if (next && today >= next.windowOpensOn) {
+          reason = course.kind === 'external' ? 'renewal' : 'refresher'
+          dueOn = refresherDueOn(next.expiresOn, today)
+        }
       }
-      // A waived latest cycle stays waived: nothing new until a manager assigns it.
+      // Any other waived latest cycle stays waived: nothing new until a manager assigns it.
       if (reason === null) continue
 
       personActions.push({
@@ -375,4 +520,32 @@ export function summariseSyncActions(actions: readonly SyncAction[]): SyncResult
     else if (action.type === 'release' || action.type === 'end_pause') result.updated += 1
   }
   return result
+}
+
+/**
+ * What switching automatic assignment on adds, from two plans of the same snapshot: `on` with
+ * the switch on, `off` with it off. Everything `on` creates counts, and so does every waiting
+ * item it releases that `off` would not (with the switch off, only a waiting item a manager
+ * assigned is released). Cancelling, ending pauses and date of birth flags give nobody anything,
+ * so they are not counted.
+ */
+export function summariseAutoAssignChanges(on: readonly SyncAction[], off: readonly SyncAction[]): AutoAssignPreview {
+  const releasedAnyway = new Set(off.flatMap((action) => (action.type === 'release' ? [action.assignmentId] : [])))
+  const people = new Set<string>()
+  const preview: AutoAssignPreview = { people: 0, items: 0, firstCourses: 0, refreshers: 0, redos: 0, released: 0 }
+  for (const action of on) {
+    if (action.type === 'create') {
+      if (action.reason === 'refresher' || action.reason === 'renewal') preview.refreshers += 1
+      else if (action.reason === 'redo') preview.redos += 1
+      else preview.firstCourses += 1
+    } else if (action.type === 'release' && !releasedAnyway.has(action.assignmentId)) {
+      preview.released += 1
+    } else {
+      continue
+    }
+    preview.items += 1
+    people.add(action.employeeId)
+  }
+  preview.people = people.size
+  return preview
 }

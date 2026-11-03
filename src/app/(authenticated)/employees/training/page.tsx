@@ -1,6 +1,6 @@
 import { getPermissionStatus } from '@/app/actions/rbac'
 import { getTrainingActivity, getTrainingMatrix, getTrainingPayReport } from '@/app/actions/training'
-import { getTrainingEmailsEnabled, listTrainingCourses } from '@/app/actions/training-courses'
+import { getTrainingAutoAssignEnabled, getTrainingEmailsEnabled, listTrainingCourses } from '@/app/actions/training-courses'
 import { PageLayout } from '@/ds'
 import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 import { TrainingActivityView } from '@/components/features/training/manager/TrainingActivityView'
@@ -83,9 +83,10 @@ export default async function EmployeeTrainingPage({ searchParams }: PageProps):
   const headerActions = <TrainingHeaderActions view={view} />
 
   if (view === 'courses') {
-    const [courses, emails] = await Promise.all([
+    const [courses, emails, autoAssign] = await Promise.all([
       settle(() => listTrainingCourses()),
       settle(() => getTrainingEmailsEnabled()),
+      settle(() => getTrainingAutoAssignEnabled()),
     ])
     return (
       <PageLayout {...layoutProps} headerActions={headerActions}>
@@ -93,6 +94,7 @@ export default async function EmployeeTrainingPage({ searchParams }: PageProps):
           courses={courses.data}
           error={courses.error}
           emails={{ enabled: emails.data?.enabled ?? null, error: emails.error }}
+          autoAssign={{ enabled: autoAssign.data?.enabled ?? null, error: autoAssign.error }}
         />
       </PageLayout>
     )

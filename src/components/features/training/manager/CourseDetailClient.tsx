@@ -39,6 +39,7 @@ import {
 } from '@/lib/training/labels'
 import type { CourseDetailView, PublishChange, TrainingCourseVersionMeta, UploadCourseDraftResult } from '@/lib/training/types'
 import { CourseIssues, CourseUploadButton, UploadResult } from './CourseUpload'
+import { TrainingAutoAssignSwitch } from './TrainingAutoAssignSwitch'
 import { TrainingEmailsSwitch } from './TrainingEmailsSwitch'
 import { runTrainingAction } from './run-action'
 import { useTrainingPermissions } from './use-training-permissions'
@@ -47,7 +48,14 @@ import { COURSE_BACK_BUTTON, trainingPreviewHref } from './views'
 interface CourseDetailClientProps {
   detail: CourseDetailView
   emails: { enabled: boolean | null; error: string | null }
+  /** The automatic assignment switch. Null (unreadable) is treated as off, as the sync does. */
+  autoAssign: { enabled: boolean | null; error: string | null }
 }
+
+/** Said wherever publishing would otherwise promise to give the course out. */
+const AUTO_ASSIGN_OFF_PUBLISH = 'Automatic assignment is off, so nobody is given it until a manager assigns it on their Training tab.'
+const AUTO_ASSIGN_OFF_REDO =
+  'Automatic assignment is off, so nobody is asked to redo it yet. Once it is switched on, everyone who has done it gets it again, due 14 days from then.'
 
 const PUBLISH_FORM_ID = 'publish-course-form'
 
@@ -77,12 +85,13 @@ function byLine(at: string | null, name: string | null): string {
  * blocks it), every published version, and the publish and retire controls for holders of
  * training publish. Published versions are frozen; a change is always a new upload.
  */
-export function CourseDetailClient({ detail, emails }: CourseDetailClientProps): React.JSX.Element {
+export function CourseDetailClient({ detail, emails, autoAssign }: CourseDetailClientProps): React.JSX.Element {
   const router = useRouter()
   const { canPublish } = useTrainingPermissions()
   const { course, current, versions, draft, stats, prerequisite } = detail
   const isExternal = course.kind === 'external'
   const isFirstPublish = current === null
+  const autoAssignOn = autoAssign.enabled === true
 
   const [uploadResult, setUploadResult] = useState<UploadCourseDraftResult | null>(null)
   const [change, setChange] = useState<PublishChange>(isFirstPublish ? 'first' : 'minor')
@@ -131,7 +140,11 @@ export function CourseDetailClient({ detail, emails }: CourseDetailClientProps):
         return
       }
       const number = formatTrainingVersion(result.data.major, result.data.minor)
-      const synced = result.data.sync ? ` ${result.data.sync.created} new training items assigned.` : ''
+      const synced = !result.data.autoAssign
+        ? ' Automatic assignment is off, so nobody was given new training.'
+        : result.data.sync
+          ? ` ${result.data.sync.created} new training items assigned.`
+          : ''
       toast.success(`Version ${number} published.${synced}`)
       setChangeNote('')
       setUploadResult(null)
@@ -284,7 +297,9 @@ export function CourseDetailClient({ detail, emails }: CourseDetailClientProps):
                     {publishError ? <Alert tone="danger">{publishError}</Alert> : null}
                     {isFirstPublish ? (
                       <p className="text-sm text-text">
-                        Publishing makes the course live and gives it to everyone it applies to, with the due dates above.
+                        {autoAssignOn
+                          ? 'Publishing makes the course live and gives it to everyone it applies to, with the due dates above.'
+                          : `Publishing makes the course live. ${AUTO_ASSIGN_OFF_PUBLISH}`}
                       </p>
                     ) : (
                       <Fieldset legend="What Changed" required>
@@ -300,7 +315,11 @@ export function CourseDetailClient({ detail, emails }: CourseDetailClientProps):
                           name="publish-change"
                           value="redo"
                           label="Ask everyone to redo it"
-                          description="A change to what people do, check or approve. Everyone who has done it gets it again, due in 14 days. Their certificates stay valid until they expire."
+                          description={
+                            autoAssignOn
+                              ? 'A change to what people do, check or approve. Everyone who has done it gets it again, due in 14 days. Their certificates stay valid until they expire.'
+                              : `A change to what people do, check or approve. ${AUTO_ASSIGN_OFF_REDO} Their certificates stay valid until they expire.`
+                          }
                           checked={effectiveChange === 'redo'}
                           onChange={() => setChange('redo')}
                         />
@@ -385,6 +404,8 @@ export function CourseDetailClient({ detail, emails }: CourseDetailClientProps):
         </Card>
       )}
 
+      <TrainingAutoAssignSwitch enabled={autoAssign.enabled} loadError={autoAssign.error} />
+
       <TrainingEmailsSwitch enabled={emails.enabled} loadError={emails.error} />
 
       <ConfirmDialog
@@ -394,9 +415,13 @@ export function CourseDetailClient({ detail, emails }: CourseDetailClientProps):
         title={`Publish Version ${nextVersion(current, effectiveChange)}`}
         message={
           effectiveChange === 'first'
-            ? `"${course.title}" goes live and is given to everyone it applies to.`
+            ? autoAssignOn
+              ? `"${course.title}" goes live and is given to everyone it applies to.`
+              : `"${course.title}" goes live. ${AUTO_ASSIGN_OFF_PUBLISH}`
             : effectiveChange === 'redo'
-              ? `Everyone who has done "${course.title}" will be asked to do it again, due in 14 days.`
+              ? autoAssignOn
+                ? `Everyone who has done "${course.title}" will be asked to do it again, due in 14 days.`
+                : `Automatic assignment is off, so nobody is asked to redo "${course.title}" yet. Once it is switched on, everyone who has done it gets it again, due 14 days from then.`
               : `Staff who start "${course.title}" from now get this version. Nobody redoes anything.`
         }
         confirmLabel="Publish"

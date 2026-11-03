@@ -26,7 +26,11 @@ vi.mock('@/lib/training/storage', async (importOriginal) => {
   const original = await importOriginal<typeof import('@/lib/training/storage')>()
   return { ...original, uploadExternalCertificate: mocks.upload }
 })
-vi.mock('@/lib/training/settings', () => ({ getTrainingEmailsEnabled: vi.fn().mockResolvedValue(false) }))
+vi.mock('@/lib/training/settings', () => ({
+  getTrainingEmailsEnabled: vi.fn().mockResolvedValue(false),
+  // These tests are about the actions; the switch itself is tested in the sync and service tests.
+  getTrainingAutoAssignEnabled: vi.fn().mockResolvedValue(true),
+}))
 
 import {
   assignCourse,
@@ -360,10 +364,41 @@ describe('assignCourse', () => {
     expect(created).toMatchObject({ employee_id: SAM, due_on: '2026-11-30', reason: 'manual' })
   })
 
-  it('skips a person the age rule rules out', async () => {
+  it('skips a person younger than the minimum age', async () => {
     const result = await assignCourse({ employeeIds: [ROBIN], courseId: ADULT_ONLY })
-    expect(result.data).toEqual({ created: 0, skipped: [{ employeeId: ROBIN, reason: 'not_applicable' }] })
+    expect(result.data).toEqual({ created: 0, skipped: [{ employeeId: ROBIN, reason: 'under_minimum_age' }] })
     expect(assignments()).toEqual([])
+  })
+
+  it('applies a 16 and over minimum from the 16th birthday', async () => {
+    db.rows('training_courses').find((row) => row.id === ADULT_ONLY)!.audience_age = 'over_16'
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2010-11-11'
+    expect((await assignCourse({ employeeIds: [ROBIN], courseId: ADULT_ONLY })).data).toEqual({
+      created: 0,
+      skipped: [{ employeeId: ROBIN, reason: 'under_minimum_age' }],
+    })
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2010-11-10'
+    expect((await assignCourse({ employeeIds: [ROBIN], courseId: ADULT_ONLY })).data).toEqual({ created: 1, skipped: [] })
+  })
+
+  it('skips someone with no date of birth for any course with an age rule', async () => {
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = null
+    for (const age of ['over_16', 'adult', 'under_18']) {
+      db.rows('training_courses').find((row) => row.id === ADULT_ONLY)!.audience_age = age
+      expect((await assignCourse({ employeeIds: [ROBIN], courseId: ADULT_ONLY })).data).toEqual({
+        created: 0,
+        skipped: [{ employeeId: ROBIN, reason: 'dob_missing' }],
+      })
+    }
+    expect(assignments()).toEqual([])
+  })
+
+  it('skips an adult for an under 18 course as not in the audience', async () => {
+    db.rows('training_courses').find((row) => row.id === ADULT_ONLY)!.audience_age = 'under_18'
+    expect((await assignCourse({ employeeIds: [SAM], courseId: ADULT_ONLY })).data).toEqual({
+      created: 0,
+      skipped: [{ employeeId: SAM, reason: 'not_applicable' }],
+    })
   })
 
   it('creates a waiting cycle with no due date when the prerequisite is not done', async () => {
@@ -680,6 +715,69 @@ describe('recordPracticalSignoff', () => {
     ).toBe('The date you watched them cannot be in the future.')
     expect(mocks.signoff).not.toHaveBeenCalled()
     expect(db.writes).toEqual([])
+  })
+
+  it('refuses a sign-off for someone under the minimum age, open item or not', async () => {
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.audience_age = 'over_16'
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2011-01-01'
+    const signoff = () => recordPracticalSignoff({ employeeId: ROBIN, courseId: PRACTICAL, tasks: ['change-keg', 'clean-coupler'], observedOn: TODAY })
+    expect((await signoff()).error).toBe('Changing a keg is only for people aged 16 or over, and Robin is 15. The sign-off was not recorded.')
+
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.audience_age = 'adult'
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2010-06-01'
+    expect((await signoff()).error).toBe('Changing a keg is only for people aged 18 or over, and Robin is 16. The sign-off was not recorded.')
+    expect(mocks.signoff).not.toHaveBeenCalled()
+    expect(db.writes).toEqual([])
+  })
+
+  it('checks the minimum age on the day they were watched, not only today', async () => {
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.audience_age = 'over_16'
+    // 16 on 5 November 2026; watched on 1 November (aged 15), recorded on 10 November (aged 16).
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2010-11-05'
+    const watched = (observedOn: string) =>
+      recordPracticalSignoff({ employeeId: ROBIN, courseId: PRACTICAL, tasks: ['change-keg', 'clean-coupler'], observedOn })
+    expect((await watched('2026-11-01')).error).toBe(
+      'Changing a keg is only for people aged 16 or over, and Robin was 15 on the day you watched them. The sign-off was not recorded.'
+    )
+    expect(mocks.signoff).not.toHaveBeenCalled()
+    expect(db.writes).toEqual([])
+
+    mocks.signoff.mockResolvedValue({ documentId: 'doc-1', partyId: 'party-1', inPersonUrl: '/sign/in-person/abc', supervisedOnly: true })
+    expect((await watched('2026-11-05')).success).toBe(true)
+  })
+
+  it('counts a waived refresher of the course it needs for one period, and a waived redo for nothing', async () => {
+    // The course it needs (12 months) was done once, expiring 1 November 2026; that year's
+    // refresher was waived, so it still counts until 1 November 2027.
+    const prerequisiteCycles = (waivedReason: string) => [
+      assignmentRow({ id: 'a2222222-2222-4222-8222-222222222221', status: 'completed', completed_on: '2025-11-01', expires_on: '2026-11-01', due_on: null }),
+      assignmentRow({ id: 'a2222222-2222-4222-8222-222222222222', cycle: 2, reason: waivedReason, status: 'waived', due_on: '2026-11-01' }),
+    ]
+    const signoff = () => recordPracticalSignoff({ employeeId: SAM, courseId: PRACTICAL, tasks: ['change-keg', 'clean-coupler'], observedOn: TODAY })
+
+    seed({ training_assignments: prerequisiteCycles('redo') })
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.prerequisite_course_id = ONLINE
+    expect((await signoff()).error).toBe('This sign-off needs another course finished first.')
+    expect(mocks.signoff).not.toHaveBeenCalled()
+
+    seed({ training_assignments: prerequisiteCycles('refresher') })
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.prerequisite_course_id = ONLINE
+    mocks.signoff.mockResolvedValue({ documentId: 'doc-1', partyId: 'party-1', inPersonUrl: '/sign/in-person/abc', supervisedOnly: false })
+    expect((await signoff()).success).toBe(true)
+  })
+
+  it('refuses a sign-off on a course with a minimum age when the date of birth is missing, even with an item open', async () => {
+    seed({ training_assignments: [assignmentRow({ employee_id: ROBIN, course_id: PRACTICAL, reason: 'manual', due_on: null })] })
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.audience_age = 'over_16'
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = null
+    const writes = db.writes.length
+    expect(
+      (await recordPracticalSignoff({ employeeId: ROBIN, courseId: PRACTICAL, tasks: ['change-keg', 'clean-coupler'], observedOn: TODAY })).error
+    ).toBe(
+      'Changing a keg is only for people aged 16 or over, and Robin has no date of birth on their employee record. Add it there first. The sign-off was not recorded.'
+    )
+    expect(mocks.signoff).not.toHaveBeenCalled()
+    expect(db.writes.length).toBe(writes)
   })
 
   const BOTH = ['change-keg', 'clean-coupler']

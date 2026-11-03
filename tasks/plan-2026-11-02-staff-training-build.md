@@ -323,7 +323,9 @@ signing migrations; re-state the full list). Generator kinds need no `signing_te
 ### 2.3 `20261103090200_training_permissions.sql` (applied AFTER the code deploy)
 
 Insert permission rows for module `training`, actions `view`, `manage`, `publish`, and grant all
-three to the `super_admin` and `manager` roles, in the same shape as the most recent migration that
+three to `super_admin` and `view` and `manage` only to `manager` (owner decision, 3 November 2026:
+only super_admin accounts publish, four of them on that date; super_admin is allowed every
+permission before any row is read), in the same shape as the most recent migration that
 added a module (search for `'marketing'` or `'checklists'` permission inserts). Do not grant to
 `staff`, `foh_staff` or `portal_shift_manager`.
 

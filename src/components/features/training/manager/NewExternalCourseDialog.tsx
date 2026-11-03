@@ -130,7 +130,7 @@ export function NewExternalCourseDialog({ open, onClose, onCreated }: NewExterna
         </Fieldset>
         <Checkbox
           label="Required"
-          description="Show it as outstanding for everyone it applies to. Leave unticked to record it by hand only."
+          description="Show it as outstanding for everyone it applies to while automatic assignment is on. Leave unticked to record it by hand only."
           checked={required}
           onChange={setRequired}
         />
