@@ -251,6 +251,97 @@ describe('/api/cron/rota-shift-acceptance', () => {
     expect(rotaPublishedUpdate).not.toHaveBeenCalled()
   })
 
+  // Someone on notice counts as gone after their last working day, before the nightly job marks
+  // them Former. The cron runs at 01:00 London on 1 June here.
+  describe('someone on notice', () => {
+    const shifts = [
+      {
+        id: 'shift-warning',
+        week_id: 'week-1',
+        employee_id: 'employee-leaving',
+        shift_date: '2026-06-16',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'bar',
+        name: 'Bar',
+        auto_accept_warning_sent_at: null,
+      },
+      {
+        id: 'shift-auto',
+        week_id: 'week-1',
+        employee_id: 'employee-leaving',
+        shift_date: '2026-06-14',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'kitchen',
+        name: 'Kitchen',
+        auto_accept_warning_sent_at: null,
+      },
+    ]
+
+    function setUp(lastWorkingDay: string) {
+      const rotaPublishedUpdate = vi.fn().mockReturnValue(makeEqUpdateSelect(3))
+      createAdminClientMock.mockReturnValue({
+        from: vi.fn((table: string) => {
+          if (table === 'rota_published_shifts') {
+            return {
+              select: vi.fn().mockReturnValue(thenableChain({ data: shifts, error: null })),
+              update: rotaPublishedUpdate,
+            }
+          }
+          if (table === 'employees') {
+            return {
+              select: vi.fn().mockReturnValue({
+                in: vi.fn().mockResolvedValue({
+                  data: [{
+                    employee_id: 'employee-leaving',
+                    first_name: 'Sam',
+                    last_name: 'Taylor',
+                    email_address: 'sam@example.com',
+                    status: 'Started Separation',
+                    employment_end_date: lastWorkingDay,
+                  }],
+                  error: null,
+                }),
+              }),
+            }
+          }
+          if (table === 'rota_shifts') {
+            return { update: vi.fn().mockReturnValue(makeEqUpdateSelect(2, { data: { id: 'shift-auto' }, error: null })) }
+          }
+          if (table === 'audit_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) }
+          if (table === 'rota_email_log') return makeWarningLog()
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      })
+      return rotaPublishedUpdate
+    }
+
+    it('neither emails nor auto-accepts once their last working day has passed', async () => {
+      const rotaPublishedUpdate = setUp('2026-05-31')
+
+      const payload = await (await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))).json()
+
+      expect(payload.skippedFormerEmployee).toBe(2)
+      expect(payload.warningEmailsSent).toBe(0)
+      expect(payload.autoAccepted).toBe(0)
+      expect(sendEmailMock).not.toHaveBeenCalled()
+      expect(rotaPublishedUpdate).not.toHaveBeenCalled()
+    })
+
+    it('still handles a shift on their last working day but skips one after it', async () => {
+      setUp('2026-06-14')
+
+      const payload = await (await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))).json()
+
+      expect(payload.skippedFormerEmployee).toBe(0)
+      expect(payload.skippedAfterLastWorkingDay).toBe(1)
+      expect(payload.warningEmailsSent).toBe(0)
+      expect(sendEmailMock).not.toHaveBeenCalled()
+      expect(payload.autoAccepted).toBe(1)
+    })
+  })
+
   it('does not record a phantom auto-accept when the guarded update affects no rows', async () => {
     const shifts = [
       {

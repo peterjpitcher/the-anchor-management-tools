@@ -39,11 +39,11 @@ Why: the nightly `employee-separations` job only marks someone Former the mornin
 | `src/lib/signing/subject-state.ts` | "They no longer work here" after the last day |
 | `src/app/actions/rota-reassign.ts` (`approveOpenShiftVolunteer`) | Manager approval refused for a shift after the last day |
 | `src/app/api/rota/open-shift-requests/approve/route.ts` | Email-link approval refused (redirects as `stale`) |
+| `src/app/api/cron/rota-shift-acceptance/route.ts` | Neither emails nor auto-accepts for a leaver (the Former check from `main` widened to `hasLeft`), and skips any shift after the last working day of someone still on notice |
 | `src/lib/employees/display-name.ts` | Comment only, pointing at the helper |
 
 ## Paths deliberately left
 
-- `rota-shift-acceptance` cron: clashes with the Former check on `fix/separation-leavers`. Swap it to `hasLeft` once that merges.
 - `clockOut`: stays status-only so a shift on the last day that runs past midnight can still clock out.
 - Documents portal pages: keep their generic message.
 - Employees list invite button and employee detail page `isFormer` display: UI only, the server refuses.
