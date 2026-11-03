@@ -24,7 +24,7 @@ import { SIGNING_OPEN_STATUSES, type SigningDocumentStatus, type SigningKind } f
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { computeAgeAt } from '@/lib/worker-agreement'
-import { displayNameWithLegal } from '@/lib/employees/display-name'
+import { displayNameWithLegal, SELECTABLE_EMPLOYEE_STATUSES } from '@/lib/employees/display-name'
 
 /**
  * Sending staff documents for signature: the worker agreement, changes to terms, consent forms
@@ -456,17 +456,18 @@ function policySeriesKey(slug: string): string {
   return `policy:${slug}`
 }
 
-async function loadActiveStaff(): Promise<StaffEmployee[]> {
+/** Everyone still working here. Staff working their notice are included: they work shifts until they leave. */
+async function loadCurrentStaff(): Promise<StaffEmployee[]> {
   const admin = createAdminClient()
   const staff = await fetchAllRows<StaffEmployee>(
     (from, to) =>
       admin
         .from('employees')
         .select(STAFF_EMPLOYEE_COLUMNS)
-        .eq('status', 'Active')
+        .in('status', [...SELECTABLE_EMPLOYEE_STATUSES])
         .order('employee_id', { ascending: true })
         .range(from, to),
-    { label: 'active staff for policies' }
+    { label: 'current staff for policies' }
   )
   // In the order of the names on screen.
   return staff.sort((left, right) => staffScreenName(left).localeCompare(staffScreenName(right)))
@@ -517,7 +518,7 @@ export async function getPolicyOverview(slug: string): Promise<ActionResult<Poli
     const template = await getSigningTemplateBySlug(slug)
     if (!template || template.kind !== 'policy_acknowledgement') return { error: 'Policy not found.' }
 
-    const staff = await loadActiveStaff()
+    const staff = await loadCurrentStaff()
     const admin = createAdminClient()
     type PolicyDocument = {
       id: string

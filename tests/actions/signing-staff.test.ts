@@ -196,8 +196,10 @@ describe('sending a template document to one employee', () => {
 describe('policies', () => {
   const template = { id: 't1', kind: 'policy_acknowledgement', slug: 'allergens', title: 'Allergens policy', version: 3, is_active: true }
 
-  it('shows where each active member of staff is with the current version', async () => {
+  it('shows where each current member of staff is with the current version', async () => {
     mocks.template.mockResolvedValue(template)
+    // Working their notice: still on the rota until they leave, so still asked to confirm.
+    db.rows('employees').push({ id: 'e', employee_id: '55555555-5555-4555-8555-555555555555', first_name: 'Laura', last_name: 'Leaving', email_address: 'laura@example.com', date_of_birth: '1995-03-01', status: 'Started Separation' })
     const row = (id: string, subject: string, status: string, version: number, templateVersion: number) => ({
       id,
       subject_type: 'employee',
@@ -223,7 +225,7 @@ describe('policies', () => {
     const result = await getPolicyOverview('allergens')
     expect(result.data).toMatchObject({ slug: 'allergens', title: 'Allergens policy', version: 3, isActive: true })
     const states = Object.fromEntries((result.data?.staff ?? []).map((person) => [person.name, person.state]))
-    expect(states).toEqual({ 'Sam Example': 'confirmed', 'Robin Young': 'waiting', 'Alex Unknown': 'not_sent' })
+    expect(states).toEqual({ 'Sam Example': 'confirmed', 'Robin Young': 'waiting', 'Alex Unknown': 'not_sent', 'Laura Leaving': 'not_sent' })
     // Someone who has left is not on the roll call.
     expect(states).not.toHaveProperty('Former Person')
   })
