@@ -92,8 +92,14 @@ export default function EmployeeHolidaysTab({
   }
 
   // Years offered in the selector come from the dated rows, so a request that began in the
-  // previous year still surfaces the year its days actually land in.
-  const availableYears = [...new Set([...daysByYear.keys(), currentYear])].sort((a, b) => b - a);
+  // previous year still surfaces the year its days actually land in. The year of a leaver's last
+  // working day is always offered: it holds their final-pay figure, even when they took no leave.
+  const lastDayYear = employmentEndDate
+    ? getHolidayYear(employmentEndDate, holidayYearStartMonth, holidayYearStartDay)
+    : null;
+  const availableYears = [
+    ...new Set([...daysByYear.keys(), currentYear, ...(lastDayYear === null ? [] : [lastDayYear])]),
+  ].sort((a, b) => b - a);
 
   const selectedDays = daysByYear.get(selectedYear) ?? [];
   const approvedDays = countAllowanceDays(selectedDays.filter(d => d.status === 'approved'));
