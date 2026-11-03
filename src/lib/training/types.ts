@@ -118,6 +118,7 @@ export const TRAINING_EVENT_TYPES = [
   'escalated',
   'external_recorded',
   'signoff_recorded',
+  'in_person_recorded',
   'groups_changed',
   'redo_requested',
 ] as const
@@ -393,6 +394,9 @@ export interface TrainingAssignmentRow {
   signed_off_by_name: string | null
   signed_off_on: string | null
   supervised_only: boolean
+  trained_in_person: boolean
+  in_person_recorded_by: string | null
+  in_person_recorded_by_name: string | null
   due_change_reason: string | null
   created_at: string
   updated_at: string
@@ -547,6 +551,10 @@ export interface TrainingAssignment {
   signedOffByName: string | null
   signedOffOn: string | null
   supervisedOnly: boolean
+  /** Recorded by a manager as trained in person before; nobody signed anything. */
+  trainedInPerson: boolean
+  inPersonRecordedBy: string | null
+  inPersonRecordedByName: string | null
   dueChangeReason: string | null
   createdAt: string
   updatedAt: string

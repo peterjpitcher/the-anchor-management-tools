@@ -19623,6 +19623,8 @@ export type Database = {
           external_issuer: string | null
           external_reference: string | null
           id: string
+          in_person_recorded_by: string | null
+          in_person_recorded_by_name: string | null
           last_section_passed_at: string | null
           locked_at: string | null
           locked_section: string | null
@@ -19636,6 +19638,7 @@ export type Database = {
           started_at: string | null
           status: string
           supervised_only: boolean
+          trained_in_person: boolean
           updated_at: string
           version_id: string | null
           waive_reason: string | null
@@ -19664,6 +19667,8 @@ export type Database = {
           external_issuer?: string | null
           external_reference?: string | null
           id?: string
+          in_person_recorded_by?: string | null
+          in_person_recorded_by_name?: string | null
           last_section_passed_at?: string | null
           locked_at?: string | null
           locked_section?: string | null
@@ -19677,6 +19682,7 @@ export type Database = {
           started_at?: string | null
           status: string
           supervised_only?: boolean
+          trained_in_person?: boolean
           updated_at?: string
           version_id?: string | null
           waive_reason?: string | null
@@ -19705,6 +19711,8 @@ export type Database = {
           external_issuer?: string | null
           external_reference?: string | null
           id?: string
+          in_person_recorded_by?: string | null
+          in_person_recorded_by_name?: string | null
           last_section_passed_at?: string | null
           locked_at?: string | null
           locked_section?: string | null
@@ -19718,6 +19726,7 @@ export type Database = {
           started_at?: string | null
           status?: string
           supervised_only?: boolean
+          trained_in_person?: boolean
           updated_at?: string
           version_id?: string | null
           waive_reason?: string | null

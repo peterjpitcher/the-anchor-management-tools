@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from 'react'
 import { Alert, Button, Checkbox, Fieldset, FileButton, Input, Modal, PageLoading, Select, Textarea, toast } from '@/ds'
-import { recordExternalQualification, recordPracticalSignoff } from '@/app/actions/training'
+import { recordExternalQualification, recordPracticalSignoff, recordTrainedInPerson } from '@/app/actions/training'
 import { listTrainingCourses } from '@/app/actions/training-courses'
 import { TRAINING_SUPERVISED_ONLY_BADGE } from '@/lib/training/labels'
 import type { CourseRef, EmployeeAssignmentItem } from '@/lib/training/types'
@@ -316,6 +316,175 @@ export function ExternalDialog({ open, employeeId, employeeName, course, today, 
             </FileButton>
             <span className="break-all text-sm text-text-muted">{file ? file.name : 'PDF, JPG or PNG, up to 4 MB'}</span>
           </div>
+        </form>
+      )}
+    </Modal>
+  )
+}
+
+interface InPersonDialogProps {
+  open: boolean
+  employeeId: string
+  employeeName: string
+  today: string
+  onClose: () => void
+  /** Everything ticked was recorded: close and reload. */
+  onDone: () => void
+  /** Some were recorded and some were not: reload, and the dialog stays open to say why. */
+  onChanged: () => void
+}
+
+type InPersonCourse = CourseRef & { kind: 'online' | 'practical' }
+
+const IN_PERSON_FORM_ID = 'training-in-person-form'
+
+/**
+ * Record training they have already had in person, before the app (owner decision, 3 November
+ * 2026). Tick the courses and the day; each one is recorded as done on that day with your name,
+ * and courses that need another first are recorded after it. Nobody signs and nothing is sent.
+ */
+export function InPersonDialog({ open, employeeId, employeeName, today, onClose, onDone, onChanged }: InPersonDialogProps): React.JSX.Element {
+  const [pending, startTransition] = useTransition()
+  const [choices, setChoices] = useState<InPersonCourse[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [ticked, setTicked] = useState<Set<string>>(new Set())
+  const [trainedOn, setTrainedOn] = useState(today)
+  const [note, setNote] = useState('')
+  const [notRecorded, setNotRecorded] = useState<Array<{ courseId: string; title: string; reason: string }>>([])
+  const [error, setError] = useFormError()
+
+  useEffect(() => {
+    if (!open) return
+    setTicked(new Set())
+    setTrainedOn(today)
+    setNote('')
+    setNotRecorded([])
+    setError(null)
+  }, [open, today])
+
+  useEffect(() => {
+    if (!open || choices) return
+    let cancelled = false
+    void runTrainingAction(() => listTrainingCourses(), 'The courses could not be loaded.').then((result) => {
+      if (cancelled) return
+      if (result.error || !result.data) {
+        setLoadError(result.error ?? 'The courses could not be loaded.')
+        return
+      }
+      setLoadError(null)
+      setChoices(
+        result.data.flatMap((entry) =>
+          entry.status === 'live' && (entry.kind === 'online' || entry.kind === 'practical')
+            ? [{ id: entry.id, slug: entry.slug, title: entry.title, kind: entry.kind }]
+            : [],
+        ),
+      )
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [open, choices])
+
+  const close = (): void => {
+    if (!pending) onClose()
+  }
+
+  const submit = (event: React.FormEvent<HTMLFormElement>): void => {
+    event.preventDefault()
+    if (ticked.size === 0) return setError('Tick at least one course.')
+    if (!trainedOn || trainedOn > today) return setError('Choose the day they were trained, today or earlier.')
+    setError(null)
+    const input = { employeeId, courseIds: [...ticked], trainedOn, note: note.trim() || undefined }
+    startTransition(async () => {
+      const result = await runTrainingAction(() => recordTrainedInPerson(input), 'The training could not be recorded. Try again.')
+      const recorded = result.data?.recorded ?? []
+      const skipped = result.data?.skipped ?? []
+      if (recorded.length > 0) {
+        toast.success(recorded.length === 1 ? '1 course recorded as trained in person.' : `${recorded.length} courses recorded as trained in person.`)
+      }
+      if (!result.error && skipped.length === 0) {
+        onDone()
+        return
+      }
+      setError(result.error ?? null)
+      setNotRecorded(skipped)
+      setTicked(new Set([...ticked].filter((courseId) => !recorded.includes(courseId))))
+      if (recorded.length > 0) onChanged()
+    })
+  }
+
+  const tickedCount = choices ? choices.filter((course) => ticked.has(course.id)).length : 0
+  return (
+    <Modal
+      open={open}
+      onClose={close}
+      title="Record Trained In Person"
+      description={`Training ${employeeName} has already had in person. Each course you tick is recorded as done on the day you choose, with your name. They do not sign anything and nothing is sent to them.`}
+      width="lg"
+      footer={
+        <>
+          <Button type="button" variant="secondary" onClick={close} disabled={pending}>
+            {notRecorded.length > 0 ? 'Close' : 'Cancel'}
+          </Button>
+          <Button type="submit" form={IN_PERSON_FORM_ID} variant="primary" loading={pending} disabled={!choices || tickedCount === 0}>
+            Record Trained In Person
+          </Button>
+        </>
+      }
+    >
+      {loadError ? (
+        <Alert tone="danger" title="Could not load the courses">
+          {loadError}
+        </Alert>
+      ) : !choices ? (
+        <PageLoading inline />
+      ) : choices.length === 0 ? (
+        <Alert tone="info">There are no live online or practical courses yet. Publish one on Employees, Training, Courses.</Alert>
+      ) : (
+        <form id={IN_PERSON_FORM_ID} onSubmit={submit} className="space-y-4">
+          <FormError error={error} />
+          {notRecorded.length > 0 ? (
+            <Alert tone="warning" title="Not recorded">
+              <ul className="list-disc space-y-1 pl-5">
+                {notRecorded.map((entry) => (
+                  <li key={entry.courseId}>{entry.reason}</li>
+                ))}
+              </ul>
+            </Alert>
+          ) : null}
+          <Alert tone="info" title="Use the last day they were trained">
+            Refreshers are worked out from this day. A course that needs another one first (Team training needs Essentials) is
+            recorded after it, so you can tick them together.
+          </Alert>
+          <Fieldset legend="Courses" hint={`${tickedCount} ticked`} required>
+            <div className="space-y-1">
+              {choices.map((course) => (
+                <Checkbox
+                  key={course.id}
+                  label={`${course.title} (${course.kind})`}
+                  checked={ticked.has(course.id)}
+                  onChange={(checked) =>
+                    setTicked((current) => {
+                      const next = new Set(current)
+                      if (checked) next.add(course.id)
+                      else next.delete(course.id)
+                      return next
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </Fieldset>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Input type="date" label="Trained On" value={trainedOn} max={today} onChange={(event) => setTrainedOn(event.target.value)} />
+          </div>
+          <Textarea
+            label="Note"
+            hint="Optional. Who trained them, or where the old record is kept. Saved in the training log."
+            value={note}
+            maxLength={500}
+            onChange={(event) => setNote(event.target.value)}
+          />
         </form>
       )}
     </Modal>

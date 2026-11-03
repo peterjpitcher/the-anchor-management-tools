@@ -43,6 +43,7 @@ import {
   prepareConfirmationAgain,
   recordExternalQualification,
   recordPracticalSignoff,
+  recordTrainedInPerson,
   resumeTraining,
   setTrainingAdjustmentNote,
   setTrainingGroups,
@@ -139,6 +140,9 @@ function assignmentRow(overrides: Record<string, unknown> = {}): Record<string, 
     signed_off_by_name: null,
     signed_off_on: null,
     supervised_only: false,
+    trained_in_person: false,
+    in_person_recorded_by: null,
+    in_person_recorded_by_name: null,
     due_change_reason: null,
     created_at: '2026-11-01T09:00:00.000Z',
     updated_at: '2026-11-01T09:00:00.000Z',
@@ -251,6 +255,7 @@ describe('permissions', () => {
       () => recordPracticalSignoff({ employeeId: SAM, courseId: PRACTICAL, tasks: ['change-keg'], observedOn: TODAY }),
     ],
     ['recordExternalQualification', () => recordExternalQualification(new FormData())],
+    ['recordTrainedInPerson', () => recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: TODAY })],
   ]
   const viewCalls: Array<[string, () => Promise<unknown>]> = [
     ['getTrainingMatrix', () => getTrainingMatrix()],
@@ -988,6 +993,183 @@ describe('recordExternalQualification', () => {
     expect((await recordExternalQualification(form({ expiresOn: '2026-10-01' }))).error).toBe('The expiry date must be after the issue date.')
     expect((await recordExternalQualification(form({ courseId: ONLINE }))).error).toBe('Allergen awareness is not an external qualification.')
     expect(mocks.upload).not.toHaveBeenCalled()
+  })
+})
+
+describe('recordTrainedInPerson', () => {
+  const DOC = 'e1111111-1111-4111-8111-111111111111'
+
+  function practicalNeedsOnline(): void {
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.prerequisite_course_id = ONLINE
+  }
+
+  it('records each course as done on the day trained, the one needed first before the other, and sends nothing', async () => {
+    practicalNeedsOnline()
+    const result = await recordTrainedInPerson({
+      employeeId: SAM,
+      courseIds: [PRACTICAL, ONLINE],
+      trainedOn: '2026-03-01',
+      note: 'Trained by Billy when they started',
+    })
+
+    expect(result).toEqual({ success: true, data: { recorded: [ONLINE, PRACTICAL], skipped: [] } })
+    expect(assignments().map((row) => row.course_id)).toEqual([ONLINE, PRACTICAL])
+    for (const row of assignments()) {
+      expect(row).toMatchObject({
+        employee_id: SAM,
+        cycle: 1,
+        reason: 'manual',
+        status: 'completed',
+        assigned_on: '2026-03-01',
+        due_on: null,
+        completed_on: '2026-03-01',
+        expires_on: '2027-03-01',
+        window_opens_on: '2027-01-30',
+        trained_in_person: true,
+        in_person_recorded_by: STAFF.id,
+        in_person_recorded_by_name: 'Billy Summers',
+        signing_document_id: null,
+        supervised_only: false,
+      })
+    }
+    expect(events('in_person_recorded')).toEqual([
+      expect.objectContaining({ course_id: ONLINE, note: 'Trained by Billy when they started', actor_name: 'Billy Summers' }),
+      expect.objectContaining({ course_id: PRACTICAL, meta: expect.objectContaining({ trainedOn: '2026-03-01', expiresOn: '2027-03-01' }) }),
+    ])
+    expect(mocks.audit).toHaveBeenCalledTimes(2)
+    expect(mocks.audit).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'record_in_person', resource_type: 'training_assignment' }))
+    // Nothing goes through signing, so nothing can be sent to them.
+    expect(mocks.prepare).not.toHaveBeenCalled()
+    expect(mocks.signoff).not.toHaveBeenCalled()
+  })
+
+  it('completes an open item instead of adding one, clearing its lock', async () => {
+    seed({
+      training_assignments: [assignmentRow({ status: 'locked', locked_at: '2026-11-05T10:00:00.000Z', locked_section: 'fire' })],
+    })
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: '2026-11-09' })
+    expect(result).toEqual({ success: true, data: { recorded: [ONLINE], skipped: [] } })
+    expect(assignments()).toHaveLength(1)
+    expect(assignments()[0]).toMatchObject({
+      id: A1,
+      status: 'completed',
+      completed_on: '2026-11-09',
+      expires_on: '2027-11-09',
+      locked_at: null,
+      locked_section: null,
+      trained_in_person: true,
+    })
+    expect(events('in_person_recorded')[0]).toMatchObject({ assignment_id: A1, meta: expect.objectContaining({ previousStatus: 'locked' }) })
+  })
+
+  it('records the rest and says why for each course it leaves alone', async () => {
+    seed({
+      training_assignments: [
+        // Done and in date, refresher window not open yet.
+        assignmentRow({ course_id: ADULT_ONLY, status: 'completed', completed_on: '2026-10-01', expires_on: '2027-10-01', window_opens_on: '2027-09-01', due_on: null }),
+      ],
+    })
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [ADULT_ONLY, ONLINE], trainedOn: '2026-11-01' })
+    expect(result).toEqual({
+      success: true,
+      data: {
+        recorded: [ONLINE],
+        skipped: [{ courseId: ADULT_ONLY, title: 'Age verification', reason: 'Age verification is already done and in date.' }],
+      },
+    })
+    expect(assignments()).toHaveLength(2)
+    expect(events('in_person_recorded')).toHaveLength(1)
+  })
+
+  it('leaves a course alone until the one it needs first is done and in date', async () => {
+    seed({
+      training_assignments: [
+        assignmentRow({ status: 'completed', completed_on: '2025-01-01', expires_on: '2026-01-01', window_opens_on: '2025-12-02', due_on: null }),
+      ],
+    })
+    practicalNeedsOnline()
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [PRACTICAL], trainedOn: '2026-11-01' })
+    expect(result.data?.skipped).toEqual([
+      { courseId: PRACTICAL, title: 'Changing a keg', reason: 'Changing a keg needs Allergen awareness done and in date first.' },
+    ])
+    expect(assignments()).toHaveLength(1)
+  })
+
+  it('records a refresher given in person once the refresher window has opened', async () => {
+    seed({
+      training_assignments: [
+        assignmentRow({ status: 'completed', completed_on: '2025-11-20', expires_on: '2026-11-20', window_opens_on: '2026-10-21', due_on: null }),
+      ],
+    })
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: TODAY })
+    expect(result.success).toBe(true)
+    expect(assignments().find((row) => row.cycle === 2)).toMatchObject({ status: 'completed', completed_on: TODAY, expires_on: '2027-11-10' })
+  })
+
+  it('refuses a course with a minimum age for someone too young, today or on the day trained', async () => {
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.audience_age = 'over_16'
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2011-01-01'
+    expect((await recordTrainedInPerson({ employeeId: ROBIN, courseIds: [PRACTICAL], trainedOn: TODAY })).data?.skipped).toEqual([
+      { courseId: PRACTICAL, title: 'Changing a keg', reason: 'Changing a keg is only for people aged 16 or over, and Robin is 15.' },
+    ])
+
+    // 16 on 5 November 2026: trained on 1 November (aged 15), recorded on 10 November (aged 16).
+    db.rows('employees').find((row) => row.employee_id === ROBIN)!.date_of_birth = '2010-11-05'
+    expect((await recordTrainedInPerson({ employeeId: ROBIN, courseIds: [PRACTICAL], trainedOn: '2026-11-01' })).data?.skipped).toEqual([
+      {
+        courseId: PRACTICAL,
+        title: 'Changing a keg',
+        reason: 'Changing a keg is only for people aged 16 or over, and Robin was younger on the day they were trained.',
+      },
+    ])
+    expect(assignments()).toEqual([])
+  })
+
+  it('records an under-18 as supervised only on a course that says so', async () => {
+    db.rows('training_courses').find((row) => row.id === PRACTICAL)!.supervised_only_under_18 = true
+    const result = await recordTrainedInPerson({ employeeId: ROBIN, courseIds: [PRACTICAL], trainedOn: TODAY })
+    expect(result.success).toBe(true)
+    expect(assignments()[0]).toMatchObject({ course_id: PRACTICAL, status: 'completed', supervised_only: true })
+  })
+
+  it('leaves an item alone while it is waiting for them to confirm it', async () => {
+    seed({
+      training_assignments: [assignmentRow({ status: 'awaiting_confirmation', signing_document_id: DOC, due_on: null })],
+      signing_documents: [{ id: DOC, kind: 'training_certificate', status: 'sent', expires_at: '2026-12-01T12:00:00.000Z' }],
+    })
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: TODAY })
+    expect(result.data?.skipped).toEqual([{ courseId: ONLINE, title: 'Allergen awareness', reason: 'Allergen awareness is waiting for Sam to confirm it.' }])
+    expect(assignments()[0]).toMatchObject({ status: 'awaiting_confirmation', signing_document_id: DOC })
+  })
+
+  it('refuses a future day, a day before they were born, an external qualification and someone who has left', async () => {
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: '2026-11-11' })).error).toBe(
+      'The day they were trained cannot be in the future.'
+    )
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: '1989-01-01' })).error).toBe(
+      'The day they were trained is before their date of birth. Check the date.'
+    )
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE, EXTERNAL], trainedOn: TODAY })).error).toBe(
+      'Level 2 Food Hygiene is an external qualification. Record it with its certificate instead.'
+    )
+    expect((await recordTrainedInPerson({ employeeId: FORMER, courseIds: [ONLINE], trainedOn: TODAY })).error).toBe(
+      'Training can only be changed for current staff, so nothing was changed.'
+    )
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [DRAFT], trainedOn: TODAY })).error).toBe(
+      'Not ready yet is not live, so it cannot be used yet.'
+    )
+    expect((await recordTrainedInPerson({ employeeId: SAM, courseIds: [], trainedOn: TODAY })).error).toBe('Tick at least one course.')
+    expect(db.writes).toEqual([])
+  })
+
+  it('still reports a course recorded when its log line and audit row cannot be written', async () => {
+    db.failNext({ table: 'training_events', operation: 'insert', message: 'connection reset', times: 1 })
+    mocks.audit.mockRejectedValue(new Error('audit insert failed'))
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const result = await recordTrainedInPerson({ employeeId: SAM, courseIds: [ONLINE], trainedOn: TODAY })
+    spy.mockRestore()
+    expect(result).toEqual({ success: true, data: { recorded: [ONLINE], skipped: [] } })
+    expect(assignments()).toHaveLength(1)
   })
 })
 

@@ -290,6 +290,9 @@ export function mapAssignmentRow(row: TrainingAssignmentRow): TrainingAssignment
     signedOffByName: row.signed_off_by_name,
     signedOffOn: row.signed_off_on,
     supervisedOnly: row.supervised_only,
+    trainedInPerson: row.trained_in_person,
+    inPersonRecordedBy: row.in_person_recorded_by,
+    inPersonRecordedByName: row.in_person_recorded_by_name,
     dueChangeReason: row.due_change_reason,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -329,6 +332,9 @@ const ASSIGNMENT_COLUMNS: Record<keyof TrainingAssignmentPatch, keyof TrainingAs
   signedOffByName: 'signed_off_by_name',
   signedOffOn: 'signed_off_on',
   supervisedOnly: 'supervised_only',
+  trainedInPerson: 'trained_in_person',
+  inPersonRecordedBy: 'in_person_recorded_by',
+  inPersonRecordedByName: 'in_person_recorded_by_name',
   dueChangeReason: 'due_change_reason',
 }
 

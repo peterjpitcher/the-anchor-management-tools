@@ -92,7 +92,9 @@ Automatic assignment ships off (section 6), so publishing makes a course live an
 nobody: no new starter, existing member of staff, refresher or redo item is created, and the
 publish message says so. Most staff have already done this training, and the owner wants nothing
 automated going out to them yet (3 November 2026). A manager gives a course to someone by hand on
-their Training tab, or records a practical sign-off there.
+their Training tab, or records a practical sign-off there. Training people have already had in
+person is recorded with Record Trained In Person on their Training tab: tick the courses and the
+last day they were trained. Nothing is signed or sent, and refreshers are worked out from that day.
 
 Only once automatic assignment is switched on does the sync give every Active member of staff in a
 course's audience their courses, with people who started in the 14 days before that day having

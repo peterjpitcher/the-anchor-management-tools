@@ -114,6 +114,7 @@ export const TRAINING_EVENT_BADGE: Record<TrainingEventType, TrainingBadge> = {
   reminder_sent: { label: 'Reminder sent', tone: 'neutral' },
   escalated: { label: 'Manager told', tone: 'warning' },
   external_recorded: { label: 'External qualification recorded', tone: 'success' },
+  in_person_recorded: { label: 'Trained in person recorded', tone: 'success' },
   signoff_recorded: { label: 'Practical sign-off recorded', tone: 'success' },
   groups_changed: { label: 'Training groups changed', tone: 'neutral' },
   redo_requested: { label: 'Redo requested', tone: 'warning' },

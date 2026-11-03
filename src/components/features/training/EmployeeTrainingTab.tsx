@@ -29,7 +29,7 @@ import { InPersonLinkModal } from './manager/employee/InPersonLinkModal'
 import { ItemDialog, type ItemDialogKind } from './manager/employee/ItemDialogs'
 import type { ItemAction } from './manager/employee/item-actions'
 import { AdjustmentDialog, GroupsDialog, PauseDialog } from './manager/employee/PersonDialogs'
-import { ExternalDialog, SignoffDialog } from './manager/employee/RecordDialogs'
+import { ExternalDialog, InPersonDialog, SignoffDialog } from './manager/employee/RecordDialogs'
 import { runTrainingAction } from './manager/run-action'
 import { useTrainingPermissions } from './manager/use-training-permissions'
 
@@ -49,6 +49,7 @@ type OpenDialog =
   | { kind: 'resume' }
   | { kind: 'assign' }
   | { kind: 'external'; item: EmployeeAssignmentItem | null }
+  | { kind: 'in_person' }
   | { kind: 'signoff'; item: EmployeeAssignmentItem }
   | { kind: 'prepare'; item: EmployeeAssignmentItem }
   | { kind: ItemDialogKind; item: EmployeeAssignmentItem }
@@ -287,6 +288,9 @@ export function EmployeeTrainingTab({ employeeId }: EmployeeTrainingTabProps): R
                   Pause Training
                 </Button>
               )}
+              <Button type="button" size="sm" variant="secondary" onClick={() => setDialog({ kind: 'in_person' })}>
+                Record Trained In Person
+              </Button>
               <Button type="button" size="sm" variant="secondary" onClick={() => setDialog({ kind: 'external', item: null })}>
                 Record External Qualification
               </Button>
@@ -402,6 +406,15 @@ export function EmployeeTrainingTab({ employeeId }: EmployeeTrainingTabProps): R
             today={view.today}
             onClose={() => setDialog(null)}
             onDone={finished}
+          />
+          <InPersonDialog
+            open={dialog?.kind === 'in_person'}
+            employeeId={employeeId}
+            employeeName={name}
+            today={view.today}
+            onClose={() => setDialog(null)}
+            onDone={finished}
+            onChanged={() => void load()}
           />
           <ConfirmDialog
             open={dialog?.kind === 'resume'}
