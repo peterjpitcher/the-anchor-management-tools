@@ -24,6 +24,15 @@ export type MonitoredCronJob = {
   recording: MonitoredCronRecording
   /** What the job does, in the words the alert email uses. */
   label: string
+  /**
+   * When this job joined the watch list (ISO timestamp), for a job added after run recording
+   * began. Until the job records its first completed run, the check does not call it missing
+   * before this plus its allowed gap, so a job that has simply not been due yet since the deploy
+   * does not raise a false "no completed run" alert the next morning. Leave it out for a job that
+   * was watched from the start. Set it to the release day or later: one more than the allowed gap
+   * (about two days for a daily job) before the deploy brings the false alert back.
+   */
+  monitoredFrom?: string
 }
 
 export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
@@ -106,6 +115,27 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     maxDurationSeconds: 60,
     recording: 'every_run',
     label: 'Daily summary of website bookings turned away',
+  },
+  {
+    jobName: 'signing-reminders',
+    path: '/api/cron/signing-reminders',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 300,
+    recording: 'every_run',
+    label: 'Document signing reminders, expiry and finishing',
+    // First recorded in the staff training release. The date leaves a week for that release to
+    // go out; a job that never runs at all is then reported from two days after it.
+    monitoredFrom: '2026-11-09T00:00:00.000Z',
+  },
+  {
+    jobName: 'training-daily',
+    path: '/api/cron/training-daily',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 300,
+    recording: 'every_run',
+    label: 'Staff training sweep, certificates and reminders',
+    // New in the staff training release; see signing-reminders above.
+    monitoredFrom: '2026-11-09T00:00:00.000Z',
   },
 ]
 

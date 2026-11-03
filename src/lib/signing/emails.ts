@@ -2,8 +2,9 @@ import { GUEST, STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { findSigningKind } from './kinds'
 import { escapeHtml } from './template-render'
-import type { SigningBrand, SigningMode } from './types'
+import type { SigningBrand, SigningKind, SigningMode } from './types'
 
 /**
  * The four emails signing sends. Pure builders: they return subject, text and HTML and send
@@ -130,16 +131,21 @@ export function buildSigningCompletedEmail(input: {
   mode: SigningMode
   recipientName: string
   title: string
+  /** A kind with its own wording for this email (a training certificate) uses it. */
+  kind?: SigningKind
 }): SigningEmail {
   const voice = voiceFor(input.brand)
   const name = firstName(input.recipientName)
-  const done = input.mode === 'acknowledge'
-    ? `Thank you. "${input.title}" has been confirmed.`
-    : `Thank you. "${input.title}" has been signed by everyone who needed to sign it.`
-  const attached = 'Your copy is attached. Its last page is the signing record, which shows who signed and when. Please keep it somewhere safe.'
+  const own = findSigningKind(input.kind)?.completedEmail
+  const done = own
+    ? own.done(input.title)
+    : input.mode === 'acknowledge'
+      ? `Thank you. "${input.title}" has been confirmed.`
+      : `Thank you. "${input.title}" has been signed by everyone who needed to sign it.`
+  const attached = own?.attached ?? 'Your copy is attached. Its last page is the signing record, which shows who signed and when. Please keep it somewhere safe.'
 
   return {
-    subject: input.mode === 'acknowledge' ? `Confirmed: ${input.title}` : `Signed: ${input.title}`,
+    subject: own ? own.subject(input.title) : input.mode === 'acknowledge' ? `Confirmed: ${input.title}` : `Signed: ${input.title}`,
     text: [`Hi ${name},`, '', done, '', attached, '', voice.contactLine, '', voice.from].join('\n'),
     html: layout(voice, [`Hi ${escapeHtml(name)},`, escapeHtml(done), escapeHtml(attached)]),
   }

@@ -345,6 +345,16 @@ const noteDeductionAgreed: SigningCompletionHook = async (document) => {
   }
 }
 
+/**
+ * A confirmed training document completes its training item (src/lib/training/signing.ts). Loaded
+ * when it runs, because the training code itself sends through the signing service, which loads
+ * this file: a static import would make the three load each other in a circle.
+ */
+const completeTraining: SigningCompletionHook = async (document) => {
+  const { onTrainingSigningCompleted } = await import('@/lib/training/signing')
+  await onTrainingSigningCompleted(document.id)
+}
+
 export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook> = {
   employment_agreement: tickAgreementAccepted,
   terms_variation: recordOnly,
@@ -359,8 +369,32 @@ export const SIGNING_COMPLETION_HOOKS: Record<SigningKind, SigningCompletionHook
   client_agreement: recordOnly,
   supplier_confirmation: recordOnly,
   deposit_deduction_agreement: noteDeductionAgreed,
+  training_completion: completeTraining,
+  training_signoff: completeTraining,
 }
 
 export async function runCompletionHook(document: SigningDocumentRow, parties: SigningPartyRow[]): Promise<void> {
   await SIGNING_COMPLETION_HOOKS[document.kind](document, parties)
+}
+
+/**
+ * What happens to the record when a signer declines. Most kinds need nothing: the sender is told,
+ * and the request is over. A training item is marked Declined, so its chasing stops and a manager
+ * can talk it through. Like a completion hook, each must be safe to run twice: the training daily
+ * job runs it again for a declined document its item has not caught up with.
+ */
+export type SigningDeclineHook = (document: SigningDocumentRow) => Promise<void>
+
+const declineTraining: SigningDeclineHook = async (document) => {
+  const { onTrainingSigningDeclined } = await import('@/lib/training/signing')
+  await onTrainingSigningDeclined(document.id)
+}
+
+export const SIGNING_DECLINE_HOOKS: Partial<Record<SigningKind, SigningDeclineHook>> = {
+  training_completion: declineTraining,
+  training_signoff: declineTraining,
+}
+
+export async function runDeclineHook(document: SigningDocumentRow): Promise<void> {
+  await SIGNING_DECLINE_HOOKS[document.kind]?.(document)
 }

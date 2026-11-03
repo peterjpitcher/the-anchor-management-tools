@@ -117,8 +117,8 @@ afterEach(() => {
 })
 
 describe('the kind', () => {
-  it('is the thirteenth kind and the ninth with wording in a template', () => {
-    expect(SIGNING_KINDS).toHaveLength(13)
+  it('is one of fifteen kinds and the ninth with wording in a template', () => {
+    expect(SIGNING_KINDS).toHaveLength(15)
     expect(SIGNING_KINDS).toContain('deposit_deduction_agreement')
     expect(SIGNING_TEMPLATE_KINDS).toHaveLength(9)
     expect(SIGNING_TEMPLATE_KINDS).toContain('deposit_deduction_agreement')

@@ -253,7 +253,8 @@ describe('EmployeeService delete safeguards', () => {
     ]
 
     const mockFrom = vi.fn((table: string) => {
-      if (blockerTables.includes(table)) {
+      // The training pre-check counts the same way: no training records here either.
+      if (blockerTables.includes(table) || table.startsWith('training_')) {
         return {
           select: vi.fn().mockReturnValue({
             eq: vi.fn().mockResolvedValue({ count: 0, error: null }),
