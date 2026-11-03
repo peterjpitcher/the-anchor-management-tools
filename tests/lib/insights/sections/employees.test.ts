@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest'
-import { buildEmployeesSection, employeesSection } from '@/lib/insights/sections/employees'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import {
+  buildEmployeesSection as buildSection,
+  employeesSection,
+  readMatrixCompletion,
+  type CourseCompletion,
+} from '@/lib/insights/sections/employees'
+import type { SectionContext } from '@/lib/insights/types'
+import type { TrainingMatrix } from '@/lib/training/types'
+import { TrainingService } from '@/services/training'
 import type { InsightSignal, SectionBuildResult } from '@/lib/insights/types'
 import { FakeDb } from '../helpers/fake-db'
 import { makeContext, TEST_APP_URL } from '../helpers/context'
@@ -19,6 +27,14 @@ interface PersonFixture {
 
 let sequence = 0
 
+/**
+ * Completion counts come from the Training matrix (TrainingService.getMatrix), which reads with
+ * its own client, so every build here is given them; nothing reaches a real database.
+ */
+function buildEmployeesSection(ctx: SectionContext, completion: CourseCompletion[] = []): Promise<SectionBuildResult> {
+  return buildSection(ctx, async () => completion)
+}
+
 function employee(id: string, overrides: Row = {}): Row {
   return {
     employee_id: id,
@@ -34,13 +50,14 @@ function employee(id: string, overrides: Row = {}): Row {
   }
 }
 
-function dbFor(people: PersonFixture[]): FakeDb {
+function dbFor(people: PersonFixture[], extra: Record<string, Row[]> = {}): FakeDb {
   const tables: Record<string, Row[]> = {
     employees: [],
     employee_right_to_work: [],
     employee_emergency_contacts: [],
     employee_financial_details: [],
     employee_invite_tokens: [],
+    ...extra,
   }
   for (const person of people) {
     const id = String(person.employee.employee_id)
@@ -112,7 +129,7 @@ describe('employees section', () => {
     expect(metric(result, 'Current staff')).toBe('2')
     expect(metric(result, 'Staff with something missing')).toBe('0')
     expect(metric(result, 'No right-to-work record')).toBe('0')
-    expect(result.notes).toContain('Not tracked in the app: training and licence expiry, contract documents.')
+    expect(result.notes).toContain('Not tracked in the app: licence expiry, contract documents.')
     expect(result.notes).toContain('Right-to-work documents without an expiry date are not checked for expiry.')
     // No period comparison exists here, so there is no "not enough history" state to show.
     expect(result.notes.join(' ')).not.toMatch(/history/i)
@@ -442,7 +459,7 @@ describe('employees section', () => {
     await expect(buildEmployeesSection(makeContext(db))).rejects.toThrow(/insights right to work failed/)
   })
 
-  it('never asks for more than the five tables it needs', async () => {
+  it('never asks for more than the nine tables it needs', async () => {
     const db = dbFor([
       { employee: employee('a') },
       { employee: employee('new', { status: 'Onboarding', onboarding_completed_at: null, employment_start_date: '2026-09-01' }) },
@@ -454,6 +471,10 @@ describe('employees section', () => {
       'employee_emergency_contacts',
       'employee_financial_details',
       'employee_invite_tokens',
+      'training_courses',
+      'training_assignments',
+      'training_profiles',
+      'training_reminders',
     ]))
     expect(db.calls.every((call) => call.kind === 'select')).toBe(true)
   })
@@ -462,5 +483,274 @@ describe('employees section', () => {
     const db = dbFor([{ employee: employee('a') }])
     await buildEmployeesSection(makeContext(db))
     expect(db.calls.map((call) => call.table)).not.toContain('employee_invite_tokens')
+  })
+})
+
+// Staff training checks (staff training spec 8.3). Today is Friday 25 September 2026.
+describe('employees section: staff training', () => {
+  const COURSES: Row[] = [
+    { id: 'ess', title: 'Essentials', kind: 'online', is_essentials: true, status: 'live', display_order: 1 },
+    { id: 'food', title: 'Food Safety', kind: 'online', is_essentials: false, status: 'live', display_order: 2 },
+    { id: 'ext', title: 'Personal Licence', kind: 'external', is_essentials: false, status: 'live', display_order: 3 },
+    { id: 'old', title: 'Retired Course', kind: 'online', is_essentials: false, status: 'retired', display_order: 4 },
+  ]
+  let cycleSequence = 0
+
+  function cycle(employeeId: string, courseId: string, overrides: Row = {}): Row {
+    cycleSequence += 1
+    return {
+      id: `tc-${cycleSequence}`,
+      employee_id: employeeId,
+      course_id: courseId,
+      cycle: 1,
+      status: 'assigned',
+      due_on: '2026-10-09',
+      completed_on: null,
+      expires_on: null,
+      ...overrides,
+    }
+  }
+
+  /** People with a portal login, so only the check under test fires. */
+  function withLogin(id: string, overrides: Row = {}): PersonFixture {
+    return { employee: employee(id, { auth_user_id: `user-${id}`, ...overrides }) }
+  }
+
+  function completionOf(id: string, title: string, requiredCount: number, completedCount: number): CourseCompletion {
+    return { id, title, requiredCount, completedCount }
+  }
+
+  async function buildTraining(
+    people: PersonFixture[],
+    training: { assignments?: Row[]; profiles?: Row[]; reminders?: Row[]; completion?: CourseCompletion[] } = {},
+  ): Promise<{ result: SectionBuildResult; db: FakeDb; readCompletion: ReturnType<typeof vi.fn> }> {
+    const db = dbFor(people, {
+      training_courses: COURSES,
+      training_assignments: training.assignments ?? [],
+      training_profiles: training.profiles ?? [],
+      training_reminders: training.reminders ?? [],
+    })
+    const readCompletion = vi.fn(async (_today: string) => training.completion ?? [])
+    return { result: await buildSection(makeContext(db), readCompletion), db, readCompletion }
+  }
+
+  it('reports nothing when training is on track, and shows completion unrated', async () => {
+    const { result, readCompletion } = await buildTraining([withLogin('a'), withLogin('b')], {
+      assignments: [
+        cycle('a', 'food', { status: 'completed', due_on: '2026-09-01', completed_on: '2026-09-01' }),
+        cycle('b', 'food', { status: 'in_progress' }),
+      ],
+      completion: [completionOf('ess', 'Essentials', 0, 0), completionOf('food', 'Food Safety', 2, 1)],
+    })
+    expect(readCompletion).toHaveBeenCalledWith('2026-09-25')
+    expect(result.signals).toEqual([])
+    expect(metric(result, 'Training items overdue')).toBe('0')
+    expect(metric(result, 'Training completion')).toBe('50%')
+    // A course nobody is required for is not listed.
+    expect(result.lists).toEqual([{
+      title: 'Training completion by course',
+      items: [{ text: 'Food Safety: 1 of 2 done (50%)', href: `${TEST_APP_URL}/employees/training` }],
+    }])
+  })
+
+  // SIG-3: the insights page and the Training matrix counted different people for the same course.
+  describe('completion matches the Training matrix', () => {
+    // Today 25 September. Six people have a Kegs cycle; p1 to p3 are in Bar with a valid
+    // completion. 'expired' and 'kitchen' completed it in Bar and were then moved to Kitchen only:
+    // the course no longer applies and nothing is open, so the matrix leaves both out, whether
+    // the completion has expired ('expired', on 1 September) or not ('kitchen'). 'waived' had it
+    // waived and is still in Bar, so the matrix counts them as required and not done: 3 of 4.
+    // Reading the cycles alone gave 4 of 5 (80%): both movers counted, the waiver dropped.
+    const KEGS: Row = { id: 'kegs', title: 'Kegs', kind: 'practical', is_essentials: false, status: 'live' }
+    const people = () => ['p1', 'p2', 'p3', 'expired', 'kitchen', 'waived'].map((id) => withLogin(id))
+    const cycles = () => [
+      ...['p1', 'p2', 'p3', 'kitchen'].map((id) => cycle(id, 'kegs', { status: 'completed', completed_on: '2026-06-01', expires_on: '2027-06-01' })),
+      cycle('expired', 'kegs', { status: 'completed', completed_on: '2025-09-01', expires_on: '2026-09-01' }),
+      cycle('waived', 'kegs', { status: 'waived', due_on: null }),
+    ]
+    const matrix = (): TrainingMatrix => ({
+      today: '2026-09-25',
+      courses: [
+        { id: 'kegs', slug: 'kegs', title: 'Kegs', kind: 'practical', isEssentials: false, displayOrder: 1, requiredCount: 4, completedCount: 3, completionRate: 0.75 },
+        { id: 'food', slug: 'food', title: 'Food Safety', kind: 'online', isEssentials: false, displayOrder: 2, requiredCount: 0, completedCount: 0, completionRate: null },
+      ],
+      people: [],
+    })
+
+    afterEach(() => vi.restoreAllMocks())
+
+    it('reads the counts from TrainingService.getMatrix for the report date', async () => {
+      const getMatrix = vi.spyOn(TrainingService, 'getMatrix').mockResolvedValue(matrix())
+      const counts = await readMatrixCompletion('2026-09-25')
+      expect(getMatrix).toHaveBeenCalledWith({ today: '2026-09-25' })
+      expect(counts.map(({ id, requiredCount, completedCount }) => ({ id, requiredCount, completedCount }))).toEqual([
+        { id: 'kegs', requiredCount: 4, completedCount: 3 },
+        { id: 'food', requiredCount: 0, completedCount: 0 },
+      ])
+    })
+
+    it('shows the matrix figures for a moved group, an expired completion and a waiver, per course and in total', async () => {
+      vi.spyOn(TrainingService, 'getMatrix').mockResolvedValue(matrix())
+      const db = dbFor(people(), {
+        training_courses: [...COURSES, KEGS],
+        training_assignments: cycles(),
+        training_profiles: [],
+        training_reminders: [],
+      })
+      // The section as registered: no reader passed, so the matrix read is the one used.
+      const result = await employeesSection.build(makeContext(db))
+      const shown = matrix().courses[0]
+
+      expect(result.lists.find((list) => list.title === 'Training completion by course')?.items).toEqual([
+        { text: `Kegs: ${shown.completedCount} of ${shown.requiredCount} done (75%)`, href: `${TEST_APP_URL}/employees/training` },
+      ])
+      expect(metric(result, 'Training completion')).toBe('75%')
+      expect(result.metrics.find((m) => m.label === 'Training completion')?.comparison).toBe('3 of 4 required courses done')
+    })
+
+    it('fails loudly when the matrix cannot be read, as for any other read', async () => {
+      vi.spyOn(TrainingService, 'getMatrix').mockRejectedValue(new Error('training: rota failed'))
+      const db = dbFor(people(), { training_courses: COURSES, training_assignments: [], training_profiles: [], training_reminders: [] })
+      await expect(employeesSection.build(makeContext(db))).rejects.toThrow(/training: rota failed/)
+    })
+  })
+
+  it('rates essentials overdue red from the day after it was due, linked to the training page', async () => {
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [cycle('a', 'ess', { due_on: '2026-09-24' })],
+    })
+    const found = signal(result, 'training_essentials_overdue')
+    expect(found?.rag).toBe('red')
+    expect(found?.text).toBe('1 essentials training item is overdue, due Thu 24 Sep.')
+    expect(found?.action).toMatchObject({ href: `${TEST_APP_URL}/employees/training`, dueDate: '2026-09-24' })
+    expect(metric(result, 'Training items overdue')).toBe('1')
+    expect(result.metrics.find((m) => m.label === 'Training items overdue')?.comparison).toBe('including 1 essentials')
+    expect(result.lists[0].items[0]).toMatchObject({ text: expect.stringContaining('Essentials overdue (due Thu 24 Sep)'), rag: 'red' })
+  })
+
+  it('rates other training red at 7 days overdue and leaves 6 days unrated, though counted', async () => {
+    const sevenDays = await buildTraining([withLogin('a')], { assignments: [cycle('a', 'food', { due_on: '2026-09-18' })] })
+    expect(signal(sevenDays.result, 'training_overdue')?.rag).toBe('red')
+    expect(sevenDays.result.lists[0].items[0].text).toContain('Food Safety 7 days overdue')
+
+    const sixDays = await buildTraining([withLogin('a')], { assignments: [cycle('a', 'food', { due_on: '2026-09-19' })] })
+    expect(sixDays.result.signals).toEqual([])
+    expect(metric(sixDays.result, 'Training items overdue')).toBe('1')
+  })
+
+  it('rates a locked course and a declined confirmation red', async () => {
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [cycle('a', 'food', { status: 'locked' }), cycle('a', 'ess', { status: 'declined' })],
+    })
+    expect(signal(result, 'training_locked')?.rag).toBe('red')
+    expect(signal(result, 'training_declined')?.rag).toBe('red')
+  })
+
+  it('rates open online training that cannot reach the person red: no login, or emails not delivered', async () => {
+    const { result } = await buildTraining(
+      [{ employee: employee('nologin', { auth_user_id: null }) }, withLogin('bounced'), withLogin('fine')],
+      {
+        assignments: [cycle('nologin', 'food'), cycle('bounced', 'food'), cycle('fine', 'food')],
+        reminders: [{ id: 'r1', employee_id: 'bounced', kind: 'undeliverable' }],
+      },
+    )
+    const found = signal(result, 'training_unreachable')
+    expect(found?.rag).toBe('red')
+    expect(found?.text).toBe('2 staff with training to do cannot be reached: no portal login, or training emails not delivered.')
+    const lines = result.lists[0].items.map((item) => item.text).join('\n')
+    expect(lines).toContain('no portal login for training')
+    expect(lines).toContain('training emails not delivered')
+  })
+
+  it('does not call someone unreachable when they have no online training open', async () => {
+    const { result } = await buildTraining([{ employee: employee('a', { auth_user_id: null }) }], {
+      assignments: [cycle('a', 'food', { status: 'completed', completed_on: '2026-09-01' })],
+    })
+    expect(signal(result, 'training_unreachable')).toBeUndefined()
+  })
+
+  it('rates external certificates: expired red, within 30 days red, within 60 days amber, beyond that nothing', async () => {
+    const done = { status: 'completed', completed_on: '2025-01-01' }
+    const { result } = await buildTraining([withLogin('x'), withLogin('s'), withLogin('l'), withLogin('f')], {
+      assignments: [
+        cycle('x', 'ext', { ...done, expires_on: '2026-09-20' }),
+        cycle('s', 'ext', { ...done, expires_on: '2026-10-25' }),
+        cycle('l', 'ext', { ...done, expires_on: '2026-11-24' }),
+        cycle('f', 'ext', { ...done, expires_on: '2026-11-25' }),
+      ],
+    })
+    expect(signal(result, 'training_external_expired')?.rag).toBe('red')
+    expect(signal(result, 'training_external_expiring_soon')?.rag).toBe('red')
+    expect(signal(result, 'training_external_expiring')?.rag).toBe('amber')
+    expect(result.lists[0].items.map((item) => item.href)).toEqual([
+      `${TEST_APP_URL}/employees/s`,
+      `${TEST_APP_URL}/employees/x`,
+      `${TEST_APP_URL}/employees/l`,
+    ])
+  })
+
+  it('judges an external certificate by the latest one held', async () => {
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [
+        cycle('a', 'ext', { cycle: 1, status: 'completed', completed_on: '2023-01-01', expires_on: '2026-01-01' }),
+        cycle('a', 'ext', { cycle: 2, status: 'completed', completed_on: '2026-01-01', expires_on: '2029-01-01' }),
+      ],
+    })
+    expect(result.signals).toEqual([])
+  })
+
+  it('leaves paused people out of overdue checks, and shows no completion when nobody is required', async () => {
+    // The matrix leaves paused people out of its count, so with only them it requires nobody.
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [cycle('a', 'ess', { due_on: '2026-09-01' })],
+      profiles: [{ employee_id: 'a', paused_from: '2026-09-10', paused_until: null }],
+      completion: [completionOf('ess', 'Essentials', 0, 0)],
+    })
+    expect(result.signals).toEqual([])
+    expect(metric(result, 'Training items overdue')).toBe('0')
+    expect(metric(result, 'Training completion')).toBeUndefined()
+    expect(result.lists).toEqual([])
+  })
+
+  it('counts a pause that has ended', async () => {
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [cycle('a', 'ess', { due_on: '2026-09-01' })],
+      profiles: [{ employee_id: 'a', paused_from: '2026-08-01', paused_until: '2026-08-31' }],
+    })
+    expect(signal(result, 'training_essentials_overdue')?.rag).toBe('red')
+  })
+
+  it('ignores a retired course', async () => {
+    const { result } = await buildTraining([withLogin('a')], {
+      assignments: [cycle('a', 'old', { due_on: '2026-08-01' })],
+    })
+    expect(result.signals).toEqual([])
+    expect(result.lists).toEqual([])
+  })
+
+  it('keeps names and course titles out of the email, and prints no undefined, NaN or Invalid Date', async () => {
+    const { result } = await buildTraining(
+      [
+        { employee: employee('a', { first_name: 'Philippa', last_name: 'Thistlewood', auth_user_id: null }) },
+        withLogin('b', { first_name: 'Rupert', last_name: 'Kettleby' }),
+      ],
+      {
+        assignments: [
+          cycle('a', 'ess', { due_on: '2026-09-01' }),
+          cycle('b', 'food', { status: 'locked', due_on: null }),
+          cycle('b', 'ext', { status: 'completed', completed_on: '2025-01-01', expires_on: '2026-09-30' }),
+        ],
+      },
+    )
+    for (const word of ['Philippa', 'Thistlewood', 'Rupert', 'Kettleby']) {
+      expect(emailText(result)).not.toContain(word)
+    }
+    expect(result.signals.every((s) => s.emailSafe)).toBe(true)
+    expect(JSON.stringify(result)).not.toMatch(/undefined|NaN|Invalid Date/)
+  })
+
+  it('reads training only for current staff, and fails loudly when a training read fails', async () => {
+    const db = dbFor([withLogin('a')], { training_courses: COURSES }).fail('training_assignments')
+    await expect(buildEmployeesSection(makeContext(db))).rejects.toThrow(/insights training assignments failed/)
   })
 })

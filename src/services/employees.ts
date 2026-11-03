@@ -1174,6 +1174,31 @@ export class EmployeeService {
       );
     }
 
+    // Training records are kept, and each of these tables refers to the employee with ON DELETE
+    // RESTRICT (attempts and reminders are only written for someone who already has an
+    // assignment, so they need no check of their own). A check that errors, or gives no count,
+    // refuses too.
+    const trainingChecks = await Promise.all([
+        adminClient
+            .from('training_assignments')
+            .select('id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+        adminClient
+            .from('training_profiles')
+            .select('employee_id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+        adminClient
+            .from('training_events')
+            .select('id', { count: 'exact', head: true })
+            .eq('employee_id', employeeId),
+    ]);
+    if (trainingChecks.some((check) => check.error || typeof check.count !== 'number')) {
+        throw new EmployeeServiceError('Could not check for training records, so the employee was not deleted. Please try again.');
+    }
+    if (trainingChecks.some((check) => (check.count ?? 0) > 0)) {
+        throw new EmployeeServiceError('This starter already has training records, which are kept, so they cannot be deleted. Nothing was changed.');
+    }
+
     // Records that stop the row being deleted, checked before any access is touched. Without
     // this the login went first and the delete then failed on a checklist reference, leaving
     // the person on the books with no way in.

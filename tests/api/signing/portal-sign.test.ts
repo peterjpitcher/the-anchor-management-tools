@@ -116,6 +116,29 @@ describe('signing in the staff portal', () => {
     expect(mocks.alert).not.toHaveBeenCalled()
   })
 
+  it('refuses a practical sign-off: it is signed only in person, on the manager device', async () => {
+    mocks.partyContext.mockResolvedValue(context({ identity_check: 'none' }, { kind: 'training_signoff', title: 'Cellar and lines sign-off' }))
+
+    const response = await signPost(request(goodSignature), params)
+
+    expect(response.status).toBe(403)
+    const body = await response.json()
+    expect(body).toMatchObject({ success: false, error: { code: 'NOT_AVAILABLE' } })
+    expect(body.error.message).toBe('You sign this in person, on the phone or tablet your manager gives you.')
+    expect(mocks.sign).not.toHaveBeenCalled()
+    expect(mocks.withdraw).not.toHaveBeenCalled()
+  })
+
+  it('lets a training certificate be confirmed in the portal', async () => {
+    mocks.partyContext.mockResolvedValue(context({ identity_check: 'none' }, { kind: 'training_completion', mode: 'acknowledge' }))
+    mocks.sign.mockResolvedValue({ ok: true, completed: true, documentId: 'doc-1' })
+
+    const response = await signPost(request(goodSignature), params)
+
+    expect(response.status).toBe(201)
+    expect(mocks.sign).toHaveBeenCalledTimes(1)
+  })
+
   it('explains every other refusal in plain words', async () => {
     for (const [reason, words] of [
       ['name_not_acceptable', 'full name'],

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createFakeDb } from '../../helpers/fakeSupabaseDb'
-import type { MonitoredCronJob } from '@/lib/cron/monitored-jobs'
+import { MONITORED_CRON_JOBS, type MonitoredCronJob } from '@/lib/cron/monitored-jobs'
 import {
   UNFINISHED_RUN_MESSAGE,
   buildScheduledJobsCheckEmail,
@@ -131,6 +131,57 @@ describe('checkScheduledJobs', () => {
     const db = createFakeDb({ cron_job_runs: steady('quarter-job', 15, 2, 20 * 60) })
     const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, DAILY])
     expect(report.problemCount).toBe(0)
+  })
+
+  describe('a job added to the watch list after recording began (monitoredFrom)', () => {
+    // Recording began four days ago through another job, so the general "too soon" rule no
+    // longer covers a daily job with no runs: only its own monitoredFrom can.
+    const established = () => [run('quarter-job', 4 * 24 * 60, 'completed'), ...steady('quarter-job', 15, 2, 26 * 60)]
+
+    it('does not report it the morning after its release, before it has been due', async () => {
+      // Released at 14:00 UTC the day before; the check runs at 07:40, before the job's 09:00 slot.
+      const added: MonitoredCronJob = { ...DAILY, monitoredFrom: iso(17 * 60 * MINUTE + 40 * MINUTE) }
+      const db = createFakeDb({ cron_job_runs: established() })
+      const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, added])
+      expect(report.problemCount).toBe(0)
+    })
+
+    it('does not report it before a monitoredFrom still to come', async () => {
+      const added: MonitoredCronJob = { ...DAILY, monitoredFrom: new Date(NOW.getTime() + 5 * 24 * 60 * MINUTE).toISOString() }
+      const db = createFakeDb({ cron_job_runs: established() })
+      const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, added])
+      expect(report.problemCount).toBe(0)
+    })
+
+    it('reports it once it has been watched for longer than its allowed gap with no run', async () => {
+      const added: MonitoredCronJob = { ...DAILY, monitoredFrom: iso((48 * 60 + 10) * MINUTE) }
+      const db = createFakeDb({ cron_job_runs: established() })
+      const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, added])
+      expect(report.jobs).toHaveLength(1)
+      expect(report.jobs[0]).toMatchObject({ jobName: 'daily-job', missedRun: { from: null, until: null } })
+    })
+
+    it('stops holding back once the job has run: one that ran and then stopped is reported', async () => {
+      // It ran five days ago, outside the look-back, and not since; its date is still to come.
+      const added: MonitoredCronJob = { ...DAILY, monitoredFrom: new Date(NOW.getTime() + 2 * 24 * 60 * MINUTE).toISOString() }
+      const db = createFakeDb({ cron_job_runs: [...established(), run('daily-job', 5 * 24 * 60, 'completed')] })
+      const report = await checkScheduledJobs(db.client as never, NOW, [QUARTER_HOURLY, added])
+      expect(report.jobs).toHaveLength(1)
+      expect(report.jobs[0]).toMatchObject({ jobName: 'daily-job', missedRun: { from: null } })
+    })
+
+    it('holds back a job that keeps its own run record the same way', () => {
+      const nowMs = NOW.getTime()
+      const own = { ...DAILY, recording: 'own' as const }
+      expect(findMissedRun([], own, nowMs, nowMs - 24 * 60 * MINUTE, null, nowMs - 60 * MINUTE)).toBeNull()
+      expect(findMissedRun([], own, nowMs, nowMs - 24 * 60 * MINUTE, null, null)).toMatchObject({ from: null })
+    })
+
+    it('gives the two jobs first watched in the staff training release a valid monitoredFrom', () => {
+      const dated = MONITORED_CRON_JOBS.filter((job) => job.monitoredFrom !== undefined)
+      expect(dated.map((job) => job.jobName).sort()).toEqual(['signing-reminders', 'training-daily'])
+      for (const job of dated) expect(Number.isFinite(Date.parse(job.monitoredFrom as string))).toBe(true)
+    })
   })
 
   it('still reports a job that keeps its own run record and has none', async () => {

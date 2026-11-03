@@ -27,6 +27,10 @@ export const metadata: Metadata = {
  * The contact mailbox was changed on 2026-08-06 from `privacy@theanchorpub.co.uk`,
  * which the owner confirmed is not used, to the single guest contact address in
  * `GUEST_CONTACT`. Everything else is unchanged wording.
+ *
+ * "2.3 Staff Training" and the training retention line were added for the staff training
+ * feature (spec 11, November 2026). They must be live before the first training answer is
+ * recorded. They sit inside the existing numbered sections, so the fifteen headings are unchanged.
  */
 
 /** Policy prose reads at the lead size, a step up from body copy. */
@@ -38,7 +42,7 @@ const SUB_LABEL_CLASS = 'font-anchor-body text-guest-body text-guest-text-strong
 const UL_CLASS = 'flex list-disc flex-col gap-guest-2xs pl-5 font-anchor-body text-guest-lead text-guest-text'
 
 export default function PrivacyPolicy() {
-  const lastUpdated = new Date('2026-10-13').toLocaleDateString('en-GB', {
+  const lastUpdated = new Date('2026-11-03').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',
@@ -88,6 +92,30 @@ export default function PrivacyPolicy() {
             your IP address. We keep this with the signed document as a record of who signed it
           </li>
         </ul>
+        <p className={SUB_LABEL_CLASS}><strong>2.3 Staff Training</strong></p>
+        <p className={P_CLASS}>
+          If you work for us, we keep a record of the training you do in the staff portal. This covers:
+        </p>
+        <ul className={UL_CLASS}>
+          <li>Which courses you were given, when they were due, and when you finished them</li>
+          <li>Your answers to each check, whether each answer was right, your result, and how many tries you took</li>
+          <li>When you started and finished each check</li>
+          <li>The training reminder emails we sent you. Our email provider records when an email is opened and when a link in it is clicked. We do not use this as evidence of anything</li>
+          <li>
+            When you confirm your training: the same details as for any document you confirm online (the date and
+            time, your IP address, your device and browser, and your approximate location)
+          </li>
+          <li>Practical sign-offs: what a manager watched you do and on which date</li>
+          <li>Certificates for training you did elsewhere that a manager records for you</li>
+        </ul>
+        <p className={P_CLASS}>
+          We use this to show you and us what training you have done and what is still due, to remind you, to
+          prove the training took place, and to pay you for training time outside your shifts. We do not use your
+          answers or times for discipline. We never record health details with your training. For training the law
+          asks us to give (for example health and safety, fire safety and food hygiene), our legal basis is our legal
+          obligations. For other training, and for your answers and times, it is our legitimate interest in training
+          our team and keeping a record of it.
+        </p>
       </GuestSection>
 
       <GuestSection title="3. Legal Basis for Processing" titleId="privacy-3">
@@ -131,6 +159,7 @@ export default function PrivacyPolicy() {
           <li><strong>Customer data:</strong> 2 years after last interaction</li>
           <li><strong>Booking records:</strong> 7 years for tax purposes</li>
           <li><strong>Employee records:</strong> 7 years after employment ends</li>
+          <li><strong>Staff training records and certificates:</strong> 7 years after employment ends</li>
           <li>
             <strong>Signed documents and their signing records:</strong> 7 years after the employment, booking or
             agreement they belong to ends

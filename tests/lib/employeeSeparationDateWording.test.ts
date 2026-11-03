@@ -115,11 +115,14 @@ describe('finalizeEmployeeSeparation dates', () => {
     })
 
     expect(result).toEqual(expect.objectContaining({ success: true }))
-    const noteInserts = calls.filter((call) => call.table === 'employee_notes' && call.method === 'insert')
-    expect(noteInserts).toHaveLength(1)
-    expect(noteInserts[0].args[0]).toEqual(expect.objectContaining({
+    // The untaken holiday note is written too (tests/lib/employeeSeparationUntakenHoliday.test.ts).
+    const automaticNotes = calls
+      .filter((call) => call.table === 'employee_notes' && call.method === 'insert')
+      .map((call) => call.args[0] as { employee_id: string; note_text: string })
+      .filter((note) => note.note_text.startsWith('Automatically marked as Former'))
+    expect(automaticNotes).toEqual([expect.objectContaining({
       employee_id: EMPLOYEE_ID,
       note_text: 'Automatically marked as Former on 3 November 2026 after last working day 2 November 2026.',
-    }))
+    })])
   })
 })
