@@ -3,6 +3,7 @@
 import { AuthService } from '@/services/auth';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getErrorMessage } from '@/lib/errors';
+import { safePortalNextPath } from '@/lib/portal/next-path';
 
 const PORTAL_ONLY_ROLES = new Set(['portal_shift_manager']);
 
@@ -15,7 +16,16 @@ function roleNameFromRow(row: UserRoleRow): string | null {
   return row.roles?.name ?? null;
 }
 
-export async function signIn(email: string, password: string) {
+/** Where a portal-only user lands when they did not arrive from a saved portal link. */
+const PORTAL_HOME = '/portal/shifts';
+
+/**
+ * Signs in with email and password. `next` is the page the person was trying to open before
+ * they were asked to sign in (the login screen passes it on). A portal-only user goes back to
+ * it when it is a safe link inside the portal (an emailed `/portal/training/...` link, say),
+ * and to My Shifts otherwise. Everyone else is sent on by the login screen as before.
+ */
+export async function signIn(email: string, password: string, next?: string | null) {
   try {
     const result = await AuthService.signIn(email, password);
 
@@ -34,7 +44,9 @@ export async function signIn(email: string, password: string) {
         .filter((roleName): roleName is string => Boolean(roleName));
 
       if (roleNames.length === 0 || roleNames.every(roleName => PORTAL_ONLY_ROLES.has(roleName))) {
-        return { success: true as const, redirectTo: '/portal/shifts' };
+        // `next` comes from the browser, so it is checked strictly: a relative path inside
+        // /portal/ only, never another site.
+        return { success: true as const, redirectTo: safePortalNextPath(next) ?? PORTAL_HOME };
       }
     }
 
