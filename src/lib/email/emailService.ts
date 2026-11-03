@@ -75,9 +75,20 @@ type EmailProvider = 'graph' | 'resend';
 
 /**
  * Machine-readable reason for a refused send, for callers that must treat it differently from
- * a provider failure. 'email_suspended': an emergency kill switch is on and nothing was sent.
+ * a provider failure. Every one is definite: nothing was sent.
+ * - 'email_suspended': an emergency kill switch is on.
+ * - 'recipient_suppressed': the address is on our suppression list (an earlier bounce or
+ *   complaint), so the provider was never asked.
+ * - 'recipient_rejected': the provider refused the `to` address itself.
+ * - 'email_not_configured': no provider key or sender address is set.
+ * - 'email_sign_in_failed': Graph could not get an access token, so the mail service was never reached.
  */
-export type EmailSendCode = 'email_suspended';
+export type EmailSendCode =
+  | 'email_suspended'
+  | 'recipient_suppressed'
+  | 'recipient_rejected'
+  | 'email_not_configured'
+  | 'email_sign_in_failed';
 
 type EmailSendResult = {
   success: boolean;
@@ -95,6 +106,11 @@ type EmailSendResult = {
   emailMessageId?: string | null;
   /** True when the suppression list could not be read and the send was refused because of it. */
   suppressionCheckUnavailable?: boolean;
+  /**
+   * The provider's HTTP status when it answered with a refusal (400 to 599 only), so a caller can
+   * tell a refusal of every send (a bad key, a rate limit) from one about this email.
+   */
+  providerStatus?: number;
   /**
    * True when the send failed WITHOUT a definite answer from the provider: the request had
    * been submitted and then timed out or the connection dropped. The email may have been
@@ -254,9 +270,10 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
       return {
         success: false,
         error: logError instanceof Error ? logError.message : error,
+        code: 'recipient_suppressed',
       }
     }
-    return { success: false, error };
+    return { success: false, error, code: 'recipient_suppressed' };
   }
 
   const provider = options.provider ?? getEmailProvider();
@@ -297,9 +314,10 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       return {
         success: false,
         error: logError instanceof Error ? logError.message : error,
+        code: 'email_not_configured',
       }
     }
-    return { success: false, error };
+    return { success: false, error, code: 'email_not_configured' };
   }
 
   // Set immediately before the request leaves. A failure before this point sent nothing. After
@@ -346,6 +364,13 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
       : await client.emails.send(resendPayload as any);
 
     if (error) {
+      const statusCode = (error as { statusCode?: unknown }).statusCode;
+      // Resend answers a bad recipient with a 422 validation error that names the field:
+      // "Invalid `to` field ...".
+      const refusal = {
+        ...providerStatusOf(statusCode),
+        ...(statusCode === 422 && /`to`/.test(error.message) ? { code: 'recipient_rejected' as const } : {}),
+      };
       try {
         await recordEmailOutcome(options, {
           status: 'failed',
@@ -356,12 +381,14 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
         return {
           success: false,
           error: logError instanceof Error ? logError.message : error.message,
+          ...refusal,
         }
       }
       return {
         success: false,
         error: error.message,
-        ...(providerGaveNoDefiniteAnswer((error as { statusCode?: unknown }).statusCode) ? { uncertain: true } : {}),
+        ...refusal,
+        ...(providerGaveNoDefiniteAnswer(statusCode) ? { uncertain: true } : {}),
       };
     }
 
@@ -426,6 +453,13 @@ function providerGaveNoDefiniteAnswer(statusCode: unknown): boolean {
   return !(Number.isFinite(status) && status >= 400 && status < 500);
 }
 
+/** `providerStatus` for a result: the provider's HTTP status when it is a refusal (400 to 599). */
+function providerStatusOf(statusCode: unknown): { providerStatus?: number } {
+  return typeof statusCode === 'number' && Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599
+    ? { providerStatus: statusCode }
+    : {};
+}
+
 async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult> {
   const senderEmail = options.graphSender?.trim() || process.env.MICROSOFT_USER_EMAIL || '';
   // Set immediately before the request leaves. See the same flag in `sendEmailViaResend`.
@@ -449,11 +483,13 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
         return {
           success: false,
           error: logError instanceof Error ? logError.message : error,
+          code: 'email_not_configured',
         }
       }
       return {
         success: false,
-        error
+        error,
+        code: 'email_not_configured',
       };
     }
 
@@ -544,6 +580,11 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
   } catch (error: unknown) {
     console.error('Error sending email:', error);
     const message = getErrorMessage(error);
+    const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
+    let code: EmailSendCode | undefined;
+    if (signInFailed) code = 'email_sign_in_failed';
+    else if ((error as { code?: unknown } | null)?.code === 'ErrorInvalidRecipients') code = 'recipient_rejected';
+    const refusal = { ...providerStatusOf(statusCode), ...(code ? { code } : {}) };
     try {
       await recordEmailOutcome(options, {
         status: 'failed',
@@ -554,12 +595,14 @@ async function sendEmailViaGraph(options: EmailOptions): Promise<EmailSendResult
       return {
         success: false,
         error: logError instanceof Error ? logError.message : message,
+        ...refusal,
       }
     }
     return {
       success: false,
       error: message,
-      ...(submitted && !signInFailed && providerGaveNoDefiniteAnswer((error as { statusCode?: unknown } | null)?.statusCode)
+      ...refusal,
+      ...(submitted && !signInFailed && providerGaveNoDefiniteAnswer(statusCode)
         ? { uncertain: true }
         : {}),
     };
