@@ -5,6 +5,7 @@
 // had earned about 6, and a leaver's final pay had no figure for the holiday they had not taken.
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
 import type { EmployeeLeaveDay } from '@/app/actions/leave'
 import { getLeaveDates } from '@/lib/leave/working-days'
@@ -83,6 +84,18 @@ describe('EmployeeHolidaysTab pro-rating', () => {
     expect(screen.getByText('Holiday for their final pay')).toBeInTheDocument()
     expect(
       screen.getByText('8.6 days earned but not taken by their last working day, 28 Oct 2026, to include in their final pay.'),
+    ).toBeInTheDocument()
+  })
+
+  it("offers the year of a leaver's last working day even when they took no leave in it", async () => {
+    renderTab({ employmentStartDate: '2024-03-01', employmentEndDate: '2025-11-30' })
+
+    // The tab opens on 2026/27; their last day was in 2025/26 and they booked nothing that year.
+    await userEvent.setup({ advanceTimers: () => undefined }).click(screen.getByRole('radio', { name: '2025/26' }))
+
+    // 1 January to 30 November 2025 is 334 of 365 days: 25 x 334 / 365 = 22.9, none taken.
+    expect(
+      screen.getByText('22.9 days earned but not taken by their last working day, 30 Nov 2025, to include in their final pay.'),
     ).toBeInTheDocument()
   })
 
