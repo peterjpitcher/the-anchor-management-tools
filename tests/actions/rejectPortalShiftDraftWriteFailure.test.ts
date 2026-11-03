@@ -73,6 +73,8 @@ const employee = {
   last_name: 'Taylor',
   preferred_name: null,
   email_address: 'sam@example.com',
+  status: 'Active',
+  employment_end_date: null,
 }
 
 /** A pending shift far enough ahead to be outside the two-week acceptance cutoff. */

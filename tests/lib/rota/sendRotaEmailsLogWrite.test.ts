@@ -42,7 +42,7 @@ describe('sendRotaWeekEmails log write', () => {
       from: (table: string) => {
         if (table === 'employees') {
           return query({
-            data: [{ employee_id: 'employee-1', first_name: 'Alex', last_name: 'Rowe', preferred_name: null, email_address: 'alex@example.com' }],
+            data: [{ employee_id: 'employee-1', first_name: 'Alex', last_name: 'Rowe', preferred_name: null, email_address: 'alex@example.com', status: 'Active', employment_end_date: null }],
             error: null,
           })
         }

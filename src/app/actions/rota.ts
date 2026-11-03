@@ -12,7 +12,7 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { sendRotaWeekEmails, sendRotaWeekChangeEmails, type DiffShiftRow } from '@/lib/rota/send-rota-emails';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import { sendEmail } from '@/lib/email/emailService';
-import { formatDateInLondon, parseLondonDateTimeLocal } from '@/lib/dateUtils';
+import { formatDate, formatDateInLondon, parseLondonDateTimeLocal } from '@/lib/dateUtils';
 import { hasPremium } from '@/lib/rota/pay-calculator';
 import { clearPayrollApprovalsForDate, payrollApprovalNotClearedWarning } from '@/lib/rota/payroll-approval-invalidation';
 import { isInsideAcceptanceCutoff, isInsideLatePublishGrace } from '@/lib/rota/acceptance-cutoff';
@@ -42,6 +42,8 @@ import {
 import { validateShiftRejectionReason } from '@/lib/rota/shift-rejection-validation';
 import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import { displayName } from '@/lib/employees/display-name';
+import { isCurrentStaff, isPastLastWorkingDay } from '@/lib/employees/current-staff';
+import { shiftAfterLastWorkingDayRefusal } from '@/lib/rota/last-working-day-guard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -496,6 +498,17 @@ async function writeShiftsWithLeaveGuard(
   admin: ReturnType<typeof createAdminClient>,
   entries: GuardedShiftWrite[],
 ): Promise<GuardedWriteOutcome> {
+  // Someone on notice cannot be given a shift after their last working day
+  // (src/lib/rota/last-working-day-guard.ts). Every path that puts a person on a
+  // date sends both together: create and the template paths insert whole rows,
+  // and moveShift sends the person and the date. updateShift cannot change
+  // either, so editing a shift's times or notes is not checked.
+  const lastDayRefusal = await shiftAfterLastWorkingDayRefusal(admin, entries.map(entry => ({
+    employeeId: entry.values.employee_id as string | null | undefined,
+    shiftDate: entry.values.shift_date as string | null | undefined,
+  })));
+  if (lastDayRefusal) return { success: false, error: lastDayRefusal };
+
   const { data, error } = await admin.rpc('write_rota_shifts_with_leave_guard', {
     p_shifts: entries.map(entry => ({
       ref: entry.ref,
@@ -726,32 +739,35 @@ async function getOpenShiftRequestDayContext(
   }));
 }
 
-async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createClient>>, employeeId?: string): Promise<{
+type OwnPortalEmployee = {
   employee_id: string;
   first_name: string | null;
   last_name: string | null;
   preferred_name: string | null;
   email_address: string | null;
-} | null> {
+  status: string;
+  employment_end_date: string | null;
+};
+
+/**
+ * The signed-in member of staff, or null. Someone on notice whose last working day has
+ * passed has left, so the portal's shift actions refuse them as they would a former employee.
+ */
+async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createClient>>, employeeId?: string): Promise<OwnPortalEmployee | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
   let query = supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, email_address')
+    .select('employee_id, first_name, last_name, preferred_name, email_address, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation']);
 
   if (employeeId) query = query.eq('employee_id', employeeId);
 
   const { data } = await query.maybeSingle();
-  return data as {
-    employee_id: string;
-    first_name: string | null;
-    last_name: string | null;
-    preferred_name: string | null;
-    email_address: string | null;
-  } | null;
+  const employee = data as OwnPortalEmployee | null;
+  return employee && isCurrentStaff(employee) ? employee : null;
 }
 
 async function recordCalendarCancellation(
@@ -2179,12 +2195,12 @@ async function getEmployeeShifts(
   if (!canView) {
     const { data: ownRecord } = await supabase
       .from('employees')
-      .select('employee_id')
+      .select('employee_id, status, employment_end_date')
       .eq('employee_id', employeeId)
       .eq('auth_user_id', user.id)
       .in('status', ['Active', 'Started Separation'])
       .maybeSingle();
-    if (!ownRecord) return { success: false, error: 'Permission denied' };
+    if (!ownRecord || !isCurrentStaff(ownRecord)) return { success: false, error: 'Permission denied' };
   }
 
   // Read from the published snapshot — only what was explicitly published is visible to staff
@@ -2218,11 +2234,11 @@ async function getOpenShiftsForPortal(
 
   const { data: ownRecord } = await supabase
     .from('employees')
-    .select('employee_id')
+    .select('employee_id, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
-  if (!ownRecord) return { success: false, error: 'Permission denied' };
+  if (!ownRecord || !isCurrentStaff(ownRecord)) return { success: false, error: 'Permission denied' };
 
   // Read from the published snapshot — only what was explicitly published is visible to staff
   const { data, error } = await supabase
@@ -2653,6 +2669,14 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
 
   if (shiftError) return { success: false, error: shiftError.message };
   if (!shift) return { success: false, error: 'Open shift not found' };
+
+  // A manager could not approve it (src/lib/rota/last-working-day-guard.ts), so it is never asked.
+  if (isPastLastWorkingDay(employee, shift.shift_date as string)) {
+    return {
+      success: false,
+      error: `Your last working day is ${formatDate(employee.employment_end_date as string)}, so you cannot pick up a shift after it.`,
+    };
+  }
 
   const { data: request, error } = await admin
     .from('rota_open_shift_requests')
@@ -3151,7 +3175,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   // predictable order even when someone's preferred name starts elsewhere.
   const { data: employees, error: empError } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy')
+    .select('employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy, status, employment_end_date')
     .in('status', ['Active', 'Started Separation'])
     .order('first_name')
     .order('last_name');
@@ -3159,9 +3183,15 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   if (empError) return { success: false, error: empError.message };
 
   type EmpRow = { employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null; job_title: string | null };
-  type AssignableEmpRow = EmpRow & { separation_shift_policy?: string | null };
+  type AssignableEmpRow = EmpRow & {
+    separation_shift_policy?: string | null;
+    status?: string | null;
+    employment_end_date?: string | null;
+  };
+  // Someone on notice past their last working day has left: like a former employee, they show
+  // below only on a week where they still have shifts, and cannot be given new ones.
   const activeList = ((employees ?? []) as AssignableEmpRow[])
-    .filter(employee => employee.separation_shift_policy !== 'release_remaining');
+    .filter(employee => employee.separation_shift_policy !== 'release_remaining' && isCurrentStaff(employee));
   const activeIds = new Set(activeList.map((e: { employee_id: string }) => e.employee_id));
 
   // If a week is provided, also include any former employees who have shifts that week

@@ -13,6 +13,7 @@ import FohClockWidget from './FohClockWidget'
 import { LinkButton } from '@/ds'
 import { ChecklistMidShiftPrompt } from '@/app/(authenticated)/checklists/_components/ChecklistMidShiftPrompt'
 import { getDeploymentVersion } from '@/lib/foh/deployment-version'
+import { onClockScreen } from '@/lib/employees/current-staff'
 import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
@@ -85,11 +86,15 @@ export default async function TableBookingsFohPage() {
   if (useManagerKioskStyle) {
     const admin = createAdminClient()
     const [{ data: emps }, sessionsResult] = await Promise.all([
-      admin.from('employees').select('employee_id, first_name, last_name, preferred_name').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
+      admin.from('employees').select('employee_id, first_name, last_name, preferred_name, status, employment_end_date').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
       getOpenSessions(),
     ])
-    clockWidgetEmployees = (emps ?? []) as ClockEmployee[]
     if (sessionsResult.success) clockWidgetSessions = sessionsResult.data as ClockSession[]
+    // As on the kiosk: someone past their last working day is listed only while still clocked in.
+    clockWidgetEmployees = onClockScreen(
+      (emps ?? []) as Array<ClockEmployee & { status: string; employment_end_date: string | null }>,
+      new Set(clockWidgetSessions.map((session) => session.employee_id)),
+    ).map(({ employee_id, first_name, last_name, preferred_name }) => ({ employee_id, first_name, last_name, preferred_name }))
   }
 
   // The service the floor is working: the night before, from midnight until an after-midnight

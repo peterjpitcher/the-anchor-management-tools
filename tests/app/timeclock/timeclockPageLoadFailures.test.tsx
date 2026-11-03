@@ -37,6 +37,9 @@ vi.mock('@/app/(timeclock)/timeclock/_components/TimeclockClient', () => ({
 import TimeclockPage from '@/app/(timeclock)/timeclock/page'
 
 const EMPLOYEE = { employee_id: 'e1', first_name: 'Mandy', last_name: 'Jones', preferred_name: null }
+// The row as the database returns it. The page reads the status and last working day and must
+// not pass either to the public client.
+const EMPLOYEE_ROW = { ...EMPLOYEE, status: 'Active', employment_end_date: null }
 
 async function propsFor(): Promise<Record<string, unknown>> {
   const element = await TimeclockPage()
@@ -49,7 +52,7 @@ describe('timeclock page load failures', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    mocks.employeesResult = { data: [EMPLOYEE], error: null }
+    mocks.employeesResult = { data: [EMPLOYEE_ROW], error: null }
     mocks.getOpenSessions.mockResolvedValue({ success: true, data: [] })
   })
 

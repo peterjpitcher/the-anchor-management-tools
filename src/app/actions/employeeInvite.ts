@@ -63,6 +63,7 @@ import {
   normaliseSortCode,
 } from '@/lib/employees/field-rules';
 import { inviteTokenProblem, type InviteTokenProblem } from '@/lib/employees/invite-token-rules';
+import { isCurrentStaff, isPastLastWorkingDay } from '@/lib/employees/current-staff';
 import { passwordError } from '@/lib/employees/password-rule';
 import { AuthService } from '@/services/auth';
 import { formatPhoneForStorage } from '@/lib/utils';
@@ -501,7 +502,7 @@ export async function sendPortalInvite(employeeId: string): Promise<InviteAction
 
   const { data: employee, error: empError } = await adminClient
     .from('employees')
-    .select('email_address, auth_user_id, status')
+    .select('email_address, auth_user_id, status, employment_end_date')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
@@ -511,7 +512,10 @@ export async function sendPortalInvite(employeeId: string): Promise<InviteAction
   if (employee.auth_user_id) {
     return { type: 'error', message: 'This employee already has a portal login.' };
   }
-  if (!['Active', 'Started Separation'].includes(employee.status)) {
+  if (isPastLastWorkingDay(employee)) {
+    return { type: 'error', message: 'Their last working day has passed, so they cannot be invited to the staff portal.' };
+  }
+  if (!isCurrentStaff(employee)) {
     return { type: 'error', message: 'Portal invites can only be sent to active employees.' };
   }
   if (!employee.email_address) {
@@ -726,7 +730,7 @@ export async function validateInviteToken(token: string): Promise<ValidationResu
 
   const { data: emp, error: empError } = await adminClient
     .from('employees')
-    .select('auth_user_id, email_address, status, first_name, last_name')
+    .select('auth_user_id, email_address, status, employment_end_date, first_name, last_name')
     .eq('employee_id', data.employee_id)
     .maybeSingle();
 

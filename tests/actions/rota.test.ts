@@ -34,6 +34,11 @@ vi.mock('@/lib/rota/send-rota-emails', () => ({
   sendRotaWeekChangeEmails: vi.fn(),
 }))
 
+// The last-working-day check reads employees; it has its own tests (rotaLastWorkingDay.test.ts).
+vi.mock('@/lib/rota/last-working-day-guard', () => ({
+  shiftAfterLastWorkingDayRefusal: vi.fn().mockResolvedValue(null),
+}))
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -142,10 +147,10 @@ describe('Rota actions', () => {
     it('excludes a separating employee released from all remaining shifts', async () => {
       mockedPermission.mockResolvedValue(true)
       const employeeRows = [
-        { employee_id: 'active', first_name: 'Ada', last_name: 'Active', preferred_name: null, job_title: 'Bar', separation_shift_policy: null },
-        { employee_id: 'legacy', first_name: 'Lee', last_name: 'Legacy', preferred_name: null, job_title: 'Bar', separation_shift_policy: null },
-        { employee_id: 'working', first_name: 'Will', last_name: 'Work', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'work_remaining' },
-        { employee_id: 'released', first_name: 'Rae', last_name: 'Lease', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'release_remaining' },
+        { employee_id: 'active', first_name: 'Ada', last_name: 'Active', preferred_name: null, job_title: 'Bar', separation_shift_policy: null, status: 'Active', employment_end_date: null },
+        { employee_id: 'legacy', first_name: 'Lee', last_name: 'Legacy', preferred_name: null, job_title: 'Bar', separation_shift_policy: null, status: 'Started Separation', employment_end_date: null },
+        { employee_id: 'working', first_name: 'Will', last_name: 'Work', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'work_remaining', status: 'Started Separation', employment_end_date: '2099-12-31' },
+        { employee_id: 'released', first_name: 'Rae', last_name: 'Lease', preferred_name: null, job_title: 'Bar', separation_shift_policy: 'release_remaining', status: 'Started Separation', employment_end_date: '2099-12-31' },
       ]
       const employeeOrder = vi.fn().mockResolvedValue({ data: employeeRows, error: null })
       const employeeQuery = {
@@ -169,7 +174,7 @@ describe('Rota actions', () => {
       if (!result.success) return
       expect(result.data.map(employee => employee.employee_id)).toEqual(['active', 'legacy', 'working'])
       expect(employeeQuery.select).toHaveBeenCalledWith(
-        'employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy',
+        'employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy, status, employment_end_date',
       )
     })
   })
@@ -389,6 +394,8 @@ describe('Rota actions', () => {
         first_name: 'Peter',
         last_name: 'Pitcher',
         email_address: 'peter@example.com',
+        status: 'Active',
+        employment_end_date: null,
       }
       const shift = {
         id: shiftId,

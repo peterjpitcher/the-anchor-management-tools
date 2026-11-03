@@ -418,6 +418,21 @@ describe('a document for a member of staff', () => {
     expect(await findSubjectClosure(workerAgreement())).toBe('They no longer work here')
   })
 
+  it('still stands on the last working day of someone on notice', async () => {
+    setNow('2026-11-07T20:00:00.000Z')
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Started Separation', employment_end_date: '2026-11-07' }] })
+
+    expect(await findSubjectClosure(workerAgreement())).toBeNull()
+  })
+
+  it('is withdrawn once the last working day of someone on notice has passed', async () => {
+    // 00:30 on 8 November in London: they have left, even before the nightly job marks them Former.
+    setNow('2026-11-08T00:30:00.000Z')
+    useDb({ employees: [{ employee_id: EMPLOYEE, status: 'Started Separation', employment_end_date: '2026-11-07' }] })
+
+    expect(await findSubjectClosure(workerAgreement())).toBe('They no longer work here')
+  })
+
   it('is withdrawn when the employee record no longer exists', async () => {
     useDb({ employees: [] })
 
