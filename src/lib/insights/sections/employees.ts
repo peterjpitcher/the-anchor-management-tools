@@ -1,6 +1,8 @@
 import { displayNameWithLegal } from '@/lib/employees/display-name'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
-import { formatCount, formatDateWithYear, formatDayDate, joinWithAnd, plural } from '../format'
+import type { MatrixCourse } from '@/lib/training/types'
+import { TrainingService } from '@/services/training'
+import { formatCount, formatDateWithYear, formatDayDate, formatPercent, joinWithAnd, plural } from '../format'
 import { ragRank } from '../signals'
 import { EMPLOYEES } from '../thresholds'
 import { addDays, daysBetween, londonDateOf } from '../windows'
@@ -27,9 +29,21 @@ import type {
  * onboarding only for them, so on Active staff those flags could never clear; Active staff
  * who skipped the form are caught by the record checks above instead.
  *
+ * Staff training (staff training spec 8.3) is checked for current staff too, from the training
+ * tables: red for an essentials item overdue (from the morning after its due date), any other
+ * item EMPLOYEES.trainingOverdueRedDays or more days overdue, a locked section, a declined
+ * confirmation, and open online training that cannot reach the person (no portal login, or
+ * their training emails could not be delivered); external qualification certificates expiring
+ * red within 30 days and amber within 60, as right to work. A paused person's items are not
+ * counted as overdue. Completion rates are shown per course on the page, not rated, and come from
+ * the Training matrix's own count (`TrainingService.getMatrix`), so the two pages never disagree:
+ * who a course applies to depends on groups, the rota and dates of birth, none of which this
+ * section reads.
+ *
  * Names are page only (spec decision 13): each check is one signal with a count and a list
- * action on /employees, and the per-person lines sit in a page list linked to each record.
- * Sensitive values are never read: contacts and payroll are fetched as employee ids only.
+ * action on /employees (training checks on /employees/training), and the per-person lines sit
+ * in a page list linked to each record. Sensitive values are never read: contacts and payroll
+ * are fetched as employee ids only, and the login as its id only.
  */
 
 interface EmployeeRow {
@@ -42,6 +56,8 @@ interface EmployeeRow {
   employment_start_date: string | null
   employment_end_date: string | null
   first_shift_date: string | null
+  /** Only whether it is set is used: a portal login is needed to do training. */
+  auth_user_id?: string | null
 }
 
 interface RightToWorkRow {
@@ -62,6 +78,43 @@ interface InviteRow {
   completed_at: string | null
 }
 
+interface TrainingCourseRow {
+  id: string
+  title: string
+  kind: string
+  is_essentials: boolean
+  status: string
+}
+
+interface TrainingAssignmentRow {
+  id: string
+  employee_id: string
+  course_id: string
+  status: string
+  due_on: string | null
+  expires_on: string | null
+}
+
+/** One live course's completion count, as the Training matrix shows it. */
+export type CourseCompletion = Pick<MatrixCourse, 'id' | 'title' | 'requiredCount' | 'completedCount'>
+
+/** Reads every live course's completion count for a London date, in the matrix's course order. */
+export type CourseCompletionReader = (today: string) => Promise<CourseCompletion[]>
+
+/**
+ * The matrix's own tally: paused people left out, required where the course applies or an item
+ * is open, done with a completion that has not expired. It reads through the training service's
+ * own admin client rather than the section's, so the section time limit does not cancel it.
+ */
+export const readMatrixCompletion: CourseCompletionReader = async (today) =>
+  (await TrainingService.getMatrix({ today })).courses
+
+interface TrainingProfileRow {
+  employee_id: string
+  paused_from: string | null
+  paused_until: string | null
+}
+
 type CheckKey =
   | 'no_right_to_work'
   | 'right_to_work_expired'
@@ -72,6 +125,14 @@ type CheckKey =
   | 'invite_expired'
   | 'no_emergency_contact'
   | 'no_payroll_details'
+  | 'training_essentials_overdue'
+  | 'training_overdue'
+  | 'training_locked'
+  | 'training_declined'
+  | 'training_unreachable'
+  | 'training_external_expired'
+  | 'training_external_expiring_soon'
+  | 'training_external_expiring'
 
 interface Gap {
   check: CheckKey
@@ -91,9 +152,14 @@ interface CheckRule {
   action(count: number, first: string): string
   /** Headline fragment after "including". */
   fragment(count: number): string
+  /** Where the action points; the employee list unless set. */
+  path?: string
 }
 
-const EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, status, onboarding_completed_at, employment_start_date, employment_end_date, first_shift_date'
+const EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, status, onboarding_completed_at, employment_start_date, employment_end_date, first_shift_date, auth_user_id'
+const TRAINING_PATH = '/employees/training'
+/** Open cycles the staff ladder chases; overdue is judged on these. */
+const TRAINING_CHASED_STATUSES: readonly string[] = ['assigned', 'in_progress', 'awaiting_confirmation']
 const NAME_FALLBACK = 'Name not entered yet'
 
 function staff(n: number): string {
@@ -109,6 +175,9 @@ function checkRules(): CheckRule[] {
   const soon = EMPLOYEES.rightToWorkRedDays
   const later = EMPLOYEES.rightToWorkAmberDays
   const grace = EMPLOYEES.onboardingGraceDays
+  const overdueDays = EMPLOYEES.trainingOverdueRedDays
+  const externalSoon = EMPLOYEES.trainingExternalRedDays
+  const externalLater = EMPLOYEES.trainingExternalAmberDays
   return [
     {
       key: 'no_right_to_work',
@@ -139,6 +208,83 @@ function checkRules(): CheckRule[] {
         : `${formatCount(n)} right-to-work documents expire within ${soon} days, the first on ${first}.`,
       action: (n, first) => `Recheck right to work for ${staff(n)} before ${first}`,
       fragment: (n) => `${formatCount(n)} whose right to work expires within ${soon} days`,
+    },
+    {
+      key: 'training_essentials_overdue',
+      rag: 'red',
+      dated: true,
+      path: TRAINING_PATH,
+      text: (n, first) => n === 1
+        ? `1 essentials training item is overdue, due ${first}.`
+        : `${formatCount(n)} essentials training items are overdue, the earliest due ${first}.`,
+      action: (n) => n === 1
+        ? 'Make time on a shift for 1 overdue essentials training item'
+        : `Make time on shifts for ${formatCount(n)} overdue essentials training items`,
+      fragment: (n) => `${formatCount(n)} with essentials training overdue`,
+    },
+    {
+      key: 'training_overdue',
+      rag: 'red',
+      dated: true,
+      path: TRAINING_PATH,
+      text: (n, first) => n === 1
+        ? `1 training item is ${overdueDays} or more days overdue, due ${first}.`
+        : `${formatCount(n)} training items are ${overdueDays} or more days overdue, the earliest due ${first}.`,
+      action: (n) => `Get ${plural(n, 'overdue training item')} done or move the due date with a reason`,
+      fragment: (n) => `${formatCount(n)} with training ${overdueDays} or more days overdue`,
+    },
+    {
+      key: 'training_locked',
+      rag: 'red',
+      dated: false,
+      path: TRAINING_PATH,
+      text: (n) => n === 1
+        ? '1 training course is locked after three failed checks.'
+        : `${formatCount(n)} training courses are locked after three failed checks.`,
+      action: (n) => `Go through the section and unlock ${plural(n, 'locked training course')}`,
+      fragment: (n) => `${formatCount(n)} with a training course locked`,
+    },
+    {
+      key: 'training_declined',
+      rag: 'red',
+      dated: false,
+      path: TRAINING_PATH,
+      text: (n) => n === 1
+        ? '1 training confirmation was declined.'
+        : `${formatCount(n)} training confirmations were declined.`,
+      action: (n) => `Talk through ${plural(n, 'declined training confirmation')} and prepare ${n === 1 ? 'it' : 'them'} again`,
+      fragment: (n) => `${formatCount(n)} who declined a training confirmation`,
+    },
+    {
+      key: 'training_unreachable',
+      rag: 'red',
+      dated: false,
+      path: TRAINING_PATH,
+      text: (n) => `${staff(n)} with training to do cannot be reached: no portal login, or training emails not delivered.`,
+      action: (n) => `Sort out portal logins or email addresses for ${staff(n)}`,
+      fragment: (n) => `${formatCount(n)} whose training cannot reach them`,
+    },
+    {
+      key: 'training_external_expired',
+      rag: 'red',
+      dated: true,
+      path: TRAINING_PATH,
+      text: (n, first) => n === 1
+        ? `1 external training certificate expired on ${first}.`
+        : `${formatCount(n)} external training certificates have expired, the earliest on ${first}.`,
+      action: (n) => `Renew ${plural(n, 'expired external training certificate')}`,
+      fragment: (n) => `${formatCount(n)} with an external training certificate expired`,
+    },
+    {
+      key: 'training_external_expiring_soon',
+      rag: 'red',
+      dated: true,
+      path: TRAINING_PATH,
+      text: (n, first) => n === 1
+        ? `1 external training certificate expires within ${externalSoon} days, on ${first}.`
+        : `${formatCount(n)} external training certificates expire within ${externalSoon} days, the first on ${first}.`,
+      action: (n, first) => `Renew ${plural(n, 'external training certificate')} before ${first}`,
+      fragment: (n) => `${formatCount(n)} whose external training certificate expires within ${externalSoon} days`,
     },
     {
       key: 'right_to_work_expiring',
@@ -194,6 +340,19 @@ function checkRules(): CheckRule[] {
       action: (n) => `Add payroll details for ${staff(n)}`,
       fragment: (n) => `${formatCount(n)} with no payroll details`,
     },
+    {
+      key: 'training_external_expiring',
+      rag: 'amber',
+      dated: true,
+      path: TRAINING_PATH,
+      text: (n, first) => n === 1
+        ? `1 external training certificate expires within ${externalLater} days, on ${first}.`
+        : `${formatCount(n)} external training certificates expire within ${externalLater} days, the first on ${first}.`,
+      action: (n, first) => n === 1
+        ? `Plan the renewal of 1 external training certificate before ${first}`
+        : `Plan renewals of ${formatCount(n)} external training certificates, the first before ${first}`,
+      fragment: (n) => `${formatCount(n)} whose external training certificate expires within ${externalLater} days`,
+    },
   ]
 }
 
@@ -209,7 +368,130 @@ function worstRag(gaps: Gap[], rules: Map<CheckKey, CheckRule>): Rag {
   }, 'green')
 }
 
-export async function buildEmployeesSection(ctx: SectionContext): Promise<SectionBuildResult> {
+interface TrainingIndex {
+  courses: Map<string, TrainingCourseRow>
+  cyclesBy: Map<string, TrainingAssignmentRow[]>
+  profiles: Map<string, TrainingProfileRow>
+  undeliverable: Set<string>
+  /** Open overdue items for these people today, paused people left out. */
+  overdueCount(people: EmployeeRow[], today: string): { total: number; essentials: number }
+}
+
+function indexTraining(
+  courses: TrainingCourseRow[],
+  cycles: TrainingAssignmentRow[],
+  profiles: TrainingProfileRow[],
+  undeliverable: EmployeeIdRow[],
+): TrainingIndex {
+  const courseMap = new Map(courses.map((course) => [course.id, course]))
+  const cyclesBy = new Map<string, TrainingAssignmentRow[]>()
+  for (const cycle of cycles) {
+    // Only live courses count: a retired course's open items are cancelled by the daily sweep.
+    if (courseMap.get(cycle.course_id)?.status !== 'live') continue
+    const list = cyclesBy.get(cycle.employee_id) ?? []
+    list.push(cycle)
+    cyclesBy.set(cycle.employee_id, list)
+  }
+  const profileMap = new Map(profiles.map((profile) => [profile.employee_id, profile]))
+  const index: TrainingIndex = {
+    courses: courseMap,
+    cyclesBy,
+    profiles: profileMap,
+    undeliverable: new Set(undeliverable.map((row) => row.employee_id)),
+    overdueCount(people, today) {
+      let total = 0
+      let essentials = 0
+      for (const person of people) {
+        if (isPaused(profileMap.get(person.employee_id), today)) continue
+        for (const cycle of cyclesBy.get(person.employee_id) ?? []) {
+          if (!isOverdue(cycle, today)) continue
+          total += 1
+          if (courseMap.get(cycle.course_id)?.is_essentials) essentials += 1
+        }
+      }
+      return { total, essentials }
+    },
+  }
+  return index
+}
+
+function isPaused(profile: TrainingProfileRow | undefined, today: string): boolean {
+  if (!profile?.paused_from || profile.paused_from > today) return false
+  return !profile.paused_until || profile.paused_until >= today
+}
+
+function isOverdue(cycle: TrainingAssignmentRow, today: string): boolean {
+  return TRAINING_CHASED_STATUSES.includes(cycle.status) && Boolean(cycle.due_on && cycle.due_on < today)
+}
+
+/** One person's training gaps. Course titles are page only, on the person's line. */
+function trainingGaps(
+  row: EmployeeRow,
+  training: TrainingIndex,
+  format: { today: string; label: (isoDate: string) => string },
+): Gap[] {
+  const { today, label } = format
+  const gaps: Gap[] = []
+  const cycles = training.cyclesBy.get(row.employee_id) ?? []
+  if (cycles.length === 0) return gaps
+  const paused = isPaused(training.profiles.get(row.employee_id), today)
+  let openOnline = false
+
+  for (const cycle of cycles) {
+    const course = training.courses.get(cycle.course_id)
+    if (!course) continue
+    if (cycle.status === 'locked') {
+      gaps.push({ check: 'training_locked', detail: `${course.title} locked` })
+    } else if (cycle.status === 'declined') {
+      gaps.push({ check: 'training_declined', detail: `${course.title} confirmation declined` })
+    } else if (!paused && isOverdue(cycle, today) && cycle.due_on) {
+      const days = daysBetween(cycle.due_on, today)
+      if (course.is_essentials) {
+        gaps.push({ check: 'training_essentials_overdue', detail: `${course.title} overdue (due ${label(cycle.due_on)})`, date: cycle.due_on })
+      } else if (days >= EMPLOYEES.trainingOverdueRedDays) {
+        gaps.push({ check: 'training_overdue', detail: `${course.title} ${days} days overdue`, date: cycle.due_on })
+      }
+    }
+    if (course.kind === 'online' && TRAINING_CHASED_STATUSES.includes(cycle.status)) openOnline = true
+  }
+
+  if (openOnline && !paused) {
+    if (!row.auth_user_id) {
+      gaps.push({ check: 'training_unreachable', detail: 'no portal login for training' })
+    } else if (training.undeliverable.has(row.employee_id)) {
+      gaps.push({ check: 'training_unreachable', detail: 'training emails not delivered' })
+    }
+  }
+
+  // External certificates: the latest expiry held per course decides, as right to work does.
+  const soonEnd = addDays(today, EMPLOYEES.trainingExternalRedDays)
+  const laterEnd = addDays(today, EMPLOYEES.trainingExternalAmberDays)
+  const latestExpiry = new Map<string, string>()
+  for (const cycle of cycles) {
+    const course = training.courses.get(cycle.course_id)
+    if (course?.kind !== 'external' || cycle.status !== 'completed' || !cycle.expires_on) continue
+    const held = latestExpiry.get(cycle.course_id)
+    if (!held || cycle.expires_on > held) latestExpiry.set(cycle.course_id, cycle.expires_on)
+  }
+  for (const [courseId, expiry] of latestExpiry) {
+    // Someone working their notice who leaves before it expires needs no renewal.
+    if (row.employment_end_date && row.employment_end_date < expiry) continue
+    const title = training.courses.get(courseId)?.title ?? 'External certificate'
+    if (expiry < today) {
+      gaps.push({ check: 'training_external_expired', detail: `${title} expired ${label(expiry)}`, date: expiry })
+    } else if (expiry <= soonEnd) {
+      gaps.push({ check: 'training_external_expiring_soon', detail: `${title} expires ${label(expiry)}`, date: expiry })
+    } else if (expiry <= laterEnd) {
+      gaps.push({ check: 'training_external_expiring', detail: `${title} expires ${label(expiry)}`, date: expiry })
+    }
+  }
+  return gaps
+}
+
+export async function buildEmployeesSection(
+  ctx: SectionContext,
+  readCompletion: CourseCompletionReader = readMatrixCompletion,
+): Promise<SectionBuildResult> {
   const { today } = ctx.windows
   const nowMs = ctx.now.getTime()
   const currentStatuses: readonly string[] = EMPLOYEES.statuses
@@ -229,7 +511,7 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
   )
 
   const notes = [
-    'Not tracked in the app: training and licence expiry, contract documents.',
+    'Not tracked in the app: licence expiry, contract documents.',
     'Right-to-work documents without an expiry date are not checked for expiry.',
   ]
 
@@ -260,7 +542,7 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
     .filter((row) => onboardingStatuses.includes(row.status) && !row.onboarding_completed_at)
     .map((row) => row.employee_id)
 
-  const [rightToWork, contacts, payroll, invites] = await Promise.all([
+  const [rightToWork, contacts, payroll, invites, trainingCourses, trainingCycles, trainingProfiles, undeliverable, courseCompletion] = await Promise.all([
     readForEmployees(currentIds, (ids) => fetchAllRows<RightToWorkRow>(
       (from, to) => ctx.db
         .from('employee_right_to_work')
@@ -301,6 +583,48 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
         .range(from, to),
       { label: 'insights onboarding invites' },
     )),
+    // Training: courses are few, so all are read; cycles, pauses and undeliverable flags only
+    // for current staff. Cancelled cycles never count.
+    readForEmployees(currentIds, () => fetchAllRows<TrainingCourseRow>(
+      (from, to) => ctx.db
+        .from('training_courses')
+        .select('id, title, kind, is_essentials, status')
+        .order('id')
+        .range(from, to),
+      { label: 'insights training courses' },
+    )),
+    readForEmployees(currentIds, (ids) => fetchAllRows<TrainingAssignmentRow>(
+      (from, to) => ctx.db
+        .from('training_assignments')
+        .select('id, employee_id, course_id, status, due_on, expires_on')
+        .in('employee_id', ids)
+        .neq('status', 'cancelled')
+        .order('id')
+        .range(from, to),
+      { label: 'insights training assignments' },
+    )),
+    readForEmployees(currentIds, (ids) => fetchAllRows<TrainingProfileRow>(
+      (from, to) => ctx.db
+        .from('training_profiles')
+        .select('employee_id, paused_from, paused_until')
+        .in('employee_id', ids)
+        .order('employee_id')
+        .range(from, to),
+      { label: 'insights training profiles' },
+    )),
+    // Training emails the daily job could not deliver (its "told the manager" claims).
+    readForEmployees(currentIds, (ids) => fetchAllRows<EmployeeIdRow & { id: string }>(
+      (from, to) => ctx.db
+        .from('training_reminders')
+        .select('id, employee_id')
+        .eq('kind', 'undeliverable')
+        .in('employee_id', ids)
+        .order('id')
+        .range(from, to),
+      { label: 'insights training undeliverable' },
+    )),
+    // Completion per course: the matrix's count, read the way the matrix page reads it.
+    readForEmployees(currentIds, () => readCompletion(today)),
   ])
 
   const rightToWorkBy = new Map(rightToWork.map((row) => [row.employee_id, row]))
@@ -318,6 +642,7 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
 
   const soonEnd = addDays(today, EMPLOYEES.rightToWorkRedDays)
   const laterEnd = addDays(today, EMPLOYEES.rightToWorkAmberDays)
+  const training = indexTraining(trainingCourses, trainingCycles, trainingProfiles, undeliverable)
   const people: Array<{ row: EmployeeRow; newStarter: boolean; gaps: Gap[] }> = []
   let unknownStart = 0
 
@@ -365,6 +690,7 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
     if (isCurrent) {
       if (!withContact.has(row.employee_id)) gaps.push({ check: 'no_emergency_contact', detail: 'no emergency contact' })
       if (!withPayroll.has(row.employee_id)) gaps.push({ check: 'no_payroll_details', detail: 'no payroll details' })
+      gaps.push(...trainingGaps(row, training, { today, label }))
     }
 
     if (gaps.length > 0) people.push({ row, newStarter: isNewStarter, gaps })
@@ -392,7 +718,7 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
       emailSafe: true,
       action: {
         text: rule.action(hits.length, firstLabel),
-        href: ctx.link('/employees'),
+        href: ctx.link(rule.path ?? '/employees'),
         target: 'list',
         impact: 'staffing',
         ...(rule.dated && first ? { dueDate: first } : {}),
@@ -444,6 +770,25 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
     { label: 'No payroll details', value: formatCount(hitsFor('no_payroll_details').length) },
   ]
 
+  const overdueTraining = training.overdueCount(current, today)
+  metrics.push({
+    label: 'Training items overdue',
+    value: formatCount(overdueTraining.total),
+    ...(overdueTraining.essentials > 0 ? { comparison: `including ${formatCount(overdueTraining.essentials)} essentials` } : {}),
+  })
+  const requiredCourses = courseCompletion.filter((course) => course.requiredCount > 0)
+  const completionTotals = requiredCourses.reduce(
+    (sum, course) => ({ required: sum.required + course.requiredCount, done: sum.done + course.completedCount }),
+    { required: 0, done: 0 },
+  )
+  if (completionTotals.required > 0) {
+    metrics.push({
+      label: 'Training completion',
+      value: formatPercent(completionTotals.done / completionTotals.required),
+      comparison: `${formatCount(completionTotals.done)} of ${formatCount(completionTotals.required)} required courses done`,
+    })
+  }
+
   const items: Array<InsightListItem & { rank: number; name: string }> = people.map((person) => {
     const rag = worstRag(person.gaps, rulesByKey)
     const name = `${displayNameWithLegal(person.row, NAME_FALLBACK)}${person.newStarter ? ' (new starter)' : ''}`
@@ -460,6 +805,15 @@ export async function buildEmployeesSection(ctx: SectionContext): Promise<Sectio
     title: 'Staff with something missing',
     items: items.map(({ text, href, rag }) => ({ text, href, rag })),
   }]
+
+  // Shown, not rated (spec 8.3): no rag on these lines.
+  const completionItems = requiredCourses.map((course) => ({
+    text: `${course.title}: ${formatCount(course.completedCount)} of ${formatCount(course.requiredCount)} done (${formatPercent(course.completedCount / course.requiredCount)})`,
+    href: ctx.link(TRAINING_PATH),
+  }))
+  if (completionItems.length > 0) {
+    lists.push({ title: 'Training completion by course', items: completionItems })
+  }
 
   if (leaverNote) notes.push(leaverNote)
   if (unknownStart > 0) {
