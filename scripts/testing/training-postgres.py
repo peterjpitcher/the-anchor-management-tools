@@ -10,7 +10,7 @@ training migrations, each twice:
 
   20261103141837_training_tables.sql
   20261103141853_training_signing_kinds.sql
-  20261103090200_training_permissions.sql
+  20261103153829_training_permissions.sql
   20261103141905_retire_policy_drafts_replaced_by_training.sql
 
 and checks: nothing is granted to anon, authenticated or PUBLIC on any training table or
@@ -36,7 +36,7 @@ SIGNING_DRAFTS = MIGRATIONS / '20261013080952_document_signing_template_drafts.s
 SIGNING_DEDUCTION_KIND = MIGRATIONS / '20261014084753_signing_deposit_deduction_agreement.sql'
 TABLES = MIGRATIONS / '20261103141837_training_tables.sql'
 KINDS = MIGRATIONS / '20261103141853_training_signing_kinds.sql'
-PERMISSIONS = MIGRATIONS / '20261103090200_training_permissions.sql'
+PERMISSIONS = MIGRATIONS / '20261103153829_training_permissions.sql'
 RETIRE = MIGRATIONS / '20261103141905_retire_policy_drafts_replaced_by_training.sql'
 
 TRAINING_TABLES = [

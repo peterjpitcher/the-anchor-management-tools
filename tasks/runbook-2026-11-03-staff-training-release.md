@@ -1,7 +1,9 @@
 # Staff training: release checklist (3 November 2026)
 
-Built overnight on branch `feat/staff-training`. Nothing is live and no migration is applied.
-Every step below that touches production needs the owner's explicit yes at the time.
+Built overnight on branch `feat/staff-training`. Released 3 November 2026: all four migrations
+applied and the code live (sections 1 to 3). No course is published, nothing is assigned and both
+training switches are off. Every step below that touches production needs the owner's explicit yes
+at the time.
 
 ## Before you start
 
@@ -31,9 +33,11 @@ the training tables as soon as the code is live.
 
 ## 2. Deploy
 
-- [ ] Merge the PR into main and let Vercel deploy production.
-- [ ] Confirm the production deployment id serves the merge commit (`deploy-verify` skill).
-- [ ] Deploy production before 09:00 UTC on 10 November. The new `training-daily` cron and the
+- [x] Merge the PR into main and let Vercel deploy production (PR 300, merge commit `c212a3483`,
+      3 November 2026, 15:29 UTC).
+- [x] Confirm the production deployment id serves the merge commit (`deploy-verify` skill):
+      `dpl_JAVAj499X4mzasAjPCT3XUoUSfMA` serves management.orangejelly.co.uk.
+- [x] Deploy production before 09:00 UTC on 10 November. The new `training-daily` cron and the
       existing `signing-reminders` cron (now recorded run by run) are watched from 9 November, and
       each needs one completed run before the 07:40 UTC check on 11 November. A later release would
       raise one false "no completed run" alert unless `monitoredFrom` in
@@ -41,7 +45,7 @@ the training tables as soon as the code is live.
 
 ## 3. Database, after the deploy
 
-- [ ] `20261103090200_training_permissions.sql` through `prod-migrate` (training view and manage
+- [x] `20261103153829_training_permissions.sql` through `prod-migrate` (training view and manage
       for super_admin and manager; publish for super_admin only, owner decision 3 November 2026).
       Never before the code is live. Publish covers uploading, previewing, publishing and retiring
       courses, adding external qualification types, and the two training switches. Every
@@ -49,7 +53,7 @@ the training tables as soon as the code is live.
       super_admin through before it reads any grant), so this grant changes nothing for anyone
       today: the manager role has no users. A manager-role user added later can view and manage
       training but cannot add a qualification type or preview a course.
-- [ ] Read-only check of the grant, expecting exactly `manager: manage, view` and
+- [x] Read-only check of the grant, expecting exactly `manager: manage, view` and
       `super_admin: manage, publish, view`:
 
 ```sql
@@ -62,10 +66,10 @@ GROUP BY r.name
 ORDER BY r.name;
 ```
 
-- [ ] Regenerate types and confirm there is no diff against the committed file:
+- [x] Regenerate types and confirm there is no diff against the committed file:
       `npx supabase gen types typescript --project-id tfcasgxopxegwrabvwat --schema public`
-- [ ] Run `npx tsx scripts/security/assert-anon-surface.ts` and confirm it exits 0.
-- [ ] Read-only check that nobody but the service role can reach the tables, expecting 0 rows:
+- [x] Run `npx tsx scripts/security/assert-anon-surface.ts` and confirm it exits 0 (all 9 checks, 3 November 2026).
+- [x] Read-only check that nobody but the service role can reach the tables, expecting 0 rows:
 
 ```sql
 SELECT table_name, grantee, privilege_type
@@ -74,7 +78,7 @@ WHERE table_schema = 'public' AND table_name LIKE 'training\_%'
   AND grantee IN ('anon', 'authenticated', 'PUBLIC');
 ```
 
-- [ ] Confirm the bucket is private: `SELECT id, public FROM storage.buckets WHERE id = 'training';`
+- [x] Confirm the bucket is private: `SELECT id, public FROM storage.buckets WHERE id = 'training';`
       (expect `public = false`).
 
 ## 4. Courses
@@ -151,7 +155,7 @@ says (only `SUSPEND_ALL_EMAIL` stops those).
 
 ## 8. Tidy
 
-- [ ] Move the privacy notice "Last updated" date to the release date
+- [x] Move the privacy notice "Last updated" date to the release date
       (`src/app/privacy/page.tsx`).
 - [ ] When the certificate design arrives, replace the layout in
       `src/lib/signing/documents/training-certificate.ts`.
