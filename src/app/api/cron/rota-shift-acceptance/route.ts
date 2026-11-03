@@ -52,6 +52,7 @@ type EmployeeRow = {
   last_name: string | null;
   preferred_name: string | null;
   email_address: string | null;
+  status: string | null;
 };
 
 function addDays(date: Date, days: number): Date {
@@ -140,7 +141,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   const { data: employees, error: employeesError } = employeeIds.length > 0
     ? await supabase
         .from('employees')
-        .select('employee_id, first_name, last_name, preferred_name, email_address')
+        .select('employee_id, first_name, last_name, preferred_name, email_address, status')
         .in('employee_id', employeeIds)
     : { data: [] as EmployeeRow[], error: null };
 
@@ -150,11 +151,27 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const employeeById = new Map((employees ?? []).map((employee: EmployeeRow) => [employee.employee_id, employee]));
 
+  // Someone already marked as Former can still be on the published rota, because finalising
+  // checks the working rota and not the published copy. On 18 July 2026 a Former employee was
+  // asked to accept shifts two days after they left. Their shifts are left pending for a manager:
+  // never emailed about and never auto-accepted in their name.
+  const formerEmployeeIds = new Set(
+    (employees ?? [])
+      .filter((employee: EmployeeRow) => employee.status === 'Former')
+      .map((employee: EmployeeRow) => employee.employee_id),
+  );
+
   const warningByEmployee = new Map<string, PendingShiftRow[]>();
   const autoAcceptShifts: PendingShiftRow[] = [];
   let heldForLatePublishGrace = 0;
+  let skippedFormerEmployee = 0;
 
   for (const shift of pendingShifts) {
+    if (formerEmployeeIds.has(shift.employee_id)) {
+      skippedFormerEmployee += 1;
+      continue;
+    }
+
     if (isInsideAcceptanceCutoff(shift.shift_date, shift.start_time, now)) {
       const graceEndsAt = latePublishGraceEnd(shift);
       if (graceEndsAt && now.getTime() < graceEndsAt.getTime()) {
@@ -409,6 +426,7 @@ export async function GET(request: Request): Promise<NextResponse> {
       autoAcceptDesynced,
       autoAcceptMissingLiveShift,
       heldForLatePublishGrace,
+      skippedFormerEmployee,
       employeeLookupError: employeesError?.message ?? null,
     },
     // Drift between the snapshot and the live rota cannot be repaired by running

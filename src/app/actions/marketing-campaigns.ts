@@ -13,7 +13,7 @@ import {
   MARKETING_UTM_SOURCE,
 } from '@/lib/email/marketing/config'
 import { lintMarketingContent } from '@/lib/email/marketing/registry'
-import { contentHasMergeTokens, mergeCampaignContent, SAMPLE_MERGE_FIELDS } from '@/lib/email/marketing/merge'
+import { contentHasMergeTokens, mergeCampaignContent } from '@/lib/email/marketing/merge'
 import { renderMarketingEmail } from '@/lib/email/marketing/render'
 import { createClient } from '@/lib/supabase/server'
 import type { ActionType } from '@/types/rbac'
@@ -47,6 +47,7 @@ import {
 import {
   activateLifecycleCampaign,
   getLifecycleCampaignStats,
+  sampleMergeFieldsFor,
   setLifecycleHoldout,
   type LifecycleCampaignStats,
 } from '@/services/marketing-lifecycle'
@@ -669,7 +670,7 @@ export async function sendMarketingTestEmail(id: unknown): Promise<ActionResult<
     // voucher rather than raw placeholders. The sample number is not a ledger voucher.
     const parsedContent = parseCampaignContent(campaign.content)
     const content = contentHasMergeTokens(parsedContent)
-      ? mergeCampaignContent(parsedContent, SAMPLE_MERGE_FIELDS)
+      ? mergeCampaignContent(parsedContent, await sampleMergeFieldsFor(campaign))
       : parsedContent
     const rendered = renderMarketingEmail(content, {
       unsubscribeUrl: `${getAppUrl()}/api/unsubscribe?t=test-send-placeholder-token`,

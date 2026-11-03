@@ -129,7 +129,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
             <Card>
               <CardHeader
                 title={overview.title}
-                subtitle={`Version ${overview.version}. ${confirmed} of ${overview.staff.length} active staff have confirmed it`}
+                subtitle={`Version ${overview.version}. ${confirmed} of ${overview.staff.length} current staff have confirmed it`}
                 action={
                   canSend && overview.isActive && outstanding.length > 0 ? (
                     <Button type="button" size="sm" variant="primary" loading={pending} onClick={() => setConfirmAll(true)}>
@@ -165,7 +165,7 @@ export default function PoliciesClient({ templates, overview, loadError, canSend
               <CardHeader title="Staff" />
               <CardBody>
                 {overview.staff.length === 0 ? (
-                  <Empty title="No active staff" />
+                  <Empty title="No current staff" />
                 ) : (
                   <ul className="divide-y divide-border">
                     {overview.staff.map((row) => (

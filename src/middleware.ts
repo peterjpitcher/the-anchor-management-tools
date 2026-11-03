@@ -74,13 +74,46 @@ function isPublicPath(pathname: string) {
   return false;
 }
 
+// A made-up origin to resolve against: a result on any other origin was not a path on this site.
+const REDIRECT_CHECK_ORIGIN = 'https://redirect-check.invalid'
+
+/** True when a browser following `path` as a link would stay on this site. */
+function staysOnThisSite(path: string) {
+  if (!path.startsWith('/') || path.startsWith('//')) return false
+  for (let index = 0; index < path.length; index++) {
+    const code = path.charCodeAt(index)
+    // Control characters, and any backslash: browsers read `/\evil.example` as `//evil.example`.
+    if (code < 32 || code === 127 || code === 92) return false
+  }
+  try {
+    const url = new URL(path, REDIRECT_CHECK_ORIGIN)
+    // Removing dot segments can collapse a harmless-looking path into `//host` (`/.//evil.example`).
+    return url.origin === REDIRECT_CHECK_ORIGIN && !url.pathname.startsWith('//')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * The path to store in the post-login redirect cookie, or `/dashboard` for anything a browser
+ * could read as another site. Checked as written and once decoded, so an encoded backslash or
+ * slash (`/%5Cevil.example`, `/%2F%2Fevil.example`) cannot turn into one later.
+ */
+function safeRedirectPath(path: string) {
+  try {
+    return staysOnThisSite(path) && staysOnThisSite(decodeURIComponent(path)) ? path : '/dashboard'
+  } catch {
+    return '/dashboard'
+  }
+}
+
 function sanitizeRedirectTarget(url: URL) {
   try {
     const decodedPath = decodeURIComponent(url.pathname).trim()
     const collapsedPath = decodedPath.replace(/\s+/g, '')
     const finalPath = collapsedPath.startsWith('/') ? collapsedPath : '/dashboard'
     const search = url.search ? url.search.replace(/\s+/g, '') : ''
-    return finalPath + search
+    return safeRedirectPath(finalPath + search)
   } catch {
     return '/dashboard'
   }
@@ -91,10 +124,8 @@ function sanitizeRedirectFromParam(raw: string | null) {
 
   try {
     const trimmed = raw.trim().replace(/\s+/g, '')
-    if (!trimmed.startsWith('/')) return '/dashboard'
-    if (trimmed.startsWith('//')) return '/dashboard'
     if (trimmed.toLowerCase().startsWith('/auth/')) return '/dashboard'
-    return trimmed
+    return safeRedirectPath(trimmed)
   } catch {
     return '/dashboard'
   }

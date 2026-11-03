@@ -4,9 +4,9 @@ Branch `fix/employees-onboarding-review`, worktree `.claude/worktrees/employees-
 
 - [x] Discovery: four read-only reviews plus live production checks; defect log written
 - [x] Shared field rules module (`src/lib/employees/field-rules.ts`) with tests (London and UTC)
-- [x] Migration FF-01 `20261102230000_employee_rate_overrides_rls.sql`, rollback, harness (17 checks pass)
-- [x] Migration FF-02/03/04 `20261102230100_employee_records_access.sql`, rollback, harness (32 checks pass)
-- [x] Migration FF-59 `20261102230200_employees_status_check_reassert.sql`
+- [x] Migration FF-01 `20261103070932_employee_rate_overrides_rls.sql`, rollback, harness (17 checks pass)
+- [x] Migration FF-02/03/04 `20261103070948_employee_records_access.sql`, rollback, harness (32 checks pass)
+- [x] Migration FF-59 `20261103070955_employees_status_check_reassert.sql`
 - [x] Code fixes, cluster A (onboarding): FF-07 to FF-20
 - [x] Code fixes, cluster B (staff forms and actions): FF-22 to FF-40 server parts, FF-04 audit half
 - [x] Code fixes, cluster C (profile, lifecycle, pay, PDFs): FF-05, FF-41 to FF-48, FF-60 and halves

@@ -1,4 +1,4 @@
--- Rollback for 20261102230100_employee_records_access.sql: restores the grants and policy production held on 2 November 2026.
+-- Rollback for 20261103070948_employee_records_access.sql: restores the grants and policy production held on 2 November 2026.
 
 grant execute on function public.create_employee_invite(text, text, date) to authenticated;
 grant execute on function public.restore_employee_version(uuid, integer, uuid) to authenticated;
