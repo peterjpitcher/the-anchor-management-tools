@@ -1,11 +1,12 @@
 'use client';
 
-import { useActionState, useEffect, useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from 'react';
 import { upsertHealthRecord } from '@/app/actions/employeeActions';
+import type { ActionFormState } from '@/types/actions';
 import type { EmployeeHealthRecord } from '@/types/database';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Alert, Button, Card, CardBody, CardHeader, Checkbox, Field, FormFooter, Input, LinkButton, Textarea, toast } from '@/ds';
+import { HEALTH_CONDITION_FIELDS, HEALTH_QUESTIONS } from '@/lib/employees/health-questions';
 
 interface HealthRecordsFormProps {
   employeeId: string;
@@ -14,37 +15,29 @@ interface HealthRecordsFormProps {
   cancelHref?: string;
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      loading={pending}
-      variant="primary"
-    >
-      Save Health Records
-    </Button>
-  );
-}
-
 export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref }: HealthRecordsFormProps) {
-  const [state, formAction] = useActionState(upsertHealthRecord, null);
+  const [state, formAction, pending] = useActionState(upsertHealthRecord, null);
   const [hasAllergies, setHasAllergies] = useState(Boolean(healthRecord?.has_allergies ?? healthRecord?.allergies));
   const [hadAbsence, setHadAbsence] = useState(Boolean(healthRecord?.had_absence_over_2_weeks_last_3_years));
   const [hadOutpatient, setHadOutpatient] = useState(Boolean(healthRecord?.had_outpatient_treatment_over_3_months_last_3_years));
   const [isRegisteredDisabled, setIsRegisteredDisabled] = useState(healthRecord?.is_registered_disabled || false);
-  const pathname = usePathname();
   const router = useRouter();
-  const isNewEmployee = pathname?.includes('/employees/new');
+  const handledState = useRef<ActionFormState | null>(null);
 
   useEffect(() => {
-    if (state?.type === 'success') {
-      if (!isNewEmployee) {
-        toast.success(state.message || 'Health record updated successfully.');
-        router.push(`/employees/${employeeId}`);
-      }
-    }
-  }, [state, isNewEmployee, router, employeeId]);
+    if (state?.type !== 'success' || handledState.current === state) return;
+    handledState.current = state;
+    toast.success(state.message || 'Health record updated successfully.');
+    router.push(`/employees/${employeeId}`);
+  }, [state, router, employeeId]);
+
+  // onSubmit rather than a form action: a React 19 form action resets the form after every
+  // submit, so a refused save wiped the answers.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   interface FieldConfig {
     name: string;
@@ -102,52 +95,53 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
   };
 
   const generalFields: FieldConfig[] = [
-      { name: 'doctor_name', label: 'Doctor Name', defaultValue: healthRecord?.doctor_name },
-      { name: 'doctor_address', label: 'Doctor Address', defaultValue: healthRecord?.doctor_address },
-      { name: 'illness_history', label: 'Additional Medical Notes', type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
+      // Every label here is the question the starter is asked in onboarding (health-questions.ts),
+      // so a manager edits the answer to the question that was actually asked.
+      { name: 'doctor_name', label: HEALTH_QUESTIONS.doctor_name, defaultValue: healthRecord?.doctor_name },
+      { name: 'doctor_address', label: HEALTH_QUESTIONS.doctor_address, defaultValue: healthRecord?.doctor_address },
+      { name: 'illness_history', label: HEALTH_QUESTIONS.illness_history, type: 'textarea' as const, defaultValue: healthRecord?.illness_history },
+      { name: 'recent_treatment', label: HEALTH_QUESTIONS.recent_treatment, type: 'textarea' as const, defaultValue: healthRecord?.recent_treatment },
   ];
 
   const questionnaireFields: FieldConfig[] = [
       { 
         name: 'has_allergies', 
-        label: 'Do you have any allergies?', 
+        label: HEALTH_QUESTIONS.has_allergies, 
         type: 'checkbox' as const, 
         defaultChecked: hasAllergies, 
         onChange: (checked: boolean) => setHasAllergies(checked)
       },
       { 
         name: 'had_absence_over_2_weeks_last_3_years', 
-        label: 'In the past 3 years, been off work for 2+ weeks due to illness/accident?', 
+        label: HEALTH_QUESTIONS.had_absence_over_2_weeks_last_3_years, 
         type: 'checkbox' as const, 
         defaultChecked: hadAbsence, 
         onChange: (checked: boolean) => setHadAbsence(checked)
       },
       { 
         name: 'had_outpatient_treatment_over_3_months_last_3_years', 
-        label: 'In the past 3 years, attended outpatient treatment for 3+ months?', 
+        label: HEALTH_QUESTIONS.had_outpatient_treatment_over_3_months_last_3_years, 
         type: 'checkbox' as const, 
         defaultChecked: hadOutpatient, 
         onChange: (checked: boolean) => setHadOutpatient(checked)
       },
   ]
   
-  const conditionFields: FieldConfig[] = [
-      { name: 'has_diabetes', label: 'Suffer with Diabetes?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_diabetes },
-      { name: 'has_epilepsy', label: 'Suffer with Epilepsy/Fits/Blackouts?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_epilepsy },
-      { name: 'has_skin_condition', label: 'Suffer with Eczema/Dermatitis/Skin Disease?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_skin_condition },
-      { name: 'has_depressive_illness', label: 'Suffer with Depressive Illness?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_depressive_illness },
-      { name: 'has_bowel_problems', label: 'Suffer with Bowel Problems?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_bowel_problems },
-      { name: 'has_ear_problems', label: 'Suffer with Earache or Infection?', type: 'checkbox' as const, defaultChecked: healthRecord?.has_ear_problems },
-  ];
+  const conditionFields: FieldConfig[] = HEALTH_CONDITION_FIELDS.map((field) => ({
+      name: field,
+      label: HEALTH_QUESTIONS[field],
+      type: 'checkbox' as const,
+      defaultChecked: healthRecord?.[field],
+  }));
   
   const disabilityFields: FieldConfig[] = [
-      { name: 'disability_reg_number', label: 'Disability Registration Number', defaultValue: healthRecord?.disability_reg_number },
-      { name: 'disability_reg_expiry_date', label: 'Registration Expiry Date', type: 'date' as const, defaultValue: healthRecord?.disability_reg_expiry_date?.split('T')[0] },
-      { name: 'disability_details', label: 'Disability Details', type: 'textarea' as const, defaultValue: healthRecord?.disability_details },
+      { name: 'disability_reg_number', label: HEALTH_QUESTIONS.disability_reg_number, defaultValue: healthRecord?.disability_reg_number },
+      { name: 'disability_reg_expiry_date', label: HEALTH_QUESTIONS.disability_reg_expiry_date, type: 'date' as const, defaultValue: healthRecord?.disability_reg_expiry_date?.split('T')[0] },
+      { name: 'disability_details', label: HEALTH_QUESTIONS.disability_details, type: 'textarea' as const, defaultValue: healthRecord?.disability_details },
   ];
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
 
       <Card>
@@ -163,13 +157,13 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
           {questionnaireFields.map(renderField)}
 
           {hasAllergies && (
-            renderField({ name: 'allergies', label: 'If yes, please specify', type: 'textarea', defaultValue: healthRecord?.allergies })
+            renderField({ name: 'allergies', label: HEALTH_QUESTIONS.allergies, type: 'textarea', defaultValue: healthRecord?.allergies })
           )}
 
           {(hadAbsence || hadOutpatient) && (
             renderField({
               name: 'absence_or_treatment_details',
-              label: 'If yes to either, please provide details',
+              label: HEALTH_QUESTIONS.absence_or_treatment_details,
               type: 'textarea',
               defaultValue: healthRecord?.absence_or_treatment_details
             })
@@ -189,12 +183,13 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
         <CardBody className="space-y-4">
           {renderField({
             name: 'is_registered_disabled',
-            label: 'Is Registered Disabled?',
+            label: HEALTH_QUESTIONS.is_registered_disabled,
             type: 'checkbox',
             defaultChecked: isRegisteredDisabled,
             onChange: (checked: boolean) => setIsRegisteredDisabled(checked)
           })}
 
+          {/* Unticking hides these, and the save clears them, so old details are not kept. */}
           {isRegisteredDisabled && (
             <div className="grid gap-4 sm:grid-cols-2">
               {disabilityFields.map(renderField)}
@@ -213,7 +208,9 @@ export default function HealthRecordsForm({ employeeId, healthRecord, cancelHref
             Cancel
           </LinkButton>
         )}
-        <SubmitButton />
+        <Button type="submit" loading={pending} variant="primary">
+          Save Health Records
+        </Button>
       </FormFooter>
     </form>
   );

@@ -1,12 +1,13 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { EmployeeAttachment } from '@/types/database'
 import { deleteEmployeeAttachment, getAttachmentSignedUrl } from '@/app/actions/employeeActions'
 import { formatBytes } from '@/lib/utils'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { Alert, Button, Empty, Icon, IconButton, Modal, toast } from '@/ds'
+import { downloadSignedDocument, viewSignedDocument } from './open-signed-document'
 
 interface EmployeeAttachmentsListProps {
   employeeId: string
@@ -31,14 +32,16 @@ function DeleteAttachmentButton({
   const [isOpen, setIsOpen] = useState(false)
   const [state, dispatch, pending] = useActionState(deleteEmployeeAttachment, null)
   const formId = `delete-attachment-${attachmentId}`
+  // Handle each success result once, so a re-render cannot run the refresh again.
+  const handledState = useRef<typeof state>(null)
 
   useEffect(() => {
-    if (state?.type === 'success') {
+    if (state?.type === 'success' && handledState.current !== state) {
+      handledState.current = state
       setIsOpen(false)
       onDeleted()
-    } else if (state?.type === 'error') {
-      // error is shown inline; no alert needed
     }
+    // An error is shown inline in the dialog.
   }, [state, onDeleted])
 
   if (!storagePath) {
@@ -100,54 +103,25 @@ export default function EmployeeAttachmentsList({
   const [downloading, setDownloading] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
 
+  const refresh = useCallback(() => router.refresh(), [router])
+
   const handleDownload = async (attachment: EmployeeAttachment) => {
+    setDownloading(attachment.attachment_id)
     try {
-      setDownloading(attachment.attachment_id)
-
-      const result = await getAttachmentSignedUrl(attachment.attachment_id)
-
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-
-      if (result.url) {
-        const link = document.createElement('a')
-        link.href = result.url
-        link.setAttribute('download', attachment.file_name || 'download')
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      } else {
-        toast.error('Could not generate download link. Please try again.')
-      }
-    } catch (error) {
-      console.error('Download error:', error)
-      toast.error('An error occurred while downloading the file. Please try again.')
+      const error = await downloadSignedDocument(() =>
+        getAttachmentSignedUrl(attachment.attachment_id, { download: true })
+      )
+      if (error) toast.error(error)
     } finally {
       setDownloading(null)
     }
   }
 
   const handleView = async (attachment: EmployeeAttachment) => {
+    setViewing(attachment.attachment_id)
     try {
-      setViewing(attachment.attachment_id)
-
-      const result = await getAttachmentSignedUrl(attachment.attachment_id)
-
-      if (result.error) {
-        toast.error(result.error)
-        return
-      }
-
-      if (result.url) {
-        window.open(result.url, '_blank')
-      } else {
-        toast.error('Could not generate view link. Please try again.')
-      }
-    } catch (error) {
-      console.error('View error:', error)
-      toast.error('An error occurred while viewing the file. Please try again.')
+      const error = await viewSignedDocument(() => getAttachmentSignedUrl(attachment.attachment_id))
+      if (error) toast.error(error)
     } finally {
       setViewing(null)
     }
@@ -215,9 +189,7 @@ export default function EmployeeAttachmentsList({
                     attachmentId={attachment.attachment_id}
                     storagePath={attachment.storage_path}
                     attachmentName={attachment.file_name ?? 'Attachment'}
-                    onDeleted={() => {
-                      router.refresh()
-                    }}
+                    onDeleted={refresh}
                   />
                 )}
               </div>

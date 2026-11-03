@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireFohVoucherPermission, getLondonDateIso } from '@/lib/foh/api-auth'
+import { MAX_DISCOUNT_GIVEN_PENCE } from '@/lib/vouchers/discount'
 import {
   rpcResultResponse,
   validationError,
@@ -15,6 +16,8 @@ const RedeemSchema = z.object({
   transactionRef: z.string().trim().max(60).optional(),
   bookingRef: z.string().trim().max(60).optional(),
   customerId: z.string().uuid().optional(),
+  // The discount actually given on a percentage voucher, in pence. Optional.
+  redeemedValuePence: z.number().int().min(0).max(MAX_DISCOUNT_GIVEN_PENCE).optional(),
   idempotencyKey: z.string().trim().min(8).max(64)
 })
 
@@ -70,7 +73,8 @@ export async function POST(request: NextRequest) {
     p_customer_id: payload.customerId ?? null,
     p_london_today: getLondonDateIso(),
     p_source: 'foh',
-    p_idempotency_key: payload.idempotencyKey
+    p_idempotency_key: payload.idempotencyKey,
+    p_redeemed_value_pence: payload.redeemedValuePence ?? null
   })
 
   if (error) {

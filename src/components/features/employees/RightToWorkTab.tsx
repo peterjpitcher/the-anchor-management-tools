@@ -11,13 +11,14 @@ import {
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import type { ActionFormState } from '@/types/actions'
 import type { EmployeeRightToWork } from '@/types/database'
-import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Field, FileButton, FormFooter, Icon, Input, LinkButton, Select, Spinner, Textarea, toast } from '@/ds'
+import { Alert, Button, Card, CardBody, CardHeader, ConfirmDialog, Field, FileButton, FormFooter, Icon, Input, LinkButton, Select, Textarea, toast } from '@/ds'
 import { MAX_FILE_SIZE } from '@/lib/constants'
 import { formatDateInLondon, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
+import { RIGHT_TO_WORK_ACCEPT, RIGHT_TO_WORK_TYPE_MESSAGE, isAllowedRightToWorkType } from '@/lib/employees/document-rules'
+import { downloadSignedDocument, viewSignedDocument } from './open-signed-document'
 
 const DOCUMENT_TYPE_OPTIONS = ['Passport', 'Biometric Residence Permit', 'Share Code', 'List A', 'List B', 'Other'] as const
 const LEGACY_DOCUMENT_TYPES: readonly string[] = []
-const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 
 const isLegacyDocumentType = (value: string) => LEGACY_DOCUMENT_TYPES.includes(value)
 
@@ -26,9 +27,20 @@ interface RightToWorkTabProps {
   rightToWork: EmployeeRightToWork | null
   canEdit: boolean
   canViewDocuments: boolean
+  /** May attach a new scan (employees.upload_documents). Defaults to canEdit. */
+  canUploadDocuments?: boolean
+  /** May delete the stored scan (employees.delete_documents). Defaults to canEdit. */
+  canDeleteDocuments?: boolean
   /** Where Cancel goes on the edit page. Without it the form has no Cancel button. */
   cancelHref?: string
+  /**
+   * The document number and notes were held back from this viewer (employees.edit only), so the
+   * empty fields are labelled as withheld rather than reading as nothing on file (FF-05, FF-42).
+   */
+  documentWithheld?: boolean
 }
+
+const WITHHELD_HINT = 'Shown only to staff who can edit employee records.'
 
 function SubmitButton({ disabled, pending }: { disabled: boolean; pending: boolean }) {
   return (
@@ -43,15 +55,17 @@ export default function RightToWorkTab({
   rightToWork,
   canEdit,
   canViewDocuments,
+  canUploadDocuments = canEdit,
+  canDeleteDocuments = canEdit,
   cancelHref,
+  documentWithheld = false,
 }: RightToWorkTabProps) {
   const router = useRouter()
   const supabase = useSupabase()
   const [state, setState] = useState<ActionFormState>(null)
   const [isSaving, startTransition] = useTransition()
   const [rightToWorkData, setRightToWorkData] = useState<EmployeeRightToWork | null>(rightToWork)
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null)
-  const [loadingPhoto, setLoadingPhoto] = useState(false)
+  const [openingDocument, setOpeningDocument] = useState<'view' | 'download' | null>(null)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [deletingPhoto, setDeletingPhoto] = useState(false)
   const [deletePhotoOpen, setDeletePhotoOpen] = useState(false)
@@ -60,28 +74,19 @@ export default function RightToWorkTab({
     setRightToWorkData(rightToWork)
   }, [rightToWork])
 
-  useEffect(() => {
-    const fetchPhotoUrl = async () => {
-      if (!canViewDocuments || !rightToWorkData?.photo_storage_path) {
-        setPhotoUrl(null)
-        return
-      }
-
-      setLoadingPhoto(true)
-      const result = await getRightToWorkPhotoUrl(employeeId)
-      if (result.url) {
-        setPhotoUrl(result.url)
-      } else {
-        setPhotoUrl(null)
-        if (result.error) {
-          console.error('Failed to fetch right-to-work photo URL:', result.error)
-        }
-      }
-      setLoadingPhoto(false)
+  // The link to the scan is made when View or Download is clicked, not when the page loads: a
+  // link made at load ran out after five minutes, and each look at the scan is audited.
+  const openDocument = async (mode: 'view' | 'download') => {
+    setOpeningDocument(mode)
+    try {
+      const error = mode === 'view'
+        ? await viewSignedDocument(() => getRightToWorkPhotoUrl(employeeId))
+        : await downloadSignedDocument(() => getRightToWorkPhotoUrl(employeeId, { download: true }))
+      if (error) toast.error(error)
+    } finally {
+      setOpeningDocument(null)
     }
-
-    fetchPhotoUrl()
-  }, [rightToWorkData?.photo_storage_path, canViewDocuments])
+  }
 
   // Compared as London ISO dates: a raw Date built from a date-only column is
   // UTC midnight, which flips the answer either side of midnight in production.
@@ -147,8 +152,9 @@ export default function RightToWorkTab({
             })
 
           if (uploadResult.error) {
+            // Storage's own text ("Failed to fetch", a gateway error) stays in the console.
             console.error('Right to work document upload failed:', uploadResult.error)
-            setState({ type: 'error', message: uploadResult.error.message || 'Failed to upload document photo.' })
+            setState({ type: 'error', message: 'The document could not be uploaded. Please try again.' })
             return
           }
 
@@ -164,16 +170,13 @@ export default function RightToWorkTab({
         }
       } catch (error) {
         console.error('Right to work save failed:', error)
-        setState({
-          type: 'error',
-          message: error instanceof Error ? error.message : 'Failed to save right to work information.',
-        })
+        setState({ type: 'error', message: 'The right to work details could not be saved. Please try again.' })
       }
     })
   }
 
   const handleDeletePhoto = async () => {
-    if (!canEdit || !rightToWorkData?.photo_storage_path) {
+    if (!canDeleteDocuments || !rightToWorkData?.photo_storage_path) {
       return
     }
 
@@ -183,7 +186,6 @@ export default function RightToWorkTab({
 
       if (result.success) {
         setDeletePhotoOpen(false)
-        setPhotoUrl(null)
         setRightToWorkData(current => current ? { ...current, photo_storage_path: null } : current)
         toast.success('Right to work document deleted.')
         router.refresh()
@@ -287,12 +289,13 @@ export default function RightToWorkTab({
               />
             </Field>
 
-            <Field label="Document Reference">
+            <Field label="Document Reference" hint={documentWithheld ? WITHHELD_HINT : undefined}>
               <Input
                 type="text"
                 id="document_reference"
                 name="document_reference"
                 defaultValue={rightToWorkData?.document_reference ?? ''}
+                placeholder={documentWithheld ? 'Withheld' : undefined}
                 disabled={!canEdit}
               />
             </Field>
@@ -317,12 +320,13 @@ export default function RightToWorkTab({
               />
             </Field>
 
-            <Field label="Additional Details" className="sm:col-span-2">
+            <Field label="Additional Details" className="sm:col-span-2" hint={documentWithheld ? WITHHELD_HINT : undefined}>
               <Textarea
                 id="document_details"
                 name="document_details"
                 rows={3}
                 defaultValue={rightToWorkData?.document_details ?? ''}
+                placeholder={documentWithheld ? 'Withheld' : undefined}
                 disabled={!canEdit}
               />
             </Field>
@@ -337,12 +341,12 @@ export default function RightToWorkTab({
                   tab order. The file is uploaded from state on save, so the input keeps no value. */}
               <FileButton
                 id="document_photo"
-                accept=".pdf,.jpg,.jpeg,.png"
-                disabled={!canEdit || isSaving}
+                accept={RIGHT_TO_WORK_ACCEPT}
+                disabled={!canEdit || !canUploadDocuments || isSaving}
                 icon={<Icon name="upload" size={16} />}
                 onFiles={([file]) => {
-                  if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-                    toast.error('Only PDF, JPG, and PNG files are allowed.')
+                  if (!isAllowedRightToWorkType(file.type)) {
+                    toast.error(RIGHT_TO_WORK_TYPE_MESSAGE)
                     setSelectedFile(null)
                     return
                   }
@@ -362,24 +366,29 @@ export default function RightToWorkTab({
 
             {canViewDocuments && rightToWorkData?.photo_storage_path && (
               <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-                {loadingPhoto ? (
-                  <span className="inline-flex items-center gap-2 text-sm text-text-muted" role="status">
-                    <Spinner size="sm" />
-                    Generating preview…
-                  </span>
-                ) : photoUrl ? (
-                  <>
-                    <LinkButton href={photoUrl} target="_blank" size="sm" icon={<Icon name="eye" size={16} />}>
-                      View Current Document
-                    </LinkButton>
-                    <LinkButton href={photoUrl} download size="sm" icon={<Icon name="download" size={16} />}>
-                      Download Document
-                    </LinkButton>
-                  </>
-                ) : (
-                  <span className="text-sm text-text-muted">Unable to generate preview</span>
-                )}
-                {canEdit && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openDocument('view')}
+                  loading={openingDocument === 'view'}
+                  disabled={openingDocument !== null}
+                  icon={<Icon name="eye" size={16} />}
+                >
+                  View Current Document
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => openDocument('download')}
+                  loading={openingDocument === 'download'}
+                  disabled={openingDocument !== null}
+                  icon={<Icon name="download" size={16} />}
+                >
+                  Download Document
+                </Button>
+                {canDeleteDocuments && (
                   <Button
                     type="button"
                     variant="danger"

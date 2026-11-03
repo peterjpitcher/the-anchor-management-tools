@@ -489,9 +489,32 @@ describe('sending a document for signature', () => {
   it('reports a link that could not be emailed without undoing the request', async () => {
     state.sendEmail = vi.fn(async () => ({ success: false, error: 'mailbox unavailable' }))
     const result = await send()
-    expect(result.deliveries[0]).toMatchObject({ email_status: 'failed', error: 'mailbox unavailable' })
+    // The provider refused it outright, so it says the email definitely did not go.
+    expect(result.deliveries[0]).toMatchObject({ email_status: 'failed', error: 'mailbox unavailable', uncertain: false })
+    expect(result.deliveries[0].code).toBeUndefined()
     expect(document(result.documentId).status).toBe('sent')
     expect(db.rows('signing_events').filter((row) => row.event === 'sent')).toHaveLength(0)
+  })
+
+  // The staff screens told "may have gone" from "not sent" by fields the delivery never carried,
+  // so every failed link email read the same.
+  it('says when a link email may have gone', async () => {
+    state.sendEmail = vi.fn(async () => ({ success: false, error: 'Request timed out', uncertain: true }))
+    const result = await send()
+    expect(result.deliveries[0]).toMatchObject({ email_status: 'failed', uncertain: true })
+  })
+
+  it('says when email is switched off', async () => {
+    state.sendEmail = vi.fn(async () => ({ success: false, error: 'Email sending is currently suspended', code: 'email_suspended' }))
+    const result = await send()
+    expect(result.deliveries[0]).toMatchObject({ email_status: 'failed', code: 'email_suspended', uncertain: false })
+  })
+
+  it('carries neither field when the link email went', async () => {
+    const result = await send()
+    expect(result.deliveries[0].email_status).toBe('sent')
+    expect(result.deliveries[0].code).toBeUndefined()
+    expect(result.deliveries[0].uncertain).toBeUndefined()
   })
 
   it('gives a signer with no email no link, for in-person signing', async () => {

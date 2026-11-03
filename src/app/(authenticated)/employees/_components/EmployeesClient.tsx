@@ -38,7 +38,7 @@ import {
   Icon,
 } from '@/ds'
 import { EMPLOYEES_NAV } from '../_shared/nav'
-import { employmentStatusTone } from '../_shared/status-ui'
+import { employmentStatusLabel, employmentStatusTone } from '../_shared/status-ui'
 
 type EmployeeStatus = 'all' | 'Active' | 'Former' | 'Onboarding' | 'Started Separation'
 
@@ -67,21 +67,29 @@ function employeeListName(employee: EmployeeRosterEmployee): string {
   return employee.email_address
 }
 
+function countOf(count: number, singular: string, plural: string): string {
+  return `${count} ${count === 1 ? singular : plural}`
+}
+
+// A 'warning' means the invite may have gone (or went with a catch), so the button does not come
+// back: pressing it again could send the person a second email.
 function PortalInviteButton({ employeeId }: { employeeId: string }) {
   const [pending, setPending] = useState(false)
-  const [sent, setSent] = useState(false)
+  const [outcome, setOutcome] = useState<'sent' | 'check' | null>(null)
 
   const handleClick = async (e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation()
-    if (pending || sent) return
+    if (pending || outcome) return
     setPending(true)
     const result = await sendPortalInvite(employeeId)
     setPending(false)
-    if (result.type === 'success') { setSent(true); toast.success(result.message) }
+    if (result.type === 'success') { setOutcome('sent'); toast.success(result.message) }
+    else if (result.type === 'warning') { setOutcome('check'); toast.warning(result.message, { duration: 10000 }) }
     else { toast.error(result.message) }
   }
 
-  if (sent) return <span className="text-xs text-success-fg">Invite sent</span>
+  if (outcome === 'sent') return <span className="text-xs text-success-fg">Invite sent</span>
+  if (outcome === 'check') return <span className="text-xs text-warning-fg">Check before resending</span>
   return (
     <Button type="button" variant="link" size="sm" onClick={handleClick} loading={pending}>
       Send Portal Invite
@@ -127,16 +135,22 @@ export default function EmployeesClient({ initialData, initialError, permissions
   const handleExport = useCallback(async (format: 'csv' | 'json') => {
     if (!permissions.canExport) { toast.error('No permission to export.'); return }
     try {
-      const result = await exportEmployees({ format, statusFilter: selectedStatus === 'all' ? undefined : selectedStatus })
+      // The search box goes too, so the file holds the people the list is showing.
+      const result = await exportEmployees({
+        format,
+        statusFilter: selectedStatus === 'all' ? undefined : selectedStatus,
+        searchTerm: searchTerm || undefined,
+      })
       if (result.error) { toast.error(result.error); return }
       if (!result.data || !result.filename) { toast.error('Export failed.'); return }
       const blob = new Blob([result.data], { type: format === 'csv' ? 'text/csv' : 'application/json' })
       const url = window.URL.createObjectURL(blob)
       const a = document.createElement('a'); a.href = url; a.download = result.filename
       document.body.appendChild(a); a.click(); window.URL.revokeObjectURL(url); document.body.removeChild(a)
-      toast.success(`Exported ${roster.employees.length} employees`)
+      // The number in the file, not the number on this page of the list.
+      toast.success(`Exported ${countOf(result.count ?? 0, 'employee', 'employees')}`)
     } catch { toast.error('Failed to export.') }
-  }, [permissions.canExport, roster.employees.length, selectedStatus])
+  }, [permissions.canExport, searchTerm, selectedStatus])
 
   // Pay Bands and the two exports are the extras: with Invite and New Employee they would make
   // more than three header actions, so they sit in one labelled "More" menu.
@@ -226,7 +240,10 @@ export default function EmployeesClient({ initialData, initialError, permissions
             placeholder="Search by name, role..."
             className="w-full sm:w-60"
           />
-          <span className="ml-auto self-center text-xs text-text-muted">{currentEmployees.length} employees</span>
+          {/* Everyone who matches, across every page; the page itself holds at most 50. */}
+          <span className="ml-auto self-center text-xs text-text-muted">
+            {countOf(roster.pagination.totalCount, 'employee', 'employees')}
+          </span>
         </div>
 
         <Card padding="none">
@@ -265,7 +282,9 @@ export default function EmployeesClient({ initialData, initialError, permissions
                             <Link href={`/employees/${emp.employee_id}`} className="text-ui font-semibold text-text-strong hover:text-primary">
                               {employeeListName(emp)}
                             </Link>
-                            {!emp.first_name && <span className="text-meta text-text-soft ml-1">(pending)</span>}
+                            {/* Pending only while the email address stands in for a name; a preferred
+                                name on its own is enough to name someone. */}
+                            {!hasNameToShow(emp) && <span className="text-meta text-text-soft ml-1">(pending)</span>}
                           </div>
                         </div>
                       </TableCell>
@@ -274,9 +293,9 @@ export default function EmployeesClient({ initialData, initialError, permissions
                         <div className="text-ui">{emp.employment_start_date ? formatDate(emp.employment_start_date) : '--'}</div>
                         <div className="text-meta text-text-soft">{calculateLengthOfService(emp.employment_start_date)}</div>
                       </TableCell>
-                      <TableCell className="text-ui">{emp.holiday_days_current_year ?? 0} days</TableCell>
+                      <TableCell className="text-ui">{countOf(emp.holiday_days_current_year ?? 0, 'day', 'days')}</TableCell>
                       <TableCell>
-                        <Badge tone={employmentStatusTone(emp.status)} dot>{emp.status}</Badge>
+                        <Badge tone={employmentStatusTone(emp.status)} dot>{employmentStatusLabel(emp.status)}</Badge>
                         {!emp.auth_user_id && permissions.canEdit && ['Active', 'Started Separation'].includes(emp.status) && (
                           <div className="mt-1"><PortalInviteButton employeeId={emp.employee_id} /></div>
                         )}

@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useEffect, useState } from 'react'
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { EmployeeEmergencyContact } from '@/types/database'
 import { deleteEmergencyContact } from '@/app/actions/employeeActions'
@@ -25,9 +25,12 @@ function DeleteContactButton({
   const [isOpen, setIsOpen] = useState(false)
   const [state, formAction, pending] = useActionState(deleteEmergencyContact, null)
   const formId = `delete-emergency-contact-${contact.id}`
+  // Handle each success result once, so a re-render cannot run the refresh again.
+  const handledState = useRef<typeof state>(null)
 
   useEffect(() => {
-    if (state?.type === 'success') {
+    if (state?.type === 'success' && handledState.current !== state) {
+      handledState.current = state
       setIsOpen(false)
       onDeleted()
     }
@@ -87,11 +90,16 @@ export default function EmergencyContactsTab({
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [editingContact, setEditingContact] = useState<EmployeeEmergencyContact | null>(null)
 
-  const handleSuccess = () => {
+  // Stable callbacks: the modals run their success effect when these change, and an inline
+  // function changed on every render, so each refresh started the next one.
+  const handleSuccess = useCallback(() => {
     setIsAddOpen(false)
     setEditingContact(null)
     router.refresh()
-  }
+  }, [router])
+  const closeAdd = useCallback(() => setIsAddOpen(false), [])
+  const closeEdit = useCallback(() => setEditingContact(null), [])
+  const refresh = useCallback(() => router.refresh(), [router])
 
   return (
     <Card>
@@ -103,18 +111,22 @@ export default function EmergencyContactsTab({
         ) : undefined}
       />
 
-      <AddEmergencyContactModal
-        employeeId={employeeId}
-        isOpen={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
-        onSuccess={handleSuccess}
-      />
+      {/* Mounted only while open, so each opening starts with a fresh form and no old result. */}
+      {isAddOpen && (
+        <AddEmergencyContactModal
+          employeeId={employeeId}
+          isOpen={true}
+          onClose={closeAdd}
+          onSuccess={handleSuccess}
+        />
+      )}
 
       {editingContact && (
         <EditEmergencyContactModal
+          key={editingContact.id}
           contact={editingContact}
           isOpen={true}
-          onClose={() => setEditingContact(null)}
+          onClose={closeEdit}
           onSuccess={handleSuccess}
         />
       )}
@@ -158,7 +170,7 @@ export default function EmergencyContactsTab({
                       />
                       <DeleteContactButton
                         contact={contact}
-                        onDeleted={() => router.refresh()}
+                        onDeleted={refresh}
                       />
                     </div>
                   )}

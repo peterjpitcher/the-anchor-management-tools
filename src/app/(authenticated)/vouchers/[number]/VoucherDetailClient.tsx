@@ -52,6 +52,7 @@ import {
   formatPence,
   newIdempotencyKey,
 } from '../_shared/voucher-ui'
+import { parseDiscountGiven } from '@/lib/vouchers/discount'
 
 /** The page chrome from page.tsx, shared with its error state so both show the same header. */
 export interface VoucherDetailLayout {
@@ -87,6 +88,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
   const [reason, setReason] = useState('')
   const [transactionRef, setTransactionRef] = useState('')
   const [bookingRef, setBookingRef] = useState('')
+  const [discountGiven, setDiscountGiven] = useState('')
 
   const [candidates, setCandidates] = useState<ReplacementCandidate[]>([])
   const [replacementNumber, setReplacementNumber] = useState('')
@@ -105,6 +107,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
     setReason('')
     setTransactionRef('')
     setBookingRef('')
+    setDiscountGiven('')
     setStaffId('')
     setReplacementNumber('')
     setEditWonAt(voucher.wonAtLabel ?? '')
@@ -182,6 +185,11 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
   const status = detail.effectiveStatus
   const sweepPending = status === 'expired' && voucher.status !== 'expired'
   const canAttachCustomer = ['issued', 'redeemed', 'expired'].includes(status)
+  // A voucher sent by a return-visit email has no card, so nothing to reprint or swap.
+  const digital = detail.batchDigital
+  // Percentage vouchers carry an estimate in value_pence; staff record the real discount.
+  const isPercent = type?.discountKind === 'percent'
+  const discount = isPercent ? parseDiscountGiven(discountGiven) : ({ ok: true, pence: null } as const)
 
   // The record's actions, in the page header: secondary first, then the destructive one, then the
   // primary action last. More than three collapse the extras into one labelled "More" menu.
@@ -215,12 +223,16 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
           <DropdownItem icon={<Icon name="edit" size={14} />} onClick={() => openDialog('edit')}>
             Edit Hand-Out Details
           </DropdownItem>
-          <DropdownItem icon={<Icon name="refresh" size={14} />} onClick={() => openDialog('replace')}>
-            Replace
-          </DropdownItem>
-          <DropdownItem icon={<Icon name="printer" size={14} />} onClick={() => setReprintConfirmOpen(true)}>
-            Reprint
-          </DropdownItem>
+          {!digital && (
+            <DropdownItem icon={<Icon name="refresh" size={14} />} onClick={() => openDialog('replace')}>
+              Replace
+            </DropdownItem>
+          )}
+          {!digital && (
+            <DropdownItem icon={<Icon name="printer" size={14} />} onClick={() => setReprintConfirmOpen(true)}>
+              Reprint
+            </DropdownItem>
+          )}
         </Dropdown>
         <Button variant="danger" size="sm" onClick={() => openDialog('cancel')}>
           Cancel Voucher
@@ -250,12 +262,17 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
       <Card>
         <CardHeader title="Summary" action={<VoucherStatusBadge status={status} />} />
         <CardBody className="space-y-3">
-          {(type?.alcohol || type?.requiresBooking || voucher.valuePence !== null) && (
+          {(type?.alcohol || type?.requiresBooking || voucher.valuePence !== null || digital) && (
             <div className="flex flex-wrap gap-2">
+              {digital && <Badge tone="info">Digital</Badge>}
               {type?.alcohol && <Badge tone="warning">18+ alcohol</Badge>}
               {type?.requiresBooking && <Badge tone="info">Booking required</Badge>}
-              {voucher.valuePence !== null && (
-                <Badge tone="neutral">{formatPence(voucher.valuePence)} value</Badge>
+              {isPercent && type?.percentOff !== null && type?.percentOff !== undefined ? (
+                <Badge tone="neutral">{type.percentOff}% off food</Badge>
+              ) : (
+                voucher.valuePence !== null && (
+                  <Badge tone="neutral">{formatPence(voucher.valuePence)} value</Badge>
+                )
               )}
             </div>
           )}
@@ -356,8 +373,21 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
                     : ''}
                 </dd>
               </div>
+              {detail.marketingCampaign && (
+                <div>
+                  <dt className="text-text-muted">Sent by email</dt>
+                  <dd className="text-text">
+                    <Link
+                      href={`/marketing/campaigns/${detail.marketingCampaign.id}`}
+                      className="underline-offset-2 hover:underline"
+                    >
+                      {detail.marketingCampaign.name}
+                    </Link>
+                  </dd>
+                </div>
+              )}
               <div>
-                <dt className="text-text-muted">Expiry written on the card</dt>
+                <dt className="text-text-muted">{digital ? 'Expiry' : 'Expiry written on the card'}</dt>
                 <dd className="text-text">
                   {voucher.expiryDate ? formatDateFull(voucher.expiryDate) : 'Missing'}
                 </dd>
@@ -459,6 +489,12 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
                 <dt className="text-text-muted">By</dt>
                 <dd className="text-text">{voucher.redeemedByName ?? 'Unknown'}</dd>
               </div>
+              {voucher.redeemedValuePence !== null && (
+                <div>
+                  <dt className="text-text-muted">Discount given</dt>
+                  <dd className="text-text">{formatPence(voucher.redeemedValuePence)}</dd>
+                </div>
+              )}
               {voucher.transactionRef && (
                 <div>
                   <dt className="text-text-muted">Transaction ref</dt>
@@ -530,7 +566,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
             <Button
               variant="primary"
               loading={busy}
-              disabled={!staffId}
+              disabled={!staffId || !discount.ok}
               onClick={() =>
                 void run(
                   () =>
@@ -539,6 +575,7 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
                       employeeId: staffId,
                       transactionRef: transactionRef.trim() || undefined,
                       bookingRef: bookingRef.trim() || undefined,
+                      redeemedValuePence: discount.ok ? discount.pence ?? undefined : undefined,
                       idempotencyKey,
                     }),
                   'Voucher redeemed'
@@ -573,6 +610,17 @@ export function VoucherDetailClient({ layout, detail, staff }: VoucherDetailClie
             onChange={(event) => setBookingRef(event.target.value)}
             maxLength={100}
           />
+          {isPercent && (
+            <Input
+              label="Discount given in pounds (optional)"
+              inputMode="decimal"
+              placeholder="6.50"
+              value={discountGiven}
+              onChange={(event) => setDiscountGiven(event.target.value)}
+              hint="The amount taken off the food bill on the till. Cash-up uses it."
+              error={discount.ok ? undefined : discount.error}
+            />
+          )}
         </div>
       </Modal>
 

@@ -28,6 +28,17 @@ export function employmentStatusTone(status: string): EmployeeBadgeTone {
   return EMPLOYMENT_STATUS_TONES.get(status) ?? 'neutral'
 }
 
+// The words staff see for a status. The stored value "Started Separation" reads as On Notice, as
+// the roster's tab does; the badge under that tab used to say Started Separation.
+const EMPLOYMENT_STATUS_LABELS = new Map<string, string>([
+  ['Started Separation', 'On Notice'],
+])
+
+/** An employee's employment status as staff read it: On Notice for Started Separation. */
+export function employmentStatusLabel(status: string): string {
+  return EMPLOYMENT_STATUS_LABELS.get(status) ?? status
+}
+
 // Holiday (leave request) status: ROTA_LEAVE_STATUS_TONE and ROTA_LEAVE_STATUS_LABEL in
 // src/lib/rota/status-ui.ts, the one map every leave list uses (the Holidays tab included).
 
@@ -81,6 +92,15 @@ export function reliabilityScoreTone(score: number): EmployeeBadgeTone {
  * yet, so treat the score with care. Used on the leaderboard and the employee's Reliability tab.
  */
 export const RELIABILITY_LOW_SAMPLE_TONE: EmployeeBadgeTone = 'warning'
+
+/**
+ * "No shifts yet" in place of a score: nothing to score, so it is neither good nor bad. With no
+ * events the formula still gives 45, which reliabilityScoreTone showed in red.
+ */
+export const RELIABILITY_NO_SHIFTS_TONE: EmployeeBadgeTone = 'neutral'
+
+/** Shown in place of a score when there is nothing to score. */
+export const RELIABILITY_NO_SHIFTS_LABEL = 'No shifts yet'
 
 const RELIABILITY_EVENT_TONES = new Map<ReliabilityEventType, EmployeeBadgeTone>([
   ['shift_accepted', 'success'],

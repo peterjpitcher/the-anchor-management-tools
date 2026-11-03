@@ -15,6 +15,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { beginEmployeeSeparation, getEmployeeSeparationPreview } from '@/app/actions/employeeSeparation'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { sendSeparationStartedEmail } from '@/lib/email/employee-invite-emails'
+import { InviteEmailSendError } from '@/lib/employees/invite-email-failure'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 const mockedPermission = checkUserPermission as unknown as Mock
@@ -45,10 +46,10 @@ function shiftsQuery(data: unknown, error: unknown = null) {
 
 function leaveQuery(data: unknown, error: unknown = null) {
   const order = vi.fn().mockResolvedValue({ data, error })
-  const secondEq = vi.fn().mockReturnValue({ order })
-  const gte = vi.fn().mockReturnValue({ eq: secondEq })
+  const statusIn = vi.fn().mockReturnValue({ order })
+  const gte = vi.fn().mockReturnValue({ in: statusIn })
   const firstEq = vi.fn().mockReturnValue({ gte })
-  return { select: vi.fn().mockReturnValue({ eq: firstEq }) }
+  return { select: vi.fn().mockReturnValue({ eq: firstEq }), statusIn }
 }
 
 function mutationClient(rpcData: unknown, rpcError: unknown = null) {
@@ -114,7 +115,12 @@ describe('employee separation actions', () => {
           },
         ])
       }
-      if (table === 'leave_days') return leaveQuery([{ leave_date: '2099-05-20' }])
+      if (table === 'leave_days') {
+        return leaveQuery([
+          { leave_date: '2099-05-20', leave_requests: { status: 'approved' } },
+          { leave_date: '2099-05-27', leave_requests: [{ status: 'pending' }] },
+        ])
+      }
       throw new Error(`Unexpected table: ${table}`)
     })
     mockedAdmin.mockReturnValue({ from })
@@ -137,6 +143,7 @@ describe('employee separation actions', () => {
           acceptanceStatus: 'pending',
         }],
         futureLeaveDates: ['2099-05-20'],
+        pendingLeaveDates: ['2099-05-27'],
       },
     })
   })
@@ -193,6 +200,10 @@ describe('employee separation actions', () => {
     expect(client.insert).toHaveBeenCalledWith(expect.objectContaining({
       note_text: expect.stringContaining('1 remaining shift retained; 1 released to open shifts.'),
     }))
+    // The date as the employee page shows it, not the stored 2099-05-15.
+    const noteText = client.insert.mock.calls[0][0].note_text as string
+    expect(noteText).toContain('Last working day: 15 May 2099.')
+    expect(noteText).not.toContain('2099-05-15')
     expect(mockedSendEmail).toHaveBeenCalledWith(expect.objectContaining({
       shiftPolicy: 'work_remaining',
       remainingShifts: [expect.objectContaining({ id: retained.id, shiftDate: '2099-05-14' })],
@@ -206,7 +217,7 @@ describe('employee separation actions', () => {
     }))
   })
 
-  it('keeps the committed release when the employee email fails', async () => {
+  describe('when the employee email does not go', () => {
     const released = {
       id: '30000000-0000-0000-0000-000000000003',
       week_id: '10000000-0000-0000-0000-000000000001',
@@ -218,27 +229,93 @@ describe('employee separation actions', () => {
       acceptance_status: 'accepted',
       week_status: 'published',
     }
-    const client = mutationClient({
-      state: 'started',
-      retained_shifts: [],
-      released_shifts: [released],
-      affected_published_week_ids: [],
-    })
-    mockedAdmin.mockReturnValue(client)
-    mockedSendEmail.mockRejectedValue(new Error('Resend unavailable'))
 
-    const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
-      employmentEndDate: '2099-05-15',
-      shiftPolicy: 'release_remaining',
+    async function beginWithFailedEmail(emailError: unknown) {
+      const client = mutationClient({
+        state: 'started',
+        retained_shifts: [],
+        released_shifts: [released],
+        affected_published_week_ids: [],
+      })
+      mockedAdmin.mockReturnValue(client)
+      mockedSendEmail.mockRejectedValue(emailError)
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
+        employmentEndDate: '2099-05-15',
+        shiftPolicy: 'release_remaining',
+      })
+      const logged = consoleError.mock.calls
+      consoleError.mockRestore()
+      return { client, result, logged }
+    }
+
+    it('keeps the committed release and says a refused email was not sent', async () => {
+      const { client, result, logged } = await beginWithFailedEmail(
+        new InviteEmailSendError('Resend 422: invalid to address'),
+      )
+
+      expect(result).toEqual({
+        success: true,
+        retainedShiftCount: 0,
+        releasedShiftCount: 1,
+        warning: 'Separation was started and the rota was updated, but the separation email was not sent because the email service did not accept it. Send it to them yourself.',
+      })
+      expect(client.rpc).toHaveBeenCalledTimes(1)
+      expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+      // The provider's own text goes to the log, never to the screen.
+      expect(JSON.stringify(result)).not.toContain('Resend 422')
+      expect(logged).toContainEqual([
+        '[beginEmployeeSeparation] Failed to send separation email:',
+        { uncertain: false, code: null, message: 'Resend 422: invalid to address' },
+      ])
     })
 
-    expect(result).toEqual({
-      success: true,
-      retainedShiftCount: 0,
-      releasedShiftCount: 1,
-      warning: 'Separation was started and the rota was updated, but the employee email could not be sent. Send it manually.',
+    // The provider may have taken it, so staff must not be told it was not sent, or to send it
+    // again, until they have checked with the person. Nothing sends it again on its own.
+    it('says an email we did not hear back about may have gone', async () => {
+      const { result, logged } = await beginWithFailedEmail(
+        new InviteEmailSendError('Resend timed out', { uncertain: true }),
+      )
+
+      expect(result).toEqual({
+        success: true,
+        retainedShiftCount: 0,
+        releasedShiftCount: 1,
+        warning: 'Separation was started and the rota was updated. We sent the separation email to alex@example.com, but we did not hear back from the email service, so it may have gone. Check with them before sending it again.',
+      })
+      expect(result.success && result.warning).not.toMatch(/not sent|could not be sent|send it to them yourself/i)
+      expect(mockedSendEmail).toHaveBeenCalledTimes(1)
+      expect(logged).toContainEqual([
+        '[beginEmployeeSeparation] Failed to send separation email:',
+        { uncertain: true, code: null, message: 'Resend timed out' },
+      ])
     })
-    expect(client.rpc).toHaveBeenCalledTimes(1)
+
+    it('says email sending is switched off when it is suspended', async () => {
+      const { result } = await beginWithFailedEmail(
+        new InviteEmailSendError('Email sending is currently suspended', { code: 'email_suspended' }),
+      )
+
+      expect(result).toEqual({
+        success: true,
+        retainedShiftCount: 0,
+        releasedShiftCount: 1,
+        warning: 'Separation was started and the rota was updated, but the separation email was not sent because email sending is switched off at the moment. Send it to them yourself.',
+      })
+    })
+
+    it('says it was not sent when it failed before reaching the email service', async () => {
+      const { result } = await beginWithFailedEmail(new Error('Invalid time value'))
+
+      expect(result).toEqual({
+        success: true,
+        retainedShiftCount: 0,
+        releasedShiftCount: 1,
+        warning: 'Separation was started and the rota was updated, but the separation email was not sent because something went wrong before it could be sent. Send it to them yourself.',
+      })
+      expect(JSON.stringify(result)).not.toContain('Invalid time value')
+    })
   })
 
   it('reports a database failure without sending an email', async () => {

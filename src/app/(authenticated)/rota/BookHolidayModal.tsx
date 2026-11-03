@@ -105,6 +105,8 @@ export default function BookHolidayModal({
           <Input
             id="bh-note"
             placeholder="Optional reason or note"
+            // The server refuses a longer note, so the box stops at the same length.
+            maxLength={500}
             value={note}
             onChange={e => setNote(e.target.value)}
           />

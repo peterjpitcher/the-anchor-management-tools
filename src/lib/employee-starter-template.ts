@@ -1,6 +1,6 @@
 import { STAFF } from '@/lib/brand/palette'
 import { COMPANY_DETAILS } from '@/lib/company-details'
-import { formatDateDdMmmmYyyy } from '@/lib/dateUtils'
+import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 
 interface StarterPackEmployee {
   employee_id: string
@@ -29,12 +29,21 @@ interface StarterPackRightToWork {
   document_reference: string | null
   check_method: string | null
   verified_by_name: string | null
+  /** When a repeat check is due (time-limited permission). */
+  follow_up_date?: string | null
 }
 
 export interface StarterPackTemplateData {
   employee: StarterPackEmployee
   niDetails: StarterPackNiDetails | null
   rightToWork: StarterPackRightToWork | null
+  /**
+   * True when the NI number was not read because the person downloading may not see it. Printed
+   * as "Withheld", so it is never mistaken for an NI number we do not hold.
+   */
+  niWithheld?: boolean
+  /** Today in London (YYYY-MM-DD), for the right to work state. Defaults to the real date. */
+  todayIso?: string
   /** Base64 data URL for an image RTW document (e.g. "data:image/jpeg;base64,...") */
   rtwImageDataUrl?: string
   logoUrl?: string
@@ -50,12 +59,12 @@ function escapeHtml(value: string): string {
     .replaceAll("'", '&#39;')
 }
 
-function fmt(value: string | null | undefined, fallback = '—'): string {
+function fmt(value: string | null | undefined, fallback = 'Not recorded'): string {
   const trimmed = typeof value === 'string' ? value.trim() : ''
   return trimmed ? escapeHtml(trimmed) : fallback
 }
 
-function fmtDate(value: string | null | undefined, fallback = '—'): string {
+function fmtDate(value: string | null | undefined, fallback = 'Not recorded'): string {
   if (!value) return fallback
   try {
     return formatDateDdMmmmYyyy(value)
@@ -76,8 +85,26 @@ function sectionHeader(title: string): string {
   return `<tr class="section-header"><td colspan="2">${title}</td></tr>`
 }
 
+/**
+ * The right to work state as it stands today. The pack used to say "Verified" for any record,
+ * including one whose document had expired or whose repeat check was overdue.
+ */
+function rightToWorkStatus(rightToWork: StarterPackRightToWork, todayIso: string): { label: string; className: string } {
+  const expiry = rightToWork.document_expiry_date?.slice(0, 10) ?? null
+  const followUp = rightToWork.follow_up_date?.slice(0, 10) ?? null
+  if (expiry && expiry < todayIso) {
+    return { label: `Expired on ${fmtDate(expiry)}`, className: 'rtw-none' }
+  }
+  if (followUp && followUp <= todayIso) {
+    return { label: `Follow-up check due since ${fmtDate(followUp)}`, className: 'rtw-warning' }
+  }
+  return { label: 'Verified', className: 'rtw-status' }
+}
+
 export function generateEmployeeStarterHTML(data: StarterPackTemplateData): string {
-  const { employee, niDetails, rightToWork, rtwImageDataUrl, logoUrl, generatedDate } = data
+  const { employee, niDetails, rightToWork, niWithheld, rtwImageDataUrl, logoUrl, generatedDate } = data
+  const todayIso = data.todayIso ?? getTodayIsoDate()
+  const rtwStatus = rightToWork ? rightToWorkStatus(rightToWork, todayIso) : null
 
   const fullName = `${employee.first_name} ${employee.last_name}`.trim()
   const address = [employee.address?.trim(), employee.post_code?.trim()].filter(Boolean).join(', ')
@@ -93,7 +120,7 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>New Starter Information — ${escapeHtml(fullName)}</title>
+  <title>New Starter Information: ${escapeHtml(fullName)}</title>
   <style>
     @page {
       size: A4;
@@ -200,6 +227,17 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
       margin-bottom: 6px;
     }
 
+    .rtw-warning {
+      display: inline-block;
+      background: ${STAFF.warningSoft};
+      color: ${STAFF.warningFg};
+      font-weight: bold;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 8.5pt;
+      margin-bottom: 6px;
+    }
+
     .rtw-none {
       display: inline-block;
       background: ${STAFF.dangerSoft};
@@ -269,7 +307,7 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
   </div>
 
   <div class="confidential-banner">
-    CONFIDENTIAL — For payroll and HR purposes only
+    CONFIDENTIAL: for payroll and HR purposes only
   </div>
 
   <table class="details">
@@ -292,7 +330,7 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
 
   <table class="details">
     ${sectionHeader('Payroll')}
-    ${row('NI Number', fmt(niDetails?.ni_number))}
+    ${row('NI Number', niWithheld ? 'Withheld' : fmt(niDetails?.ni_number))}
   </table>
 
   <table class="details">
@@ -301,11 +339,12 @@ export function generateEmployeeStarterHTML(data: StarterPackTemplateData): stri
       ? `
     <tr>
       <td class="label">Verification Status</td>
-      <td class="value"><span class="rtw-status">Verified</span></td>
+      <td class="value"><span class="${rtwStatus?.className ?? 'rtw-status'}">${escapeHtml(rtwStatus?.label ?? 'Verified')}</span></td>
     </tr>
     ${row('Document Type', fmt(rightToWork.document_type))}
     ${row('Verification Date', fmtDate(rightToWork.verification_date))}
     ${rightToWork.document_expiry_date ? row('Document Expiry', fmtDate(rightToWork.document_expiry_date)) : ''}
+    ${rightToWork.follow_up_date ? row('Follow-up Check Due', fmtDate(rightToWork.follow_up_date)) : ''}
     ${rightToWork.document_reference ? row('Document Reference', fmt(rightToWork.document_reference)) : ''}
     ${rightToWork.check_method ? row('Check Method', fmt(checkMethodLabel[rightToWork.check_method] ?? rightToWork.check_method)) : ''}
     ${rightToWork.verified_by_name ? row('Verified By', fmt(rightToWork.verified_by_name)) : ''}

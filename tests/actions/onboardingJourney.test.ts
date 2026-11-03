@@ -11,9 +11,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  * been caught that way:
  *
  *   1. A token binding check treated "nobody is signed in" as "wrong person". Creating a
- *      password sets employees.auth_user_id through the ADMIN client and never signs the browser
- *      in, so from that point on the employee has an account and no session. Every step after
- *      the password was refused. Only walking the sequence surfaces that state.
+ *      password set employees.auth_user_id through the ADMIN client and never signed the browser
+ *      in, so from that point on the employee had an account and no session. Every step after
+ *      the password was refused. Only walking the sequence surfaces that state. Account creation
+ *      now signs the browser in, and a starter with an account but no session is asked to sign
+ *      in (onboarding-session.ts), so a forwarded link stops working once a password is set.
  *   2. A duplicate preferred name was accepted all the way through and only failed at the final
  *      submit, because the uniqueness index is partial and an Onboarding row sits outside it.
  *
@@ -41,6 +43,10 @@ vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 vi.mock('@/lib/audit-helpers', () => ({
   getCurrentUser: vi.fn().mockResolvedValue({ user_id: 'manager-1', user_email: 'manager@example.com' }),
 }))
+const authSignInMock = vi.fn()
+vi.mock('@/services/auth', () => ({
+  AuthService: { signIn: (...args: unknown[]) => authSignInMock(...args) },
+}))
 vi.mock('@/lib/email/employee-invite-emails', () => ({
   sendWelcomeEmail: vi.fn(),
   sendChaseEmail: vi.fn(),
@@ -61,8 +67,11 @@ type Row = Record<string, any>
 
 const db: Record<string, Row[]> = {}
 let sessionUserId: string | null = null
+/** Tables whose single-row reads fail, for the paths that must say "could not read". */
+const failingReads = new Set<string>()
 
 function reset() {
+  failingReads.clear()
   for (const key of Object.keys(db)) delete db[key]
   db.employees = []
   db.employee_invite_tokens = []
@@ -72,6 +81,7 @@ function reset() {
   db.employee_emergency_contacts = []
   db.employee_financial_details = []
   db.employee_health_records = []
+  db.employee_notes = []
   db.leave_requests = []
   db.leave_days = []
   db.leave_types = [
@@ -114,7 +124,16 @@ function builder(table: string) {
       db[table] = [...(db[table] ?? []), ...list]
       return api
     },
-    upsert: (p: Row | Row[]) => api.insert(p),
+    // Upserts here are all keyed on employee_id: merge into the existing row, as ON CONFLICT does.
+    upsert: (p: Row | Row[]) => {
+      mode = 'upsert'
+      for (const row of Array.isArray(p) ? p : [p]) {
+        const existing = (db[table] ?? []).find(r => r.employee_id === row.employee_id)
+        if (existing) Object.assign(existing, row)
+        else db[table] = [...(db[table] ?? []), { ...row }]
+      }
+      return api
+    },
     eq: (c: string, v: any) => { filters.push(['eq', c, v]); return api },
     neq: (c: string, v: any) => { filters.push(['neq', c, v]); return api },
     in: (c: string, v: any[]) => { filters.push(['in', c, v]); return api },
@@ -125,7 +144,9 @@ function builder(table: string) {
     lte: () => api,
     limit: () => api,
     order: () => api,
-    maybeSingle: async () => ({ data: run()[0] ?? null, error: null }),
+    maybeSingle: async () => (failingReads.has(table)
+      ? { data: null, error: { code: 'PGRST000', message: `${table} read failed` } }
+      : { data: run()[0] ?? null, error: null }),
     single: async () => {
       const rows = run()
       return rows[0] ? { data: rows[0], error: null } : { data: null, error: { message: 'not found' } }
@@ -296,12 +317,22 @@ const adminClient = {
   },
 }
 
-// The cookie client. Its auth.getUser() reflects the BROWSER session, which onboarding never
-// establishes, so it stays null for the whole journey after the password is set.
+// The cookie client. Its auth.getUser() reflects the BROWSER session. Signing in with the
+// starter's email and password sets it; signing out clears it.
 const cookieClient = {
   from: (t: string) => builder(t),
   rpc: (name: string, args: Row) => rpc(name, args),
-  auth: { getUser: async () => ({ data: { user: sessionUserId ? { id: sessionUserId } : null } }) },
+  auth: {
+    getUser: async () => ({ data: { user: sessionUserId ? { id: sessionUserId } : null } }),
+    signInWithPassword: async ({ email }: { email: string }) => {
+      sessionUserId = `auth-${email}`
+      return { data: { user: { id: sessionUserId } }, error: null }
+    },
+    signOut: async () => {
+      sessionUserId = null
+      return { error: null }
+    },
+  },
 }
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => adminClient }))
@@ -314,8 +345,21 @@ import {
   inviteEmployee,
   saveOnboardingSection,
   saveOnboardingTimeOff,
+  signInToOnboarding,
   submitOnboardingProfile,
 } from '@/app/actions/employeeInvite'
+import { logAuditEvent } from '@/app/actions/audit'
+import { getLocalIsoDateDaysAhead, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils'
+import { sendOnboardingCompleteEmail } from '@/lib/email/employee-invite-emails'
+import { InviteEmailSendError } from '@/lib/employees/invite-email-failure'
+
+const PASSWORD = 'a-good-long-password'
+const DOB = '1990-05-01'
+// Time off has to start in the future, so it is built from today: a fixed date stops passing the
+// day it goes by.
+const LEAVE_START = getLocalIsoDateDaysAhead(30)
+const LEAVE_END_3 = shiftIsoDate(LEAVE_START, 2) as string
+const LEAVE_END_5 = shiftIsoDate(LEAVE_START, 4) as string
 
 async function invite(email: string) {
   permissionMock.mockResolvedValue(true)
@@ -329,11 +373,22 @@ async function invite(email: string) {
 }
 
 async function fillTheMiddleOfTheFlow(token: string) {
-  await saveOnboardingSection(token, 'emergency_contacts', {
-    primary: { name: 'Jo Bloggs', relationship: 'Partner', phone_number: null, mobile_number: null, address: null },
+  const contacts = await saveOnboardingSection(token, 'emergency_contacts', {
+    primary: { name: 'Jo Bloggs', relationship: 'Partner', phone_number: null, mobile_number: '07700 900123', address: null },
   })
-  await saveOnboardingSection(token, 'financial', { bank_name: 'Test Bank' })
-  await saveOnboardingSection(token, 'health', {})
+  expect(contacts.success).toBe(true)
+  const financial = await saveOnboardingSection(token, 'financial', {
+    bank_name: 'Test Bank', bank_sort_code: '12-34-56', bank_account_number: '12345678',
+  })
+  expect(financial.success).toBe(true)
+  const health = await saveOnboardingSection(token, 'health', {})
+  expect(health.success).toBe(true)
+}
+
+async function savePersonal(token: string, values: Row = {}) {
+  return saveOnboardingSection(token, 'personal', {
+    first_name: 'Ada', last_name: 'Byron', date_of_birth: DOB, ...values,
+  })
 }
 
 describe('employee onboarding journey', () => {
@@ -345,20 +400,18 @@ describe('employee onboarding journey', () => {
   it('runs from invite to an Active employee', async () => {
     const token = await invite('newstarter@example.com')
 
-    // Step 1. The account is created with the admin client and does NOT sign the browser in.
-    const account = await createEmployeeAccount(token, 'a-good-password')
-    expect(account.success).toBe(true)
+    // Step 1. The account is created with the admin client, then this browser is signed in as it.
+    const account = await createEmployeeAccount(token, PASSWORD)
+    expect(account).toEqual({ success: true, signedIn: true })
     expect(db.employees[0].auth_user_id).toBeTruthy()
-    expect(sessionUserId).toBeNull()
+    expect(sessionUserId).toBe(db.employees[0].auth_user_id)
 
-    // Step 2 onwards must all work in exactly that state: account linked, no session.
-    const personal = await saveOnboardingSection(token, 'personal', {
-      first_name: 'Sam', last_name: 'Reed', preferred_name: 'Sam',
-    })
+    // Step 2 onwards work in that state: account linked, signed in as that account.
+    const personal = await savePersonal(token, { first_name: 'Sam', last_name: 'Reed', preferred_name: 'Sam' })
     expect(personal.success).toBe(true)
 
     const timeOff = await saveOnboardingTimeOff(token, 'has_dates', [
-      { startDate: '2026-12-01', endDate: '2026-12-05', leaveType: 'holiday', note: 'Wedding' },
+      { startDate: LEAVE_START, endDate: LEAVE_END_5, leaveType: 'holiday', note: 'Wedding' },
     ], 1)
     expect(timeOff.success).toBe(true)
 
@@ -372,24 +425,142 @@ describe('employee onboarding journey', () => {
     expect(db.employees[0].status).toBe('Active')
   })
 
-  it('does not refuse a step just because the browser has no session', async () => {
-    // The exact regression. Account exists, session does not, and the two steps that carry the
-    // token binding check must still work.
-    const token = await invite('nosession@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    expect(db.employees[0].auth_user_id).toBeTruthy()
+  it('sends a starter whose account already exists on to sign in, not back to the password form', async () => {
+    const token = await invite('twotabs@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+
+    const again = await createEmployeeAccount(token, PASSWORD)
+
+    expect(again.success).toBe(false)
+    if (!again.success) {
+      expect(again.code).toBe('sign_in_required')
+      expect(again.error).toMatch(/sign in to carry on/i)
+    }
+  })
+
+  it('saves the name tidied, the same as the staff forms do', async () => {
+    const token = await invite('tidy@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+
+    expect((await savePersonal(token, { first_name: '  sam ', last_name: "o'brien" })).success).toBe(true)
+
+    expect(db.employees[0].first_name).toBe('Sam')
+    expect(db.employees[0].last_name).toBe("O'Brien")
+  })
+
+  it('lets every step through before a password exists, with nobody signed in', async () => {
+    const token = await invite('nopassword@example.com')
     expect(sessionUserId).toBeNull()
 
-    const timeOff = await saveOnboardingTimeOff(token, 'none', [], 1)
-    expect(timeOff.success).toBe(true)
+    expect((await saveOnboardingTimeOff(token, 'none', [], 1)).success).toBe(true)
+    expect((await acknowledgeRightToWorkNotice(token)).success).toBe(true)
+    expect((await getOnboardingSnapshot(token)).success).toBe(true)
+  })
 
-    const rtw = await acknowledgeRightToWorkNotice(token)
-    expect(rtw.success).toBe(true)
+  it('asks a starter with an account but no session to sign in, then lets them carry on', async () => {
+    // The original regression was refusing this state as "a different account". It is now
+    // refused as "sign in to carry on", with a way to do that on the page.
+    const token = await invite('nosession@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    sessionUserId = null // a different device, or a cleared browser
+
+    const snapshot = await getOnboardingSnapshot(token)
+    expect(snapshot.success).toBe(false)
+    if (!snapshot.success) expect(snapshot.code).toBe('sign_in_required')
+
+    const timeOff = await saveOnboardingTimeOff(token, 'none', [], 1)
+    expect(timeOff.success).toBe(false)
+    if (!timeOff.success) {
+      expect(timeOff.code).toBe('sign_in_required')
+      expect(timeOff.error).toMatch(/sign in to carry on/i)
+    }
+    const section = await savePersonal(token)
+    expect(section.success).toBe(false)
+    if (!section.success) expect(section.code).toBe('sign_in_required')
+    expect(db.employees[0].first_name).toBeNull()
+
+    authSignInMock.mockImplementation(async (email: string) => {
+      sessionUserId = `auth-${email}`
+      return { success: true, userId: sessionUserId }
+    })
+    expect(await signInToOnboarding(token, PASSWORD)).toEqual({ success: true })
+    expect(authSignInMock).toHaveBeenCalledWith('nosession@example.com', PASSWORD)
+
+    expect((await saveOnboardingTimeOff(token, 'none', [], 1)).success).toBe(true)
+    expect((await getOnboardingSnapshot(token)).success).toBe(true)
+  })
+
+  // The employee edit refuses an email change on an Onboarding starter who has a login, and moves
+  // the login for current staff, so the record and the login never disagree. Should they ever, the
+  // link must not let in whoever holds the old address: sign in uses the address the page shows,
+  // and fails. Signing in with the login's own address (FF-63) let the old address in for good.
+  it('signs in with the record\'s own address, and fails closed if the login was left at another one', async () => {
+    const token = await invite('old@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    sessionUserId = null
+    db.employees[0].email_address = 'new@example.com'
+    db.employee_invite_tokens.find(t => t.token === token)!.email = 'new@example.com'
+
+    // Only the address a login was made with can sign in.
+    const logins = new Set(db.employees.map(e => e.auth_user_id).filter(Boolean))
+    authSignInMock.mockImplementation(async (email: string) => {
+      if (!logins.has(`auth-${email}`)) throw new Error('Invalid email or password')
+      sessionUserId = `auth-${email}`
+      return { success: true, userId: sessionUserId }
+    })
+
+    const result = await signInToOnboarding(token, PASSWORD)
+
+    expect(authSignInMock).toHaveBeenCalledTimes(1)
+    expect(authSignInMock).toHaveBeenCalledWith('new@example.com', PASSWORD)
+    expect(result.success).toBe(false)
+    expect(sessionUserId).toBeNull()
+    expect((await getOnboardingSnapshot(token)).success).toBe(false)
+  })
+
+  it('tells a starter plainly when the sign-in password is wrong', async () => {
+    const token = await invite('wrongpassword@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    sessionUserId = null
+
+    authSignInMock.mockRejectedValue(new Error('Invalid email or password'))
+    const result = await signInToOnboarding(token, 'not-the-password')
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error).toMatch(/password is not right/i)
+    expect(sessionUserId).toBeNull()
+  })
+
+  it('signs out again if the sign-in lands on an account that is not this employee', async () => {
+    const token = await invite('mismatch@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    sessionUserId = null
+
+    authSignInMock.mockImplementation(async () => {
+      sessionUserId = 'somebody-else'
+      return { success: true, userId: 'somebody-else' }
+    })
+    const result = await signInToOnboarding(token, PASSWORD)
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error).toMatch(/different account/i)
+    expect(sessionUserId).toBeNull()
+  })
+
+  it('reports a failed browser sign-in after the account is made, without undoing the account', async () => {
+    const token = await invite('nosignin@example.com')
+    const original = cookieClient.auth.signInWithPassword
+    cookieClient.auth.signInWithPassword = async () => ({ data: { user: null } as any, error: { message: 'down' } as any })
+    try {
+      const account = await createEmployeeAccount(token, PASSWORD)
+      expect(account).toEqual({ success: true, signedIn: false })
+      expect(db.employees[0].auth_user_id).toBeTruthy()
+    } finally {
+      cookieClient.auth.signInWithPassword = original
+    }
   })
 
   it('refuses a step when a different person is signed in on the same browser', async () => {
     const token = await invite('shared@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
+    await createEmployeeAccount(token, PASSWORD)
 
     sessionUserId = 'somebody-else'
     const result = await saveOnboardingTimeOff(token, 'none', [], 1)
@@ -399,8 +570,8 @@ describe('employee onboarding journey', () => {
 
   it('records "nothing booked" as a real answer that lets submission proceed', async () => {
     const token = await invite('nothingbooked@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    await saveOnboardingSection(token, 'personal', { first_name: 'Ada', last_name: 'Byron' })
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
 
     await saveOnboardingTimeOff(token, 'none', [], 1)
     expect(db.leave_requests).toHaveLength(0)
@@ -415,26 +586,26 @@ describe('employee onboarding journey', () => {
 
   it('will not complete without an answer about booked time off', async () => {
     const token = await invite('notimeoff@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    await saveOnboardingSection(token, 'personal', { first_name: 'Grace', last_name: 'Hopper' })
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token, { first_name: 'Grace', last_name: 'Hopper' })
     await fillTheMiddleOfTheFlow(token)
     await acknowledgeRightToWorkNotice(token)
 
     const result = await submitOnboardingProfile(token)
     expect(result.success).toBe(false)
-    expect(result.error).toMatch(/time off/i)
+    expect(result.success === false && result.error).toMatch(/time off/i)
   })
 
   it('will not complete without the right to work acknowledgement', async () => {
     const token = await invite('nortw@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    await saveOnboardingSection(token, 'personal', { first_name: 'Alan', last_name: 'Turing' })
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token, { first_name: 'Alan', last_name: 'Turing' })
     await saveOnboardingTimeOff(token, 'none', [], 1)
     await fillTheMiddleOfTheFlow(token)
 
     const result = await submitOnboardingProfile(token)
     expect(result.success).toBe(false)
-    expect(result.error).toMatch(/right to work/i)
+    expect(result.success === false && result.error).toMatch(/right to work/i)
   })
 
   it('rejects a preferred name already used by an active employee, on the step where it is typed', async () => {
@@ -444,24 +615,21 @@ describe('employee onboarding journey', () => {
     })
 
     const token = await invite('another.peter@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
+    await createEmployeeAccount(token, PASSWORD)
 
-    const result = await saveOnboardingSection(token, 'personal', {
-      first_name: 'Peter', last_name: 'Smith', preferred_name: 'Peter',
-    })
+    const result = await savePersonal(token, { first_name: 'Peter', last_name: 'Smith', preferred_name: 'Peter' })
 
     expect(result.success).toBe(false)
-    expect(result.error).toMatch(/already goes by/i)
+    expect(result.success === false && result.error).toMatch(/already goes by/i)
+    expect(result.success === false && result.fieldErrors?.preferred_name).toMatch(/already goes by/i)
   })
 
   it('turns a preferred name clash at submission into advice rather than constraint text', async () => {
     // Belt and braces for the race: two starters, only one can have the name. Whoever loses must
     // be told what to change, not shown the name of a database index.
     const token = await invite('racer@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    await saveOnboardingSection(token, 'personal', {
-      first_name: 'Peter', last_name: 'Smith', preferred_name: 'Peter',
-    })
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token, { first_name: 'Peter', last_name: 'Smith', preferred_name: 'Peter' })
     await saveOnboardingTimeOff(token, 'none', [], 1)
     await fillTheMiddleOfTheFlow(token)
     await acknowledgeRightToWorkNotice(token)
@@ -474,24 +642,231 @@ describe('employee onboarding journey', () => {
 
     const result = await submitOnboardingProfile(token)
     expect(result.success).toBe(false)
-    expect(result.error).toMatch(/go back to Personal Details/i)
-    expect(result.error).not.toMatch(/employees_preferred_name_active_unique/)
+    expect(result.success === false && result.error).toMatch(/go back to Personal Details/i)
+    expect(result.success === false && result.error).not.toMatch(/employees_preferred_name_active_unique/)
   })
 
   it('treats an identical resubmission of time off as a retry, not a duplicate', async () => {
     const token = await invite('retry@example.com')
-    await createEmployeeAccount(token, 'a-good-password')
-    await saveOnboardingSection(token, 'personal', { first_name: 'Ada', last_name: 'Lovelace' })
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token, { first_name: 'Ada', last_name: 'Lovelace' })
 
     await saveOnboardingTimeOff(token, 'has_dates', [
-      { startDate: '2026-12-01', endDate: '2026-12-03', leaveType: 'holiday' },
+      { startDate: LEAVE_START, endDate: LEAVE_END_3, leaveType: 'holiday' },
     ], 1)
     const before = db.leave_requests.length
 
     await saveOnboardingTimeOff(token, 'has_dates', [
-      { startDate: '2026-12-01', endDate: '2026-12-03', leaveType: 'holiday' },
+      { startDate: LEAVE_START, endDate: LEAVE_END_3, leaveType: 'holiday' },
     ], 1)
 
     expect(db.leave_requests).toHaveLength(before)
+  })
+  it('will not save personal details without a date of birth', async () => {
+    const token = await invite('nodob@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+
+    const result = await saveOnboardingSection(token, 'personal', { first_name: 'Ada', last_name: 'Byron' })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.fieldErrors?.date_of_birth).toBeTruthy()
+    expect(db.employees[0].first_name).toBeNull()
+  })
+
+  it('will not save a main emergency contact with no phone number', async () => {
+    const token = await invite('nophone@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+
+    const result = await saveOnboardingSection(token, 'emergency_contacts', {
+      primary: { name: 'Jo Bloggs', relationship: 'Partner', phone_number: null, mobile_number: null, address: null },
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.fieldErrors?.['primary.phone_number']).toMatch(/phone or mobile/i)
+    expect(db.employee_emergency_contacts).toHaveLength(0)
+  })
+
+  it('refuses a section it does not save, rather than saying it saved it', async () => {
+    const token = await invite('unknownsection@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+
+    const result = await saveOnboardingSection(token, 'time_off', { answer: 'none' })
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.error).toMatch(/cannot be saved here/i)
+  })
+
+  it('will not submit without a sort code and account number, and says which section', async () => {
+    const token = await invite('nobank@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    // A partial save is allowed, so the starter can come back to it.
+    db.employee_financial_details = []
+    expect((await saveOnboardingSection(token, 'financial', { bank_name: 'Test Bank' })).success).toBe(true)
+
+    const result = await submitOnboardingProfile(token)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.section).toBe('financial')
+      expect(result.error).toMatch(/sort code and account number/i)
+    }
+    expect(db.employees[0].status).toBe('Onboarding')
+  })
+
+  it('will not submit a profile whose date of birth is missing, even if it was saved before the rule', async () => {
+    const token = await invite('olddob@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    db.employees[0].date_of_birth = null
+
+    const result = await submitOnboardingProfile(token)
+    expect(result.success).toBe(false)
+    if (!result.success) expect(result.section).toBe('personal')
+    expect(db.employees[0].status).toBe('Onboarding')
+  })
+
+  it('tells the manager about booked time off, the right to work check and an under-18 starter', async () => {
+    const token = await invite('young@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    // 1 January seventeen years back is exactly 17 on every day of this London year.
+    const seventeen = `${Number(getTodayIsoDate().slice(0, 4)) - 17}-01-01`
+    await savePersonal(token, { date_of_birth: seventeen })
+    await saveOnboardingTimeOff(token, 'has_dates', [
+      { startDate: LEAVE_START, endDate: LEAVE_END_5, leaveType: 'holiday', note: 'Wedding' },
+    ], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+    expect(sendOnboardingCompleteEmail).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(sendOnboardingCompleteEmail).mock.calls[0][0]).toMatchObject({
+      employeeName: 'Ada Byron',
+      employeeEmail: 'young@example.com',
+      timeOffAnswer: 'has_dates',
+      timeOffBlocks: [{ startDate: LEAVE_START, endDate: LEAVE_END_5, leaveType: 'holiday' }],
+      rightToWorkCheckedOn: null,
+      rightToWorkUnknown: false,
+      ageIfUnder18: 17,
+      ageUnknown: false,
+    })
+  })
+
+  it('leaves a note on the record and a failed audit row when the manager email does not go', async () => {
+    const token = await invite('emailfails@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    vi.mocked(sendOnboardingCompleteEmail).mockRejectedValueOnce(
+      new InviteEmailSendError('The from address is not verified (403)'),
+    )
+
+    // The starter's completion stands: the email is for the manager.
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+    expect(db.employees[0].status).toBe('Active')
+
+    expect(db.employee_notes).toHaveLength(1)
+    expect(db.employee_notes[0]).toMatchObject({ employee_id: db.employees[0].employee_id, created_by_user_id: null })
+    // Plain words on the record staff read; the provider's own text only in the audit row.
+    expect(db.employee_notes[0].note_text).toBe(
+      'Onboarding completed, but the email telling the manager did not send because the email service did not accept it. ' +
+      'Check their booked time off and arrange their right to work check before their first shift.',
+    )
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'onboarding_complete_email',
+      operation_status: 'failure',
+      error_message: 'The from address is not verified (403)',
+      additional_info: expect.objectContaining({ email_outcome: 'not_sent' }),
+    }))
+  })
+
+  it('says the manager email may have gone, not that it did not send, when the email service gave no answer', async () => {
+    const token = await invite('emailunknown@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    vi.mocked(sendOnboardingCompleteEmail).mockRejectedValueOnce(
+      new InviteEmailSendError('Resend 503', { uncertain: true }),
+    )
+
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+
+    expect(db.employee_notes[0].note_text).toBe(
+      'Onboarding completed. We sent the email telling the manager, but we did not hear back from the email service, so it may have gone. ' +
+      'Check their booked time off and arrange their right to work check before their first shift.',
+    )
+    expect(db.employee_notes[0].note_text).not.toContain('Resend 503')
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'onboarding_complete_email',
+      error_message: 'Resend 503',
+      additional_info: expect.objectContaining({ email_outcome: 'uncertain' }),
+    }))
+  })
+
+  // FF-64: a right to work record that cannot be read must reach the manager as "could not read",
+  // never as "still to check", which would hide a check already recorded.
+  it('tells the manager the right to work record could not be read when that read fails, and logs it', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const token = await invite('rtwfails@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await savePersonal(token)
+    await saveOnboardingTimeOff(token, 'none', [], 1)
+    await fillTheMiddleOfTheFlow(token)
+    await acknowledgeRightToWorkNotice(token)
+    failingReads.add('employee_right_to_work')
+
+    expect(await submitOnboardingProfile(token)).toEqual({ success: true })
+
+    expect(vi.mocked(sendOnboardingCompleteEmail).mock.calls[0][0]).toMatchObject({
+      rightToWorkCheckedOn: null,
+      rightToWorkUnknown: true,
+      // The other reads still worked, so they are reported as facts.
+      timeOffAnswer: 'none',
+      ageUnknown: false,
+    })
+    expect(errorSpy).toHaveBeenCalledWith(
+      '[onboarding] Failed to read the right to work for the completion email:',
+      { code: 'PGRST000', message: 'employee_right_to_work read failed' },
+    )
+    errorSpy.mockRestore()
+  })
+  it('keeps the stored bank details when the masks come back unchanged, and refuses an edited mask', async () => {
+    const token = await invite('masks@example.com')
+    await createEmployeeAccount(token, PASSWORD)
+    await saveOnboardingSection(token, 'financial', {
+      ni_number: 'QQ123456C', bank_name: 'Test Bank', bank_sort_code: '112233', bank_account_number: '12345678',
+    })
+    expect(db.employee_financial_details[0]).toMatchObject({
+      ni_number: 'QQ123456C', bank_sort_code: '11-22-33', bank_account_number: '12345678',
+    })
+
+    // What the snapshot shows, sent back as it is: nothing changes.
+    const snapshot = await getOnboardingSnapshot(token)
+    expect(snapshot.success).toBe(true)
+    if (!snapshot.success) return
+    expect(snapshot.data.financial.ni_number).toBe('••••••56C')
+    expect(snapshot.data.financial.bank_account_number).toBe('••••5678')
+
+    const unchanged = await saveOnboardingSection(token, 'financial', {
+      ...snapshot.data.financial, bank_name: 'Other Bank',
+    })
+    expect(unchanged.success).toBe(true)
+    expect(db.employee_financial_details[0]).toMatchObject({
+      ni_number: 'QQ123456C', bank_name: 'Other Bank', bank_account_number: '12345678',
+    })
+
+    // One more digit typed after the mask is an edit, not "unchanged": refuse it, never drop it.
+    const edited = await saveOnboardingSection(token, 'financial', {
+      ...snapshot.data.financial, bank_account_number: '••••56789',
+    })
+    expect(edited.success).toBe(false)
+    if (!edited.success) expect(edited.fieldErrors?.bank_account_number).toMatch(/type the full value/)
+    expect(db.employee_financial_details[0].bank_account_number).toBe('12345678')
   })
 })

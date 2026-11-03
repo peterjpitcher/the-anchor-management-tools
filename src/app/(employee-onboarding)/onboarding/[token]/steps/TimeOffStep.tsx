@@ -4,7 +4,7 @@ import { useId, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Checkbox, Field, Input, Select } from '@/ds';
 import { cn } from '@/lib/utils';
 import { TIME_OFF_ROW_BORDER_CLASSES } from '../../_shared/status-ui';
-import { StepFooter, StepSection } from './StepParts';
+import { StepFooter, StepSection, thrownStepError } from './StepParts';
 import { saveOnboardingTimeOff } from '@/app/actions/employeeInvite';
 import {
   getTimeOffDateBounds,
@@ -12,6 +12,7 @@ import {
   MAX_NOTE_LENGTH,
   type TimeOffAnswer,
 } from '@/lib/leave/onboarding-time-off';
+import { LEAVE_TYPE_LABELS } from '@/lib/employees/leave-type-labels';
 
 type BlockRow = {
   key: string;
@@ -21,19 +22,31 @@ type BlockRow = {
   note: string;
 };
 
+type SavedBlock = { startDate: string; endDate: string; leaveType: string; note: string };
+
+/** What was saved: the wizard keeps it, so Back shows it and the next save sends the next version. */
+export interface SavedTimeOff {
+  answer: TimeOffAnswer;
+  blocks: SavedBlock[];
+  submissionVersion: number;
+}
+
 interface TimeOffStepProps {
   token: string;
   initialAnswer: TimeOffAnswer | null;
-  initialBlocks: Array<{ startDate: string; endDate: string; leaveType: string; note: string }>;
+  initialBlocks: SavedBlock[];
+  /** The version the database holds now (0 before the first save). Each save sends this plus one. */
   initialSubmissionVersion: number;
-  onSuccess: () => void;
+  /** Already saved: an unchanged answer moves on without saving again. */
+  saved?: boolean;
+  onSuccess: (saved: SavedTimeOff) => void;
   onBack?: () => void;
+  /** Called when the server says this browser needs to sign in first. */
+  onSignInRequired?: () => void;
 }
 
-const LEAVE_TYPE_OPTIONS = [
-  { value: 'holiday', label: 'Holiday' },
-  { value: 'unavailable', label: 'Cannot work (not holiday)' },
-];
+/** The two a starter can pick, in the words staff read on the Holidays tab. */
+const LEAVE_TYPE_OPTIONS = ['holiday', 'unavailable'].map((value) => ({ value, label: LEAVE_TYPE_LABELS[value] }));
 
 function emptyRow(key: string): BlockRow {
   return { key, startDate: '', endDate: '', leaveType: 'holiday', note: '' };
@@ -136,8 +149,10 @@ export default function TimeOffStep({
   initialAnswer,
   initialBlocks,
   initialSubmissionVersion,
+  saved = false,
   onSuccess,
   onBack,
+  onSignInRequired,
 }: TimeOffStepProps) {
   const { minDate, maxDate } = useMemo(() => getTimeOffDateBounds(), []);
 
@@ -186,30 +201,43 @@ export default function TimeOffStep({
       return;
     }
 
+    const blocks: SavedBlock[] = answer === 'has_dates'
+      ? filled.map(row => ({ startDate: row.startDate, endDate: row.endDate, leaveType: row.leaveType, note: row.note }))
+      : [];
+
+    // Nothing changed since the last save: move on without writing it again.
+    const unchanged = initialAnswer === answer
+      && JSON.stringify(blocks) === JSON.stringify(answer === 'has_dates' ? initialBlocks : []);
+    if (saved && unchanged) {
+      onSuccess({ answer, blocks, submissionVersion: initialSubmissionVersion });
+      return;
+    }
+
+    // The database treats a version it already holds as a retry and writes nothing, so this is
+    // always one more than the version it holds now. The wizard passes in the version from the
+    // last save, not the one from page load: a second change in the same visit used to send the
+    // same number again and was silently thrown away.
+    const submissionVersion = initialSubmissionVersion + 1;
+
     setLoading(true);
     try {
       const result = await saveOnboardingTimeOff(
         token,
         answer,
-        filled.map(row => ({
-          startDate: row.startDate,
-          endDate: row.endDate,
-          leaveType: row.leaveType,
-          note: row.note || null,
-        })),
-        // A changed answer is a new version. Re-sending the same one is treated as a retry.
-        initialSubmissionVersion + 1,
+        blocks.map(block => ({ ...block, note: block.note || null })),
+        submissionVersion,
       );
 
       if (result.success) {
-        onSuccess();
+        onSuccess({ answer, blocks, submissionVersion });
       } else {
+        if (result.code === 'sign_in_required') onSignInRequired?.();
         setError(result.error);
         setErrorRow(typeof result.blockIndex === 'number' ? result.blockIndex : null);
         errorRef.current?.focus();
       }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not save these dates. Please try again.');
+      setError(thrownStepError('Saving time off', caught));
       errorRef.current?.focus();
     } finally {
       setLoading(false);

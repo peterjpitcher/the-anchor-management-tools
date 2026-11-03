@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
@@ -10,6 +13,7 @@ import { EmployeeHeaderActions } from '@/app/(authenticated)/employees/[employee
 
 const previewMock = vi.hoisted(() => vi.fn())
 const beginMock = vi.hoisted(() => vi.fn())
+const cancelMock = vi.hoisted(() => vi.fn())
 const resendMock = vi.hoisted(() => vi.fn())
 const revokeMock = vi.hoisted(() => vi.fn())
 const deleteMock = vi.hoisted(() => vi.fn())
@@ -17,6 +21,7 @@ const deleteMock = vi.hoisted(() => vi.fn())
 vi.mock('@/app/actions/employeeSeparation', () => ({
   getEmployeeSeparationPreview: previewMock,
   beginEmployeeSeparation: beginMock,
+  cancelEmployeeSeparation: cancelMock,
 }))
 
 vi.mock('@/app/actions/employeeInvite', () => ({
@@ -33,6 +38,7 @@ const EMPLOYEE_ID = '00000000-0000-4000-8000-000000000001'
 const preview = {
   employmentStartDate: '2026-01-01',
   futureLeaveDates: [],
+  pendingLeaveDates: [],
   shifts: [
     {
       id: '00000000-0000-4000-8000-000000000011',
@@ -48,13 +54,14 @@ const preview = {
   ],
 }
 
-function renderHeader(status: 'Active' | 'Started Separation') {
+function renderHeader(status: 'Onboarding' | 'Active' | 'Started Separation') {
   return render(
     <EmployeeHeaderActions
       employeeId={EMPLOYEE_ID}
       employeeName="Sam Example"
       status={status}
       employmentStartDate="2026-01-01"
+      employmentEndDate={null}
       canEdit
       canDelete
     />,
@@ -92,9 +99,10 @@ describe('employee header "More" menu on a phone', () => {
       // narrowest phones.
       const triggers = screen.getAllByRole('button', { name: 'More' })
       expect(triggers).toHaveLength(1)
-      // Edit and Delete stay in the header row beside the menu.
+      // Edit stays in the header row beside the menu. Delete is only for an Onboarding record
+      // (FF-40): anyone who has worked here leaves through the separation flow.
       expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', `/employees/${EMPLOYEE_ID}/edit`)
-      expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument()
 
       await user.click(triggers[0])
       const menu = screen.getByRole('menu')
@@ -147,14 +155,50 @@ describe('employee header "More" menu on a phone', () => {
     await waitFor(() => expect(revokeMock).toHaveBeenCalledWith(EMPLOYEE_ID))
   })
 
+  // The page passes the stored separation_shift_policy through the header, so Cancel Separation
+  // names the shifts that policy released. Without it the dialog fell back to wording true under
+  // either policy, and never said the shifts up to the last day are still theirs.
+  it('names the shifts the stored policy released in the Cancel Separation dialog', async () => {
+    cancelMock.mockResolvedValue({ success: true, message: 'Separation cancelled.' })
+    const user = userEvent.setup()
+    render(
+      <EmployeeHeaderActions
+        employeeId={EMPLOYEE_ID}
+        employeeName="Sam Example"
+        status="Started Separation"
+        employmentStartDate="2026-01-01"
+        employmentEndDate={null}
+        separationShiftPolicy="work_remaining"
+        canEdit
+        canDelete
+      />,
+    )
+
+    await chooseFromMobileMenu(user, 'Cancel Separation')
+
+    const dialog = await screen.findByRole('dialog', { name: 'Cancel Separation' })
+    expect(within(dialog).getByText(/kept their shifts up to the last working day, which are still theirs/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/Any shifts released when the separation started stay open/)).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Separation' }))
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith(EMPLOYEE_ID))
+  })
+
+  it('is given the stored shift policy by the employee page', () => {
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
+    const employeePage = readFileSync(resolve(repoRoot, 'src/app/(authenticated)/employees/[employee_id]/page.tsx'), 'utf8')
+
+    expect(employeePage).toContain('separationShiftPolicy={employee.separation_shift_policy ?? null}')
+  })
+
   it('opens the Delete Employee dialog from the header and still submits the delete form', async () => {
     const user = userEvent.setup()
-    renderHeader('Active')
+    renderHeader('Onboarding')
 
     await user.click(screen.getByRole('button', { name: 'Delete' }))
 
     const dialog = await screen.findByRole('dialog', { name: 'Delete Employee' })
-    expect(within(dialog).getByText(/Are you sure you want to delete Sam Example\?/)).toBeInTheDocument()
+    expect(within(dialog).getByText(/Delete Sam Example\?/)).toBeInTheDocument()
     expect(deleteMock).not.toHaveBeenCalled()
 
     await user.click(within(dialog).getByRole('button', { name: 'Delete' }))

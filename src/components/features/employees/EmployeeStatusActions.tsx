@@ -5,13 +5,15 @@ import { useRouter } from 'next/navigation';
 import { revokeEmployeeAccess, resendInvite } from '@/app/actions/employeeInvite';
 import {
   beginEmployeeSeparation,
+  cancelEmployeeSeparation,
   getEmployeeSeparationPreview,
   type EmployeeSeparationPreview,
   type EmployeeSeparationShift,
   type SeparationShiftPolicy,
 } from '@/app/actions/employeeSeparation';
 import { Alert, Badge, Button, ConfirmDialog, Empty, Fieldset, Input, Modal, PageLoading, Radio, SubHeading, Textarea, toast } from '@/ds';
-import { formatDateFull, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import { formatDateFull, formatDateInLondon, formatTime12Hour, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import { separationCancelRotaSentence, separationCancelledToast } from '@/lib/employees/separation-cancel-copy';
 import { rotaShiftStatusClasses } from '@/lib/rota/status-ui';
 import { SEPARATION_SHIFT_DECISION_TONES } from '@/app/(authenticated)/employees/_shared/status-ui';
 import { ROTA_WEEK_PUBLISH_LABEL, ROTA_WEEK_PUBLISH_TONE } from '@/app/(authenticated)/rota/_shared/status-ui';
@@ -22,7 +24,18 @@ interface EmployeeStatusActionsProps {
   status: string;
   canEdit: boolean;
   employmentStartDate: string | null;
+  /** The recorded last working day. Mark as Former is refused by the server until it is reached. */
+  employmentEndDate: string | null;
+  /**
+   * The shift policy chosen when the separation started (separation_shift_policy), so the Cancel
+   * Separation dialog can say which shifts were released. Without it the dialog says only what is
+   * true under either policy.
+   */
+  separationShiftPolicy?: string | null;
 }
+
+/** Warnings say what to check before doing anything again, so they stay up long enough to read. */
+const WARNING_TOAST = { duration: 10000 };
 
 function departmentLabel(department: string | null | undefined): string {
   if (!department) return 'No department';
@@ -37,8 +50,8 @@ function acceptanceLabel(status: EmployeeSeparationShift['acceptanceStatus']): s
 }
 
 /**
- * The status actions for an employee (Resend Invite, Begin Separation, Mark as Former) and the
- * dialogs they open. Returned separately so the page can show the actions as buttons or as items
+ * The status actions for an employee (Resend Invite, Begin Separation, Cancel Separation, Mark as
+ * Former) and the dialogs they open. Returned separately so the page can show the actions as buttons or as items
  * in the phone "More" menu while the dialogs stay mounted outside that menu.
  */
 export function useEmployeeStatusActions({
@@ -46,6 +59,8 @@ export function useEmployeeStatusActions({
   status,
   canEdit,
   employmentStartDate,
+  employmentEndDate,
+  separationShiftPolicy = null,
 }: EmployeeStatusActionsProps): { actions: EmployeeHeaderAction[]; dialogs: ReactNode } {
   const router = useRouter();
   const dateInputRef = useRef<HTMLInputElement>(null);
@@ -53,7 +68,7 @@ export function useEmployeeStatusActions({
   const [previewLoading, setPreviewLoading] = useState(false);
   const [preview, setPreview] = useState<EmployeeSeparationPreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const [showConfirm, setShowConfirm] = useState<'separation' | 'revoke' | null>(null);
+  const [showConfirm, setShowConfirm] = useState<'separation' | 'revoke' | 'cancel' | null>(null);
   const [separationEndDate, setSeparationEndDate] = useState(getTodayIsoDate);
   const [separationNote, setSeparationNote] = useState('');
   const [shiftPolicy, setShiftPolicy] = useState<SeparationShiftPolicy | null>(null);
@@ -76,6 +91,7 @@ export function useEmployeeStatusActions({
   }, [preview, separationEndDate, shiftPolicy]);
 
   const leaveAfterEndDate = preview?.futureLeaveDates.filter((date) => date > separationEndDate) ?? [];
+  const pendingLeaveAfterEndDate = preview?.pendingLeaveDates.filter((date) => date > separationEndDate) ?? [];
 
   useEffect(() => {
     if (showConfirm === 'separation' && !previewLoading) dateInputRef.current?.focus();
@@ -94,11 +110,20 @@ export function useEmployeeStatusActions({
       const result = await resendInvite(employeeId);
       if (result.type === 'success') {
         toast.success(result.message || 'Invite resent.');
+      } else if (result.type === 'warning') {
+        // It may have gone (an email we could not confirm), so it is not offered as a failure to
+        // retry: the message says what to check first.
+        toast.warning(result.message, WARNING_TOAST);
       } else {
         toast.error(result.message || 'Failed to resend invite.');
       }
     } catch {
-      toast.error('Failed to resend invite.');
+      // No answer from the server, which may have sent the email before the request failed, so
+      // this is not offered as a failure to retry either.
+      toast.warning(
+        'We could not tell whether the invite was resent. Check with them before sending it again.',
+        WARNING_TOAST,
+      );
     } finally {
       setLoading(false);
     }
@@ -146,7 +171,8 @@ export function useEmployeeStatusActions({
         setSeparationNote('');
         setShiftPolicy(null);
         if (result.warning) {
-          toast.warning(result.warning);
+          // The separation email did not go, or may have gone: the message says which.
+          toast.warning(result.warning, WARNING_TOAST);
         } else {
           toast.success(
             `Separation started. ${result.retainedShiftCount} shift${result.retainedShiftCount === 1 ? '' : 's'} retained and ${result.releasedShiftCount} released.`,
@@ -163,12 +189,34 @@ export function useEmployeeStatusActions({
     }
   };
 
+  const handleCancelSeparation = async () => {
+    setShowConfirm(null);
+    setLoading(true);
+    try {
+      const result = await cancelEmployeeSeparation(employeeId);
+      if (result.success) {
+        // The server's message names the shifts released under the stored policy.
+        toast.success(result.message || separationCancelledToast(separationShiftPolicy));
+        router.refresh();
+      } else {
+        toast.error(result.error || 'Failed to cancel the separation.');
+      }
+    } catch {
+      toast.error('Failed to cancel the separation.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleRevokeAccess = async () => {
     setShowConfirm(null);
     setLoading(true);
     try {
       const result = await revokeEmployeeAccess(employeeId);
-      if (result.success) {
+      if (result.success && result.warning) {
+        toast.warning(result.warning);
+        router.refresh();
+      } else if (result.success) {
         toast.success('Employee access revoked and status set to Former.');
         router.refresh();
       } else {
@@ -209,15 +257,31 @@ export function useEmployeeStatusActions({
       disabled: loading,
     });
   }
+  // The server refuses Mark as Former while the last working day is still ahead (London date),
+  // so the action waits for that day and says when it becomes available.
+  const lastDayAhead = Boolean(employmentEndDate && employmentEndDate > getTodayIsoDate());
   if (status === 'Started Separation') {
     actions.push({
+      key: 'cancel-separation',
+      label: 'Cancel Separation',
+      onSelect: () => setShowConfirm('cancel'),
+      disabled: loading,
+    });
+    actions.push({
       key: 'mark-former',
-      label: 'Mark as Former',
+      label: lastDayAhead && employmentEndDate
+        ? `Mark as Former from ${formatDateInLondon(employmentEndDate, { day: 'numeric', month: 'short' })}`
+        : 'Mark as Former',
       onSelect: () => setShowConfirm('revoke'),
       loading,
+      disabled: lastDayAhead,
       tone: 'danger',
     });
   }
+
+  const revokeMessage = employmentEndDate
+    ? `This sets their status to "Former", keeps ${formatDateFull(employmentEndDate)} as their employment end date, removes all their system permissions and deletes their login. This cannot be undone automatically.`
+    : 'This sets their status to "Former", sets their employment end date to today, removes all their system permissions and deletes their login. This cannot be undone automatically.';
 
   const dialogs = (
     <>
@@ -358,9 +422,22 @@ export function useEmployeeStatusActions({
             </Alert>
           )}
 
+          {/* begin_employee_separation clears their template assignments under both choices and
+              keeps no list of them, so a cancelled separation cannot put them back. */}
+          <Alert tone="warning" size="sm">
+            Starting the separation takes them off every rota template straight away, whichever option you choose, so rota weeks built from the templates show their usual shifts as open. Cancelling the separation later does not put them back on the templates.
+          </Alert>
+
           {leaveAfterEndDate.length > 0 && (
             <Alert tone="warning" size="sm">
               There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. Cancel {leaveAfterEndDate.length === 1 ? 'it' : 'them'} separately before finalising the employee.
+            </Alert>
+          )}
+
+          {/* Pending leave already sits on the rota, so it blocks finalising just as approved leave does. */}
+          {pendingLeaveAfterEndDate.length > 0 && (
+            <Alert tone="warning" size="sm">
+              There {pendingLeaveAfterEndDate.length === 1 ? 'is' : 'are'} {pendingLeaveAfterEndDate.length} leave day{pendingLeaveAfterEndDate.length === 1 ? '' : 's'} waiting for a decision after the last working day. Decline {pendingLeaveAfterEndDate.length === 1 ? 'it' : 'them'} before finalising the employee, or they cannot be marked as Former.
             </Alert>
           )}
 
@@ -381,9 +458,20 @@ export function useEmployeeStatusActions({
         onClose={() => setShowConfirm(null)}
         onConfirm={handleRevokeAccess}
         title="Mark as Former"
-        message={'This sets the employee status to "Former", sets their employment end date to today and revokes all their system permissions. This cannot be undone automatically.'}
+        message={revokeMessage}
         confirmLabel="Mark as Former"
         tone="danger"
+      />
+
+      <ConfirmDialog
+        open={showConfirm === 'cancel'}
+        onClose={() => setShowConfirm(null)}
+        onConfirm={handleCancelSeparation}
+        title="Cancel Separation"
+        message={`This keeps them on as Active and clears their last working day. ${separationCancelRotaSentence(separationShiftPolicy)}`}
+        confirmLabel="Cancel Separation"
+        cancelLabel="Keep Separation"
+        tone="primary"
       />
     </>
   );

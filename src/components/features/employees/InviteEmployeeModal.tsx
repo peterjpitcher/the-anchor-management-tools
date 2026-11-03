@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useActionState } from 'react';
-import { inviteEmployee } from '@/app/actions/employeeInvite';
+import { inviteEmployee, type InviteActionResult } from '@/app/actions/employeeInvite';
 import { Alert, Button, Input, Modal, toast } from '@/ds';
 
 interface InviteEmployeeModalProps {
@@ -10,35 +10,51 @@ interface InviteEmployeeModalProps {
 }
 
 export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmployeeModalProps) {
-  const [state, formAction, pending] = useActionState(inviteEmployee, null);
+  const [state, formAction, pending] = useActionState<InviteActionResult | null, FormData>(inviteEmployee, null);
 
   useEffect(() => {
     if (state?.type === 'success') {
       toast.success(state.message || 'Invite sent successfully.');
-      if (onSuccess && (state as any).employeeId) {
-        onSuccess((state as any).employeeId);
+      if (onSuccess && state.employeeId) {
+        onSuccess(state.employeeId);
       }
       onClose();
     }
   }, [state, onSuccess, onClose]);
 
+  // A warning means the invite may have gone and the record was kept. The dialog stays open on the
+  // message, with only Close, so nobody presses Send Invite again and sends a second email.
+  const mayHaveGone = state?.type === 'warning';
+  const closeAfterWarning = () => {
+    if (onSuccess && state?.employeeId) {
+      onSuccess(state.employeeId);
+    }
+    onClose();
+  };
+
   // The actions sit in the Modal footer; Send Invite reaches the form through form=.
   return (
     <Modal
       open
-      onClose={onClose}
+      onClose={mayHaveGone ? closeAfterWarning : onClose}
       title="Invite Employee"
       description="They will receive an invite by email to create their account and complete their profile."
       width="md"
       footer={
-        <>
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
+        mayHaveGone ? (
+          <Button type="button" variant="primary" onClick={closeAfterWarning}>
+            Close
           </Button>
-          <Button type="submit" form="invite-employee-form" variant="primary" loading={pending}>
-            Send Invite
-          </Button>
-        </>
+        ) : (
+          <>
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" form="invite-employee-form" variant="primary" loading={pending}>
+              Send Invite
+            </Button>
+          </>
+        )
       }
     >
       <form id="invite-employee-form" action={formAction} className="space-y-4">
@@ -71,6 +87,10 @@ export default function InviteEmployeeModal({ onClose, onSuccess }: InviteEmploy
 
         {state?.type === 'error' && (
           <Alert tone="danger" size="sm">{state.message}</Alert>
+        )}
+
+        {mayHaveGone && (
+          <Alert tone="warning" size="sm">{state?.message}</Alert>
         )}
 
       </form>

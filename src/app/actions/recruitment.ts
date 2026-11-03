@@ -66,7 +66,8 @@ import type { RecruitmentAppointmentType, RecruitmentTemplateType } from '@/type
 import type { ActionType } from '@/types/rbac'
 
 type ActionResult<T = unknown> =
-  | { success: true; data?: T; message?: string }
+  /** `warning`: it was done, but staff must read this (an email that may have gone). */
+  | { success: true; data?: T; message?: string; warning?: string }
   | { success: false; error: string }
 
 const EMAIL_STATUS_TRANSITIONS: Partial<Record<RecruitmentTemplateType, {
@@ -1389,17 +1390,55 @@ export async function getRecruitmentCvUrlAction(candidateId: string): Promise<Ac
   }
 }
 
+/**
+ * Why the hire action stopped, in words written for staff, so it is shown as it is. Anything
+ * else thrown inside the action (a database or storage error) is logged and replaced, because
+ * its text is not written for staff.
+ */
+class HireStopped extends Error {}
+
+const HIRE_FAILED = 'Could not complete the hire just now. Please try again.'
+// Once the employee exists, trying again only meets "An active employee with this email
+// address already exists", so this says what to do instead. completeRecruitmentHireHandoff
+// copies the CV first and throws on a storage or attachment error, before the right to work
+// check is seeded, so either may be missing. Mark Hired only sets the status; it copies nothing.
+const HIRE_UNFINISHED =
+  "The employee was created, but the hire could not be finished, so their CV and right to work check may not have been copied across. Do not create another invite. Use Mark Hired, then open their employee record: record the right to work check on the Right to Work tab before they start if it is not there, and add their CV under Documents if it is missing."
+// The candidate's name and phone are copied onto the new employee after the invite. When that
+// write fails the record lacks their name and phone, so staff are told rather than told "done".
+const HIRE_DETAILS_NOT_COPIED =
+  "The candidate's name and phone number were not copied onto the employee record, so check them on the employee page."
+// requireRecruitmentPermission's own refusals, written for staff. Anything else it throws (a
+// missing environment setting, or getUser rethrowing something that is not an auth error) is not.
+const RECRUITMENT_PERMISSION_REFUSALS = new Set(['Not authenticated', 'You do not have permission to do this.'])
+
+function joinSentences(...parts: Array<string | null | undefined>): string {
+  return parts.filter((part): part is string => Boolean(part)).join(' ')
+}
+
 export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormData): Promise<ActionResult> {
+  // Set once inviteEmployee has made the record, so a later failure says the employee exists.
+  let employeeId: string | null = null
+  let inviteWarning: string | null = null
+  // Set when the candidate's name and phone could not be copied onto the new employee.
+  let detailsWarning: string | null = null
   try {
-    const user = await requireRecruitmentPermission('manage')
+    // The permission lookup fails closed rather than throwing, so its refusals are the only
+    // staff-written text this can throw. Anything else goes on to the plain fallback and the log.
+    const user = await requireRecruitmentPermission('manage').catch((refusal: unknown) => {
+      if (refusal instanceof Error && RECRUITMENT_PERMISSION_REFUSALS.has(refusal.message)) {
+        throw new HireStopped(refusal.message)
+      }
+      throw refusal
+    })
     const canCreateEmployee = await checkUserPermission('employees', 'create', user.id)
     if (!canCreateEmployee) {
-      throw new Error('You do not have permission to create employee invites.')
+      throw new HireStopped('You do not have permission to create employee invites.')
     }
 
     const applicationId = formString(formData, 'application_id')
     const jobTitle = formString(formData, 'job_title')
-    if (!applicationId || !jobTitle) throw new Error('Application and job title are required.')
+    if (!applicationId || !jobTitle) throw new HireStopped('Application and job title are required.')
 
     const admin = createAdminClient()
     const { data: application, error } = await admin
@@ -1409,7 +1448,7 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       .maybeSingle()
 
     if (error) throw error
-    if (!application?.candidate?.email) throw new Error('Candidate email is required.')
+    if (!application?.candidate?.email) throw new HireStopped('Candidate email is required.')
 
     const { data: duplicateEmployee, error: duplicateError } = await admin
       .from('employees')
@@ -1421,18 +1460,26 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
 
     if (duplicateError) throw duplicateError
     if (duplicateEmployee) {
-      throw new Error('An active employee with this email address already exists.')
+      throw new HireStopped('An active employee with this email address already exists.')
     }
 
     const inviteForm = new FormData()
     inviteForm.set('email', application.candidate.email)
     inviteForm.set('job_title', jobTitle)
     const invite = await inviteEmployee(null, inviteForm)
-    if (invite.type !== 'success' || !invite.employeeId) {
-      throw new Error(invite.message || 'Employee invite failed.')
+    // A 'warning' with an employee id means the welcome email may have gone and the record was
+    // kept. The employee exists, so the hire goes ahead: stopping here left a hire nobody could
+    // finish, because a retry then found that employee and refused.
+    inviteWarning = invite.type === 'warning' && invite.employeeId ? invite.message : null
+    if ((invite.type !== 'success' && !inviteWarning) || !invite.employeeId) {
+      // inviteEmployee writes its own messages for staff and keeps provider text out of them.
+      throw new HireStopped(invite.message || 'Employee invite failed.')
     }
+    employeeId = invite.employeeId
 
-    await settleWrite(
+    // settleWrite logs a failure and never throws. The hire still goes ahead, because the
+    // employee exists, but staff must know the record has no name or phone yet.
+    const detailsCopied = await settleWrite(
       admin
         .from('employees')
         .update({
@@ -1440,11 +1487,12 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
           last_name: application.candidate.last_name || undefined,
           phone_number: application.candidate.phone_e164 || application.candidate.phone || undefined,
         })
-        .eq('employee_id', invite.employeeId),
-      { table: 'employees', what: 'Copying the candidate details onto the new employee', ids: { employeeId: invite.employeeId, applicationId } },
+        .eq('employee_id', employeeId),
+      { table: 'employees', what: 'Copying the candidate details onto the new employee', ids: { employeeId, applicationId } },
     )
+    detailsWarning = detailsCopied ? null : HIRE_DETAILS_NOT_COPIED
 
-    const handoff = await completeRecruitmentHireHandoff(applicationId, invite.employeeId, user.id, admin)
+    const handoff = await completeRecruitmentHireHandoff(applicationId, employeeId, user.id, admin)
     await auditRecruitmentMutation({
       user,
       operation: 'hire_handoff',
@@ -1452,19 +1500,40 @@ export async function inviteRecruitmentCandidateAsEmployeeAction(formData: FormD
       resourceId: applicationId,
       status: 'success',
       newValues: {
-        employee_id: invite.employeeId,
+        employee_id: employeeId,
         job_title: jobTitle,
         right_to_work_saved: handoff.rightToWorkSaved,
+        candidate_details_copied: detailsCopied,
+        invite_email: inviteWarning ? 'may_have_gone' : 'sent',
       },
     })
     revalidatePath('/recruitment')
     revalidatePath('/employees')
     // The hire stands, but the screen only shows a problem through `error`, and staff must
-    // not read this as fully done: the warning says the employee was created.
-    if (handoff.warning) return { success: false, error: handoff.warning }
-    return { success: true, data: { employeeId: invite.employeeId }, message: 'Candidate invite sent and hire handoff completed.' }
+    // not read this as fully done: the warning says the employee was created. The invite
+    // warning rides along, because the right to work check needs doing either way.
+    if (handoff.warning) {
+      return { success: false, error: joinSentences(handoff.warning, detailsWarning, inviteWarning) }
+    }
+    // Shown the same way as the right to work warning: the employee page needs a fix by hand.
+    if (detailsWarning) {
+      return {
+        success: false,
+        error: joinSentences('The employee was created and the hire was completed.', detailsWarning, inviteWarning),
+      }
+    }
+    if (inviteWarning) {
+      const warning = `The employee was created and the hire was completed. ${inviteWarning}`
+      return { success: true, data: { employeeId }, message: warning, warning }
+    }
+    return { success: true, data: { employeeId }, message: 'Candidate invite sent and hire handoff completed.' }
   } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Failed to hire candidate.' }
+    if (error instanceof HireStopped) return { success: false, error: error.message }
+    console.error('Recruitment hire failed', { employeeId }, error)
+    if (!employeeId) return { success: false, error: HIRE_FAILED }
+    // The other warnings ride along: the email may have gone even though the hire stopped, and
+    // the record may still be missing the candidate's name and phone.
+    return { success: false, error: joinSentences(HIRE_UNFINISHED, detailsWarning, inviteWarning) }
   }
 }
 

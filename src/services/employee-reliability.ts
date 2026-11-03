@@ -1,8 +1,12 @@
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllRows } from '@/lib/supabase/paged-read';
 import { logAuditEvent } from '@/app/actions/audit';
 import { displayName } from '@/lib/employees/display-name';
+import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
+import { DEFAULT_LEAVE_TYPE, getLeaveTypes } from '@/lib/leave/leave-types';
 import {
   calculateBusinessReliabilityScore,
+  hasNoShiftSignals,
   RELIABILITY_WINDOW_DAYS,
   type EmployeeReliabilityEvent,
   type ReliabilityEventType,
@@ -37,13 +41,34 @@ export type ReliabilityLeaveSnapshot = {
   reviewed_at?: string | null;
   note?: string | null;
   manager_note?: string | null;
+  /** leave_types.code. Missing means the column default, holiday. */
+  leave_type?: string | null;
+  /** leave_requests.leave_origin: 'agreed_at_hire' for time off a new starter listed at onboarding. */
+  leave_origin?: string | null;
 };
+
+/** Leave events that can lower a score. holiday_requested and holiday_approved are information only. */
+const SCORED_LEAVE_EVENT_TYPES = new Set<ReliabilityEventType>(['late_holiday', 'holiday_conflict']);
+
+/**
+ * Time off agreed when the person was hired. Migration 20260819050000 exempts it from late notice
+ * and shift clash scoring: it was booked before they started, so it cannot be late.
+ */
+const AGREED_AT_HIRE_ORIGIN = 'agreed_at_hire';
+
+/** Leave request ids per read, so the id list in the request URL stays short. */
+const LEAVE_REQUEST_ID_CHUNK = 100;
 
 export type EmployeeReliabilityData = {
   employeeId: string;
   recent: ReliabilityScoreBreakdown;
   allTime: ReliabilityScoreBreakdown;
   events: EmployeeReliabilityEvent[];
+  /**
+   * Set when the events could not be read. The Reliability tab shows it instead of the scores,
+   * which would otherwise be worked out from no events and look like a real record.
+   */
+  loadError?: string | null;
 };
 
 export type TeamReliabilityRow = {
@@ -73,15 +98,14 @@ function getReliabilityWindowStart(days = RELIABILITY_WINDOW_DAYS): string {
   return date.toISOString();
 }
 
-function toIsoDate(value: Date): string {
-  return value.toISOString().split('T')[0]!;
-}
-
+// The London date of an instant. This used to take the UTC date, so a holiday asked for between
+// 00:00 and 00:59 BST was dated the day before, and its notice ran a day long: 15 days instead
+// of 14, just enough to miss the late holiday flag.
 function localDateFromIsoDateTime(value: string | null | undefined): string {
-  if (!value) return toIsoDate(new Date());
+  if (!value) return getTodayIsoDate();
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value.slice(0, 10);
-  return toIsoDate(date);
+  return toLocalIsoDate(date);
 }
 
 function daysBetween(startDate: string, eventAt: string | null | undefined): number {
@@ -337,6 +361,26 @@ export async function recordCouldntWorkReliabilityEvent(input: {
   });
 }
 
+/**
+ * Whether late notice on this leave counts against the person. It does not for a leave type with
+ * counts_in_reliability false (days someone cannot work, which are not holiday), nor for time off
+ * agreed at hire. The type is read through the cached leave type list, which falls back to the
+ * seeded types on a database error. If even that throws, the event is recorded as scored: the
+ * score read (applyLeaveScoringRules) checks every leave event against leave_types again and can
+ * take a penalty away, but never add one.
+ */
+async function lateNoticeCounts(leave: ReliabilityLeaveSnapshot, supabase: SupabaseLike): Promise<boolean> {
+  if (leave.leave_origin === AGREED_AT_HIRE_ORIGIN) return false;
+  const code = leave.leave_type ?? DEFAULT_LEAVE_TYPE;
+  try {
+    const type = (await getLeaveTypes(supabase)).find(row => row.code === code);
+    return type ? type.counts_in_reliability : true;
+  } catch (error) {
+    console.error('[employeeReliability] failed to read leave types for a late holiday', error);
+    return true;
+  }
+}
+
 // No 'holiday_conflict' event is emitted any more (spec F2, developer review C10).
 //
 // It docked the EMPLOYEE's reliability score for a clash the MANAGER created by
@@ -368,6 +412,8 @@ export async function recordHolidayReliabilityEvents(input: {
     source: input.source,
     leave_status: input.leave.status ?? null,
     manager_note: input.leave.manager_note ?? null,
+    leave_type: input.leave.leave_type ?? null,
+    leave_origin: input.leave.leave_origin ?? null,
   };
 
   if (input.includeRequested) {
@@ -409,6 +455,9 @@ export async function recordHolidayReliabilityEvents(input: {
   }
 
   if (input.includeLate && noticeDays <= 14) {
+    // Still recorded when it does not count, as information, like the requested and approved
+    // events: the record then shows the short notice without it lowering the score.
+    const scoreEligible = await lateNoticeCounts(input.leave, supabase);
     await recordReliabilityEvent({
       eventType: 'late_holiday',
       employeeId: input.leave.employee_id,
@@ -420,6 +469,7 @@ export async function recordHolidayReliabilityEvents(input: {
       leave: input.leave,
       leaveDayCount: days,
       noticeDays,
+      scoreEligible,
       note: input.leave.manager_note ?? input.leave.note ?? null,
       metadata: baseMetadata,
       supabase,
@@ -486,61 +536,130 @@ export async function recordHolidayAuditOnly(input: {
 }
 
 type ReliabilityEventQuery = {
-  employeeIds?: string[];
   employeeId?: string;
   fromDate?: string;
-  limit?: number;
 };
 
-/** Reads reliability events and throws when the read fails, so a caller can tell a failure from no events. */
+/**
+ * Reads reliability events and throws when the read fails, so a caller can tell a failure from no
+ * events. Newest first.
+ *
+ * Read in pages: Supabase returns at most 1,000 rows per request and cuts the answer short with no
+ * error. The leaderboard's 90-day window was one unpaged read (417 rows on 2 November 2026, and
+ * growing), and an employee's all-time record stopped at 1,000, so scores would have drifted
+ * quietly once either passed the limit. The id breaks ties between events at the same instant, so
+ * no page repeats or skips a row.
+ */
 async function queryReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
   const supabase = createAdminClient();
 
-  let query = supabase
-    .from('employee_reliability_events')
-    .select('*')
-    .order('event_at', { ascending: false });
-
-  if (params.employeeId) {
-    query = query.eq('employee_id', params.employeeId);
-  }
-  if (params.employeeIds && params.employeeIds.length > 0) {
-    query = query.in('employee_id', params.employeeIds);
-  }
-  if (params.fromDate) {
-    query = query.gte('event_at', params.fromDate);
-  }
-  if (params.limit) {
-    query = query.limit(params.limit);
-  }
-
-  const { data, error } = await query;
-  if (error) {
+  let rows: unknown[];
+  try {
+    rows = await fetchAllRows<unknown>(
+      (from, to) => {
+        let query = supabase.from('employee_reliability_events').select('*');
+        if (params.employeeId) {
+          query = query.eq('employee_id', params.employeeId);
+        }
+        if (params.fromDate) {
+          query = query.gte('event_at', params.fromDate);
+        }
+        return query
+          .order('event_at', { ascending: false })
+          .order('id', { ascending: false })
+          .range(from, to);
+      },
+      { label: 'reliability events' }
+    );
+  } catch (error) {
     console.error('[employeeReliability] failed to fetch events', error);
     throw new Error(RELIABILITY_EVENTS_LOAD_ERROR);
   }
 
-  return (data ?? []).map(normalizeReliabilityEvent);
+  return rows.map(normalizeReliabilityEvent);
+}
+
+function isScoredLeaveEvent(event: EmployeeReliabilityEvent): boolean {
+  return event.score_eligible && SCORED_LEAVE_EVENT_TYPES.has(event.event_type) && Boolean(event.leave_request_id);
 }
 
 /**
- * The employee page's Reliability tab still treats a failed read as no events (unchanged here);
- * the team leaderboard uses queryReliabilityEvents and reports the failure instead.
+ * Applies the leave rules to events already recorded, in memory, before they are scored. A late
+ * holiday or a rota clash on leave whose type has counts_in_reliability false (days someone cannot
+ * work, which are not holiday), or on time off agreed at hire, is marked not score-eligible. Until
+ * 2 November 2026 the recorder checked neither, and one 'unavailable' request in production
+ * carried a scored late_holiday and a scored holiday_conflict. This corrects that row without a
+ * data change, and any like it.
+ *
+ * The types come from leave_types, not a hard-coded list. Throws when leave_types or the leave
+ * requests cannot be read, because a score with those penalties left in would look real; callers
+ * show their own read error instead. An event whose request has since been deleted keeps the
+ * eligibility it was recorded with, as there is nothing left to check it against.
  */
-async function fetchReliabilityEvents(params: ReliabilityEventQuery): Promise<EmployeeReliabilityEvent[]> {
+async function applyLeaveScoringRules(events: EmployeeReliabilityEvent[]): Promise<EmployeeReliabilityEvent[]> {
+  const requestIds = [...new Set(events.filter(isScoredLeaveEvent).map(event => event.leave_request_id as string))];
+  if (requestIds.length === 0) return events;
+
+  const supabase = createAdminClient();
+
+  // Read directly rather than through getLeaveTypes, which falls back to the seeded types on an
+  // error: a score must not rest on a guess.
+  const { data: typeRows, error: typeError } = await supabase
+    .from('leave_types')
+    .select('code, counts_in_reliability');
+  if (typeError || !Array.isArray(typeRows) || typeRows.length === 0) {
+    console.error('[employeeReliability] failed to read leave types for scoring', typeError ?? new Error('leave_types returned no rows'));
+    throw new Error(RELIABILITY_EVENTS_LOAD_ERROR);
+  }
+  const notCounted = new Set(
+    (typeRows as Array<{ code: string; counts_in_reliability: boolean }>)
+      .filter(row => row.counts_in_reliability === false)
+      .map(row => row.code)
+  );
+
+  const requests = new Map<string, { leave_type: string | null; leave_origin: string | null }>();
+  for (let start = 0; start < requestIds.length; start += LEAVE_REQUEST_ID_CHUNK) {
+    const { data, error } = await supabase
+      .from('leave_requests')
+      .select('id, leave_type, leave_origin')
+      .in('id', requestIds.slice(start, start + LEAVE_REQUEST_ID_CHUNK));
+    if (error) {
+      console.error('[employeeReliability] failed to read leave requests for scoring', error);
+      throw new Error(RELIABILITY_EVENTS_LOAD_ERROR);
+    }
+    for (const row of (data ?? []) as Array<{ id: string; leave_type: string | null; leave_origin: string | null }>) {
+      requests.set(row.id, row);
+    }
+  }
+
+  return events.map(event => {
+    if (!isScoredLeaveEvent(event)) return event;
+    const request = requests.get(event.leave_request_id as string);
+    if (!request) return event;
+    const exempt = notCounted.has(request.leave_type ?? DEFAULT_LEAVE_TYPE)
+      || request.leave_origin === AGREED_AT_HIRE_ORIGIN;
+    return exempt ? { ...event, score_eligible: false } : event;
+  });
+}
+
+/**
+ * One employee's record, for the Reliability tab on their page. A failed read comes back as
+ * loadError rather than as no events: before 2 November 2026 it was shown as an empty record with
+ * a score worked out from nothing.
+ */
+export async function getEmployeeReliabilityData(employeeId: string): Promise<EmployeeReliabilityData> {
+  let events: EmployeeReliabilityEvent[];
+  let loadError: string | null = null;
   try {
-    return await queryReliabilityEvents(params);
+    events = await applyLeaveScoringRules(await queryReliabilityEvents({ employeeId }));
   } catch (error) {
     // A database error was logged where it happened; anything else is logged here.
     if (!(error instanceof Error && error.message === RELIABILITY_EVENTS_LOAD_ERROR)) {
       console.error('[employeeReliability] exception while fetching events', error);
     }
-    return [];
+    events = [];
+    loadError = RELIABILITY_EVENTS_LOAD_ERROR;
   }
-}
-
-export async function getEmployeeReliabilityData(employeeId: string): Promise<EmployeeReliabilityData> {
-  const events = await fetchReliabilityEvents({ employeeId, limit: 1000 });
   const windowStart = getReliabilityWindowStart();
   const recentEvents = events.filter(event => event.event_at >= windowStart);
 
@@ -549,6 +668,7 @@ export async function getEmployeeReliabilityData(employeeId: string): Promise<Em
     recent: calculateBusinessReliabilityScore(recentEvents),
     allTime: calculateBusinessReliabilityScore(events),
     events: events.slice(0, 150),
+    loadError,
   };
 }
 
@@ -567,6 +687,10 @@ function sortLeaderboard(rows: TeamReliabilityRow[], sortBy: TeamReliabilitySort
   sorted.sort((a, b) => {
     const lowSampleDelta = Number(a.recent.isLowSample) - Number(b.recent.isLowSample);
     if (lowSampleDelta !== 0) return lowSampleDelta;
+    // Someone with no shifts at all has nothing to score, so they go last rather than above a
+    // low-sample score that is real.
+    const noShiftsDelta = Number(hasNoShiftSignals(a.recent)) - Number(hasNoShiftSignals(b.recent));
+    if (noShiftsDelta !== 0) return noShiftsDelta;
 
     if (sortBy === 'manual_accept_rate') {
       return (b.recent.rates.manualAcceptRate ?? -1) - (a.recent.rates.manualAcceptRate ?? -1);
@@ -608,42 +732,67 @@ export async function getTeamReliabilityLeaderboard(input: {
     ? ['Active', 'Started Separation', 'Former']
     : ['Active', 'Started Separation'];
 
-  const { data: employees, error } = await supabase
-    .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, email_address, job_title, status')
-    .in('status', statuses)
-    .order('last_name')
-    .order('first_name');
+  type LeaderboardEmployee = {
+    employee_id: string;
+    first_name: string | null;
+    last_name: string | null;
+    preferred_name: string | null;
+    email_address: string;
+    job_title: string | null;
+    status: string;
+  };
 
-  if (error) {
+  let employeeRows: LeaderboardEmployee[];
+  try {
+    // Paged like the events, with the id as the last sort key so two people with the same name
+    // can never swap places between pages.
+    employeeRows = await fetchAllRows<LeaderboardEmployee>(
+      (from, to) =>
+        supabase
+          .from('employees')
+          .select('employee_id, first_name, last_name, preferred_name, email_address, job_title, status')
+          .in('status', statuses)
+          .order('last_name')
+          .order('first_name')
+          .order('employee_id')
+          .range(from, to),
+      { label: 'employees for leaderboard' }
+    );
+  } catch (error) {
     console.error('[employeeReliability] failed to fetch employees for leaderboard', error);
     throw new Error(RELIABILITY_LEADERBOARD_LOAD_ERROR);
   }
 
-  const employeeRows = employees ?? [];
-  const employeeIds = employeeRows.map((employee: any) => employee.employee_id as string);
+  // Everyone's events in the window, matched to the people above in memory. Filtering by a list
+  // of every employee id put the whole list in the request URL, which only grows.
+  const employeeIds = new Set(employeeRows.map(employee => employee.employee_id));
   let events: EmployeeReliabilityEvent[] = [];
-  if (employeeIds.length > 0) {
+  if (employeeIds.size > 0) {
     try {
-      events = await queryReliabilityEvents({
-        employeeIds,
+      const windowEvents = await queryReliabilityEvents({
         fromDate: input.fromDate ?? getReliabilityWindowStart(),
       });
-    } catch {
+      events = await applyLeaveScoringRules(windowEvents.filter(event => employeeIds.has(event.employee_id)));
+    } catch (error) {
       // Scoring everyone from no events would show a zero for every employee, a failed load
-      // dressed up as data. queryReliabilityEvents has already logged the database error.
+      // dressed up as data, and scoring them without the leave rules would show penalties that
+      // do not count. Both reads log their own database error; anything else is logged here.
+      if (!(error instanceof Error && error.message === RELIABILITY_EVENTS_LOAD_ERROR)) {
+        console.error('[employeeReliability] exception while reading leaderboard events', error);
+      }
       throw new Error(RELIABILITY_LEADERBOARD_LOAD_ERROR);
     }
   }
 
   const eventsByEmployee = new Map<string, EmployeeReliabilityEvent[]>();
   for (const event of events) {
+    if (!employeeIds.has(event.employee_id)) continue;
     const existing = eventsByEmployee.get(event.employee_id) ?? [];
     existing.push(event);
     eventsByEmployee.set(event.employee_id, existing);
   }
 
-  const rows = employeeRows.map((employee: any): TeamReliabilityRow => ({
+  const rows = employeeRows.map((employee): TeamReliabilityRow => ({
     employeeId: employee.employee_id,
     employeeName: employeeName(employee),
     email: employee.email_address,

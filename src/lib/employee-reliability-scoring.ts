@@ -167,11 +167,14 @@ export function calculateBusinessReliabilityScore(
       case 'holiday_approved':
         counts.holidayApproved += 1;
         break;
+      // A leave event that is not score-eligible (days someone cannot work, which are not
+      // holiday, or time off agreed at hire) is neither counted nor penalised. score_eligible was
+      // never read here, so those events lowered the score all the same.
       case 'late_holiday':
-        counts.lateHolidays += 1;
+        if (event.score_eligible) counts.lateHolidays += 1;
         break;
       case 'holiday_conflict':
-        counts.holidayConflicts += 1;
+        if (event.score_eligible) counts.holidayConflicts += 1;
         break;
     }
   }
@@ -223,6 +226,16 @@ export function calculateBusinessReliabilityScore(
     },
     averageResponseHours: averageResponseHours === null ? null : roundOne(averageResponseHours),
   };
+}
+
+/**
+ * True when there is no shift signal at all: no shift accepted, rejected or missed. The formula
+ * still gives 45 then (the full discipline and holiday credits with no acceptance credit), and
+ * the leaderboard showed that as a red score for someone who had simply not been offered a
+ * shift yet. Screens show RELIABILITY_NO_SHIFTS_LABEL (employees/_shared/status-ui.ts) instead.
+ */
+export function hasNoShiftSignals(score: ReliabilityScoreBreakdown): boolean {
+  return score.counts.eligibleShiftSignals === 0;
 }
 
 export function eventTypeLabel(eventType: ReliabilityEventType): string {

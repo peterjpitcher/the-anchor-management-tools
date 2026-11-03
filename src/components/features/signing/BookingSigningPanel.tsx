@@ -5,6 +5,7 @@ import { Alert, Button, Spinner, toast } from '@/ds'
 import { getBookingSigningState, sendBookingWaiver, type BookingSigningState } from '@/app/actions/signing-bookings'
 import { describeContractAcceptance } from '@/lib/signing/contract-acceptance'
 import { describeContractTermsChanges, type ContractOutOfDate } from '@/lib/private-bookings/contract-terms'
+import { failedDeliveryToast } from './delivery-outcome'
 import { RecordContractAcceptanceModal } from './RecordContractAcceptanceModal'
 import { SignaturePanel } from './SignaturePanel'
 
@@ -58,7 +59,10 @@ export function BookingSigningPanel({ bookingId, refreshKey }: BookingSigningPan
       }
       const delivery = result.data.deliveries[0]
       if (delivery?.email_status === 'failed') {
-        toast.error('Food agreement created, but the email failed. Use "Send New Link" or "Sign in Person".')
+        // An email we did not hear back about may have reached the customer, so it is a warning
+        // to check with them before a new link cancels the one they may be holding.
+        const problem = failedDeliveryToast(delivery, { noun: 'Food agreement', recipient: delivery.name })
+        toast[problem.kind](problem.message)
       } else if (delivery?.email_status === 'none') {
         toast.success('Food agreement created. There is no email address, so use "Sign in Person".')
       } else {

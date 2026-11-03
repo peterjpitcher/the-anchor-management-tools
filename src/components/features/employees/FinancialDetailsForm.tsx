@@ -1,57 +1,37 @@
 'use client';
 
-import { useActionState, useEffect } from 'react';
-import { useFormStatus } from 'react-dom';
+import { startTransition, useActionState, useEffect, useRef, type FormEvent } from 'react';
 import { upsertFinancialDetails } from '@/app/actions/employeeActions';
 import type { ActionFormState } from '@/types/actions';
 import type { EmployeeFinancialDetails } from '@/types/database';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { Alert, Button, Card, CardBody, CardHeader, Field, FormFooter, Input, LinkButton, Textarea, toast } from '@/ds';
 
 interface FinancialDetailsFormProps {
   employeeId: string;
   financialDetails: EmployeeFinancialDetails | null;
-  onSave?: (data: FormData) => void;
-  draftMode?: boolean;
   /** Where Cancel goes. Without it the form has no Cancel button. */
   cancelHref?: string;
 }
 
-function SubmitButton() {
-  const { pending } = useFormStatus();
-  return (
-    <Button
-      type="submit"
-      loading={pending}
-      variant="primary"
-    >
-      Save Financial Details
-    </Button>
-  );
-}
-
-export default function FinancialDetailsForm({ employeeId, financialDetails, onSave, draftMode = false, cancelHref }: FinancialDetailsFormProps) {
-  const [state, formAction] = useActionState(upsertFinancialDetails, null);
-  const pathname = usePathname();
+export default function FinancialDetailsForm({ employeeId, financialDetails, cancelHref }: FinancialDetailsFormProps) {
+  const [state, formAction, pending] = useActionState(upsertFinancialDetails, null);
   const router = useRouter();
-  const isNewEmployee = pathname?.includes('/employees/new');
+  const handledState = useRef<ActionFormState | null>(null);
 
   useEffect(() => {
-    if (state?.type === 'success' && !draftMode) {
-      // Only redirect when editing an existing employee
-      if (!isNewEmployee) {
-        toast.success(state.message || 'Financial details updated successfully.');
-        router.push(`/employees/${employeeId}`);
-      }
-    }
-  }, [state, isNewEmployee, draftMode, router, employeeId]);
+    if (state?.type !== 'success' || handledState.current === state) return;
+    handledState.current = state;
+    toast.success(state.message || 'Financial details updated successfully.');
+    router.push(`/employees/${employeeId}`);
+  }, [state, router, employeeId]);
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    if (draftMode && onSave) {
-      e.preventDefault();
-      const formData = new FormData(e.currentTarget);
-      onSave(formData);
-    }
+  // onSubmit rather than a form action: a React 19 form action resets the form after every
+  // submit, so a refused sort code or account number wiped everything typed.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
   };
 
   const details = [
@@ -64,7 +44,7 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
   ];
 
   return (
-    <form action={draftMode ? undefined : formAction} onSubmit={draftMode ? handleSubmit : undefined} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-6">
       <input type="hidden" name="employee_id" value={employeeId} />
 
       <Card>
@@ -105,6 +85,9 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
       {state?.type === 'error' && !state.errors && (
         <Alert tone="danger">{state.message}</Alert>
       )}
+      {state?.type === 'error' && state.errors && (
+        <Alert tone="danger">Please check the highlighted fields.</Alert>
+      )}
 
       <FormFooter>
         {cancelHref && (
@@ -112,7 +95,9 @@ export default function FinancialDetailsForm({ employeeId, financialDetails, onS
             Cancel
           </LinkButton>
         )}
-        <SubmitButton />
+        <Button type="submit" loading={pending} variant="primary">
+          Save Financial Details
+        </Button>
       </FormFooter>
     </form>
   );
