@@ -4,7 +4,17 @@ import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { logAuditEvent } from '@/app/actions/audit';
+import { getRotaSettings } from '@/app/actions/rota-settings';
 import { formatDate, getTodayIsoDate, shiftIsoDate } from '@/lib/dateUtils';
+import { consumesAllowance, getAllowanceConsumingTypes } from '@/lib/leave/leave-types';
+import {
+  countAllowanceDays,
+  formatHolidayDays,
+  getHolidayEntitlement,
+  getHolidayYear,
+  getHolidayYearBounds,
+  getUntakenHoliday,
+} from '@/lib/leave/working-days';
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -172,6 +182,121 @@ async function removeLeaveAfterLastWorkingDay(
   return { success: true, removed };
 }
 
+/** A leaver's holiday for one holiday year, worked out to their last working day. */
+type UntakenHoliday = {
+  holidayYear: number;
+  /** What they earned in the year to their last working day (pro-rated). */
+  entitlement: number;
+  /** Allowance days they took in the year up to their last working day. */
+  taken: number;
+  /** Earned less taken: negative when they took more than they had earned. */
+  untaken: number;
+};
+
+/**
+ * A leaver's untaken holiday at their last working day, for their final pay: what they earned in
+ * the holiday year to that day (getHolidayEntitlement pro-rates it), less the allowance days they
+ * took in it. Payroll does not read leave, so without this nobody had a figure to pay.
+ *
+ * Read after the leave after their last day has been removed. Null when it cannot be worked out:
+ * the separation never waits on it, and the note then says to check it by hand.
+ */
+async function getUntakenHolidayAtLastDay(
+  adminClient: AdminClient,
+  employeeId: string,
+  employmentStartDate: string | null,
+  employmentEndDate: string,
+): Promise<UntakenHoliday | null> {
+  try {
+    const [rotaSettings, payResult, allowanceConsuming] = await Promise.all([
+      getRotaSettings(),
+      adminClient
+        .from('employee_pay_settings')
+        .select('holiday_allowance_days')
+        .eq('employee_id', employeeId)
+        .maybeSingle(),
+      getAllowanceConsumingTypes(adminClient),
+    ]);
+
+    if (payResult.error) {
+      console.error('[finalizeEmployeeSeparation] Failed to load the holiday allowance:', {
+        employeeId,
+        code: payResult.error.code,
+        message: payResult.error.message,
+      });
+      return null;
+    }
+
+    const { holidayYearStartMonth: startMonth, holidayYearStartDay: startDay } = rotaSettings;
+    const holidayYear = getHolidayYear(employmentEndDate, startMonth, startDay);
+    const { startDate: yearStart } = getHolidayYearBounds(holidayYear, startMonth, startDay);
+
+    const { data: dayRows, error: daysError } = await adminClient
+      .from('leave_days')
+      .select('leave_date, leave_requests!inner(status, leave_type)')
+      .eq('employee_id', employeeId)
+      .eq('leave_requests.status', 'approved')
+      .gte('leave_date', yearStart)
+      .lte('leave_date', employmentEndDate);
+
+    if (daysError) {
+      console.error('[finalizeEmployeeSeparation] Failed to load the holiday taken:', {
+        employeeId,
+        code: daysError.code,
+        message: daysError.message,
+      });
+      return null;
+    }
+
+    type DayRow = {
+      leave_date: string;
+      leave_requests: { leave_type: string | null } | { leave_type: string | null }[] | null;
+    };
+    const taken = countAllowanceDays(
+      ((dayRows ?? []) as DayRow[]).map((row) => {
+        const request = Array.isArray(row.leave_requests) ? row.leave_requests[0] : row.leave_requests;
+        return {
+          leave_date: String(row.leave_date),
+          consumes_allowance: consumesAllowance(request?.leave_type, allowanceConsuming),
+        };
+      }),
+    );
+
+    const allowanceDays = (payResult.data as { holiday_allowance_days: number | null } | null)?.holiday_allowance_days;
+    const { entitlement } = getHolidayEntitlement({
+      allowance: allowanceDays ?? rotaSettings.defaultHolidayDays,
+      holidayYear,
+      startMonth,
+      startDay,
+      employmentStartDate,
+      employmentEndDate,
+    });
+
+    return { holidayYear, entitlement, taken, untaken: getUntakenHoliday(entitlement, taken) };
+  } catch (error) {
+    console.error('[finalizeEmployeeSeparation] Could not work out the untaken holiday:', {
+      employeeId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+/** The note for their record: what they earned, what they took and what is left for final pay. */
+function describeUntakenHoliday(employmentEndDate: string, holiday: UntakenHoliday | null): string {
+  const lastDay = formatDate(employmentEndDate);
+  if (!holiday) {
+    return `Their untaken holiday at their last working day (${lastDay}) could not be worked out. Check their Holidays tab before their final pay.`;
+  }
+  const year = `${holiday.holidayYear}/${String(holiday.holidayYear + 1).slice(2)}`;
+  const earned = `Holiday at their last working day (${lastDay}): earned ${formatHolidayDays(holiday.entitlement)} in the ${year} holiday year and took ${formatHolidayDays(holiday.taken)}`;
+  if (holiday.untaken > 0) {
+    return `${earned}, leaving ${formatHolidayDays(holiday.untaken)} untaken to include in their final pay.`;
+  }
+  if (holiday.untaken === 0) return `${earned}, leaving none untaken.`;
+  return `${earned}: ${formatHolidayDays(-holiday.untaken)} more than they had earned. Check their final pay.`;
+}
+
 /** "1 November 2026 to 8 November 2026 (approved, 8 days)", one entry per request. */
 function describeRemovedLeave(entry: LeaveAfterLastDay): string {
   const from = new Date(`${entry.removedFrom}T12:00:00Z`).getTime();
@@ -197,7 +322,7 @@ export async function finalizeEmployeeSeparation(
 
   const { data: employee, error: employeeError } = await adminClient
     .from('employees')
-    .select('auth_user_id, email_address, status, employment_end_date')
+    .select('auth_user_id, email_address, status, employment_start_date, employment_end_date')
     .eq('employee_id', employeeId)
     .maybeSingle();
 
@@ -456,6 +581,24 @@ export async function finalizeEmployeeSeparation(
     }
   }
 
+  // On their record for their final pay, whoever marked them as Former.
+  const untakenHoliday = await getUntakenHolidayAtLastDay(
+    adminClient,
+    employeeId,
+    employee.employment_start_date ?? null,
+    employmentEndDate,
+  );
+  await settleWrite(
+    adminClient
+      .from('employee_notes')
+      .insert({
+        employee_id: employeeId,
+        note_text: describeUntakenHoliday(employmentEndDate, untakenHoliday),
+        created_by_user_id: options.actorUser?.user_id ?? null,
+      }),
+    { table: 'employee_notes', what: 'Adding the untaken holiday note', ids: { employeeId } },
+  );
+
   if (source === 'automatic') {
     await settleWrite(
       adminClient
@@ -489,6 +632,14 @@ export async function finalizeEmployeeSeparation(
       },
       additional_info: {
         source,
+        untaken_holiday: untakenHoliday
+          ? {
+              holiday_year: untakenHoliday.holidayYear,
+              earned_days: untakenHoliday.entitlement,
+              taken_days: untakenHoliday.taken,
+              untaken_days: untakenHoliday.untaken,
+            }
+          : null,
         ...(employee.auth_user_id ? { auth_user_deleted: authUserDeleted } : {}),
         ...(leaveRemoval.removed.length > 0
           ? {
