@@ -25,6 +25,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { computeAgeAt } from '@/lib/worker-agreement'
 import { displayNameWithLegal, SELECTABLE_EMPLOYEE_STATUSES } from '@/lib/employees/display-name'
+import { hasLeft } from '@/lib/employees/current-staff'
 
 /**
  * Sending staff documents for signature: the worker agreement, changes to terms, consent forms
@@ -150,9 +151,10 @@ interface StaffEmployee {
   email_address: string | null
   date_of_birth: string | null
   status: string
+  employment_end_date: string | null
 }
 
-const STAFF_EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, email_address, date_of_birth, status'
+const STAFF_EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, email_address, date_of_birth, status, employment_end_date'
 
 /** The legal name: what the documents print and what the signer signs as. */
 function employeeName(employee: Pick<StaffEmployee, 'first_name' | 'last_name'>): string {
@@ -170,14 +172,12 @@ function staffScreenName(employee: Pick<StaffEmployee, 'first_name' | 'last_name
 
 /**
  * Someone who has left cannot be sent anything new to sign: the documents govern working here,
- * and the link would go to a former employee's inbox. The screens hide the buttons for them; this
- * is the server's own check, so a stale page or a crafted call cannot get round it.
+ * and the link would go to a former employee's inbox. Someone on notice has left once their last
+ * working day has passed, even before the nightly job marks them Former. The screens hide the
+ * buttons for former staff; this is the server's own check, so a stale page or a crafted call
+ * cannot get round it.
  */
 const FORMER_EMPLOYEE_REFUSAL = 'This person has left, so documents can no longer be sent to them to sign.'
-
-function isFormer(employee: Pick<StaffEmployee, 'status'>): boolean {
-  return employee.status === 'Former'
-}
 
 async function loadEmployee(employeeId: string): Promise<StaffEmployee | null> {
   const admin = createAdminClient()
@@ -257,7 +257,7 @@ export async function sendEmploymentAgreement(input: {
 
     const employee = await loadEmployee(parsed.data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
-    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
+    if (hasLeft(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
 
     // Whoever sends it signs for the business, so the agreement names them as issuing it.
     const built = await loadWorkerAgreement(employee.employee_id, {
@@ -368,7 +368,7 @@ export async function sendStaffTemplateDocument(input: StaffTemplateInput): Prom
 
     const employee = await loadEmployee(data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
-    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
+    if (hasLeft(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
     const name = employeeName(employee)
     if (!name) return { error: 'Add the employee\'s name to their record first.' }
     const age = computeAgeAt(employee.date_of_birth, getTodayIsoDate())
@@ -456,7 +456,10 @@ function policySeriesKey(slug: string): string {
   return `policy:${slug}`
 }
 
-/** Everyone still working here. Staff working their notice are included: they work shifts until they leave. */
+/**
+ * Everyone still working here. Staff working their notice are included: they work shifts until
+ * they leave. Once their last working day has passed they have left, so they drop off the list.
+ */
 async function loadCurrentStaff(): Promise<StaffEmployee[]> {
   const admin = createAdminClient()
   const staff = await fetchAllRows<StaffEmployee>(
@@ -470,7 +473,9 @@ async function loadCurrentStaff(): Promise<StaffEmployee[]> {
     { label: 'current staff for policies' }
   )
   // In the order of the names on screen.
-  return staff.sort((left, right) => staffScreenName(left).localeCompare(staffScreenName(right)))
+  return staff
+    .filter((employee) => !hasLeft(employee))
+    .sort((left, right) => staffScreenName(left).localeCompare(staffScreenName(right)))
 }
 
 export interface PolicyTemplateSummary {
@@ -628,7 +633,7 @@ export async function sendPolicyAcknowledgements(input: { slug: string; employee
         outcome.failed.push({ name, reason: 'Employee not found.' })
         continue
       }
-      if (isFormer(employee)) {
+      if (hasLeft(employee)) {
         outcome.failed.push({ name, reason: FORMER_EMPLOYEE_REFUSAL })
         continue
       }

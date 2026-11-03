@@ -27,6 +27,7 @@ import {
 // Timeclock names are shown on the kiosk and the manager review screen, never on
 // payroll or contract paperwork, so they use the preferred (display) name.
 import { displayName } from '@/lib/employees/display-name';
+import { isCurrentStaff } from '@/lib/employees/current-staff';
 
 // Timeclock uses the service-role (admin) client so that clock in/out works
 // on the public kiosk without Supabase auth session.
@@ -208,11 +209,13 @@ export async function clockIn(employeeId: string, pin?: string): Promise<
 
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, status, mobile_number, phone_number, timeclock_pin_hash')
+    .select('employee_id, status, employment_end_date, mobile_number, phone_number, timeclock_pin_hash')
     .eq('employee_id', employeeId)
     .single();
   if (!employee) return { success: false, error: 'Employee not found' };
-  if (!['Active', 'Started Separation'].includes(employee.status)) return { success: false, error: 'Employee is not active' };
+  // Someone on notice cannot clock in after their last working day: they have left. The same
+  // words as for a former employee, so the public kiosk never shows anyone's leaving date.
+  if (!isCurrentStaff(employee)) return { success: false, error: 'Employee is not active' };
 
   const identity = await verifyClockIdentity(employee as {
     timeclock_pin_hash?: string | null;
@@ -304,6 +307,9 @@ export async function clockOut(employeeId: string, pin?: string): Promise<
     .eq('employee_id', employeeId)
     .single();
   if (!employee) return { success: false, error: 'Employee not found' };
+  // Status only, not the last working day: clocking out lets nobody in. Someone on notice can
+  // finish a shift from their last working day after midnight, and a session is never left
+  // without an end time for a manager to guess.
   if (!['Active', 'Started Separation'].includes(employee.status)) return { success: false, error: 'Employee is not active' };
 
   const identity = await verifyClockIdentity(employee as {

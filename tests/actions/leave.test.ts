@@ -216,7 +216,9 @@ function mockCancelOwnClient(options: {
 } = {}) {
   const employeeQuery = chain()
   employeeQuery.maybeSingle.mockResolvedValue({
-    data: options.employee === undefined ? { employee_id: EMPLOYEE_ID } : options.employee,
+    data: options.employee === undefined
+      ? { employee_id: EMPLOYEE_ID, status: 'Active', employment_end_date: null }
+      : options.employee,
     error: options.employeeError ?? null,
   })
 

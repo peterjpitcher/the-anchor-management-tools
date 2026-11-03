@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { Card, CardBody, CardHeader } from '@/ds';
 import { StandalonePageHeader } from '@/components/shells/StandaloneShell';
 import LeaveRequestForm from '../LeaveRequestForm';
+import { isCurrentStaff } from '@/lib/employees/current-staff';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,12 +14,13 @@ export default async function NewLeaveRequestPage() {
 
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, first_name')
+    .select('employee_id, first_name, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .single();
 
-  if (!employee) redirect('/portal/leave');
+  // My Holiday says why: not linked, or past their last working day.
+  if (!employee || !isCurrentStaff(employee)) redirect('/portal/leave');
 
   return (
     <>

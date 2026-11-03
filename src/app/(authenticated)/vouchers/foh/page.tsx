@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import { VouchersFohClient } from './VouchersFohClient'
 import { displayName } from '@/lib/employees/display-name'
+import { isCurrentStaff } from '@/lib/employees/current-staff'
 import type { FohStaffMember } from './lib'
 import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 
@@ -29,7 +30,7 @@ export default async function VouchersFohPage() {
   const admin = createAdminClient()
   const { data: employeeRows } = await admin
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name')
+    .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
     .in('status', ['Active', 'Started Separation'])
     .order('first_name')
     .order('last_name')
@@ -44,14 +45,19 @@ export default async function VouchersFohPage() {
       first_name: string | null
       last_name: string | null
       preferred_name: string | null
+      status: string
+      employment_end_date: string | null
     }>
-  ).map((row) => ({
-    id: row.employee_id,
-    // Staff pick themselves off this list, so show the name the team uses. The
-    // helper falls back to the legal name, keeping the old "Unknown" backstop.
-    name: displayName(row),
-    clockedIn: clockedInIds.has(row.employee_id)
-  }))
+  )
+    // Someone on notice past their last working day has left, so cannot hand out or take a voucher.
+    .filter((row) => isCurrentStaff(row))
+    .map((row) => ({
+      id: row.employee_id,
+      // Staff pick themselves off this list, so show the name the team uses. The
+      // helper falls back to the legal name, keeping the old "Unknown" backstop.
+      name: displayName(row),
+      clockedIn: clockedInIds.has(row.employee_id)
+    }))
 
   const permissions =
     permissionsResult.success && permissionsResult.data ? permissionsResult.data : []

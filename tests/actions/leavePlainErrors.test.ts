@@ -208,7 +208,10 @@ describe('the staff portal holiday request', () => {
   })
 
   it('says so plainly when a cancellation fails', async () => {
-    sessionClient({ employees: { data: { employee_id: EMPLOYEE_ID }, error: null }, leave_requests: { data: null, error: TIMEOUT } })
+    sessionClient({
+      employees: { data: { employee_id: EMPLOYEE_ID, status: 'Active', employment_end_date: null }, error: null },
+      leave_requests: { data: null, error: TIMEOUT },
+    })
 
     const result = await cancelOwnLeaveRequest(REQUEST_ID)
 
