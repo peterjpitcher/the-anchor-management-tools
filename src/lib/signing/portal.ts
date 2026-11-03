@@ -1,5 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import type { PortalWorker } from '@/lib/portal/worker'
+import { isInPersonOnlyKind } from './kinds'
 import { getSigningPartyById, type SigningPartyContext } from './service'
 import type { SigningDocumentRow, SigningPartyRow } from './types'
 
@@ -7,32 +8,12 @@ import type { SigningDocumentRow, SigningPartyRow } from './types'
  * Signing in the staff portal. A signed-in worker sees the documents addressed to their own
  * employee record and no one else's; being signed in is the identity check, so there is no
  * date of birth question here.
+ *
+ * Who the worker is comes from the shared portal helper (src/lib/portal/worker.ts); it is
+ * re-exported here so existing imports keep working.
  */
 
-export interface PortalWorker {
-  userId: string
-  employeeId: string
-}
-
-/** The signed-in user's own employee record. New starters count: they sign their agreement here. */
-export async function getPortalWorker(): Promise<PortalWorker | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) return null
-
-  const admin = createAdminClient()
-  const { data, error } = await admin
-    .from('employees')
-    .select('employee_id')
-    .eq('auth_user_id', user.id)
-    .in('status', ['Onboarding', 'Active', 'Started Separation'])
-    .maybeSingle()
-  if (error) throw new Error(`Could not read your employee record: ${error.message}`)
-  if (!data) return null
-  return { userId: user.id, employeeId: data.employee_id as string }
-}
+export { getPortalWorker, type PortalWorker } from '@/lib/portal/worker'
 
 export interface PortalSigningItem {
   party: Pick<SigningPartyRow, 'id' | 'status' | 'signed_at' | 'declined_at'>
@@ -54,10 +35,16 @@ export async function listPortalSigningItems(employeeId: string): Promise<Portal
 
   const { data: documents, error: documentsError } = await admin
     .from('signing_documents')
-    .select('id, title, mode, status, sent_at, expires_at, completed_at')
+    .select('id, kind, title, mode, status, sent_at, expires_at, completed_at')
     .in('id', rows.map((row) => row.document_id))
   if (documentsError) throw new Error(`Could not read your documents: ${documentsError.message}`)
-  const byId = new Map(((documents ?? []) as PortalSigningItem['document'][]).map((document) => [document.id, document]))
+  const byId = new Map(
+    ((documents ?? []) as Array<PortalSigningItem['document'] & { kind?: string | null }>)
+      // A document signed only in person (a practical sign-off) is not listed: it is signed on a
+      // device the manager hands over, and the portal's signing endpoints refuse it.
+      .filter((document) => !isInPersonOnlyKind(document.kind))
+      .map(({ kind: _kind, ...document }) => [document.id, document])
+  )
 
   return rows.flatMap((row) => {
     const document = byId.get(row.document_id)

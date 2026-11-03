@@ -1,8 +1,8 @@
 /**
  * Shared types for document signing. The lists here mirror the CHECK constraints in
  * supabase/migrations/20261013080854_document_signing_foundation.sql, with the kinds added since
- * (20261014084753_signing_deposit_deduction_agreement.sql); the guard test
- * tests/guards/signing.test.ts fails if the two drift apart.
+ * (20261014084753_signing_deposit_deduction_agreement.sql, 20261103090100_training_signing_kinds.sql);
+ * the guard test tests/guards/signing.test.ts fails if the two drift apart.
  */
 
 export const SIGNING_KINDS = [
@@ -19,6 +19,8 @@ export const SIGNING_KINDS = [
   'client_agreement',
   'supplier_confirmation',
   'deposit_deduction_agreement',
+  'training_completion',
+  'training_signoff',
 ] as const
 export type SigningKind = (typeof SIGNING_KINDS)[number]
 
@@ -108,7 +110,7 @@ export type SigningTemplateKind = (typeof SIGNING_TEMPLATE_KINDS)[number]
 
 export const SIGNED_DOCUMENTS_BUCKET = 'signed-documents'
 
-/** A request stays open this long (owner decision, 12 October 2026). */
+/** A request stays open this long (owner decision, 12 October 2026). A kind may set its own. */
 export const SIGNING_EXPIRY_DAYS = 30
 /** Days after sending on which an unsigned party is reminded (owner decision, 12 October 2026). */
 export const SIGNING_REMINDER_DAYS = [3, 7] as const

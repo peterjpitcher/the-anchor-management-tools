@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { buildSigningStaffNoticeEmail } from './emails'
+import { signingKindOptions } from './kinds'
 import { finaliseSigningDocument, resendSigningLink } from './service'
 import { findSubjectClosure } from './subject-state'
 import { describeSigningSubject } from './subjects'
@@ -117,7 +118,10 @@ export async function runSigningReminders(now: Date = new Date()): Promise<Signi
     }
 
     // 2. Still open: chase anyone who is behind on reminders. One per run at most, so someone
-    //    who was never reminded does not get two emails on the same morning.
+    //    who was never reminded does not get two emails on the same morning. A kind that is
+    //    chased by its own feature (staff training) is never chased here as well.
+    const options = signingKindOptions(document.kind)
+    if (!options.signingReminders || !options.allowSendNewLink) continue
     const due = remindersDue(document.sent_at, now)
     if (due === 0) continue
     try {

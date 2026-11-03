@@ -14,6 +14,7 @@ const state = vi.hoisted(() => ({
   generatePdf: null as unknown as AnyMock,
   alert: null as unknown as AnyMock,
   hook: null as unknown as AnyMock,
+  declineHook: null as unknown as AnyMock,
   closure: null as unknown as AnyMock,
   closeBrowser: null as unknown as AnyMock,
   browser: { fake: 'browser' },
@@ -31,9 +32,12 @@ vi.mock('@/lib/pdf-generator', () => ({
 // Whether the record behind a document still needs signing. Tested on its own in subject-state.test.ts.
 vi.mock('@/lib/signing/subject-state', () => ({ findSubjectClosure: (...args: unknown[]) => state.closure(...args) }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: (...args: unknown[]) => state.alert(...args) }))
-vi.mock('@/lib/signing/completion-hooks', () => ({ runCompletionHook: (...args: unknown[]) => state.hook(...args) }))
+vi.mock('@/lib/signing/completion-hooks', () => ({
+  runCompletionHook: (...args: unknown[]) => state.hook(...args),
+  runDeclineHook: (...args: unknown[]) => state.declineHook(...args),
+}))
 
-import { buildAgreedText } from '@/lib/signing/agreement-text'
+import { buildAgreedText, buildCompanyAgreedText } from '@/lib/signing/agreement-text'
 import {
   MAX_IDENTITY_CHECK_FAILURES,
   SigningError,
@@ -51,6 +55,7 @@ import {
   resendSigningLink,
   resolveSigningPartyState,
   signSigningParty,
+  signingManagerMailbox,
   startInPersonSigning,
   viewSigningDocument,
   voidSigningDocument,
@@ -232,6 +237,7 @@ beforeEach(() => {
   state.generatePdf = vi.fn(async () => tinyPdf())
   state.alert = vi.fn(async () => undefined)
   state.hook = vi.fn(async () => undefined)
+  state.declineHook = vi.fn(async () => undefined)
   state.closure = vi.fn(async () => null)
   state.closeBrowser = vi.fn(async () => undefined)
 })
@@ -2603,5 +2609,215 @@ describe('staff actions', () => {
     const download = await downloadSigningPdf({ documentId: result.documentId, userId: STAFF })
     expect(download).toMatchObject({ signed: false, fileName: 'Booking-contract.pdf' })
     expect(db.rows('signing_events').some((row) => row.event === 'downloaded' && row.actor_user_id === STAFF)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Training kinds (build contract section 4)
+// ---------------------------------------------------------------------------
+
+describe('training documents', () => {
+  const TRAINING = {
+    assignment_id: 'assignment-1',
+    course_id: 'course-1',
+    course_slug: 'essentials',
+    course_title: 'Essentials',
+    version_label: '1.0',
+    certificate_number: 'AT-0123456789',
+    cycle: 1,
+    learner_name: 'Sam Example',
+  }
+  const WORKER = { role: 'worker' as const, name: 'Sam Example', email: 'sam@example.com', employeeId: 'emp-1' }
+  const CERTIFICATE_TITLE = 'Essentials training, version 1.0'
+  const SIGNOFF_TITLE = 'Cellar and lines sign-off'
+  const SIGNOFF_TRAINING = { ...TRAINING, course_slug: 'cellar', course_title: 'Cellar and lines', manager_name: 'Billy Summers', observed_on: '2026-10-25' }
+
+  /** A certificate as the app makes it by itself: nobody sends it, and no link email goes out. */
+  async function sendCertificate() {
+    return send({
+      kind: 'training_completion',
+      subjectId: 'emp-1',
+      title: CERTIFICATE_TITLE,
+      parties: [WORKER],
+      createdBy: null,
+      createdByName: 'System',
+      seriesKey: 'training:essentials',
+      context: { training: TRAINING },
+      sendLinkEmails: false,
+    })
+  }
+
+  async function sendSignoff(createdBy: string | null = STAFF) {
+    return send({
+      kind: 'training_signoff',
+      subjectId: 'emp-1',
+      title: SIGNOFF_TITLE,
+      parties: [WORKER],
+      createdBy,
+      createdByName: 'Billy Summers',
+      seriesKey: 'training-signoff:cellar',
+      context: { training: SIGNOFF_TRAINING },
+      sendLinkEmails: false,
+    })
+  }
+
+  function workerParty(documentId: string): SigningPartyRow {
+    return db.rows('signing_parties').find((row) => row.document_id === documentId && row.role === 'worker') as unknown as SigningPartyRow
+  }
+
+  it('makes a certificate with no sender, sends no email, and keeps the learner address for the signed copy', async () => {
+    const result = await sendCertificate()
+    expect(state.sendEmail).not.toHaveBeenCalled()
+    expect(result.deliveries).toEqual([expect.objectContaining({ email_status: 'caller_sends', email: 'sam@example.com' })])
+    const made = document(result.documentId)
+    expect(made).toMatchObject({ kind: 'training_completion', mode: 'acknowledge', created_by: null, status: 'sent', series_key: 'training:essentials' })
+    const days = (new Date(made.expires_at).getTime() - new Date(made.sent_at as string).getTime()) / DAY_MS
+    expect(Math.round(days)).toBe(30)
+    expect(workerParty(result.documentId)).toMatchObject({ email: 'sam@example.com', employee_id: 'emp-1' })
+    // Nobody signs for the business on a confirmation.
+    expect(db.rows('signing_parties').filter((row) => row.document_id === result.documentId)).toHaveLength(1)
+  })
+
+  it('confirms a certificate in the portal with the training words, emails the certificate, and tells the manager mailbox', async () => {
+    const result = await sendCertificate()
+    const partyId = result.deliveries[0].partyId
+    await viewSigningDocument(await contextFor(partyId), EVIDENCE)
+
+    // The standard words are refused: the training words name the course and its version.
+    const standard = await signSigningParty({
+      context: await contextFor(partyId),
+      typedName: 'Sam Example',
+      agreedText: buildAgreedText({ mode: 'acknowledge', title: CERTIFICATE_TITLE }),
+      via: 'portal',
+      evidence: EVIDENCE,
+      authUserId: STAFF,
+    })
+    expect(standard).toEqual({ ok: false, reason: 'agreement_text_changed' })
+
+    answerEmails()
+    const outcome = await signSigningParty({
+      context: await contextFor(partyId),
+      typedName: 'Sam Example',
+      agreedText: 'I confirm that I have read and understood "Essentials, version 1.0" and will follow it at work.',
+      via: 'portal',
+      evidence: EVIDENCE,
+      authUserId: STAFF,
+    })
+    expect(outcome).toMatchObject({ ok: true, completed: true })
+    expect(document(result.documentId).status).toBe('completed')
+    expect(state.hook).toHaveBeenCalledTimes(1)
+
+    const copies = emailsTo('sam@example.com')
+    expect(copies).toHaveLength(1)
+    expect(copies[0].subject).toBe(`Your training certificate: ${CERTIFICATE_TITLE}`)
+    const notices = emailsTo(signingManagerMailbox())
+    expect(notices).toHaveLength(1)
+    expect(notices[0].subject).toContain(CERTIFICATE_TITLE)
+  })
+
+  it('tells nobody when an older kind made with no sender completes', async () => {
+    const result = await send({ createdBy: null })
+    const partyId = result.deliveries[0].partyId
+    await viewSigningDocument(await contextFor(partyId), EVIDENCE)
+    answerEmails()
+    await signSigningParty({ context: await contextFor(partyId), typedName: 'Sam Example', agreedText: AGREED, via: 'link', evidence: EVIDENCE })
+    expect(document(result.documentId).status).toBe('completed')
+    expect(emailsTo(signingManagerMailbox())).toHaveLength(0)
+    expect(emailsTo(SENDER_EMAIL)).toHaveLength(0)
+  })
+
+  it('sends a certificate notice to MANAGER_EMAIL when it is set', async () => {
+    vi.stubEnv('MANAGER_EMAIL', 'owner@example.test')
+    try {
+      expect(signingManagerMailbox()).toBe('owner@example.test')
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    if (!process.env.MANAGER_EMAIL) expect(signingManagerMailbox()).toBe('manager@the-anchor.pub')
+  })
+
+  it('runs the decline hook and tells the manager mailbox when a learner declines', async () => {
+    const result = await sendCertificate()
+    const partyId = result.deliveries[0].partyId
+    answerEmails()
+    const outcome = await declineSigningParty({ context: await contextFor(partyId), reason: 'I have not read it', evidence: EVIDENCE })
+    expect(outcome).toMatchObject({ ok: true, completed: false })
+    expect(state.declineHook).toHaveBeenCalledTimes(1)
+    expect(state.declineHook.mock.calls[0][0]).toMatchObject({ id: result.documentId, kind: 'training_completion', status: 'declined' })
+    expect(emailsTo(signingManagerMailbox())).toHaveLength(1)
+  })
+
+  it('still records the refusal, and raises it, when the decline hook fails', async () => {
+    const result = await sendCertificate()
+    state.declineHook = vi.fn(async () => {
+      throw new Error('training table unavailable')
+    })
+    const outcome = await declineSigningParty({ context: await contextFor(result.deliveries[0].partyId), reason: null, evidence: EVIDENCE })
+    expect(outcome).toMatchObject({ ok: true })
+    expect(document(result.documentId).status).toBe('declined')
+    expect(state.alert).toHaveBeenCalled()
+  })
+
+  it('refuses a sign-off with no sender, because the manager signs it for the business', async () => {
+    await expect(sendSignoff(null)).rejects.toMatchObject({ code: 'sender_required' })
+    expect(db.rows('signing_documents')).toHaveLength(0)
+  })
+
+  it('makes a sign-off the manager has signed, with no link to the learner at all', async () => {
+    const result = await sendSignoff()
+    expect(state.sendEmail).not.toHaveBeenCalled()
+    expect(result.deliveries).toEqual([expect.objectContaining({ email_status: 'none' })])
+    expect(document(result.documentId)).toMatchObject({ kind: 'training_signoff', mode: 'sign', status: 'part_signed', created_by: STAFF })
+    const learner = workerParty(result.documentId)
+    expect(learner).toMatchObject({ email: 'sam@example.com', hashed_token: null, token_expires_at: null, status: 'pending' })
+    const company = db.rows('signing_parties').find((row) => row.document_id === result.documentId && row.role === 'company') as Row
+    expect(company).toMatchObject({ status: 'signed', method: 'sender' })
+    expect(company.agreed_text).toBe(buildCompanyAgreedText({ title: SIGNOFF_TITLE, kind: 'training_signoff', context: { training: SIGNOFF_TRAINING } }))
+    expect(company.agreed_text).toContain('I watched Sam Example do the tasks')
+  })
+
+  it('signs a sign-off in person, on the manager device, with the learner words', async () => {
+    const result = await sendSignoff()
+    const partyId = workerParty(result.documentId).id
+    const { url } = await startInPersonSigning({ partyId, userId: STAFF })
+    const token = url.split('/sign/')[1]
+    const context = await getSigningPartyByToken(token)
+    expect(context?.party.id).toBe(partyId)
+    await viewSigningDocument(context as SigningPartyContext, EVIDENCE)
+    answerEmails()
+    const outcome = await signSigningParty({
+      context: await contextFor(partyId),
+      typedName: 'Sam Example',
+      agreedText: 'I confirm that Billy Summers watched me do these tasks on 25 October 2026 and that I will do them the same way at work.',
+      via: 'link',
+      evidence: EVIDENCE,
+    })
+    expect(outcome).toMatchObject({ ok: true, completed: true })
+    expect(party(partyId)).toMatchObject({ method: 'in_person', witnessed_by: STAFF })
+    expect(emailsTo('sam@example.com').map((email) => email.subject)).toEqual([`Your signed copy: ${SIGNOFF_TITLE}`])
+  })
+
+  it('never sends a new link for either training kind, from staff or the daily job', async () => {
+    const certificate = await sendCertificate()
+    const signoff = await sendSignoff()
+    for (const isReminder of [false, true]) {
+      await expect(
+        resendSigningLink({ partyId: certificate.deliveries[0].partyId, userId: isReminder ? null : STAFF, isReminder })
+      ).rejects.toMatchObject({ code: 'no_new_link', message: expect.stringContaining('staff portal') })
+      await expect(
+        resendSigningLink({ partyId: workerParty(signoff.documentId).id, userId: isReminder ? null : STAFF, isReminder })
+      ).rejects.toMatchObject({ code: 'no_new_link', message: expect.stringContaining('in person only') })
+    }
+    expect(state.sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('does not point a learner from one document to a sign-off they can only sign in person', async () => {
+    const certificate = await sendCertificate()
+    await sendSignoff()
+    expect(await listOtherDocumentsToSign(await contextFor(certificate.deliveries[0].partyId))).toEqual([])
+
+    // An ordinary document for the same person is still named.
+    await send({ kind: 'policy_acknowledgement', subjectId: 'emp-1', title: 'Fire safety', parties: [WORKER], sendLinkEmails: false })
+    expect(await listOtherDocumentsToSign(await contextFor(certificate.deliveries[0].partyId))).toEqual(['Fire safety'])
   })
 })
