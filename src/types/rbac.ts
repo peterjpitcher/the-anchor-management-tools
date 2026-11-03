@@ -65,6 +65,10 @@ export type ModuleName =
   // B2B marketing email. Deliberately its own module rather than reusing
   // messages.send_marketing, which means bulk SMS and keeps that meaning.
   | 'marketing'
+  // Staff training: view (the log and records), manage (groups, assign, extend, waive, pause,
+  // unlock, sign-offs, external qualifications), publish (upload, preview and publish courses).
+  // Managers only. Staff take their own training in the portal by identity, never by permission.
+  | 'training'
 ;
 
 export type ActionType = 
