@@ -140,7 +140,11 @@ describe('EmployeeStatusActions separation review', () => {
     expect(screen.getByText('1 shift will stay assigned. 1 shift will become open.')).toBeInTheDocument()
     expect(screen.getAllByText('Will stay assigned')).toHaveLength(1)
     expect(screen.getAllByText('Will become open')).toHaveLength(1)
-    expect(screen.getByText(/1 approved leave day after the last working day/)).toBeInTheDocument()
+    // Removed when they are marked as Former, so nobody is told to go and cancel it first.
+    expect(screen.getByText(
+      '1 approved leave day after the last working day. It is removed automatically when they are marked as Former. Cancelling the separation keeps it.',
+      { exact: false },
+    )).toBeInTheDocument()
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeEnabled()
   })
 

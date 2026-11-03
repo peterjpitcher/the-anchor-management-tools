@@ -8,6 +8,11 @@ import { NextRequest } from 'next/server'
  * @supabase/ssr clear the auth cookies through setAll; copying those by replacing the
  * redirect's Set-Cookie header dropped post_login_redirect, so a staff member who tapped an
  * emailed /portal/training link landed on /portal/shifts after signing in.
+ *
+ * The stored value must also be a path on this site and nothing a browser could read as another
+ * site, because both the `redirectedFrom` parameter and the requested path come from whoever
+ * wrote the link: `/\evil.example`, `/%5Cevil.example` (once decoded) and `/.//evil.example`
+ * (once dot segments are removed) all become `//evil.example`.
  */
 
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> }
@@ -133,5 +138,53 @@ describe('middleware sign-in redirect cookies', () => {
     const sent = sentCookies(response)
     expect(sent.get('sb-abc-auth-token')?.value).toBe('fresh-session')
     expect(sent.has('post_login_redirect')).toBe(false)
+  })
+})
+
+/** A deployment on another host, with no session cookie: nobody is signed in. */
+const OTHER_ORIGIN = 'https://management.example'
+const BACKSLASH = String.fromCharCode(92)
+const CONTROL_CHARACTER = String.fromCharCode(1)
+
+async function storedRedirect(url: string): Promise<string | undefined> {
+  const response = await middleware(new NextRequest(url))
+  return response.cookies.get('post_login_redirect')?.value
+}
+
+/** The cookie stored for `/auth/login?redirectedFrom=<value>`, with `value` arriving exactly as given. */
+function storedFromParam(value: string): Promise<string | undefined> {
+  return storedRedirect(`${OTHER_ORIGIN}/auth/login?redirectedFrom=${encodeURIComponent(value)}`)
+}
+
+describe('middleware login redirect cookie from redirectedFrom', () => {
+  it.each([
+    ['a backslash after the slash', `/${BACKSLASH}evil.example`],
+    ['an encoded backslash', '/%5Cevil.example'],
+    ['a lower-case encoded backslash', '/%5cevil.example'],
+    ['a protocol-relative link', '//evil.example'],
+    ['dot segments and a backslash', `/./${BACKSLASH}/evil.example`],
+    ['dot segments that collapse to a protocol-relative link', '/.//evil.example'],
+    ['an absolute link', 'https://evil.example'],
+    ['a control character', `/${CONTROL_CHARACTER}/evil.example`],
+    ['an auth route', '/auth/callback'],
+  ])('refuses %s', async (_label, value) => {
+    expect(await storedFromParam(value)).toBe('/dashboard')
+  })
+
+  it('keeps an ordinary path with its query', async () => {
+    expect(await storedFromParam('/employees?x=1')).toBe('/employees?x=1')
+  })
+})
+
+describe('middleware login redirect cookie from the requested path', () => {
+  it.each([
+    ['an encoded backslash', `${OTHER_ORIGIN}/%5Cevil.example`],
+    ['encoded slashes', `${OTHER_ORIGIN}/%2F%2Fevil.example`],
+  ])('refuses %s', async (_label, url) => {
+    expect(await storedRedirect(url)).toBe('/dashboard')
+  })
+
+  it('keeps an ordinary path with its query', async () => {
+    expect(await storedRedirect(`${OTHER_ORIGIN}/employees/123?tab=notes`)).toBe('/employees/123?tab=notes')
   })
 })

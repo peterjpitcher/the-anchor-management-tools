@@ -1273,7 +1273,10 @@ export class EmployeeService {
 
     let loginRemoved = true;
     if (authUserId) {
-      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(authUserId);
+      // A soft delete, as when someone is marked as Former (finalizeEmployeeSeparation): a hard
+      // delete fails once the login is named on audit_logs or another record that keeps its
+      // foreign key to auth.users. The soft delete scrambles the email, so it can be invited again.
+      const { error: authDeleteError } = await adminClient.auth.admin.deleteUser(authUserId, true);
       if (authDeleteError) {
         // Their roles are already gone, so the login opens nothing; it still needs removing.
         console.error('[EmployeeService] CRITICAL: Employee deleted but their login could not be removed:', authDeleteError);

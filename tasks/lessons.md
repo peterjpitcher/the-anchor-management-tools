@@ -455,3 +455,6 @@ The owner wants the Orange Jelly logo to occupy the expanded navigation width an
 
 ## 2026-11-02 A promised weekly send must not be held by another rule
 - The weekly invoice chasers were switched on for Monday 2 November, but the "no reminder within 3 days of any other invoice email" rule held every one back, because both clients had a new invoice that morning. The owner wanted the Monday emails regardless and had the rule removed. When a feature promises a send on a set day, list every rule that can stop that send and confirm each one with the owner before switch-on.
+
+## 2026-11-03 A refusal the app could resolve itself is a stall
+- FF-41 (2 November) made the separation warn about leave after the last working day and left it to a person to clear. The next morning the nightly job refused the first leaver it met for exactly that. When a nightly job finds something it can safely put right (leave after someone has left, a sick shift, a pending request nobody can approve), it should put it right and record it; refuse only for what genuinely needs a person (someone still clocked in, a shift that needs cover). And check the step after the one that failed: removing the login would have failed for every leaver too.
