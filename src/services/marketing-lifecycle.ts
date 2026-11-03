@@ -1,7 +1,7 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { houseStyleErrors } from '@/lib/copy/house-style'
 import { lifecycleContentProblems, returnVisitFilterSchema } from '@/lib/email/marketing/lifecycle'
-import { mergeCampaignContent, SAMPLE_MERGE_FIELDS } from '@/lib/email/marketing/merge'
+import { mergeCampaignContent, SAMPLE_MERGE_FIELDS, type RecipientMergeFields } from '@/lib/email/marketing/merge'
 import { renderCampaignText, renderMarketingEmail } from '@/lib/email/marketing/render'
 import { mapMarketingCampaign, type MarketingCampaign } from '@/types/marketing'
 
@@ -74,6 +74,28 @@ async function lifecycleProblems(campaign: MarketingCampaign): Promise<string[]>
 }
 
 /**
+ * The sample guest for a campaign's preview, test send and switch-on render check. A real send
+ * takes the percentage from the campaign's own voucher type, so the sample does too: touch 2
+ * must preview at 25%, not at the generic sample's 10%. A campaign without a return-visit rule
+ * keeps the generic sample.
+ */
+export async function sampleMergeFieldsFor(campaign: MarketingCampaign): Promise<RecipientMergeFields> {
+  const filter = returnVisitFilterSchema.safeParse(campaign.audience?.customerFilter)
+  if (!filter.success) return SAMPLE_MERGE_FIELDS
+
+  const { data, error } = await createAdminClient()
+    .from('voucher_types')
+    .select('percent_off')
+    .eq('id', filter.data.voucher_type_id)
+    .maybeSingle()
+  if (error) throw new Error(`Could not read the voucher type: ${error.message}`)
+  if (data?.percent_off == null) {
+    throw new Error(`Voucher type ${filter.data.voucher_type_id} has no percentage to show`)
+  }
+  return { ...SAMPLE_MERGE_FIELDS, voucher_percent: data.percent_off }
+}
+
+/**
  * Switches a draft return-visit campaign on. Refuses anything that would fail at send time:
  * a bad rule, a voucher type that is not an email-only percentage, copy with an unknown
  * token or without the voucher, banned claims, or an email that does not render with sample
@@ -99,7 +121,7 @@ export async function activateLifecycleCampaign(id: string, userId: string): Pro
 
   // Render once with sample values: a template that cannot merge or render fails here, in
   // front of a person, rather than per guest at 4pm on a Thursday.
-  const sample = mergeCampaignContent(content, SAMPLE_MERGE_FIELDS)
+  const sample = mergeCampaignContent(content, await sampleMergeFieldsFor(existing))
   renderMarketingEmail(sample, { unsubscribeUrl: 'https://example.invalid/unsubscribe' })
 
   const bannedClaims = houseStyleErrors(renderCampaignText(sample))

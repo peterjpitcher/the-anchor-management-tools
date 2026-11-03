@@ -190,6 +190,67 @@ describe('/api/cron/rota-shift-acceptance', () => {
     }))
   })
 
+  // On 18 July 2026 a Former employee was asked to accept shifts two days after they left: the
+  // published copy of the rota still listed them after finalising cleared the working rota.
+  it('neither emails nor auto-accepts for someone already marked as Former', async () => {
+    const shifts = [
+      {
+        id: 'shift-warning',
+        week_id: 'week-1',
+        employee_id: 'employee-left',
+        shift_date: '2026-06-16',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'bar',
+        name: 'Bar',
+        auto_accept_warning_sent_at: null,
+      },
+      {
+        id: 'shift-auto',
+        week_id: 'week-1',
+        employee_id: 'employee-left',
+        shift_date: '2026-06-14',
+        start_time: '09:00',
+        end_time: '17:00',
+        department: 'kitchen',
+        name: 'Kitchen',
+        auto_accept_warning_sent_at: null,
+      },
+    ]
+    const rotaPublishedUpdate = vi.fn()
+    const employeesIn = vi.fn().mockResolvedValue({
+      data: [
+        { employee_id: 'employee-left', first_name: 'Alex', last_name: 'Rowe', email_address: 'alex@example.com', status: 'Former' },
+      ],
+      error: null,
+    })
+
+    createAdminClientMock.mockReturnValue({
+      from: vi.fn((table: string) => {
+        if (table === 'rota_published_shifts') {
+          return {
+            select: vi.fn().mockReturnValue(thenableChain({ data: shifts, error: null })),
+            update: rotaPublishedUpdate,
+          }
+        }
+        if (table === 'employees') {
+          return { select: vi.fn().mockReturnValue({ in: employeesIn }) }
+        }
+        throw new Error(`Unexpected table: ${table}`)
+      }),
+    })
+
+    const response = await GET(new Request('http://localhost/api/cron/rota-shift-acceptance'))
+    const payload = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(payload.skippedFormerEmployee).toBe(2)
+    expect(payload.warningEmailsSent).toBe(0)
+    expect(payload.autoAccepted).toBe(0)
+    expect(sendEmailMock).not.toHaveBeenCalled()
+    expect(rotaPublishedUpdate).not.toHaveBeenCalled()
+  })
+
   it('does not record a phantom auto-accept when the guarded update affects no rows', async () => {
     const shifts = [
       {
