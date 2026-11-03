@@ -119,6 +119,36 @@ describe('EmployeeTrainingTab', () => {
     expect(screen.getByRole('button', { name: 'Waive: Essentials' })).toBeInTheDocument()
   })
 
+  // Training is only set up for current staff: a starter still onboarding must get no training
+  // rows, or they could never be deleted, and someone who has left is read only.
+  it.each([
+    ['Onboarding', 'Training is set up once Avery Test is Active.'],
+    ['Former', 'Avery Test has left, so their training is read only.'],
+  ] as const)('offers no person actions for someone %s, and says why', async (status, reason) => {
+    mocks.permissions = new Set(['training:view', 'training:manage'])
+    const fixture = employeeViewFixture({ current: [] })
+    mocks.getEmployeeTraining.mockResolvedValue({ success: true, data: { ...fixture, employee: { ...fixture.employee, status } } })
+    render(<EmployeeTrainingTab employeeId="emp-1" />)
+    await screen.findByText('Current Training')
+
+    expect(screen.getByRole('status')).toHaveTextContent(reason)
+    for (const name of ['Assign Training', 'Confirm Groups', 'Set Adjustment', 'Pause Training', 'Record External Qualification']) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument()
+    }
+  })
+
+  it('keeps the person actions for someone working their notice', async () => {
+    mocks.permissions = new Set(['training:view', 'training:manage'])
+    const fixture = employeeViewFixture()
+    mocks.getEmployeeTraining.mockResolvedValue({ success: true, data: { ...fixture, employee: { ...fixture.employee, status: 'Started Separation' } } })
+    render(<EmployeeTrainingTab employeeId="emp-1" />)
+    await screen.findByText('Current Training')
+
+    expect(screen.getByRole('button', { name: 'Assign Training' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Confirm Groups' })).toBeInTheDocument()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+  })
+
   it('records an adjustment, trimmed, and reloads the record', async () => {
     const user = userEvent.setup()
     mocks.permissions = new Set(['training:view', 'training:manage'])

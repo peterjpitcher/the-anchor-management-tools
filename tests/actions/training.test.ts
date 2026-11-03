@@ -573,6 +573,44 @@ describe('setTrainingGroups and the adjustment note', () => {
   })
 })
 
+// A starter still onboarding must have no training rows: deleteEmployee only removes an
+// Onboarding starter, and refuses one with any training_profiles or training_events row.
+describe('groups, adjustment and pause are for current staff only', () => {
+  const STARTER = '66666666-6666-4666-8666-666666666666'
+  const writers: Array<[string, (employeeId: string) => Promise<{ error?: string }>]> = [
+    ['setTrainingGroups', (employeeId) => setTrainingGroups({ employeeId, groups: ['bar'], confirm: true })],
+    ['setTrainingAdjustmentNote', (employeeId) => setTrainingAdjustmentNote({ employeeId, note: 'Read aloud offered' })],
+    ['pauseTraining', (employeeId) => pauseTraining({ employeeId, from: TODAY, until: null, reason: 'other' })],
+  ]
+
+  beforeEach(() => {
+    db.rows('employees').push({
+      employee_id: STARTER, first_name: 'Ash', last_name: 'Starter', preferred_name: null, status: 'Onboarding', job_title: 'Bartender',
+      employment_start_date: '2026-11-20', date_of_birth: '1995-03-01', email_address: 'ash@example.test', auth_user_id: null,
+    })
+  })
+
+  it.each(writers)('%s refuses a starter still onboarding and writes nothing', async (_name, write) => {
+    expect((await write(STARTER)).error).toBe('Training is set up once they are Active, so nothing was changed.')
+    expect(db.rows('training_profiles')).toEqual([])
+    expect(events()).toEqual([])
+    expect(mocks.audit).not.toHaveBeenCalled()
+  })
+
+  it.each(writers)('%s refuses someone who has left and writes nothing', async (_name, write) => {
+    expect((await write(FORMER)).error).toBe('Training can only be changed for current staff, so nothing was changed.')
+    expect(db.rows('training_profiles')).toEqual([])
+    expect(events()).toEqual([])
+  })
+
+  it.each(writers)('%s still works for someone working their notice', async (_name, write) => {
+    const sam = db.rows('employees').find((row) => row.employee_id === SAM)
+    if (sam) sam.status = 'Started Separation'
+    expect((await write(SAM)).error).toBeUndefined()
+    expect(db.rows('training_profiles')).toHaveLength(1)
+  })
+})
+
 describe('prepareConfirmationAgain', () => {
   it('after a decline: back to awaiting confirmation with the old document let go, then a new one is prepared', async () => {
     seed({ training_assignments: [assignmentRow({ status: 'declined', signing_document_id: 'doc-old', declined_at: '2026-11-09T10:00:00.000Z' })] })

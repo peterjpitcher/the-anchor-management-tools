@@ -22,7 +22,7 @@ import {
   formatTrainingDate,
   trainingGroupsText,
 } from '@/lib/training/labels'
-import type { EmployeeAssignmentItem, EmployeeTrainingView } from '@/lib/training/types'
+import { TRAINING_IN_SCOPE_STATUSES, type EmployeeAssignmentItem, type EmployeeTrainingView } from '@/lib/training/types'
 import { AssignTrainingDialog } from './manager/AssignTrainingDialog'
 import { AssignmentItemView } from './manager/employee/AssignmentItemView'
 import { InPersonLinkModal } from './manager/employee/InPersonLinkModal'
@@ -228,6 +228,10 @@ export function EmployeeTrainingTab({ employeeId }: EmployeeTrainingTabProps): R
   ]
 
   const externalCourse = dialog?.kind === 'external' && dialog.item ? dialog.item.course : null
+  // Training is only set up for current staff. A starter still onboarding gets nothing yet, so a
+  // starter who never takes up the job can still be deleted; someone who has left is read only.
+  const isCurrentStaff = (TRAINING_IN_SCOPE_STATUSES as readonly string[]).includes(view.employee.status)
+  const canChange = canManage && isCurrentStaff
 
   return (
     <div className="space-y-6">
@@ -236,7 +240,7 @@ export function EmployeeTrainingTab({ employeeId }: EmployeeTrainingTabProps): R
           title="Training"
           subtitle="Groups, what is due and everything done before"
           action={
-            canManage ? (
+            canChange ? (
               <Button type="button" size="sm" variant="primary" onClick={() => setDialog({ kind: 'assign' })}>
                 Assign Training
               </Button>
@@ -259,7 +263,14 @@ export function EmployeeTrainingTab({ employeeId }: EmployeeTrainingTabProps): R
             </Alert>
           ) : null}
           <DescriptionList items={about} columns={2} />
-          {canManage ? (
+          {canManage && !isCurrentStaff ? (
+            <Alert tone="info" role="status">
+              {view.employee.status === 'Onboarding'
+                ? `Training is set up once ${name} is Active.`
+                : `${name} has left, so their training is read only.`}
+            </Alert>
+          ) : null}
+          {canChange ? (
             <div className="flex flex-wrap gap-2">
               <Button type="button" size="sm" variant="secondary" onClick={() => setDialog({ kind: 'groups' })}>
                 {view.groupsConfirmed ? 'Change Groups' : 'Confirm Groups'}
