@@ -66,6 +66,10 @@ function fakeClient(queues: Record<string, Result[]>, extras: Record<string, unk
 }
 
 const noBlockers = (): Record<string, Result[]> => ({
+  // The training pre-check runs first (tests/services/employees-training-precheck.test.ts).
+  training_assignments: [{ count: 0, error: null }],
+  training_profiles: [{ count: 0, error: null }],
+  training_events: [{ count: 0, error: null }],
   checklist_task_instances: [{ count: 0, error: null }, { count: 0, error: null }],
   checklist_spot_checks: [{ count: 0, error: null }],
   checklist_todos: [{ count: 0, error: null }, { count: 0, error: null }],

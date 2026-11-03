@@ -65,6 +65,12 @@ const STATE_MESSAGES: Record<Exclude<SigningPartyState, 'ready' | 'needs_identit
   document_declined: 'This document was declined by another signer and is no longer open.',
 }
 
+/**
+ * A document signed only in person (a practical sign-off), reached from the staff portal: it is
+ * signed on the device a manager hands over, so the portal shows this instead of a form.
+ */
+export const IN_PERSON_ONLY_MESSAGE = 'You sign this in person, on the phone or tablet your manager gives you.'
+
 export function messageForState(state: SigningPartyState): string | null {
   if (state === 'ready' || state === 'needs_identity_check') return null
   return STATE_MESSAGES[state]

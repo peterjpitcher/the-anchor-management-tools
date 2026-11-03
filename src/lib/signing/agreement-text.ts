@@ -1,10 +1,24 @@
-import type { SigningMode } from './types'
+import { findSigningKind } from './kinds'
+import type { SigningKind, SigningMode } from './types'
 
 /**
  * The exact words a signer agrees to. They are shown beside the tick box, stored with the
  * signature and printed on the signing record, so all three always say the same thing.
+ *
+ * A kind may word it its own way from what the document stores (a training confirmation names
+ * the course and its version: src/lib/signing/training-wording.ts). Pass the document's kind and
+ * context wherever the words are shown or checked, so every place builds the same words.
  */
-export function buildAgreedText(input: { mode: SigningMode; title: string }): string {
+export function buildAgreedText(input: {
+  mode: SigningMode
+  title: string
+  kind?: SigningKind
+  context?: Record<string, unknown> | null
+}): string {
+  if (input.kind) {
+    const own = findSigningKind(input.kind)?.agreementWording?.({ title: input.title, context: input.context ?? {} })
+    if (own) return own
+  }
   if (input.mode === 'acknowledge') {
     return `I confirm that I have read and understood "${input.title}".`
   }
@@ -12,7 +26,15 @@ export function buildAgreedText(input: { mode: SigningMode; title: string }): st
 }
 
 /** The words recorded for the business when it signs as it sends. */
-export function buildCompanyAgreedText(input: { title: string }): string {
+export function buildCompanyAgreedText(input: {
+  title: string
+  kind?: SigningKind
+  context?: Record<string, unknown> | null
+}): string {
+  if (input.kind) {
+    const own = findSigningKind(input.kind)?.companyAgreementWording?.({ title: input.title, context: input.context ?? {} })
+    if (own) return own
+  }
   return `Issued and signed for the business: "${input.title}".`
 }
 

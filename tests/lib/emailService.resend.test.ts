@@ -173,7 +173,8 @@ describe('sendEmail Resend provider', () => {
       text: 'Hello',
     })
 
-    expect(result).toEqual({ success: false, error: 'invalid from address' })
+    // A refusal the service answered carries its status; it is not about the `to` address.
+    expect(result).toEqual({ success: false, error: 'invalid from address', providerStatus: 422 })
   })
 
   it('passes an idempotency key to Resend when supplied', async () => {

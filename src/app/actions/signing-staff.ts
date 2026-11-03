@@ -19,6 +19,7 @@ import {
 import { canSendSigningKind, canViewSigningKind, getSigningStaffUser, type SigningStaffUser } from '@/lib/signing/staff'
 import { SINGLE_TEMPLATE_SLUGS } from '@/lib/signing/template-fields'
 import { TemplateMergeError } from '@/lib/signing/template-render'
+import { isRetiredTemplateSlug } from '@/lib/signing/retired'
 import { getSigningTemplateBySlug } from '@/lib/signing/templates'
 import { SIGNING_OPEN_STATUSES, type SigningDocumentStatus, type SigningKind } from '@/lib/signing/types'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -500,12 +501,15 @@ export async function getPolicyTemplates(): Promise<ActionResult<PolicyTemplateS
     if (error) throw new Error(`Could not read the policies: ${error.message}`)
     return {
       success: true,
-      data: ((data ?? []) as Array<{ slug: string; title: string; version: number; is_active: boolean }>).map((row) => ({
-        slug: row.slug,
-        title: row.title,
-        version: row.version,
-        isActive: row.is_active,
-      })),
+      // The policies staff training replaced can never be sent again, so they are not listed.
+      data: ((data ?? []) as Array<{ slug: string; title: string; version: number; is_active: boolean }>)
+        .filter((row) => !isRetiredTemplateSlug(row.slug))
+        .map((row) => ({
+          slug: row.slug,
+          title: row.title,
+          version: row.version,
+          isActive: row.is_active,
+        })),
     }
   } catch (error) {
     return failure(error, 'Refresh the page to try again.')

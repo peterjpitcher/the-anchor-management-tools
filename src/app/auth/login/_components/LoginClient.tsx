@@ -4,22 +4,21 @@ import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { signIn as signInAction } from '@/app/actions/auth'
 import { Button, Field, Input, toast } from '@/ds'
+import { safeRelativePath } from '@/lib/portal/next-path'
 import { AuthCard, AuthDivider, AuthLink } from '../../_components/AuthCard'
 
 const LOGIN_REDIRECT_COOKIE = 'post_login_redirect'
 
+/**
+ * The page to open after signing in: a path on this site only, never another site and never
+ * a sign-in page. `safeRelativePath` also refuses a backslash, which browsers read as `//`, so
+ * `/\evil.example` cannot send someone away after they have typed their password.
+ */
 function sanitizeRedirectTarget(raw: string | null) {
-  if (!raw) return '/dashboard'
-
-  try {
-    const trimmed = raw.trim()
-    if (!trimmed.startsWith('/')) return '/dashboard'
-    if (trimmed.startsWith('//')) return '/dashboard'
-    if (trimmed.toLowerCase().startsWith('/auth/')) return '/dashboard'
-    return trimmed
-  } catch {
-    return '/dashboard'
-  }
+  const path = safeRelativePath(raw)
+  if (!path) return '/dashboard'
+  if (path.toLowerCase().startsWith('/auth/')) return '/dashboard'
+  return path
 }
 
 function getCookie(name: string): string | null {
@@ -47,11 +46,14 @@ export default function LoginClient() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
+  // `next` (a link that asks for sign-in on purpose), the legacy `redirectedFrom`, or the cookie
+  // the middleware sets when it sends a signed-out visitor here from the page they wanted.
+  const nextParam = searchParams.get('next')
   const redirectedFrom = searchParams.get('redirectedFrom')
   const redirectTo = useMemo(() => {
     const cookieRedirectTarget = getCookie(LOGIN_REDIRECT_COOKIE)
-    return sanitizeRedirectTarget(redirectedFrom || cookieRedirectTarget)
-  }, [redirectedFrom])
+    return sanitizeRedirectTarget(nextParam || redirectedFrom || cookieRedirectTarget)
+  }, [nextParam, redirectedFrom])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -67,7 +69,9 @@ export default function LoginClient() {
 
     setLoading(true)
     try {
-      const res = await signInAction(email.trim(), password)
+      // The server decides where a portal-only user goes, honouring this only when it is a safe
+      // /portal/ link (an emailed training link, say); everyone else goes to redirectTo.
+      const res = await signInAction(email.trim(), password, redirectTo)
       if ('error' in res && res.error) {
         toast.error(String(res.error))
         setLoading(false)

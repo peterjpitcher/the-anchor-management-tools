@@ -1,7 +1,8 @@
 import type { NextResponse } from 'next/server'
 import { readSigningEvidence } from './evidence'
+import { isInPersonOnlyKind } from './kinds'
 import { getPortalPartyContext, getPortalWorker, type PortalWorker } from './portal'
-import { messageForState, signingError } from './public-request'
+import { IN_PERSON_ONLY_MESSAGE, messageForState, signingError } from './public-request'
 import { resolveSigningPartyState, withdrawIfSubjectClosed, type SigningPartyContext, type SigningPartyState } from './service'
 import type { SigningEvidence } from './types'
 
@@ -28,6 +29,12 @@ export async function openPortalSigningRequest(
   const found = await getPortalPartyContext(worker, partyId)
   if (!found) {
     return { response: signingError('LINK_NOT_VALID', 'This document was not found.', 404) }
+  }
+  if (isInPersonOnlyKind(found.document.kind) && found.party.status !== 'signed') {
+    // Signed only in person, on the device a manager hands over, so the record shows them
+    // present. Not here: not opened, signed or declined in the portal. A signed copy can still
+    // be downloaded once it is signed.
+    return { response: signingError('NOT_AVAILABLE', IN_PERSON_ONLY_MESSAGE, 403) }
   }
   const context = await withdrawIfSubjectClosed(found)
   return {

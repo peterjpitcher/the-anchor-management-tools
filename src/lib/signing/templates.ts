@@ -3,6 +3,11 @@ import { getSigningKind, signingRoleLabel } from './kinds'
 import { SigningError } from './service'
 import { findDraftMarkers, mergeTemplateText, renderTemplateDocumentHtml } from './template-render'
 import type { SigningPartyRole, SigningTemplateKind, SigningTemplateRow } from './types'
+import { isRetiredTemplateSlug, RETIRED_TEMPLATE_MESSAGE } from './retired'
+
+// Kept importable from here for existing callers; the list itself lives in ./retired, which has
+// no database import, so a page or client component can use it too.
+export { isRetiredTemplateSlug, RETIRED_TEMPLATE_MESSAGE, RETIRED_TEMPLATE_SLUGS } from './retired'
 
 /**
  * Wording for the document kinds that have no generator of their own. One row per template in
@@ -29,9 +34,13 @@ export async function getSigningTemplateBySlug(slug: string): Promise<SigningTem
 
 /**
  * Why a template cannot be switched on, or null when it can. A template with a gap still marked
- * `[[TO CONFIRM: ...]]` is a draft, and a draft must never reach a signer.
+ * `[[TO CONFIRM: ...]]` is a draft, and a draft must never reach a signer. A template that staff
+ * training replaced can never be switched on: pass its slug, or that is not checked.
  */
-export function templateActivationBlocker(template: Pick<SigningTemplateRow, 'title' | 'body'>): string | null {
+export function templateActivationBlocker(
+  template: Pick<SigningTemplateRow, 'title' | 'body'> & Partial<Pick<SigningTemplateRow, 'slug'>>
+): string | null {
+  if (isRetiredTemplateSlug(template.slug)) return RETIRED_TEMPLATE_MESSAGE
   if (!template.title.trim()) return 'The template needs a title.'
   if (template.body.trim().length < 40) return 'The template has no wording yet.'
   const markers = [...findDraftMarkers(template.title), ...findDraftMarkers(template.body)]
@@ -57,8 +66,8 @@ export function templateSlotKey(role: SigningPartyRole): string {
 
 /**
  * Build the document for a template kind, as HTML ready to be prepared for signing. Refuses a
- * template that is switched off, a template that still has gaps, and any merge field with no
- * value: a document goes out complete or not at all.
+ * template that staff training replaced, a template that is switched off, a template that still
+ * has gaps, and any merge field with no value: a document goes out complete or not at all.
  */
 export async function renderTemplateDocument(input: {
   kind: SigningTemplateKind
@@ -66,6 +75,11 @@ export async function renderTemplateDocument(input: {
   mergeValues: Record<string, string | null | undefined>
   subtitle?: string | null
 }): Promise<RenderedTemplateDocument> {
+  // Refused before the row is read, so no wording or switch in the database can bring it back.
+  // Every send of a template kind comes through here (send-template.ts).
+  if (isRetiredTemplateSlug(input.slug)) {
+    throw new SigningError('template_retired', RETIRED_TEMPLATE_MESSAGE)
+  }
   const template = await getSigningTemplateBySlug(input.slug)
   if (!template || template.kind !== input.kind) {
     throw new SigningError('template_missing', 'There is no template for this document.')
