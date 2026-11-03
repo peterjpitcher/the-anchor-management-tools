@@ -8,6 +8,7 @@ import { logAuditEvent } from '@/app/actions/audit';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { displayName } from '@/lib/employees/display-name';
 import { moveShift } from '@/app/actions/rota';
+import { shiftAfterLastWorkingDayRefusal } from '@/lib/rota/last-working-day-guard';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -449,6 +450,13 @@ export async function approveOpenShiftVolunteer(
 
   if (shiftError) return { success: false, error: shiftError.message };
   if (!shift) return { success: false, error: 'Shift not found' };
+
+  // The approval function checks the volunteer is still Active or on notice, not their last
+  // working day, so a request for a shift after it is refused here.
+  const lastDayRefusal = await shiftAfterLastWorkingDayRefusal(admin, [
+    { employeeId: request.employee_id, shiftDate: shift.shift_date },
+  ]);
+  if (lastDayRefusal) return { success: false, error: lastDayRefusal };
 
   // The queue renders live data, so what is on screen IS the expected state.
   const { data, error } = await admin.rpc('approve_rota_open_shift_request', {

@@ -15,6 +15,7 @@ import {
   type PublishedShiftRow,
 } from '@/lib/ics/utils'
 import { displayName } from '@/lib/employees/display-name'
+import { isCurrentStaff } from '@/lib/employees/current-staff'
 
 export const dynamic = 'force-dynamic'
 
@@ -67,14 +68,15 @@ export async function GET(req: NextRequest): Promise<Response> {
   // Verify employee exists and still has staff portal access.
   const { data: employee } = await supabase
     .from('employees')
-    .select('first_name, last_name, preferred_name, status')
+    .select('first_name, last_name, preferred_name, status, employment_end_date')
     .eq('employee_id', employeeId)
     .maybeSingle()
 
   if (!employee) {
     return new Response('Not found', { status: 404 })
   }
-  if (!['Active', 'Started Separation'].includes(employee.status)) {
+  // Someone on notice past their last working day has left, the same as a former employee.
+  if (!isCurrentStaff(employee)) {
     return new Response('Forbidden', { status: 403 })
   }
 

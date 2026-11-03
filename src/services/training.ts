@@ -1,4 +1,5 @@
 import { isValidIsoDate, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
+import { hasLeft } from '@/lib/employees/current-staff'
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
 import { SIGNING_OPEN_STATUSES, type SigningDocumentStatus } from '@/lib/signing/types'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -270,7 +271,7 @@ const OPEN_STATUSES: readonly TrainingAssignmentStatus[] = OPEN_ASSIGNMENT_STATU
 const ROSTERED_STATUS = 'scheduled'
 
 const EMPLOYEE_COLUMNS =
-  'employee_id, first_name, last_name, preferred_name, status, job_title, employment_start_date, date_of_birth, email_address, auth_user_id'
+  'employee_id, first_name, last_name, preferred_name, status, employment_end_date, job_title, employment_start_date, date_of_birth, email_address, auth_user_id'
 
 const VERSION_META_COLUMNS =
   'id, course_id, state, major, minor, content_sha256, images, change_note, redo_required, uploaded_by, uploaded_by_name, uploaded_at, published_by, published_by_name, published_at'
@@ -281,6 +282,7 @@ interface EmployeeRecord {
   last_name: string | null
   preferred_name: string | null
   status: string
+  employment_end_date: string | null
   job_title: string | null
   employment_start_date: string | null
   date_of_birth: string | null
@@ -338,8 +340,15 @@ function chunked<T>(values: readonly T[], size = IN_CHUNK): T[][] {
   return chunks
 }
 
-function asEmployeeStatus(status: string): TrainingEmployeeStatus {
-  if (status === 'Onboarding' || status === 'Active' || status === 'Started Separation' || status === 'Former') return status
+/**
+ * The status training works from. Someone on notice whose last working day has passed has left
+ * (src/lib/employees/current-staff.ts), so training treats them as Former: nothing new, open items
+ * cancelled, no chasing, no changes. `asOf` is the London date being judged (today by default).
+ */
+function asEmployeeStatus(employee: Pick<EmployeeRecord, 'status' | 'employment_end_date'>, asOf?: string): TrainingEmployeeStatus {
+  const { status } = employee
+  if (hasLeft(employee, asOf)) return 'Former'
+  if (status === 'Onboarding' || status === 'Active' || status === 'Started Separation') return status
   // An unknown status is treated as not in scope, never as Active.
   return 'Former'
 }
@@ -644,7 +653,7 @@ function personContext(
   const effective = effectiveTrainingGroups(profile, suggestedGroups)
   return {
     employee,
-    status: asEmployeeStatus(employee.status),
+    status: asEmployeeStatus(employee, today),
     profile,
     suggestedGroups,
     groups: effective.groups,
@@ -917,7 +926,7 @@ async function loadSyncSnapshot(client: AdminClient, today: string, employeeId: 
   const people: SyncPerson[] = employees.map((employee) => ({
     employee: {
       employeeId: employee.employee_id,
-      status: asEmployeeStatus(employee.status),
+      status: asEmployeeStatus(employee, today),
       employmentStartDate: employee.employment_start_date,
       dateOfBirth: employee.date_of_birth,
       jobTitle: employee.job_title,
@@ -1259,7 +1268,8 @@ export class TrainingService {
   static async getMatrix(opts: { today?: string } = {}): Promise<TrainingMatrix> {
     const client = admin()
     const today = opts.today ?? trainingToday()
-    const employees = await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)
+    // Someone on notice past their last working day has left, so they are not on the matrix.
+    const employees = (await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)).filter((employee) => !hasLeft(employee, today))
     const courses = (await loadCourses(client, ['live'])).sort(compareCourses)
     const courseById = new Map(courses.map((course) => [course.id, course]))
     const assignments = await loadAllAssignments(client)
@@ -2128,7 +2138,7 @@ export class TrainingService {
     return employees.map((employee) => ({
       employeeId: employee.employee_id,
       name: displayName(employee),
-      status: asEmployeeStatus(employee.status),
+      status: asEmployeeStatus(employee),
       employmentStartDate: employee.employment_start_date,
       dateOfBirth: employee.date_of_birth,
     }))
@@ -2446,7 +2456,7 @@ export class TrainingService {
           employeeId: employee.employee_id,
           name: displayName(employee),
           email,
-          employeeStatus: asEmployeeStatus(employee.status),
+          employeeStatus: asEmployeeStatus(employee, today),
           hasLogin: Boolean(employee.auth_user_id),
           paused: isPausedOn(profiles.get(employee.employee_id) ?? null, today),
           emailSuppressed: email ? suppressed.has(email.toLowerCase()) : false,
@@ -2465,7 +2475,7 @@ export class TrainingService {
     const courseById = new Map(courses.map((course) => [course.id, course]))
     const open = await loadOpenAssignments(client)
     const retries = await TrainingService.listCertificateRetries()
-    const employees = await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)
+    const employees = (await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)).filter((employee) => !hasLeft(employee, today))
     const employeeById = new Map(employees.map((employee) => [employee.employee_id, employee]))
     const profiles = await loadProfiles(client, employees.map((employee) => employee.employee_id))
     const suppressed = await loadSuppressedEmails(

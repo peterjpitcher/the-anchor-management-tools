@@ -116,6 +116,8 @@ const EMPLOYEE: Row = {
   last_name: 'Taylor',
   preferred_name: null,
   email_address: 'sam@example.com',
+  status: 'Active',
+  employment_end_date: null,
 }
 
 // Thursday 1 October 2026, 11am in London.

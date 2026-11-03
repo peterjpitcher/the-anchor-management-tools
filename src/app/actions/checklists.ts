@@ -14,6 +14,7 @@ import {
   isDueNow,
 } from '@/lib/checklists/window'
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
+import { isCurrentStaff } from '@/lib/employees/current-staff'
 
 // The business date comes from currentBusinessDate(), which honours
 // checklist_settings.business_day_start_hour. This file used to compute a plain
@@ -476,9 +477,12 @@ export async function getAttributionCandidates(input: {
   const db = createAdminClient()
   const { data: employees, error } = await db
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, status')
+    .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
     .in('status', ['Active', 'Started Separation'])
   if (error) return { error: error.message }
+  // Judged on the checklist's own business date, not the clock: someone on notice can still be
+  // named on their last working day's checks after midnight, and on nothing after it.
+  const current = (employees ?? []).filter((employee) => isCurrentStaff(employee, input.date))
 
   const open = await getOpenSessions()
   const clockedInAtByEmployeeId = new Map(
@@ -497,7 +501,7 @@ export async function getAttributionCandidates(input: {
   // people would otherwise read identically, because most staff will have no
   // preferred name set and would then both show as their shared first name.
   // Picking the wrong Jacob puts the wrong name against a food-safety check.
-  const candidates: AttributionCandidate[] = disambiguatedNames(employees ?? []).map(
+  const candidates: AttributionCandidate[] = disambiguatedNames(current).map(
     ({ employee: e, name }) => ({
       employeeId: e.employee_id as string,
       name,

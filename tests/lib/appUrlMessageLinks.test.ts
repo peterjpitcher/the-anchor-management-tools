@@ -360,6 +360,8 @@ describe('emails carrying an app link', () => {
           last_name: 'Taylor',
           preferred_name: null,
           email_address: 'sam@example.com',
+          status: 'Active',
+          employment_end_date: null,
         },
       }) as never
     )

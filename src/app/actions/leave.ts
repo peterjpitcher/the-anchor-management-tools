@@ -20,6 +20,7 @@ import {
 import { settleRotaEmailLogWrite } from '@/lib/rota/email-log';
 import { logAuditEvent } from '@/app/actions/audit';
 import { displayName } from '@/lib/employees/display-name';
+import { isCurrentStaff } from '@/lib/employees/current-staff';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import {
   recordHolidayAuditOnly,
@@ -109,7 +110,7 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
   if (!user) return false;
   const { data, error } = await supabase
     .from('employees')
-    .select('employee_id')
+    .select('employee_id, status, employment_end_date')
     .eq('employee_id', employeeId)
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
@@ -117,7 +118,8 @@ async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
   // A failed read already refuses (no record, no access); log it so a refusal caused by the
   // database is visible on our side rather than looking like a permissions problem.
   if (error) console.error('[leave] Failed to check the employee record for self-service:', error);
-  return Boolean(data);
+  // Someone on notice whose last working day has passed has left, so self-service ends with it.
+  return data !== null && isCurrentStaff(data);
 }
 
 // ---------------------------------------------------------------------------
@@ -917,7 +919,7 @@ export async function cancelOwnLeaveRequest(
 
   const { data: employee, error: employeeError } = await supabase
     .from('employees')
-    .select('employee_id')
+    .select('employee_id, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .maybeSingle();
@@ -929,7 +931,7 @@ export async function cancelOwnLeaveRequest(
     });
     return { success: false, error: 'Could not cancel this holiday request. Please try again.' };
   }
-  if (!employee?.employee_id) {
+  if (!employee?.employee_id || !isCurrentStaff(employee)) {
     return { success: false, error: 'Your account is not linked to an active employee profile' };
   }
 

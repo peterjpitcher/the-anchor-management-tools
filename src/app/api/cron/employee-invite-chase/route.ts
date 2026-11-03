@@ -25,6 +25,7 @@ type ChaseEmployee = {
   employee_id: string;
   email_address: string | null;
   status: string | null;
+  employment_end_date: string | null;
   auth_user_id: string | null;
 };
 
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
     if (employeeIds.length > 0) {
       const { data: employees, error: employeesError } = await supabase
         .from('employees')
-        .select('employee_id, email_address, status, auth_user_id')
+        .select('employee_id, email_address, status, employment_end_date, auth_user_id')
         .in('employee_id', employeeIds);
       if (employeesError) {
         throw employeesError;

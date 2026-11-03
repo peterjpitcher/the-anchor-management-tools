@@ -1,4 +1,5 @@
 import { isValidIsoDate } from '@/lib/dateUtils'
+import { hasLeft } from '@/lib/employees/current-staff'
 import { legalName } from '@/lib/employees/display-name'
 import { logger } from '@/lib/logger'
 import {
@@ -73,6 +74,7 @@ interface EmployeeForSigning {
   email_address: string | null
   date_of_birth: string | null
   status: string | null
+  employment_end_date: string | null
 }
 
 interface DocumentForTraining {
@@ -114,13 +116,14 @@ async function writeEventSafely(event: NewTrainingEvent, what: string): Promise<
 async function loadEmployee(admin: AdminClient, employeeId: string): Promise<EmployeeForSigning> {
   const { data, error } = await admin
     .from('employees')
-    .select('employee_id, first_name, last_name, email_address, date_of_birth, status')
+    .select('employee_id, first_name, last_name, email_address, date_of_birth, status, employment_end_date')
     .eq('employee_id', employeeId)
     .maybeSingle()
   if (error) throw new Error(`Could not read the employee: ${error.message}`)
   if (!data) throw new TrainingError('not_found', 'That person could not be found.')
   const employee = data as EmployeeForSigning
-  if (employee.status === 'Former') throw new TrainingError('not_allowed', 'They no longer work here.')
+  // Former, or on notice and past their last working day.
+  if (hasLeft(employee)) throw new TrainingError('not_allowed', 'They no longer work here.')
   return employee
 }
 

@@ -628,13 +628,14 @@ function seedOnline(extra: Record<string, Array<Record<string, unknown>>> = {}):
   })
 }
 
-function addLeaver(): void {
+function addLeaver(lastWorkingDay: string | null = null): void {
   db.rows('employees').push({
     employee_id: LEAVER,
     first_name: 'Lee',
     last_name: 'Leaver',
     preferred_name: null,
     status: 'Started Separation',
+    employment_end_date: lastWorkingDay,
     job_title: 'Bartender',
     employment_start_date: '2024-01-01',
     date_of_birth: '1995-01-01',
@@ -677,6 +678,29 @@ describe('getMatrix for someone working their notice (Started Separation)', () =
   it('leaves Active staff as they were: an expired completion is expired, one inside its window is a refresher due', async () => {
     seed({ training_assignments: [assignmentRow({ status: 'completed', completed_on: '2025-11-20', expires_on: '2026-11-20', window_opens_on: '2026-10-21' })] })
     expect((await TrainingService.getMatrix({ today: TODAY })).people[0].cells[ONLINE].state).toBe('refresher_due')
+  })
+})
+
+describe('someone on notice past their last working day (src/lib/employees/current-staff.ts)', () => {
+  const A_PAST = 'a5555555-5555-4555-8555-555555555556'
+  const open = () => assignmentRow({ id: A_PAST, employee_id: LEAVER, status: 'assigned', due_on: '2026-11-20' })
+
+  it('counts as having left: their open cycle is cancelled and they leave the matrix', async () => {
+    seed({ training_assignments: [open()] })
+    addLeaver('2026-11-09')
+    await TrainingService.syncAssignments({ today: TODAY })
+    expect(db.rows('training_assignments').find((row) => row.id === A_PAST)).toMatchObject({ status: 'cancelled', cancel_reason: 'left' })
+    const matrix = await TrainingService.getMatrix({ today: TODAY })
+    expect(matrix.people.some((person) => person.employeeId === LEAVER)).toBe(false)
+  })
+
+  it('still counts as staff on the last working day itself', async () => {
+    seed({ training_assignments: [open()] })
+    addLeaver(TODAY)
+    await TrainingService.syncAssignments({ today: TODAY })
+    expect(db.rows('training_assignments').find((row) => row.id === A_PAST)).toMatchObject({ status: 'assigned' })
+    const matrix = await TrainingService.getMatrix({ today: TODAY })
+    expect(matrix.people.find((person) => person.employeeId === LEAVER)?.status).toBe('Started Separation')
   })
 })
 
