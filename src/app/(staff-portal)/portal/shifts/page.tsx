@@ -49,6 +49,7 @@ import type { ShiftAcceptanceStatus } from '@/app/actions/rota';
 // Rota-facing names only. The pay figures on this page are guidance, not a
 // payslip, so the preferred name is right here; payroll keeps the legal name.
 import { displayName } from '@/lib/employees/display-name';
+import { portalClosedMessage } from '@/lib/employees/current-staff';
 
 export const dynamic = 'force-dynamic';
 
@@ -522,17 +523,18 @@ export default async function MyShiftsPage({
 
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name')
+    .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .single();
 
-  if (!employee) {
+  const closedMessage = employee ? portalClosedMessage(employee) : null;
+  if (!employee || closedMessage) {
     return (
       <>
         <StandalonePageHeader title="My Shifts" subtitle="My shifts: your published shifts for this pay period" />
         <Alert tone="warning">
-          Your account is not linked to an employee profile. Please contact your manager.
+          {closedMessage ?? 'Your account is not linked to an employee profile. Please contact your manager.'}
         </Alert>
       </>
     );

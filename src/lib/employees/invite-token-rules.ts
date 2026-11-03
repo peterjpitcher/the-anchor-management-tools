@@ -1,3 +1,5 @@
+import { isCurrentStaff } from './current-staff';
+
 /**
  * Whether an unexpired, unused invite link still belongs to the person it was sent to.
  *
@@ -15,7 +17,7 @@ export type InviteTokenProblem =
   | 'email_changed'
   /** An onboarding link for someone who is no longer Onboarding (activated, or left). */
   | 'onboarding_finished'
-  /** A portal link for someone who is not a current employee. */
+  /** A portal link for someone who is not a current employee, or is past their last working day. */
   | 'not_active'
   /** A portal link for someone who already has a login. */
   | 'has_login';
@@ -30,6 +32,8 @@ export function inviteTokenProblem(input: {
   employee: {
     email_address: string | null | undefined;
     status: string | null | undefined;
+    /** The last working day of someone on notice. */
+    employment_end_date?: string | null;
     auth_user_id: string | null | undefined;
   };
 }): InviteTokenProblem | null {
@@ -44,7 +48,7 @@ export function inviteTokenProblem(input: {
   }
 
   if (inviteType === 'portal_access') {
-    if (!['Active', 'Started Separation'].includes(employee.status ?? '')) return 'not_active';
+    if (!isCurrentStaff(employee)) return 'not_active';
     if (employee.auth_user_id) return 'has_login';
   }
 

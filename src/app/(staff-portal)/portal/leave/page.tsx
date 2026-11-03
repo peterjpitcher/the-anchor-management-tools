@@ -10,6 +10,7 @@ import { getHolidayYear } from '@/lib/leave/working-days';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
+import { portalClosedMessage } from '@/lib/employees/current-staff';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,17 +33,18 @@ export default async function MyLeavePage() {
   // Find linked employee record
   const { data: employee } = await supabase
     .from('employees')
-    .select('employee_id, first_name, last_name')
+    .select('employee_id, first_name, last_name, status, employment_end_date')
     .eq('auth_user_id', user.id)
     .in('status', ['Active', 'Started Separation'])
     .single();
 
-  if (!employee) {
+  const closedMessage = employee ? portalClosedMessage(employee) : null;
+  if (!employee || closedMessage) {
     return (
       <>
         <StandalonePageHeader title="My Holiday" subtitle="My holiday: your holiday requests and allowance" />
         <Alert tone="warning">
-          Your account is not linked to an employee profile. Please contact your manager.
+          {closedMessage ?? 'Your account is not linked to an employee profile. Please contact your manager.'}
         </Alert>
       </>
     );

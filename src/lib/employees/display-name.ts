@@ -28,6 +28,10 @@ export interface EmployeeNameParts {
  *
  * Must stay in step with the partial unique index in
  * supabase/migrations/20260809120000_employee_preferred_name.sql.
+ *
+ * The status alone does not say someone still works here: someone on notice is gone once
+ * their last working day has passed. Paths that message staff or let them in use
+ * isCurrentStaff in ./current-staff.ts, which applies both.
  */
 export const SELECTABLE_EMPLOYEE_STATUSES = ['Active', 'Started Separation'] as const
 

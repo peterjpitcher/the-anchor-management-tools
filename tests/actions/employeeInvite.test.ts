@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Mock } from 'vitest'
 
 vi.mock('next/cache', () => ({
@@ -346,6 +346,58 @@ describe('employee invite status transitions', () => {
     })
     expect(expiryChain.secondEq).toHaveBeenCalledWith('invite_type', 'portal_access')
     expect(expiryChain.neq).toHaveBeenCalledWith('token', 'portal-token')
+  })
+
+  describe('a portal invite for someone on notice', () => {
+    function adminFor(employee: Record<string, unknown>) {
+      const tokenInsert = mockInsertSingle({ token: 'portal-token' })
+      mockedCreateAdminClient.mockReturnValue({
+        from: vi.fn((table: string) => {
+          if (table === 'employees') return mockMaybeSingle(employee)
+          if (table === 'employee_invite_tokens') return { insert: tokenInsert.insert, update: mockExpireSiblingsChain().update }
+          throw new Error(`Unexpected table: ${table}`)
+        }),
+      })
+      return tokenInsert
+    }
+
+    const onNotice = {
+      email_address: 'employee@example.com',
+      auth_user_id: null,
+      status: 'Started Separation',
+      employment_end_date: '2026-11-07',
+    }
+
+    afterEach(() => {
+      vi.useRealTimers()
+    })
+
+    it('is sent on their last working day', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-07T20:00:00.000Z'))
+      mockedSendPortalInviteEmail.mockResolvedValue(undefined)
+      const tokenInsert = adminFor(onNotice)
+
+      const result = await sendPortalInvite('employee-1')
+
+      expect(result.type).toBe('success')
+      expect(tokenInsert.insert).toHaveBeenCalled()
+    })
+
+    it('is refused once it has passed, with no link made and nothing emailed', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] })
+      vi.setSystemTime(new Date('2026-11-08T00:30:00.000Z'))
+      const tokenInsert = adminFor(onNotice)
+
+      const result = await sendPortalInvite('employee-1')
+
+      expect(result).toEqual({
+        type: 'error',
+        message: 'Their last working day has passed, so they cannot be invited to the staff portal.',
+      })
+      expect(tokenInsert.insert).not.toHaveBeenCalled()
+      expect(mockedSendPortalInviteEmail).not.toHaveBeenCalled()
+    })
   })
 
   it('surfaces onboarding completion RPC validation errors without activating locally', async () => {

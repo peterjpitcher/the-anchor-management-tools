@@ -1,4 +1,5 @@
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { hasLeft } from '@/lib/employees/current-staff'
 import { effectiveWaiverStatus } from '@/lib/private-bookings/waiver-status'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isStaffRecordedAcceptance } from './contract-acceptance'
@@ -110,12 +111,13 @@ export async function findSubjectClosure(
     case 'employee': {
       const { data, error } = await admin
         .from('employees')
-        .select('status')
+        .select('status, employment_end_date')
         .eq('employee_id', document.subject_id)
         .maybeSingle()
       if (error) throw new Error(`Could not read the employee: ${error.message}`)
       if (!data) return 'The employee record no longer exists'
-      if (data.status === 'Former') return 'They no longer work here'
+      // Former, or on notice and past their last working day.
+      if (hasLeft(data)) return 'They no longer work here'
       return null
     }
 
