@@ -17,6 +17,7 @@ import {
   type InviteEmailFailure,
 } from '@/lib/employees/invite-email-failure'
 import { separationCancelRotaSentence, separationCancelledToast } from '@/lib/employees/separation-cancel-copy'
+import { finalizeEmployeeSeparation } from '@/lib/employees/separation'
 import { syncRotaWeekToCalendar } from '@/lib/google-calendar-rota'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -58,6 +59,8 @@ export type BeginEmployeeSeparationResult =
       success: true
       retainedShiftCount: number
       releasedShiftCount: number
+      /** True when the last working day had already passed, so they were marked as Former at once. */
+      markedFormer: boolean
       warning?: string
     }
   | { success: false; error: string }
@@ -398,7 +401,7 @@ export async function beginEmployeeSeparation(
     console.error('[beginEmployeeSeparation] Audit log failed:', auditError)
   }
 
-  let warning: string | undefined
+  const warnings: string[] = []
   try {
     const employeeName = [employeeRow.first_name, employeeRow.last_name].filter(Boolean).join(' ') || null
     await sendSeparationStartedEmail({
@@ -412,7 +415,29 @@ export async function beginEmployeeSeparation(
   } catch (emailError) {
     const failure = describeInviteEmailFailure(emailError)
     console.error('[beginEmployeeSeparation] Failed to send separation email:', inviteEmailFailureLog(failure))
-    warning = separationEmailWarning(employeeRow.email_address, failure)
+    warnings.push(separationEmailWarning(employeeRow.email_address, failure))
+  }
+
+  // A last working day already past (a separation entered late) used to wait for the next morning's
+  // employee-separations job, so they stayed on notice until then with their login and any holiday
+  // after their last day still in place. They are finished now, as that job would finish them. The
+  // separation itself is committed either way: a refusal is said, and the morning job tries again.
+  let markedFormer = false
+  if (parsed.data.employmentEndDate < getTodayIsoDate()) {
+    const finalizeResult = await finalizeEmployeeSeparation(employeeId, {
+      adminClient: admin,
+      actorUser: actor,
+      source: 'manual',
+      blockShiftsOnOrAfterToday: true,
+    })
+    if (finalizeResult.success) {
+      markedFormer = true
+      if (finalizeResult.warning) warnings.push(finalizeResult.warning)
+    } else {
+      warnings.push(
+        `Their last working day has passed, but they could not be marked as Former yet: ${finalizeResult.error} The job that runs each morning will try again.`,
+      )
+    }
   }
 
   if (affectedWeekIds.length > 0) {
@@ -424,10 +449,12 @@ export async function beginEmployeeSeparation(
   revalidatePath('/rota')
   revalidatePath('/portal/shifts')
 
+  const warning = warnings.length > 0 ? warnings.join(' ') : undefined
   return {
     success: true,
     retainedShiftCount: retainedShifts.length,
     releasedShiftCount: releasedShifts.length,
+    markedFormer,
     ...(warning ? { warning } : {}),
   }
 }

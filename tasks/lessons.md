@@ -459,5 +459,8 @@ The owner wants the Orange Jelly logo to occupy the expanded navigation width an
 ## 2026-11-03 A refusal the app could resolve itself is a stall
 - FF-41 (2 November) made the separation warn about leave after the last working day and left it to a person to clear. The next morning the nightly job refused the first leaver it met for exactly that. When a nightly job finds something it can safely put right (leave after someone has left, a sick shift, a pending request nobody can approve), it should put it right and record it; refuse only for what genuinely needs a person (someone still clocked in, a shift that needs cover). And check the step after the one that failed: removing the login would have failed for every leaver too.
 
+## 2026-11-03 Do the follow-ups, do not offer a menu of them
+- After the leaver fix shipped, I listed four follow-ups and asked which to start. The owner had already asked for everything outstanding to be found and fixed, and said we keep going backwards and forwards. When the owner has asked for completeness, work through every follow-up in one go and batch only the approvals the rules require (live data changes, production migrations) into one list at the end. Never end a turn by asking which item to do first.
+
 ## 2026-11-03 A question about a document must show what the document says
 - Two of the six staff training questions came back as "what do you mean?": what age counts as a "child" for the licence, and which rooms are the yellow dining area. Both pointed at the premises licence without saying what it says or showing the plan. When a question depends on a document, quote or summarise the exact condition, show the part of the plan or page it means, and say what each answer would change.

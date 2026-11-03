@@ -82,7 +82,7 @@ describe('employee header "More" menu on a phone', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     previewMock.mockResolvedValue({ success: true, data: preview })
-    beginMock.mockResolvedValue({ success: true, retainedShiftCount: 0, releasedShiftCount: 1 })
+    beginMock.mockResolvedValue({ success: true, retainedShiftCount: 0, releasedShiftCount: 1, markedFormer: false })
     revokeMock.mockResolvedValue({ success: true })
     deleteMock.mockResolvedValue({ type: 'error', message: 'Insufficient permissions to delete employees.' })
   })
