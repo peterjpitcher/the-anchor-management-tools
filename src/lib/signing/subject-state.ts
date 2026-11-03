@@ -72,6 +72,27 @@ export async function findSubjectClosure(
     return null
   }
 
+  /**
+   * A training document stands while its training item is still waiting for it. A manager who
+   * waives or cancels the item, or a person who leaves, closes it: there is nothing to confirm.
+   */
+  const trainingClosure = async (context: Record<string, unknown>): Promise<string | null> => {
+    const training = context.training as { assignment_id?: unknown } | undefined
+    const assignmentId = typeof training?.assignment_id === 'string' ? training.assignment_id : null
+    if (!assignmentId) return null
+    const { data, error } = await admin
+      .from('training_assignments')
+      .select('status')
+      .eq('id', assignmentId)
+      .maybeSingle()
+    if (error) throw new Error(`Could not read the training record: ${error.message}`)
+    if (!data) return 'The training record no longer exists'
+    if (data.status === 'cancelled') return 'The training was cancelled'
+    if (data.status === 'waived') return 'The training was waived'
+    if (data.status === 'completed') return 'The training is already complete'
+    return null
+  }
+
   switch (document.subject_type) {
     case 'private_booking':
       if (document.kind === 'deposit_deduction_agreement') {
@@ -118,6 +139,9 @@ export async function findSubjectClosure(
       if (!data) return 'The employee record no longer exists'
       // Former, or on notice and past their last working day.
       if (hasLeft(data)) return 'They no longer work here'
+      if (document.kind === 'training_completion' || document.kind === 'training_signoff') {
+        return trainingClosure(document.context)
+      }
       return null
     }
 

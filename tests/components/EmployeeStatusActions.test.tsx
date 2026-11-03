@@ -89,6 +89,7 @@ describe('EmployeeStatusActions separation review', () => {
       success: true,
       retainedShiftCount: 1,
       releasedShiftCount: 1,
+      markedFormer: false,
     })
   })
 
@@ -189,6 +190,7 @@ describe('EmployeeStatusActions separation review', () => {
       success: true,
       retainedShiftCount: 0,
       releasedShiftCount: 2,
+      markedFormer: false,
       warning,
     })
     const user = userEvent.setup()
@@ -214,6 +216,39 @@ describe('EmployeeStatusActions separation review', () => {
     expect(toastMock.success).not.toHaveBeenCalled()
     expect(toastMock.error).not.toHaveBeenCalled()
     expect(refreshMock).toHaveBeenCalledOnce()
+  })
+
+  it('says a last working day already past marks them as Former at once', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-09-25T10:00:00Z'))
+    beginMock.mockResolvedValue({
+      success: true,
+      retainedShiftCount: 0,
+      releasedShiftCount: 2,
+      markedFormer: true,
+    })
+    const user = userEvent.setup()
+    renderActions()
+
+    try {
+      await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
+      await screen.findByText('Published')
+      fireEvent.change(screen.getByLabelText('Last working day'), { target: { value: '2026-09-20' } })
+
+      expect(
+        screen.getByText('This day has passed, so they are marked as Former as soon as the separation starts.'),
+      ).toBeInTheDocument()
+
+      await user.click(screen.getByRole('radio', { name: /Release all remaining shifts/ }))
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' }))
+
+      await waitFor(() => {
+        expect(toastMock.success).toHaveBeenCalledWith('Their last working day has passed, so they have been marked as Former.')
+      })
+      expect(toastMock.warning).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

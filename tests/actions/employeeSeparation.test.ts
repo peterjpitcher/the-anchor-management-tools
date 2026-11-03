@@ -9,6 +9,7 @@ vi.mock('@/lib/audit-helpers', () => ({ getCurrentUser: vi.fn() }))
 vi.mock('@/lib/email/employee-invite-emails', () => ({ sendSeparationStartedEmail: vi.fn() }))
 vi.mock('@/lib/google-calendar-rota', () => ({ syncRotaWeekToCalendar: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
+vi.mock('@/lib/employees/separation', () => ({ finalizeEmployeeSeparation: vi.fn() }))
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -17,12 +18,14 @@ import { getCurrentUser } from '@/lib/audit-helpers'
 import { sendSeparationStartedEmail } from '@/lib/email/employee-invite-emails'
 import { InviteEmailSendError } from '@/lib/employees/invite-email-failure'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { finalizeEmployeeSeparation } from '@/lib/employees/separation'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedAudit = logAuditEvent as unknown as Mock
 const mockedUser = getCurrentUser as unknown as Mock
 const mockedSendEmail = sendSeparationStartedEmail as unknown as Mock
 const mockedAdmin = createAdminClient as unknown as Mock
+const mockedFinalize = finalizeEmployeeSeparation as unknown as Mock
 
 function employeeQuery(data: unknown, error: unknown = null) {
   return {
@@ -193,7 +196,9 @@ describe('employee separation actions', () => {
       note: 'Notice given',
     })
 
-    expect(result).toEqual({ success: true, retainedShiftCount: 1, releasedShiftCount: 1 })
+    expect(result).toEqual({ success: true, retainedShiftCount: 1, releasedShiftCount: 1, markedFormer: false })
+    // A last working day still ahead waits for the morning job.
+    expect(mockedFinalize).not.toHaveBeenCalled()
     expect(client.rpc).toHaveBeenCalledWith('begin_employee_separation', expect.objectContaining({
       p_shift_policy: 'work_remaining',
       p_employment_end_date: '2099-05-15',
@@ -260,6 +265,7 @@ describe('employee separation actions', () => {
         success: true,
         retainedShiftCount: 0,
         releasedShiftCount: 1,
+        markedFormer: false,
         warning: 'Separation was started and the rota was updated, but the separation email was not sent because the email service did not accept it. Send it to them yourself.',
       })
       expect(client.rpc).toHaveBeenCalledTimes(1)
@@ -283,6 +289,7 @@ describe('employee separation actions', () => {
         success: true,
         retainedShiftCount: 0,
         releasedShiftCount: 1,
+        markedFormer: false,
         warning: 'Separation was started and the rota was updated. We sent the separation email to alex@example.com, but we did not hear back from the email service, so it may have gone. Check with them before sending it again.',
       })
       expect(result.success && result.warning).not.toMatch(/not sent|could not be sent|send it to them yourself/i)
@@ -302,6 +309,7 @@ describe('employee separation actions', () => {
         success: true,
         retainedShiftCount: 0,
         releasedShiftCount: 1,
+        markedFormer: false,
         warning: 'Separation was started and the rota was updated, but the separation email was not sent because email sending is switched off at the moment. Send it to them yourself.',
       })
     })
@@ -313,9 +321,96 @@ describe('employee separation actions', () => {
         success: true,
         retainedShiftCount: 0,
         releasedShiftCount: 1,
+        markedFormer: false,
         warning: 'Separation was started and the rota was updated, but the separation email was not sent because something went wrong before it could be sent. Send it to them yourself.',
       })
       expect(JSON.stringify(result)).not.toContain('Invalid time value')
+    })
+  })
+
+  describe('when the last working day has already passed', () => {
+    function startedClient() {
+      const client = mutationClient({
+        state: 'started',
+        retained_shifts: [],
+        released_shifts: [],
+        affected_published_week_ids: [],
+      })
+      mockedAdmin.mockReturnValue(client)
+      return client
+    }
+
+    it('marks them as Former at once, as the morning job would', async () => {
+      const client = startedClient()
+      mockedFinalize.mockResolvedValue({ success: true, employmentEndDate: '2099-05-10', authUserDeleted: true })
+
+      const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
+        employmentEndDate: '2099-05-10',
+        shiftPolicy: 'release_remaining',
+      })
+
+      expect(result).toEqual({ success: true, retainedShiftCount: 0, releasedShiftCount: 0, markedFormer: true })
+      expect(mockedFinalize).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000001', {
+        adminClient: client,
+        actorUser: { user_id: '00000000-0000-0000-0000-000000000099', user_email: 'manager@example.com' },
+        source: 'manual',
+        blockShiftsOnOrAfterToday: true,
+      })
+    })
+
+    it('passes on what needs a follow-up once they are Former', async () => {
+      startedClient()
+      mockedFinalize.mockResolvedValue({
+        success: true,
+        employmentEndDate: '2099-05-10',
+        authUserDeleted: false,
+        warning: 'They clocked in on 12 May 2099, after their last working day of 10 May 2099. Check that date and their final pay.',
+      })
+
+      const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
+        employmentEndDate: '2099-05-10',
+        shiftPolicy: 'release_remaining',
+      })
+
+      expect(result).toEqual(expect.objectContaining({
+        success: true,
+        markedFormer: true,
+        warning: 'They clocked in on 12 May 2099, after their last working day of 10 May 2099. Check that date and their final pay.',
+      }))
+    })
+
+    it('keeps the separation and says so when they cannot be marked as Former yet', async () => {
+      startedClient()
+      mockedFinalize.mockResolvedValue({
+        success: false,
+        error: 'This employee is currently clocked in. Clock them out before marking them as Former.',
+        code: 'open_timeclock_session',
+      })
+
+      const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
+        employmentEndDate: '2099-05-10',
+        shiftPolicy: 'release_remaining',
+      })
+
+      expect(result).toEqual({
+        success: true,
+        retainedShiftCount: 0,
+        releasedShiftCount: 0,
+        markedFormer: false,
+        warning: 'Their last working day has passed, but they could not be marked as Former yet: This employee is currently clocked in. Clock them out before marking them as Former. The job that runs each morning will try again.',
+      })
+    })
+
+    it('leaves a last working day of today to the morning job', async () => {
+      startedClient()
+
+      const result = await beginEmployeeSeparation('00000000-0000-0000-0000-000000000001', {
+        employmentEndDate: '2099-05-13',
+        shiftPolicy: 'release_remaining',
+      })
+
+      expect(result).toEqual(expect.objectContaining({ success: true, markedFormer: false }))
+      expect(mockedFinalize).not.toHaveBeenCalled()
     })
   })
 

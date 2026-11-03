@@ -131,6 +131,18 @@ function sanitizeRedirectFromParam(raw: string | null) {
   }
 }
 
+/**
+ * Copies the cookies the Supabase client wrote during getUser() (a refreshed session, or the
+ * clearing cookies for a dead one) onto a redirect, one cookie at a time, keeping what the
+ * redirect already sets. Replacing the redirect's Set-Cookie header with the session's used to
+ * drop post_login_redirect whenever the session was cleared, so an emailed deep link such as
+ * /portal/training landed on the default page after sign-in, and it folded several cookies
+ * into one header line.
+ */
+function copySessionCookies(from: NextResponse, to: NextResponse) {
+  from.cookies.getAll().forEach((cookie) => to.cookies.set(cookie))
+}
+
 function applyNoIndexHeader(response: NextResponse) {
   response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive, nosnippet')
   return response
@@ -265,10 +277,7 @@ export async function middleware(request: NextRequest) {
       })
     }
 
-    const setCookieHeader = response.headers.get('set-cookie')
-    if (setCookieHeader) {
-      cleanupResponse.headers.set('set-cookie', setCookieHeader)
-    }
+    copySessionCookies(response, cleanupResponse)
 
     return applyNoIndexHeader(cleanupResponse)
   }
@@ -290,10 +299,7 @@ export async function middleware(request: NextRequest) {
     
     // IMPORTANT: Copy over the cookies from the response object to the redirect response
     // so that any session refresh that happened above is not lost.
-    const setCookieHeader = response.headers.get('set-cookie')
-    if (setCookieHeader) {
-      redirectResponse.headers.set('set-cookie', setCookieHeader)
-    }
+    copySessionCookies(response, redirectResponse)
 
     return applyNoIndexHeader(redirectResponse)
   }

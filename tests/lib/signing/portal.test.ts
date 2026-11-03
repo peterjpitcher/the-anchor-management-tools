@@ -77,6 +77,21 @@ describe('signing in the staff portal', () => {
     expect(await listPortalSigningItems('emp-nobody')).toEqual([])
   })
 
+  it('leaves out a practical sign-off, which is signed only in person, and lists a training certificate', async () => {
+    db.rows('signing_documents').push(
+      { id: 'doc-3', kind: 'training_signoff', title: 'Cellar and lines sign-off', mode: 'sign', status: 'part_signed', sent_at: '2026-10-02T09:00:00.000Z', expires_at: '2026-11-01T09:00:00.000Z', completed_at: null },
+      { id: 'doc-4', kind: 'training_completion', title: 'Essentials training, version 1.0', mode: 'acknowledge', status: 'sent', sent_at: '2026-10-02T09:00:00.000Z', expires_at: '2026-11-01T09:00:00.000Z', completed_at: null }
+    )
+    db.rows('signing_parties').push(
+      { id: '55555555-5555-4555-8555-555555555555', document_id: 'doc-3', role: 'worker', employee_id: 'emp-me', status: 'pending', created_at: '2026-10-02T09:00:00.000Z' },
+      { id: '66666666-6666-4666-8666-666666666666', document_id: 'doc-4', role: 'worker', employee_id: 'emp-me', status: 'pending', created_at: '2026-10-02T09:00:01.000Z' }
+    )
+    const items = await listPortalSigningItems('emp-me')
+    expect(items.map((item) => item.document.title)).toEqual(['Essentials training, version 1.0', 'Worker agreement'])
+    // The list keeps its old shape: the kind is read to filter, not passed on.
+    for (const item of items) expect(item.document).not.toHaveProperty('kind')
+  })
+
   it('answers another worker’s document, a guardian’s slot and a bad id all the same way', async () => {
     const me = { userId: 'user-me', employeeId: 'emp-me' }
     expect((await getPortalPartyContext(me, MINE))?.party.id).toBe(MINE)

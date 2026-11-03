@@ -217,6 +217,17 @@ export const EMPLOYEES = {
    * checks skip new starters: those records arrive with the form.
    */
   onboardingStatuses: ['Onboarding'],
+  /**
+   * Staff training (spec 8.3). Red: essentials overdue (from the morning after the due date),
+   * anything else this many days overdue, a locked section, a declined confirmation, or
+   * training that cannot reach the person. Matches MANAGER_OVERDUE_DAYS in
+   * src/lib/training/reminders.ts, so the report and the manager email agree.
+   */
+  trainingOverdueRedDays: 7,
+  /** External qualification certificates: red within this many days of expiry, as right to work. */
+  trainingExternalRedDays: 30,
+  /** External qualification certificates: amber within this many days of expiry. */
+  trainingExternalAmberDays: 60,
 } as const
 
 export const ROTA = {

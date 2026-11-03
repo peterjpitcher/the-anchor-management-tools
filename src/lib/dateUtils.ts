@@ -248,6 +248,26 @@ export function shiftIsoDate(isoDate: string, days: number): string | null {
 }
 
 /**
+ * Adds whole months (negative to go back) to a YYYY-MM-DD calendar date, clamping to the last
+ * day of the target month: 31 January plus one month is 28 February, or 29 February in a leap
+ * year, and 29 February plus twelve months is 28 February. Anchored in UTC like shiftIsoDate,
+ * so the result never depends on the host machine's timezone. A value that is not shaped
+ * YYYY-MM-DD comes back unchanged.
+ *
+ * Moved here from src/lib/oj-projects/recurring-periods.ts (which re-exports it) so training
+ * refresher dates and recurring charges share one month rule.
+ */
+export function addMonthsToIsoDate(isoDate: string, months: number): string {
+  const match = String(isoDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return isoDate
+  const year = Number(match[1])
+  const monthIndex = Number(match[2]) - 1
+  const day = Number(match[3])
+  const lastDayOfTarget = new Date(Date.UTC(year, monthIndex + months + 1, 0)).getUTCDate()
+  return utcMsToIsoDate(Date.UTC(year, monthIndex + months, Math.min(day, lastDayOfTarget)))
+}
+
+/**
  * Whole London calendar days from today to the London date of `instant`: 0 on the day itself,
  * 7 on the same weekday a week before. Returns null when `instant` is not a real time.
  *

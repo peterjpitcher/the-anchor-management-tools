@@ -7,6 +7,8 @@ import type { StandaloneNavItem } from '@/components/shells/StandaloneShellNav'
  */
 export const PORTAL_NAV: StandaloneNavItem[] = [
   { label: 'My Shifts', href: '/portal/shifts' },
+  // Second, so it shows without scrolling the tab row on a phone: training has due dates.
+  { label: 'My Training', href: '/portal/training' },
   { label: 'My Holiday', href: '/portal/leave' },
   { label: 'My Documents', href: '/portal/documents' },
 ]
