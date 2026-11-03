@@ -233,6 +233,9 @@ def main():
             fails("INSERT INTO training_courses (slug, title, kind, audience_groups) VALUES ('bad-group', 'Title', 'online', ARRAY['bar', 'cellar']);", 'training_courses_audience_groups_check')
             sql("BEGIN; INSERT INTO training_courses (slug, title, kind, audience_groups) VALUES ('good-group', 'Title', 'online', ARRAY['bar', 'management']); ROLLBACK;")
             fails("INSERT INTO training_courses (slug, title, kind, audience_age) VALUES ('bad-age', 'Title', 'online', 'over_65');", 'training_courses_audience_age_check')
+            fails("INSERT INTO training_courses (slug, title, kind, audience_age) VALUES ('bad-age-18', 'Title', 'online', 'over_18');", 'training_courses_audience_age_check')
+            for age in ('all', 'under_18', 'over_16', 'adult'):
+                sql(f"BEGIN; INSERT INTO training_courses (slug, title, kind, audience_age) VALUES ('age-{age.replace('_', '-')}', 'Title', 'online', '{age}'); ROLLBACK;")
             fails("INSERT INTO training_courses (slug, title, kind, status) VALUES ('bad-status', 'Title', 'online', 'paused');", 'training_courses_status_check')
             fails("INSERT INTO training_courses (slug, title, kind, refresher_months) VALUES ('bad-refresher', 'Title', 'online', 0);", 'training_courses_refresher_months_check')
             fails("INSERT INTO training_courses (slug, title, kind, window_days) VALUES ('bad-window', 'Title', 'online', 181);", 'training_courses_window_days_check')
@@ -440,10 +443,11 @@ def main():
             granted = sql("""SELECT r.name || ':' || string_agg(p.action, ',' ORDER BY p.action)
                              FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id
                              WHERE p.module_name = 'training' GROUP BY r.name ORDER BY r.name""").splitlines()
-            assert granted == ['manager:manage,publish,view', 'super_admin:manage,publish,view'], granted
-            assert count('role_permissions') == '8'
+            # Publishing is the owner's (super_admin only, owner decision 3 November 2026); managers view and manage.
+            assert granted == ['manager:manage,view', 'super_admin:manage,publish,view'], granted
+            assert count('role_permissions') == '7'
             assert sql("SELECT string_agg(r.name, ',' ORDER BY r.name) FROM role_permissions rp JOIN roles r ON r.id = rp.role_id JOIN permissions p ON p.id = rp.permission_id WHERE p.module_name = 'employees'") == 'manager,staff'
-            print('PASS training view, manage and publish exist once each, go to super_admin and manager only, and running it twice adds nothing')
+            print('PASS training view, manage and publish exist once each; super_admin gets all three, manager view and manage only, nobody else any; running it twice adds nothing')
 
             # -------------------------------------------------------------------------------
             # Retired policy drafts

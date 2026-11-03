@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => ({
   assignCourse: vi.fn(),
   listTrainingCourses: vi.fn(),
   getTrainingEmailsEnabled: vi.fn(),
+  getTrainingAutoAssignEnabled: vi.fn(),
   getTrainingCourse: vi.fn(),
   redirect: vi.fn((path: string) => {
     throw new Error(`NEXT_REDIRECT ${path}`)
@@ -49,8 +50,10 @@ vi.mock('@/app/actions/training', () => ({
 vi.mock('@/app/actions/training-courses', () => ({
   listTrainingCourses: mocks.listTrainingCourses,
   getTrainingEmailsEnabled: mocks.getTrainingEmailsEnabled,
+  getTrainingAutoAssignEnabled: mocks.getTrainingAutoAssignEnabled,
   getTrainingCourse: mocks.getTrainingCourse,
   setTrainingEmailsEnabled: vi.fn(),
+  setTrainingAutoAssignEnabled: vi.fn(),
   uploadCourseDraft: vi.fn(),
   createExternalCourse: vi.fn(),
   publishCourseDraft: vi.fn(),
@@ -141,12 +144,25 @@ describe('Employees, Training access', () => {
     mocks.status.mockResolvedValue('allowed')
     mocks.listTrainingCourses.mockResolvedValue({ success: true, data: [] })
     mocks.getTrainingEmailsEnabled.mockResolvedValue({ success: true, data: { enabled: false } })
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue({ success: true, data: { enabled: false } })
     await renderPage({ view: 'courses' })
 
     expect(mocks.getTrainingMatrix).not.toHaveBeenCalled()
     expect(mocks.listTrainingCourses).toHaveBeenCalledTimes(1)
     expect(screen.getByText('No courses yet')).toBeInTheDocument()
     expect(screen.getByText('Training emails are off')).toBeInTheDocument()
+    expect(screen.getByText('Automatic assignment is off')).toBeInTheDocument()
+    expect(screen.getByText(/Nobody is given a course unless a manager assigns it on their Training tab/)).toBeInTheDocument()
+  })
+
+  it('shows the automatic assignment switch as unreadable, and treated as off, when it cannot be read', async () => {
+    mocks.status.mockResolvedValue('allowed')
+    mocks.listTrainingCourses.mockResolvedValue({ success: true, data: [] })
+    mocks.getTrainingEmailsEnabled.mockResolvedValue({ success: true, data: { enabled: false } })
+    mocks.getTrainingAutoAssignEnabled.mockResolvedValue({ error: 'The automatic assignment setting could not be read. Please try again.' })
+    await renderPage({ view: 'courses' })
+
+    expect(screen.getByText(/Until it can be read, it is treated as off/)).toBeInTheDocument()
   })
 })
 

@@ -1,3 +1,4 @@
+import { addMonthsToIsoDate } from '@/lib/dateUtils'
 import { daysBetween } from './dates'
 import {
   OPEN_ASSIGNMENT_STATUSES,
@@ -141,25 +142,92 @@ export function pickDisplayAssignment<T extends AssignmentStateFields>(assignmen
 
 /**
  * Whether a valid completion is held today (completed, and not expired). Reads only the status
- * and expiry, so sync's slimmer cycles can be passed too.
+ * and expiry, so sync's slimmer cycles can be passed too. A waiver never counts here; see
+ * `trainingCurrent` for the prerequisite check, where a waived refresher covers one period.
  */
 export function hasValidCompletion(assignments: readonly Pick<AssignmentStateFields, 'status' | 'expiresOn'>[], today: string): boolean {
   return assignments.some((assignment) => assignment.status === 'completed' && !isExpired(assignment, today))
 }
 
 /**
- * Whether a course's prerequisite is met today (spec 4.1): always for a course with none, else
- * whether the person holds a valid completion of the prerequisite course (`hasValidCompletion`).
- * `assignments` may be the person's cycles on every course; only those on the prerequisite are read.
+ * The expiry a person's training on a course runs to before cycle `beforeCycle`, which is what a
+ * new completion extends from (`computeExpiresOn`): the latest completed cycle's expiry, moved on
+ * one refresher period for each refresher or renewal waived after it (owner decision, 3 November
+ * 2026: a waiver covers one refresher period only). Null when there is no earlier completion with
+ * an expiry. Pass the cycles of one course only.
  */
-export function prerequisiteMet(
-  prerequisiteCourseId: string | null,
-  assignments: readonly Pick<TrainingAssignment, 'courseId' | 'status' | 'expiresOn'>[],
+export function expiryToExtendFrom(
+  cycles: ReadonlyArray<Pick<TrainingAssignment, 'cycle' | 'status' | 'reason' | 'expiresOn'>>,
+  beforeCycle: number,
+  refresherMonths: number | null
+): string | null {
+  const earlier = cycles.filter((cycle) => cycle.cycle < beforeCycle)
+  const completed = earlier.filter((cycle) => cycle.status === 'completed').sort((a, b) => b.cycle - a.cycle)[0]
+  if (!completed?.expiresOn) return null
+  if (refresherMonths === null) return completed.expiresOn
+  const waivedPeriods = earlier.filter(
+    (cycle) => cycle.cycle > completed.cycle && cycle.status === 'waived' && (cycle.reason === 'refresher' || cycle.reason === 'renewal')
+  ).length
+  if (waivedPeriods === 0) return completed.expiresOn
+  return addMonthsToIsoDate(completed.expiresOn, refresherMonths * waivedPeriods)
+}
+
+/**
+ * Whether a person's training on one course is current today: a completion still in date
+ * (`hasValidCompletion`), or the latest completion's expiry moved on one refresher period for
+ * each refresher or renewal waived since (`expiryToExtendFrom`) not yet passed. A waived
+ * refresher covers one period (owner decision, 3 November 2026), so for that period the course
+ * still counts as done for anything that needs it. A waived first cycle, redo or manual cycle
+ * covers nothing. Pass the cycles of one course only.
+ */
+export function trainingCurrent(
+  cycles: ReadonlyArray<Pick<TrainingAssignment, 'cycle' | 'status' | 'reason' | 'expiresOn'>>,
+  refresherMonths: number | null,
   today: string
 ): boolean {
-  if (prerequisiteCourseId === null) return true
-  return hasValidCompletion(
-    assignments.filter((assignment) => assignment.courseId === prerequisiteCourseId),
+  if (hasValidCompletion(cycles, today)) return true
+  const coveredTo = expiryToExtendFrom(cycles, Number.POSITIVE_INFINITY, refresherMonths)
+  return coveredTo !== null && coveredTo >= today
+}
+
+/**
+ * The course a prerequisite check reads: its id, and the months a completion of it lasts, which
+ * a waived refresher of it covers once (`trainingCurrent`).
+ */
+export interface PrerequisiteCourse {
+  id: string
+  /** Months a completion lasts, or null when it never expires. */
+  refresherMonths: number | null
+}
+
+/**
+ * The prerequisite of `course` for `prerequisiteMet`, or null when it has none. Its refresher
+ * months are read from `courseById`; a prerequisite missing from it is read as never extended
+ * by a waiver, which can only make the check stricter.
+ */
+export function prerequisiteOf(
+  course: { prerequisiteCourseId: string | null },
+  courseById: ReadonlyMap<string, { refresherMonths: number | null }>
+): PrerequisiteCourse | null {
+  if (course.prerequisiteCourseId === null) return null
+  return { id: course.prerequisiteCourseId, refresherMonths: courseById.get(course.prerequisiteCourseId)?.refresherMonths ?? null }
+}
+
+/**
+ * Whether a course's prerequisite is met today (spec 4.1): always for a course with none, else
+ * whether the person's training on the prerequisite course is current (`trainingCurrent`: a
+ * valid completion, or a waived refresher still inside the period it covers). `assignments` may
+ * be the person's cycles on every course; only those on the prerequisite are read.
+ */
+export function prerequisiteMet(
+  prerequisite: PrerequisiteCourse | null,
+  assignments: readonly Pick<TrainingAssignment, 'courseId' | 'cycle' | 'status' | 'reason' | 'expiresOn'>[],
+  today: string
+): boolean {
+  if (prerequisite === null) return true
+  return trainingCurrent(
+    assignments.filter((assignment) => assignment.courseId === prerequisite.id),
+    prerequisite.refresherMonths,
     today
   )
 }

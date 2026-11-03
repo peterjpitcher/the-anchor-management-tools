@@ -18,9 +18,9 @@ import {
   unlockDueOn,
 } from '@/lib/training/dates'
 import { createPracticalSignoff, prepareTrainingCertificate } from '@/lib/training/signing'
-import { isOpenStatus, prerequisiteMet, withSectionUnlocked } from '@/lib/training/states'
+import { isOpenStatus, prerequisiteMet, withSectionUnlocked, type PrerequisiteCourse } from '@/lib/training/states'
 import { EXTERNAL_CERTIFICATE_MAX_BYTES, formatMegabytes, uploadExternalCertificate } from '@/lib/training/storage'
-import { courseAppliesTo } from '@/lib/training/sync'
+import { courseAppliesTo, minimumAgeRefusal, signoffMinimumAgeRefusal } from '@/lib/training/sync'
 import { PAY_REPORT_MAX_DAYS, TrainingService, type TrainingPerson } from '@/services/training'
 import {
   TRAINING_GROUPS,
@@ -63,8 +63,12 @@ export interface AssignCourseInput {
 
 export interface AssignCourseResult {
   created: number
-  /** People who already had an open cycle or are out of scope, with why. */
-  skipped: Array<{ employeeId: string; reason: 'already_open' | 'not_in_scope' | 'not_applicable' }>
+  /**
+   * People who were not given it, with why: already open, not current staff, outside the course's
+   * age rule, younger than its minimum age (`over_16`, `adult`), or no date of birth on record for
+   * a course with an age rule.
+   */
+  skipped: Array<{ employeeId: string; reason: 'already_open' | 'not_in_scope' | 'not_applicable' | 'under_minimum_age' | 'dob_missing' }>
 }
 
 export interface PracticalSignoffInput {
@@ -254,6 +258,17 @@ async function loadLiveCourse(courseId: string): Promise<TrainingCourse> {
   return course
 }
 
+/**
+ * The course `course` needs first, for `prerequisiteMet`, with the refresher months a waived
+ * refresher of it covers once. A prerequisite that cannot be found is read as never extended by a
+ * waiver, which can only make the check stricter.
+ */
+async function loadPrerequisite(course: TrainingCourse): Promise<PrerequisiteCourse | null> {
+  if (!course.prerequisiteCourseId) return null
+  const prerequisite = await TrainingService.getCourseById(course.prerequisiteCourseId)
+  return { id: course.prerequisiteCourseId, refresherMonths: prerequisite?.refresherMonths ?? null }
+}
+
 function nextCycle(assignments: readonly TrainingAssignment[], courseId: string): number {
   return assignments.filter((assignment) => assignment.courseId === courseId).reduce((max, a) => Math.max(max, a.cycle), 0) + 1
 }
@@ -261,6 +276,22 @@ function nextCycle(assignments: readonly TrainingAssignment[], courseId: string)
 /** A course's age rule, ignoring its groups (a manager may assign outside them on purpose). */
 function ageRuleAllows(course: TrainingCourse, person: TrainingPerson, today: string): boolean {
   return courseAppliesTo(course, { groups: course.audienceGroups, dateOfBirth: person.dateOfBirth }, today).applies
+}
+
+/**
+ * Why a manager may not give this person this course by hand, or null when the age rule allows
+ * it: younger than the course's minimum age, or no date of birth on record for a course with any
+ * age rule (nobody can tell). Groups are not checked: a manager may assign outside them.
+ */
+function ageSkipReason(
+  course: TrainingCourse,
+  person: TrainingPerson,
+  today: string
+): 'under_minimum_age' | 'dob_missing' | 'not_applicable' | null {
+  const minimum = minimumAgeRefusal(course, { dateOfBirth: person.dateOfBirth, name: person.name }, today)
+  if (minimum) return minimum.reason
+  if (ageRuleAllows(course, person, today)) return null
+  return person.dateOfBirth ? 'not_applicable' : 'dob_missing'
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -357,8 +388,10 @@ export async function assignCourse(input: AssignCourseInput): Promise<TrainingAc
   const actor = actorOf(user)
 
   let course: TrainingCourse
+  let prerequisite: PrerequisiteCourse | null
   try {
     course = await loadLiveCourse(courseId)
+    prerequisite = await loadPrerequisite(course)
   } catch (error) {
     return failure(error, 'assign: course')
   }
@@ -377,8 +410,9 @@ export async function assignCourse(input: AssignCourseInput): Promise<TrainingAc
         result.skipped.push({ employeeId, reason: 'not_in_scope' })
         continue
       }
-      if (!ageRuleAllows(course, person, today)) {
-        result.skipped.push({ employeeId, reason: 'not_applicable' })
+      const ageSkip = ageSkipReason(course, person, today)
+      if (ageSkip) {
+        result.skipped.push({ employeeId, reason: ageSkip })
         continue
       }
       try {
@@ -388,7 +422,7 @@ export async function assignCourse(input: AssignCourseInput): Promise<TrainingAc
           continue
         }
         // Waiting on a prerequisite means no due date yet; sync sets one when it is released.
-        const waiting = !prerequisiteMet(course.prerequisiteCourseId, assignments, today)
+        const waiting = !prerequisiteMet(prerequisite, assignments, today)
         const cycleDue = waiting
           ? null
           : dueOn ??
@@ -843,9 +877,13 @@ export async function recordPracticalSignoff(
     if (course.kind !== 'practical') return { error: `${course.title} is not a practical sign-off.` }
 
     const person = await loadPerson(employeeId)
+    // A minimum age (16 or 18) is checked every time, open item or not, today and on the day they
+    // were watched: a sign-off says they can do the job, and nobody can tell without a date of birth.
+    const tooYoung = signoffMinimumAgeRefusal(course, { dateOfBirth: person.dateOfBirth, name: person.name }, observedOn, today)
+    if (tooYoung) return { error: `${tooYoung.message} The sign-off was not recorded.` }
     const assignments = await TrainingService.listAssignmentsForEmployee(employeeId)
     const open = assignments.find((cycle) => cycle.courseId === course.id && isOpenStatus(cycle.status))
-    if (open?.status === 'waiting' || (!open && !prerequisiteMet(course.prerequisiteCourseId, assignments, today))) {
+    if (open?.status === 'waiting' || (!open && !prerequisiteMet(await loadPrerequisite(course), assignments, today))) {
       return { error: 'This sign-off needs another course finished first.' }
     }
     if (open?.status === 'awaiting_confirmation') {

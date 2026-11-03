@@ -13,9 +13,10 @@ const JOB_NAME = 'training-daily'
 /**
  * The staff training daily job (build contract 5.6), scheduled in vercel.json at 09:00 UTC
  * (09:00 London in winter, 10:00 in summer). Vercel only: not in the GitHub cron workflows.
- * The work is in src/lib/training/daily-job.ts: the assignment sweep, finishing confirmations,
- * certificate retries, and, only while `training_emails_enabled` is on, the staff reminders and
- * the manager email. Every email goes through sendEmail, so every kill switch applies.
+ * The work is in src/lib/training/daily-job.ts: the assignment sweep (new cycles only while
+ * `training_auto_assign_enabled` is on), finishing confirmations, certificate retries, and, only
+ * while `training_emails_enabled` is on, the staff reminders and the manager email. Every email
+ * goes through sendEmail, so every kill switch applies.
  *
  * Answers 200 when everything went, 207 when some items failed (counted for the daily scheduled
  * jobs check), and 500 when a whole stage failed, which emails CRON_ALERT_EMAIL through
@@ -35,6 +36,7 @@ async function runTrainingDailyRoute(request: NextRequest): Promise<NextResponse
       ...(run.failedStages.length > 0 ? { error: `Training daily stages failed: ${run.failedStages.join(', ')}` } : {}),
       today: run.today,
       emailsEnabled: run.emailsEnabled,
+      autoAssignEnabled: run.autoAssignEnabled,
       suspended: run.suspended,
       created: run.sweep?.created ?? 0,
       cancelled: run.sweep?.cancelled ?? 0,

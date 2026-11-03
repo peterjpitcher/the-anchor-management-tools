@@ -323,11 +323,22 @@ describe('training: the other three migrations', () => {
     expect(kinds).not.toMatch(/\b(GRANT|REVOKE|UPDATE|DELETE|INSERT)\b/i)
   })
 
-  it('grants the training permissions to super_admin and manager only', () => {
+  it('grants the training permissions to super_admin and manager only, and publish to super_admin only', () => {
     const code = migration(PERMISSIONS_MIGRATION).code
     const actions = code.match(/v_actions text\[\] := ARRAY\[([^\]]*)\]/)
     expect(Array.from((actions as RegExpMatchArray)[1].matchAll(/'([a-z_]+)'/g)).map((m) => m[1])).toEqual(['view', 'manage', 'publish'])
     expect(Array.from(code.matchAll(/r\.name = '([^']+)'/g)).map((m) => m[1])).toEqual(['super_admin', 'manager'])
+    // Owner decision, 3 November 2026: only the owner publishes courses and changes the switches.
+    const grants = Object.fromEntries(
+      code
+        .split(/INSERT INTO public\.role_permissions/)
+        .slice(1)
+        .map((block) => [
+          (block.match(/r\.name = '([^']+)'/) as RegExpMatchArray)[1],
+          Array.from((block.match(/p\.action IN \(([^)]*)\)/) as RegExpMatchArray)[1].matchAll(/'([a-z_]+)'/g)).map((m) => m[1]),
+        ])
+    )
+    expect(grants).toEqual({ super_admin: ['view', 'manage', 'publish'], manager: ['view', 'manage'] })
     expect(code).not.toMatch(/r\.name IN/i)
     expect(code).not.toMatch(/\b(staff|foh_staff|portal_shift_manager|Deputy)'/)
   })

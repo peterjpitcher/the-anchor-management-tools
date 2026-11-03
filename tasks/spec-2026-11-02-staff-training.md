@@ -174,7 +174,11 @@ all times.
 
 A practical sign-off can require an online course first. It is assigned when that course is
 completed, due 14 days later, never chased while waiting, and counts as done only while the course
-it depends on is valid. External qualifications are renewed by the manager, so their expiry
+it depends on is valid. A waived refresher of that course keeps it valid for one refresher period
+(owner decision, 3 November 2026: a waiver covers one period); a waived first go, redo or manual
+item counts for nothing, so a practical that needs it waits until the course is done. The minimum
+age (16 for kegs, gas, BIBs and chemicals) is checked on the day the manager watched as well as on
+the day the sign-off is recorded. External qualifications are renewed by the manager, so their expiry
 reminders go to the manager (8.3), not to staff.
 
 ### 4.2 Training groups
@@ -503,8 +507,14 @@ person has training records. Mark them as left instead."
 
 - **A new permission module, `training`:** view (the log and records, including results), manage
   (groups, assign, extend, waive, pause, unlock, record sign-offs and external qualifications),
-  publish (upload, preview and publish courses). Granted to super_admin and manager with explicit rows
-  (the client checks need them even for super_admin), applied **after** the code deploy.
+  publish (upload, preview and publish courses, and the training emails and automatic assignment
+  switches). view and manage are granted to super_admin and manager, publish to super_admin only
+  (owner decision, 3 November 2026), with explicit rows (the client checks need them even for
+  super_admin), applied **after** the code deploy. Every super_admin account can therefore
+  publish and change both switches (four accounts on 3 November 2026; super_admin is allowed
+  every permission before any row is read), not only the owner. Publish also gates adding an
+  external qualification type, the course preview and draft images, so those are super_admin
+  only too; a manager-role user cannot do them.
 - **Staff never get a permission.** Granting one would push portal-only staff into the management
   app. The portal works from the signed-in person's own employee record only, through one shared
   `getPortalWorker` (moved out of `src/lib/signing/portal.ts`); every read and write is server-side,

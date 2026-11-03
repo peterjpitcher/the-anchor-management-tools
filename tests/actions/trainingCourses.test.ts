@@ -29,14 +29,20 @@ const mocks = vi.hoisted(() => {
     createAssignment: vi.fn(),
     updateAssignment: vi.fn(),
   }
-  return { upload, download, storageFrom: vi.fn(() => ({ upload, download })), service }
+  return { upload, download, storageFrom: vi.fn(() => ({ upload, download })), service, readAutoAssign: vi.fn() }
 })
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 vi.mock('@/lib/signing/staff', () => ({ getSigningStaffUser: vi.fn() }))
-vi.mock('@/app/actions/training-settings', () => ({ getTrainingEmailsSwitch: vi.fn(), setTrainingEmailsSwitch: vi.fn() }))
+vi.mock('@/app/actions/training-settings', () => ({
+  getTrainingEmailsSwitch: vi.fn(),
+  setTrainingEmailsSwitch: vi.fn(),
+  getTrainingAutoAssignSwitch: vi.fn(),
+  setTrainingAutoAssignSwitch: vi.fn(),
+}))
+vi.mock('@/lib/training/settings', () => ({ readTrainingAutoAssignSetting: mocks.readAutoAssign }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({ storage: { from: mocks.storageFrom } })) }))
 vi.mock('@/lib/training/draw', () => ({ drawQuestions: vi.fn(), toCheckQuestionViews: vi.fn() }))
 vi.mock('@/lib/training/scoring', () => ({ scoreAttempt: vi.fn(), toCheckResultItems: vi.fn() }))
@@ -281,6 +287,7 @@ beforeEach(() => {
   vi.mocked(getSigningStaffUser).mockResolvedValue(USER)
   vi.mocked(checkUserPermission).mockResolvedValue(true)
   mocks.upload.mockResolvedValue({ data: { path: 'stored' }, error: null })
+  mocks.readAutoAssign.mockResolvedValue({ readable: true, enabled: true, updatedAt: null })
 })
 
 // ---------------------------------------------------------------------------------------------
@@ -480,7 +487,8 @@ describe('publishCourseDraft', () => {
 
     await uploadCourseDraft(looseUpload(course()))
     const redo = await publishCourseDraft({ courseId: live.id, change: 'redo', changeNote: 'New fire assembly point' })
-    expect(redo.data).toMatchObject({ major: 2, minor: 0, sync: { created: 3, cancelled: 1, updated: 0 } })
+    expect(redo.data).toMatchObject({ major: 2, minor: 0, sync: { created: 3, cancelled: 1, updated: 0 }, autoAssign: true })
+    expect(mocks.service.syncAssignments).toHaveBeenLastCalledWith({ actor: expect.objectContaining({ id: USER.id }), autoAssign: true })
     expect(versions.get(redo.data!.versionId)).toMatchObject({ redoRequired: true, changeNote: 'New fire assembly point' })
     expect(mocks.service.writeEvent).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'redo_requested', courseId: live.id }))
     expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_type: 'publish', resource_id: live.id }))
@@ -612,6 +620,26 @@ describe('publishCourseDraft', () => {
 
     const current = [...versions.values()].find((version) => version.state === 'draft')!.uploadedAt
     expect((await publishCourseDraft({ courseId, change: 'first', changeNote: '', draftUploadedAt: current })).success).toBe(true)
+  })
+
+  it('runs the sync with the automatic assignment switch, and says when it is off', async () => {
+    const uploaded = await uploadCourseDraft(looseUpload(course()))
+    mocks.readAutoAssign.mockResolvedValue({ readable: true, enabled: false, updatedAt: null })
+    const result = await publishCourseDraft({ courseId: uploaded.data!.courseId!, change: 'first', changeNote: '' })
+    expect(result.data).toMatchObject({ major: 1, minor: 0, autoAssign: false })
+    expect(mocks.service.syncAssignments).toHaveBeenCalledWith({ actor: expect.objectContaining({ id: USER.id }), autoAssign: false })
+  })
+
+  it('treats a switch it cannot read after publishing as off, and still publishes', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const uploaded = await uploadCourseDraft(looseUpload(course()))
+    mocks.readAutoAssign.mockResolvedValue({ readable: false, enabled: false, error: 'timeout' })
+    const result = await publishCourseDraft({ courseId: uploaded.data!.courseId!, change: 'first', changeNote: '' })
+    expect(result.success).toBe(true)
+    expect(result.data?.autoAssign).toBe(false)
+    expect(mocks.service.syncAssignments).toHaveBeenCalledWith(expect.objectContaining({ autoAssign: false }))
+    expect(courses.get(uploaded.data!.courseId!)?.status).toBe('live')
+    spy.mockRestore()
   })
 
   it('still publishes when the sync afterwards fails, leaving it to the daily sweep', async () => {

@@ -12,10 +12,12 @@ import {
   nextSectionKey,
   pickDisplayAssignment,
   prerequisiteMet,
+  prerequisiteOf,
   sectionStatesFor,
   withCardReached,
   withSectionFailed,
   withSectionPassed,
+  trainingCurrent,
   withSectionUnlocked,
   type AssignmentStateFields,
 } from '@/lib/training/states'
@@ -221,16 +223,20 @@ describe('displayStateFor', () => {
 describe('a practical whose prerequisite has lapsed (spec 4.1)', () => {
   // Kegs signed off 2027-03-01 (no expiry of its own); Team training, its prerequisite, expired 2028-01-15.
   const kegs = completed({ completedOn: '2027-03-01', expiresOn: null, windowOpensOn: null })
-  const teamTraining = (expiresOn: string) =>
-    [{ courseId: 'team', status: 'completed' as const, expiresOn }, { courseId: 'kegs', status: 'completed' as const, expiresOn: null }]
+  const teamTraining = (expiresOn: string) => [
+    { courseId: 'team', cycle: 1, reason: 'existing_staff' as const, status: 'completed' as const, expiresOn },
+    { courseId: 'kegs', cycle: 1, reason: 'existing_staff' as const, status: 'completed' as const, expiresOn: null },
+  ]
+  // Team training lasts a year.
+  const TEAM = { id: 'team', refresherMonths: 12 }
 
   it('shows waiting, not done, while the sign-off is in date but the prerequisite is not', () => {
     const today = '2028-01-16'
-    const valid = prerequisiteMet('team', teamTraining('2028-01-15'), today)
+    const valid = prerequisiteMet(TEAM, teamTraining('2028-01-15'), today)
     expect(valid).toBe(false)
     expect(state([kegs], { today, prerequisiteValid: valid })).toBe('waiting')
     // The day the prerequisite expires it is still valid, so the sign-off still counts.
-    expect(state([kegs], { today: '2028-01-15', prerequisiteValid: prerequisiteMet('team', teamTraining('2028-01-15'), '2028-01-15') })).toBe('done')
+    expect(state([kegs], { today: '2028-01-15', prerequisiteValid: prerequisiteMet(TEAM, teamTraining('2028-01-15'), '2028-01-15') })).toBe('done')
   })
 
   it('shows waiting instead of refresher due, but its own expiry still comes first', () => {
@@ -252,18 +258,58 @@ describe('a practical whose prerequisite has lapsed (spec 4.1)', () => {
 
   it('stops counting the sign-off as completed while the prerequisite has lapsed', () => {
     const today = '2028-01-16'
-    expect(countsAsDone({ assignments: [kegs], prerequisiteValid: prerequisiteMet('team', teamTraining('2028-01-15'), today), today })).toBe(false)
-    expect(countsAsDone({ assignments: [kegs], prerequisiteValid: prerequisiteMet('team', teamTraining('2029-01-15'), today), today })).toBe(true)
+    expect(countsAsDone({ assignments: [kegs], prerequisiteValid: prerequisiteMet(TEAM, teamTraining('2028-01-15'), today), today })).toBe(false)
+    expect(countsAsDone({ assignments: [kegs], prerequisiteValid: prerequisiteMet(TEAM, teamTraining('2029-01-15'), today), today })).toBe(true)
     expect(countsAsDone({ assignments: [kegs], today })).toBe(true)
     expect(countsAsDone({ assignments: [completed({ expiresOn: '2026-11-02' })], prerequisiteValid: true, today: TODAY })).toBe(false)
   })
 
-  it('treats a course with no prerequisite as met, and a waived or missing prerequisite as not met', () => {
+  it('treats a course with no prerequisite as met, and a waived first cycle or missing prerequisite as not met', () => {
+    const one = { cycle: 1, reason: 'existing_staff' as const }
     expect(prerequisiteMet(null, [], TODAY)).toBe(true)
-    expect(prerequisiteMet('team', [], TODAY)).toBe(false)
-    expect(prerequisiteMet('team', [{ courseId: 'team', status: 'waived', expiresOn: null }], TODAY)).toBe(false)
-    expect(prerequisiteMet('team', [{ courseId: 'other', status: 'completed', expiresOn: null }], TODAY)).toBe(false)
-    expect(prerequisiteMet('team', [{ courseId: 'team', status: 'completed', expiresOn: TODAY }], TODAY)).toBe(true)
+    expect(prerequisiteMet(TEAM, [], TODAY)).toBe(false)
+    expect(prerequisiteMet(TEAM, [{ ...one, courseId: 'team', status: 'waived', expiresOn: null }], TODAY)).toBe(false)
+    expect(prerequisiteMet(TEAM, [{ ...one, courseId: 'other', status: 'completed', expiresOn: null }], TODAY)).toBe(false)
+    expect(prerequisiteMet(TEAM, [{ ...one, courseId: 'team', status: 'completed', expiresOn: TODAY }], TODAY)).toBe(true)
+  })
+
+  describe('a waived refresher of the prerequisite covers one period (owner decision, 3 November 2026)', () => {
+    // Team training done once, expiring 15 January 2028; that year's refresher was waived.
+    const done = { courseId: 'team', cycle: 1, reason: 'existing_staff' as const, status: 'completed' as const, expiresOn: '2028-01-15' }
+    const waivedRefresher = { courseId: 'team', cycle: 2, reason: 'refresher' as const, status: 'waived' as const, expiresOn: null }
+
+    it('keeps the prerequisite met for one more period after the old expiry, and no longer', () => {
+      expect(prerequisiteMet(TEAM, [done, waivedRefresher], '2028-01-16')).toBe(true)
+      expect(prerequisiteMet(TEAM, [done, waivedRefresher], '2029-01-15')).toBe(true)
+      expect(prerequisiteMet(TEAM, [done, waivedRefresher], '2029-01-16')).toBe(false)
+      // Two waivers, two periods.
+      const twice = [done, waivedRefresher, { ...waivedRefresher, cycle: 3 }]
+      expect(prerequisiteMet(TEAM, twice, '2030-01-15')).toBe(true)
+      expect(prerequisiteMet(TEAM, twice, '2030-01-16')).toBe(false)
+    })
+
+    it('lets the sign-off that needs it count as done for that period', () => {
+      const today = '2028-06-01'
+      const valid = prerequisiteMet(TEAM, [done, waivedRefresher], today)
+      expect(state([kegs], { today, prerequisiteValid: valid })).toBe('done')
+      expect(countsAsDone({ assignments: [kegs], prerequisiteValid: valid, today })).toBe(true)
+    })
+
+    it('covers nothing for a waived redo or manual cycle, or a course that never expires', () => {
+      for (const reason of ['redo', 'manual'] as const) {
+        expect(prerequisiteMet(TEAM, [done, { ...waivedRefresher, reason }], '2028-01-16')).toBe(false)
+      }
+      expect(prerequisiteMet({ id: 'team', refresherMonths: null }, [done, waivedRefresher], '2028-01-16')).toBe(false)
+    })
+
+    it('reads the refresher months from the prerequisite course, and none when it is missing', () => {
+      const courses = new Map([['team', { refresherMonths: 12 }]])
+      expect(prerequisiteOf({ prerequisiteCourseId: null }, courses)).toBeNull()
+      expect(prerequisiteOf({ prerequisiteCourseId: 'team' }, courses)).toEqual(TEAM)
+      expect(prerequisiteOf({ prerequisiteCourseId: 'gone' }, courses)).toEqual({ id: 'gone', refresherMonths: null })
+      expect(trainingCurrent([done, waivedRefresher], null, '2028-01-16')).toBe(false)
+      expect(trainingCurrent([done, waivedRefresher], 12, '2028-01-16')).toBe(true)
+    })
   })
 })
 

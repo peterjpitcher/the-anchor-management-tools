@@ -37,6 +37,14 @@ function expectClean(html: string): void {
   expect(text.includes(EM_DASH)).toBe(false)
 }
 
+/** Owner decision, 3 November 2026: both directors sign jointly, under the issuer line. */
+function expectJointSignatories(text: string): void {
+  expect(text).toContain('Issued by <strong>Orange Jelly')
+  expect(text).toContain('Signatories<br><strong>Peter Pitcher, Director</strong><br><strong>Billy Summers, Director</strong>')
+  expect(text).not.toMatch(/Signatory<br>/)
+  expect(text.indexOf('Issued by')).toBeLessThan(text.indexOf('Signatories'))
+}
+
 const CERTIFICATE: TrainingCertificateInput = {
   holderName: 'Sam Example',
   courseTitle: 'Essentials',
@@ -91,6 +99,7 @@ describe('the training certificate pack', () => {
     // Orange Jelly palette and wordmark: staff documents are Orange Jelly documents.
     expect(html).toContain(STAFF.primary)
     expect(html).toContain('data:image/png;base64,')
+    expectJointSignatories(text)
     expectClean(html)
   })
 
@@ -170,6 +179,7 @@ describe('the practical sign-off', () => {
     expect(text).toContain('Version 1.2')
     expect(text).toContain(TRAINING_DISCLAIMER)
     expect(text).not.toContain(SUPERVISED_ONLY_NOTICE)
+    expectJointSignatories(text)
     expectClean(html)
   })
 

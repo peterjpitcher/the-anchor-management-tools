@@ -114,6 +114,7 @@ const PRACTICAL: Partial<TrainingCourse> = {
   slug: 'cellar',
   title: 'Cellar and lines',
   kind: 'practical',
+  audienceAge: 'all',
   refresherMonths: 24,
   windowDays: 30,
   supervisedOnlyUnder18: true,
@@ -753,6 +754,27 @@ describe('recording a practical sign-off', () => {
       createPracticalSignoff({ assignmentId: 'a2', tasks: ['gas'], observedOn: '2026-10-25', actor: MANAGER })
     ).rejects.toMatchObject({ code: 'not_ready', message: expect.stringContaining('date of birth') })
     expect(state.createRequest).not.toHaveBeenCalled()
+  })
+
+  it('refuses a course with a minimum age when they were under it on the day they were watched', async () => {
+    state.courses.set('course-2', { ...PRACTICAL, audienceAge: 'over_16' })
+    // 16 on 1 November 2026: 15 on 25 October, when the manager watched them.
+    db.rows('employees')[0].date_of_birth = '2010-11-01'
+    await expect(
+      createPracticalSignoff({ assignmentId: 'a2', tasks: ['gas'], observedOn: '2026-10-25', actor: MANAGER })
+    ).rejects.toMatchObject({
+      code: 'not_allowed',
+      message: 'Cellar and lines is only for people aged 16 or over, and Sam Example was 15 on the day you watched them.',
+    })
+    db.rows('employees')[0].date_of_birth = null
+    await expect(
+      createPracticalSignoff({ assignmentId: 'a2', tasks: ['gas'], observedOn: '2026-10-25', actor: MANAGER })
+    ).rejects.toMatchObject({ code: 'not_ready', message: expect.stringContaining('no date of birth') })
+    expect(state.createRequest).not.toHaveBeenCalled()
+
+    db.rows('employees')[0].date_of_birth = '2010-11-01'
+    const result = await createPracticalSignoff({ assignmentId: 'a2', tasks: ['gas'], observedOn: '2026-11-01', actor: MANAGER })
+    expect(result.supervisedOnly).toBe(true)
   })
 
   it('refuses a bad list of tasks or a bad date before anything is made', async () => {

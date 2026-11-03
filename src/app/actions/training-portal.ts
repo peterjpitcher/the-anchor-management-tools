@@ -12,6 +12,7 @@ import { scoreAttempt, toCheckResultItems } from '@/lib/training/scoring'
 import { prepareTrainingCertificate } from '@/lib/training/signing'
 import {
   allSectionsPassed,
+  expiryToExtendFrom,
   isOpenStatus,
   isPausedOn,
   nextSectionKey,
@@ -262,12 +263,13 @@ async function writeEvents(events: NewTrainingEvent[]): Promise<void> {
 }
 
 /** The previous completed cycle's expiry, so finishing early extends from it (spec 4.3). */
-async function previousExpiresOn(assignment: TrainingAssignment): Promise<string | null> {
+async function previousExpiresOn(assignment: TrainingAssignment, refresherMonths: number | null): Promise<string | null> {
   const cycles = await TrainingService.listAssignmentsForEmployee(assignment.employeeId)
-  const previous = cycles
-    .filter((cycle) => cycle.courseId === assignment.courseId && cycle.status === 'completed' && cycle.cycle < assignment.cycle)
-    .sort((a, b) => b.cycle - a.cycle)[0]
-  return previous?.expiresOn ?? null
+  return expiryToExtendFrom(
+    cycles.filter((cycle) => cycle.courseId === assignment.courseId),
+    assignment.cycle,
+    refresherMonths
+  )
 }
 
 /** My Training and the player page for one cycle. */
@@ -552,7 +554,7 @@ export async function submitTrainingCheck(input: {
     })
 
     const questionIds = attempt.served.map((question) => question.questionId)
-    const priorExpiry = outcome.passed ? await previousExpiresOn(assignment) : null
+    const priorExpiry = outcome.passed ? await previousExpiresOn(assignment, course.refresherMonths) : null
     let fails = 0
     let locked = false
     let finished = false

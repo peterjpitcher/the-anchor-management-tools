@@ -18,7 +18,13 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 vi.mock('@/lib/signing/staff', () => ({ getSigningStaffUser: vi.fn() }))
-vi.mock('@/app/actions/training-settings', () => ({ getTrainingEmailsSwitch: vi.fn(), setTrainingEmailsSwitch: vi.fn() }))
+vi.mock('@/app/actions/training-settings', () => ({
+  getTrainingEmailsSwitch: vi.fn(),
+  setTrainingEmailsSwitch: vi.fn(),
+  getTrainingAutoAssignSwitch: vi.fn(),
+  setTrainingAutoAssignSwitch: vi.fn(),
+}))
+vi.mock('@/lib/training/settings', () => ({ readTrainingAutoAssignSetting: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => { throw new Error('preview must not reach the database') }) }))
 vi.mock('@/services/training', () => ({ TrainingService: mocks.service }))
 

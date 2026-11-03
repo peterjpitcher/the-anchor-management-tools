@@ -16,6 +16,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { TrainingService } from '@/services/training'
 import { generateCertificateNumber } from './certificate-number'
 import { ageOn, computeExpiresOn, computeWindowOpensOn, londonDateOf, trainingToday } from './dates'
+import { expiryToExtendFrom } from './states'
+import { signoffMinimumAgeRefusal } from './sync'
 import { formatTrainingVersion } from './labels'
 import {
   SYSTEM_ACTOR,
@@ -471,12 +473,13 @@ export async function prepareTrainingCertificate(assignmentId: string): Promise<
 // Practical sign-off
 // ---------------------------------------------------------------------------------------------
 
-async function previousExpiresOn(assignment: TrainingAssignment): Promise<string | null> {
+async function previousExpiresOn(assignment: TrainingAssignment, refresherMonths: number | null): Promise<string | null> {
   const cycles = await TrainingService.listAssignmentsForEmployee(assignment.employeeId)
-  const previous = cycles
-    .filter((cycle) => cycle.courseId === assignment.courseId && cycle.status === 'completed' && cycle.cycle < assignment.cycle)
-    .sort((a, b) => b.cycle - a.cycle)[0]
-  return previous?.expiresOn ?? null
+  return expiryToExtendFrom(
+    cycles.filter((cycle) => cycle.courseId === assignment.courseId),
+    assignment.cycle,
+    refresherMonths
+  )
 }
 
 /** The tasks chosen, in the course's own order, with their wording at the time. */
@@ -498,7 +501,9 @@ function chosenTasks(version: TrainingCourseVersion, keys: readonly string[]): S
  * `supervised_only` (under 18 on a `supervisedOnlyUnder18` course) set.
  *
  * Refused when the course limits under 18s to supervised work and the record has no date of
- * birth: whether "Supervised only" belongs on the sign-off cannot be known.
+ * birth: whether "Supervised only" belongs on the sign-off cannot be known. Refused too for a
+ * course with a minimum age (16 or 18) when the learner is under it today or was on `observedOn`,
+ * or has no date of birth (`signoffMinimumAgeRefusal`).
  *
  * Writes no training event: the caller (recordPracticalSignoff) writes the one
  * `signoff_recorded` line, with the manager's note and the `supervisedOnly` returned here.
@@ -533,6 +538,14 @@ export async function createPracticalSignoff(input: {
   const admin = createAdminClient()
   const employee = await loadEmployee(admin, assignment.employeeId)
   const learnerName = learnerNameOf(employee)
+  // The minimum age is checked on the day they were watched as well as today, for every caller.
+  const tooYoung = signoffMinimumAgeRefusal(
+    course,
+    { dateOfBirth: employee.date_of_birth, name: learnerName },
+    input.observedOn,
+    trainingToday()
+  )
+  if (tooYoung) throw new TrainingError(tooYoung.reason === 'dob_missing' ? 'not_ready' : 'not_allowed', tooYoung.message)
   let supervisedOnly = false
   if (course.supervisedOnlyUnder18) {
     const age = ageOn(employee.date_of_birth, input.observedOn)
@@ -545,7 +558,7 @@ export async function createPracticalSignoff(input: {
     supervisedOnly = age < 18
   }
 
-  const expiresOn = computeExpiresOn(course.refresherMonths, input.observedOn, await previousExpiresOn(assignment))
+  const expiresOn = computeExpiresOn(course.refresherMonths, input.observedOn, await previousExpiresOn(assignment, course.refresherMonths))
   const windowOpensOn = computeWindowOpensOn(expiresOn, course.windowDays)
   const certificateNumber = assignment.certificateNumber ?? generateCertificateNumber()
   const versionLabel = versionLabelOf(version)

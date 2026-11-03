@@ -1,5 +1,5 @@
 import { getPermissionStatus } from '@/app/actions/rbac'
-import { getTrainingCourse, getTrainingEmailsEnabled } from '@/app/actions/training-courses'
+import { getTrainingAutoAssignEnabled, getTrainingCourse, getTrainingEmailsEnabled } from '@/app/actions/training-courses'
 import { Alert, PageLayout } from '@/ds'
 import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 import { CourseDetailClient } from '@/components/features/training/manager/CourseDetailClient'
@@ -7,7 +7,8 @@ import { TrainingNoAccess } from '@/components/features/training/manager/Trainin
 import { COURSE_BACK_BUTTON } from '@/components/features/training/manager/views'
 
 export const dynamic = 'force-dynamic'
-// Publishing assigns the course to everyone it applies to, in a server action on this page.
+// Publishing runs the assignment sync (it gives the course to everyone it applies to only while
+// automatic assignment is on), in a server action on this page.
 export const maxDuration = 60
 
 type PageProps = { params: Promise<{ slug: string }> }
@@ -38,12 +39,14 @@ export default async function TrainingCoursePage({ params }: PageProps): Promise
 
   let detail: Awaited<ReturnType<typeof getTrainingCourse>>
   let emails: Awaited<ReturnType<typeof getTrainingEmailsEnabled>>
+  let autoAssign: Awaited<ReturnType<typeof getTrainingAutoAssignEnabled>>
   try {
-    ;[detail, emails] = await Promise.all([getTrainingCourse(slug), getTrainingEmailsEnabled()])
+    ;[detail, emails, autoAssign] = await Promise.all([getTrainingCourse(slug), getTrainingEmailsEnabled(), getTrainingAutoAssignEnabled()])
   } catch (error) {
     console.error('[employees/training/courses] load failed', error)
     detail = { error: LOAD_FAILED }
     emails = { error: LOAD_FAILED }
+    autoAssign = { error: LOAD_FAILED }
   }
 
   if (detail.error || !detail.data) {
@@ -60,6 +63,7 @@ export default async function TrainingCoursePage({ params }: PageProps): Promise
     <CourseDetailClient
       detail={detail.data}
       emails={{ enabled: emails.data?.enabled ?? null, error: emails.error ?? null }}
+      autoAssign={{ enabled: autoAssign.data?.enabled ?? null, error: autoAssign.error ?? null }}
     />
   )
 }

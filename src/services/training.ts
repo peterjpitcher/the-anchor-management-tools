@@ -24,7 +24,7 @@ import {
   type StaffReminderItem,
   type StaffReminderPerson,
 } from '@/lib/training/reminders'
-import { getTrainingEmailsEnabled } from '@/lib/training/settings'
+import { getTrainingAutoAssignEnabled, getTrainingEmailsEnabled } from '@/lib/training/settings'
 import {
   countsAsDone,
   displayStateFor,
@@ -32,6 +32,7 @@ import {
   isPausedOn,
   pickDisplayAssignment,
   prerequisiteMet,
+  prerequisiteOf,
   sectionStatesFor,
 } from '@/lib/training/states'
 import {
@@ -39,6 +40,7 @@ import {
   effectiveTrainingGroups,
   planAssignmentSync,
   suggestTrainingGroups,
+  summariseAutoAssignChanges,
   summariseSyncActions,
   type SyncAction,
   type SyncAssignment,
@@ -56,6 +58,7 @@ import {
   type AttemptAnswers,
   type AttemptResult,
   type AttemptSummary,
+  type AutoAssignPreview,
   type CourseContent,
   type CourseDetailView,
   type CourseListItem,
@@ -836,6 +839,116 @@ function patchToRow<P extends object>(patch: P, columns: Record<keyof P, string>
   return row
 }
 
+/** What one sync run reads (`loadSyncSnapshot`): every cycle in scope, and the people and courses as sync sees them. */
+interface SyncSnapshot {
+  assignments: TrainingAssignment[]
+  profiles: Map<string, TrainingProfile>
+  people: SyncPerson[]
+  courses: SyncCourse[]
+}
+
+/**
+ * Loads what `planAssignmentSync` reads: in-scope employees (or the one `employeeId`), plus anyone
+ * else still holding an open cycle, their profiles and every cycle, live and retired courses with
+ * their version numbers, and recent rota departments. Null when there is nobody to sync. Read only.
+ */
+async function loadSyncSnapshot(client: AdminClient, today: string, employeeId: string | null): Promise<SyncSnapshot | null> {
+  // 1. Every cycle in scope of this run.
+  const assignments = await loadAllAssignments(client, employeeId ? { employeeId } : {})
+
+  // 2. The people: one person, or everyone in scope plus anyone else still holding an open cycle.
+  let employees: EmployeeRecord[]
+  if (employeeId) {
+    const one = await loadEmployee(client, employeeId)
+    employees = one ? [one] : []
+  } else {
+    employees = await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)
+    const known = new Set(employees.map((employee) => employee.employee_id))
+    const strays = unique(
+      assignments.filter((assignment) => isOpenStatus(assignment.status) && !known.has(assignment.employeeId)).map((a) => a.employeeId)
+    )
+    if (strays.length) employees = [...employees, ...(await loadEmployeesByIds(client, strays))]
+  }
+  if (employees.length === 0) return null
+  const employeeIds = employees.map((employee) => employee.employee_id)
+
+  // 3. Profiles, courses, version numbers and rota.
+  const profiles = await loadProfiles(client, employeeId ? employeeIds : null)
+  const courses = await loadCourses(client, ['live', 'retired'])
+  const versions = await loadPublishedVersionNumbers(client, courses.map((course) => course.id))
+  const rota = await loadRecentRotaDepartments(client, employeeId ? employeeIds : null, today)
+
+  const versionById = new Map(versions.map((version) => [version.id, version]))
+  const syncCourses: SyncCourse[] = courses.map((course) => {
+    const own = versions.filter((version) => version.course_id === course.id)
+    const firstPublish = own.map((version) => version.published_at).sort()[0] ?? null
+    const redo = own
+      .filter((version) => version.redo_required)
+      .sort((a, b) => b.major - a.major || b.minor - a.minor)[0]
+    return {
+      id: course.id,
+      slug: course.slug,
+      kind: course.kind,
+      status: course.status,
+      audienceGroups: course.audienceGroups,
+      audienceAge: course.audienceAge,
+      isEssentials: course.isEssentials,
+      prerequisiteCourseId: course.prerequisiteCourseId,
+      newStarterDueDays: course.newStarterDueDays,
+      existingStaffDueDays: course.existingStaffDueDays,
+      wentLiveOn: firstPublish
+        ? londonDateOf(firstPublish)
+        : course.kind === 'external'
+          ? londonDateOf(course.createdAt)
+          : null,
+      assignAutomatically: courseAssignsAutomatically(course),
+      latestRedoVersion: redo ? { id: redo.id, major: redo.major, minor: redo.minor } : null,
+      refresherMonths: course.refresherMonths,
+      windowDays: course.windowDays,
+    }
+  })
+
+  const byEmployee = new Map<string, TrainingAssignment[]>()
+  for (const assignment of assignments) {
+    const list = byEmployee.get(assignment.employeeId) ?? []
+    list.push(assignment)
+    byEmployee.set(assignment.employeeId, list)
+  }
+  const people: SyncPerson[] = employees.map((employee) => ({
+    employee: {
+      employeeId: employee.employee_id,
+      status: asEmployeeStatus(employee.status),
+      employmentStartDate: employee.employment_start_date,
+      dateOfBirth: employee.date_of_birth,
+      jobTitle: employee.job_title,
+      recentRotaDepartments: rota.get(employee.employee_id) ?? [],
+    },
+    profile: profiles.get(employee.employee_id) ?? null,
+    assignments: (byEmployee.get(employee.employee_id) ?? []).map((assignment): SyncAssignment => {
+      const taken = assignment.versionId ? versionById.get(assignment.versionId) : undefined
+      // Built as a value first so a field the engine does not read yet (startedAt) is passed
+      // without an excess-property error, whichever fields SyncAssignment picks.
+      const synced = {
+        id: assignment.id,
+        courseId: assignment.courseId,
+        cycle: assignment.cycle,
+        status: assignment.status,
+        reason: assignment.reason,
+        dueOn: assignment.dueOn,
+        startedAt: assignment.startedAt,
+        completedOn: assignment.completedOn,
+        expiresOn: assignment.expiresOn,
+        windowOpensOn: assignment.windowOpensOn,
+        versionId: assignment.versionId,
+        versionNumber: taken ? { major: taken.major, minor: taken.minor } : null,
+      }
+      return synced
+    }),
+  }))
+
+  return { assignments, profiles, people, courses: syncCourses }
+}
+
 // ---------------------------------------------------------------------------------------------
 // The service
 // ---------------------------------------------------------------------------------------------
@@ -853,105 +966,23 @@ export class TrainingService {
    *
    * Each action is applied on its own; one that fails does not stop the rest. When any failed,
    * this throws after applying the others, so the daily job counts the failure.
+   *
+   * The `training_auto_assign_enabled` switch is read once, here, unless the caller passes it
+   * (`autoAssign`); unreadable is off. While it is off nothing is created for anyone (see
+   * `planAssignmentSync`); cancelling, ending pauses and releasing a manager's waiting cycle go on.
    */
   static async syncAssignments(opts: SyncOptions = {}): Promise<SyncResult> {
     const client = admin()
     const today = opts.today ?? trainingToday()
     const actor = opts.actor ?? SYSTEM_ACTOR
+    const autoAssign = opts.autoAssign ?? (await getTrainingAutoAssignEnabled(client))
 
-    // 1. Every cycle in scope of this run.
-    const assignments = await loadAllAssignments(client, opts.employeeId ? { employeeId: opts.employeeId } : {})
+    const snapshot = await loadSyncSnapshot(client, today, opts.employeeId ?? null)
+    if (!snapshot) return { created: 0, cancelled: 0, updated: 0 }
+    const { assignments, profiles, people, courses } = snapshot
 
-    // 2. The people: one person, or everyone in scope plus anyone else still holding an open cycle.
-    let employees: EmployeeRecord[]
-    if (opts.employeeId) {
-      const one = await loadEmployee(client, opts.employeeId)
-      employees = one ? [one] : []
-    } else {
-      employees = await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)
-      const known = new Set(employees.map((employee) => employee.employee_id))
-      const strays = unique(
-        assignments.filter((assignment) => isOpenStatus(assignment.status) && !known.has(assignment.employeeId)).map((a) => a.employeeId)
-      )
-      if (strays.length) employees = [...employees, ...(await loadEmployeesByIds(client, strays))]
-    }
-    if (employees.length === 0) return { created: 0, cancelled: 0, updated: 0 }
-    const employeeIds = employees.map((employee) => employee.employee_id)
-
-    // 3. Profiles, courses, version numbers and rota.
-    const profiles = await loadProfiles(client, opts.employeeId ? employeeIds : null)
-    const courses = await loadCourses(client, ['live', 'retired'])
-    const versions = await loadPublishedVersionNumbers(client, courses.map((course) => course.id))
-    const rota = await loadRecentRotaDepartments(client, opts.employeeId ? employeeIds : null, today)
-
-    const versionById = new Map(versions.map((version) => [version.id, version]))
-    const syncCourses: SyncCourse[] = courses.map((course) => {
-      const own = versions.filter((version) => version.course_id === course.id)
-      const firstPublish = own.map((version) => version.published_at).sort()[0] ?? null
-      const redo = own
-        .filter((version) => version.redo_required)
-        .sort((a, b) => b.major - a.major || b.minor - a.minor)[0]
-      return {
-        id: course.id,
-        slug: course.slug,
-        kind: course.kind,
-        status: course.status,
-        audienceGroups: course.audienceGroups,
-        audienceAge: course.audienceAge,
-        isEssentials: course.isEssentials,
-        prerequisiteCourseId: course.prerequisiteCourseId,
-        newStarterDueDays: course.newStarterDueDays,
-        existingStaffDueDays: course.existingStaffDueDays,
-        wentLiveOn: firstPublish
-          ? londonDateOf(firstPublish)
-          : course.kind === 'external'
-            ? londonDateOf(course.createdAt)
-            : null,
-        assignAutomatically: courseAssignsAutomatically(course),
-        latestRedoVersion: redo ? { id: redo.id, major: redo.major, minor: redo.minor } : null,
-      }
-    })
-
-    const byEmployee = new Map<string, TrainingAssignment[]>()
-    for (const assignment of assignments) {
-      const list = byEmployee.get(assignment.employeeId) ?? []
-      list.push(assignment)
-      byEmployee.set(assignment.employeeId, list)
-    }
-    const people: SyncPerson[] = employees.map((employee) => ({
-      employee: {
-        employeeId: employee.employee_id,
-        status: asEmployeeStatus(employee.status),
-        employmentStartDate: employee.employment_start_date,
-        dateOfBirth: employee.date_of_birth,
-        jobTitle: employee.job_title,
-        recentRotaDepartments: rota.get(employee.employee_id) ?? [],
-      },
-      profile: profiles.get(employee.employee_id) ?? null,
-      assignments: (byEmployee.get(employee.employee_id) ?? []).map((assignment): SyncAssignment => {
-        const taken = assignment.versionId ? versionById.get(assignment.versionId) : undefined
-        // Built as a value first so a field the engine does not read yet (startedAt) is passed
-        // without an excess-property error, whichever fields SyncAssignment picks.
-        const synced = {
-          id: assignment.id,
-          courseId: assignment.courseId,
-          cycle: assignment.cycle,
-          status: assignment.status,
-          reason: assignment.reason,
-          dueOn: assignment.dueOn,
-          startedAt: assignment.startedAt,
-          completedOn: assignment.completedOn,
-          expiresOn: assignment.expiresOn,
-          windowOpensOn: assignment.windowOpensOn,
-          versionId: assignment.versionId,
-          versionNumber: taken ? { major: taken.major, minor: taken.minor } : null,
-        }
-        return synced
-      }),
-    }))
-
-    // 4. Plan and apply.
-    const actions = planAssignmentSync({ today, people, courses: syncCourses })
+    // Plan and apply.
+    const actions = planAssignmentSync({ today, people, courses, autoAssign })
     const assignmentById = new Map(assignments.map((assignment) => [assignment.id, assignment]))
     const applied: SyncAction[] = []
     const failures: string[] = []
@@ -979,6 +1010,24 @@ export class TrainingService {
       )
     }
     return result
+  }
+
+  /**
+   * What switching automatic assignment on would give out at the next sync for everyone, worked
+   * out without changing anything: the same snapshot `syncAssignments` reads, planned with the
+   * switch on and with it off, and the difference counted (`summariseAutoAssignChanges`). Read
+   * only: nothing is written and no event is recorded.
+   */
+  static async previewAutoAssign(opts: { today?: string } = {}): Promise<AutoAssignPreview> {
+    const client = admin()
+    const today = opts.today ?? trainingToday()
+    const snapshot = await loadSyncSnapshot(client, today, null)
+    if (!snapshot) return summariseAutoAssignChanges([], [])
+    const { people, courses } = snapshot
+    return summariseAutoAssignChanges(
+      planAssignmentSync({ today, people, courses, autoAssign: true }),
+      planAssignmentSync({ today, people, courses, autoAssign: false })
+    )
   }
 
   /** Applies one planned change. False when the database shows someone else already made it. */
@@ -1212,6 +1261,7 @@ export class TrainingService {
     const today = opts.today ?? trainingToday()
     const employees = await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)
     const courses = (await loadCourses(client, ['live'])).sort(compareCourses)
+    const courseById = new Map(courses.map((course) => [course.id, course]))
     const assignments = await loadAllAssignments(client)
     const profiles = await loadProfiles(client, null)
     const rota = await loadRecentRotaDepartments(client, null, today)
@@ -1237,7 +1287,7 @@ export class TrainingService {
           const { inAudience, applies, dobMissing: missing } = appliesForDisplay(course, person, today)
           if (missing) dobMissing = true
           // A sign-off counts only while the course it depends on is valid (spec 4.1).
-          const prerequisiteValid = prerequisiteMet(course.prerequisiteCourseId, personAssignments, today)
+          const prerequisiteValid = prerequisiteMet(prerequisiteOf(course, courseById), personAssignments, today)
           const state = matrixStateFor({ cycles, inAudience, applies, paused: person.paused, prerequisiteValid, today })
           const shown = pickDisplayAssignment(cycles)
           const completed = latestCompleted(cycles)
@@ -1253,7 +1303,9 @@ export class TrainingService {
             supervisedOnly: (shown ?? completed)?.supervisedOnly ?? false,
           }
           const hasOpen = cycles.some((cycle) => isOpenStatus(cycle.status))
-          if (!person.paused && (applies || hasOpen)) {
+          // Paused and waived people are left out of the completion count (owner decision,
+          // 3 November 2026); insights reads this same count.
+          if (!person.paused && state !== 'waived' && (applies || hasOpen)) {
             const tally = counts.get(course.id)
             if (tally) {
               tally.required += 1
@@ -1483,7 +1535,7 @@ export class TrainingService {
         assignments: cycles,
         applies: true,
         paused,
-        prerequisiteValid: prerequisiteMet(course.prerequisiteCourseId, assignments, today),
+        prerequisiteValid: prerequisiteMet(prerequisiteOf(course, courseById), assignments, today),
         today,
       })
       const item = (assignment: TrainingAssignment, overrides: Partial<MyTrainingItem>): MyTrainingItem => {

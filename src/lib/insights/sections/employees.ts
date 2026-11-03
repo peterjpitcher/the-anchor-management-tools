@@ -102,8 +102,8 @@ export type CourseCompletion = Pick<MatrixCourse, 'id' | 'title' | 'requiredCoun
 export type CourseCompletionReader = (today: string) => Promise<CourseCompletion[]>
 
 /**
- * The matrix's own tally: paused people left out, required where the course applies or an item
- * is open, done with a completion that has not expired. It reads through the training service's
+ * The matrix's own tally: paused and waived people left out, required where the course applies
+ * or an item is open, done with a completion that has not expired. It reads through the training service's
  * own admin client rather than the section's, so the section time limit does not cancel it.
  */
 export const readMatrixCompletion: CourseCompletionReader = async (today) =>

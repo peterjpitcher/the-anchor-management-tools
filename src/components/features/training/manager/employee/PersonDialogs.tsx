@@ -60,7 +60,7 @@ export function GroupsDialog({ open, employeeId, employeeName, current, suggeste
       open={open}
       onClose={close}
       title="Training Groups"
-      description={`Which parts of the pub ${employeeName} works in. Courses for a group are given to everyone in it.`}
+      description={`Which parts of the pub ${employeeName} works in. Courses for a group are given to everyone in it while automatic assignment is on.`}
       footer={
         <>
           <Button type="button" variant="secondary" onClick={close} disabled={pending}>

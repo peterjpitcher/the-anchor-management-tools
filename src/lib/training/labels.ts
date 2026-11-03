@@ -151,6 +151,7 @@ export const TRAINING_PERSON_FLAG_BADGE: Record<TrainingPersonFlag, TrainingBadg
 export const TRAINING_AUDIENCE_AGE_BADGE: Record<TrainingAudienceAge, TrainingBadge> = {
   all: { label: 'Any age', tone: 'neutral' },
   under_18: { label: 'Under 18 only', tone: 'neutral' },
+  over_16: { label: '16 and over only', tone: 'neutral' },
   adult: { label: '18 and over only', tone: 'neutral' },
 }
 

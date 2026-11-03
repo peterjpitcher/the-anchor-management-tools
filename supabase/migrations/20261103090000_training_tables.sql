@@ -166,7 +166,7 @@ CREATE TABLE IF NOT EXISTS public.training_courses (
   kind text NOT NULL CHECK (kind IN ('online', 'practical', 'external')),
   -- Empty means everyone.
   audience_groups text[] NOT NULL DEFAULT '{}' CHECK (audience_groups <@ ARRAY['bar', 'kitchen', 'floor', 'management']::text[]),
-  audience_age text NOT NULL DEFAULT 'all' CHECK (audience_age IN ('all', 'under_18', 'adult')),
+  audience_age text NOT NULL DEFAULT 'all' CHECK (audience_age IN ('all', 'under_18', 'over_16', 'adult')),
   is_essentials boolean NOT NULL DEFAULT false,
   prerequisite_course_id uuid REFERENCES public.training_courses(id) ON DELETE RESTRICT,
   -- Null means no due date for that group of people.
