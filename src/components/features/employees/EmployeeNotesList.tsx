@@ -1,5 +1,5 @@
 import type { EmployeeNoteWithAuthor } from '@/app/actions/employeeDetails'
-import { formatDate } from '@/lib/dateUtils'
+import { formatDateTime } from '@/lib/dateUtils'
 import { Empty, Icon } from '@/ds'
 
 interface EmployeeNotesListProps {
@@ -30,7 +30,7 @@ export default function EmployeeNotesList({ notes }: EmployeeNotesListProps) {
                   <div className="text-xs sm:text-sm text-text-muted">
                     <span className="font-medium text-text">{note.author_name}</span>
                     <span className="block sm:inline sm:ml-2 text-text-muted">
-                      {formatDate(note.created_at)}
+                      {formatDateTime(note.created_at)}
                     </span>
                   </div>
                   <p className="mt-1 sm:mt-0.5 text-xs sm:text-sm text-text whitespace-pre-wrap break-words">

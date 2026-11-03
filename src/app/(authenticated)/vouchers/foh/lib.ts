@@ -46,6 +46,10 @@ export interface FohVoucherLookupItem {
   cancelledReason: string | null
   replacementNumber: string | null
   batchReady: boolean
+  // Set for a percentage voucher, so the floor screen can ask for the discount given.
+  percentOff: number | null
+  // Issued by a return-visit email rather than printed.
+  digital: boolean
 }
 
 export interface FohEventOption {

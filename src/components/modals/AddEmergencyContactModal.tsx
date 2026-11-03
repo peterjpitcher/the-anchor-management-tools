@@ -1,6 +1,7 @@
 'use client';
 
-import { useActionState, useEffect } from 'react';
+import { startTransition, useActionState, useEffect, useRef } from 'react';
+import type { FormEvent } from 'react';
 import { addEmergencyContact } from '@/app/actions/employeeActions';
 import { Alert, Button, Field, Input, Modal, Select, Textarea } from '@/ds';
 
@@ -19,9 +20,14 @@ export default function AddEmergencyContactModal({
 }: AddEmergencyContactModalProps) {
   const [state, formAction, pending] = useActionState(addEmergencyContact, null);
   const formId = `add-emergency-contact-${employeeId}`;
+  // The success result stays in state after it is handled. Without this the effect ran again on
+  // every re-render that handed it new callbacks, refreshing the page in a loop and closing the
+  // modal the moment it was reopened.
+  const handledState = useRef<typeof state>(null);
 
   useEffect(() => {
-    if (state?.type === 'success') {
+    if (state?.type === 'success' && handledState.current !== state) {
+      handledState.current = state;
       onSuccess?.();
       onClose();
     }
@@ -30,6 +36,14 @@ export default function AddEmergencyContactModal({
   if (!isOpen) {
     return null;
   }
+
+  // Submitting through onSubmit rather than a form action keeps what was typed when the server
+  // refuses it: a React 19 form action resets the form after every submit.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   const formFields = [
     { name: 'name', label: 'Full Name', type: 'text', required: true },
@@ -57,7 +71,7 @@ export default function AddEmergencyContactModal({
         </>
       }
     >
-      <form id={formId} action={formAction} className="space-y-4">
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         <input type="hidden" name="employee_id" value={employeeId} />
         {formFields.map((field) => {
           const error = state?.errors?.[field.name]?.join(' ') || undefined
@@ -93,6 +107,8 @@ export default function AddEmergencyContactModal({
             </Field>
           )
         })}
+
+        <p className="text-xs text-text-muted">A primary contact needs a telephone or mobile number.</p>
 
         {state?.type === 'error' && !state.errors && (
           <Alert tone="danger" size="sm">{state.message}</Alert>

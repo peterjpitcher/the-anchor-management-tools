@@ -35,6 +35,7 @@ import { signoffPs } from './blocks/signoff_ps'
 import { steps } from './blocks/steps'
 import { textBlock } from './blocks/text_block'
 import { twoUpCards } from './blocks/two_up_cards'
+import { voucherCard } from './blocks/voucher_card'
 import type { EmailBlockModule } from './blocks/types'
 import { checkHouseStyle } from '../../copy/house-style'
 import { findVenueClosureClaims } from './venueClosureClaims'
@@ -79,6 +80,7 @@ export const BLOCK_REGISTRY: Record<string, EmailBlockModule<any>> = {
   steps: steps,
   text_block: textBlock,
   two_up_cards: twoUpCards,
+  voucher_card: voucherCard,
   whats_on_list: whatsOnList,
   whats_on_media: whatsOnMedia,
 }

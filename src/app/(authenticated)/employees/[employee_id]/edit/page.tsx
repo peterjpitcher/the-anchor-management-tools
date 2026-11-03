@@ -1,5 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import { getEmployeeEditData } from '@/app/actions/employeeDetails'
+import { PageLayout } from '@/ds'
 import EmployeeEditClient from './EmployeeEditClient'
 
 export const dynamic = 'force-dynamic'
@@ -24,12 +25,22 @@ export default async function EditEmployeePage({ params }: EditEmployeePageProps
     redirect('/unauthorized')
   }
 
-  if (result.notFound || !result.data) {
-    notFound()
+  // A failed load is checked before "not found": it carries no data either, so checking data
+  // first showed a 404 for an employee who exists whenever the database read failed.
+  if (result.error) {
+    return (
+      <PageLayout
+        title="Edit Employee"
+        backButton={{ label: 'Back to employee', href: `/employees/${employeeId}` }}
+        containerSize="md"
+        // The cause is logged by getEmployeeEditData; staff see a plain message.
+        error="This employee could not be loaded, so they cannot be edited right now. Please try again."
+      />
+    )
   }
 
-  if (result.error) {
-    throw new Error(result.error)
+  if (result.notFound || !result.data) {
+    notFound()
   }
 
   return (
@@ -39,6 +50,8 @@ export default async function EditEmployeePage({ params }: EditEmployeePageProps
       healthRecord={result.data.healthRecord}
       rightToWork={result.data.rightToWork}
       canViewDocuments={result.data.canViewDocuments}
+      canUploadDocuments={result.data.canUploadDocuments}
+      canDeleteDocuments={result.data.canDeleteDocuments}
     />
   )
 }

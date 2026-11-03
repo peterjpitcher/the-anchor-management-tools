@@ -5,6 +5,7 @@ import EmployeeStatusActions from '@/components/features/employees/EmployeeStatu
 
 const previewMock = vi.hoisted(() => vi.fn())
 const beginMock = vi.hoisted(() => vi.fn())
+const cancelMock = vi.hoisted(() => vi.fn())
 const resendMock = vi.hoisted(() => vi.fn())
 const revokeMock = vi.hoisted(() => vi.fn())
 const refreshMock = vi.hoisted(() => vi.fn())
@@ -21,6 +22,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/app/actions/employeeSeparation', () => ({
   getEmployeeSeparationPreview: previewMock,
   beginEmployeeSeparation: beginMock,
+  cancelEmployeeSeparation: cancelMock,
 }))
 
 vi.mock('@/app/actions/employeeInvite', () => ({
@@ -40,6 +42,7 @@ const EMPLOYEE_ID = '00000000-0000-4000-8000-000000000001'
 const preview = {
   employmentStartDate: '2026-01-01',
   futureLeaveDates: ['2026-10-05'],
+  pendingLeaveDates: [] as string[],
   shifts: [
     {
       id: '00000000-0000-4000-8000-000000000011',
@@ -73,6 +76,7 @@ function renderActions(employmentStartDate = '2026-01-01') {
       status="Active"
       canEdit
       employmentStartDate={employmentStartDate}
+      employmentEndDate={null}
     />,
   )
 }
@@ -140,6 +144,24 @@ describe('EmployeeStatusActions separation review', () => {
     expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Begin Separation' })).toBeEnabled()
   })
 
+  // begin_employee_separation clears their template assignments under both choices, which the
+  // dialog never said: a manager keeping them on for their notice was not told their usual slots
+  // would come out of weeks built from the templates.
+  it('says starting takes them off every rota template, whichever option is chosen', async () => {
+    const user = userEvent.setup()
+    renderActions()
+
+    await user.click(screen.getByRole('button', { name: 'Begin Separation' }))
+    await screen.findByText('Published')
+    const dialog = screen.getByRole('dialog')
+
+    for (const option of [/Work agreed shifts/, /Release all remaining shifts/]) {
+      await user.click(within(dialog).getByRole('radio', { name: option }))
+      expect(within(dialog).getByText(/takes them off every rota template straight away, whichever option you choose/)).toBeInTheDocument()
+      expect(within(dialog).getByText(/Cancelling the separation later does not put them back on the templates/)).toBeInTheDocument()
+    }
+  })
+
   it('blocks an end date which is not after employment started', async () => {
     previewMock.mockResolvedValue({
       success: true,
@@ -158,11 +180,12 @@ describe('EmployeeStatusActions separation review', () => {
   })
 
   it('releases all remaining shifts and refreshes after an email warning', async () => {
+    const warning = 'Separation was started and the rota was updated. We sent the separation email to alex@example.com, but we did not hear back from the email service, so it may have gone. Check with them before sending it again.'
     beginMock.mockResolvedValue({
       success: true,
       retainedShiftCount: 0,
       releasedShiftCount: 2,
-      warning: 'Separation was started, but the email failed.',
+      warning,
     })
     const user = userEvent.setup()
     renderActions()
@@ -182,7 +205,132 @@ describe('EmployeeStatusActions separation review', () => {
         note: undefined,
       })
     })
-    expect(toastMock.warning).toHaveBeenCalledWith('Separation was started, but the email failed.')
+    // Long enough to read what to check before sending it again.
+    expect(toastMock.warning).toHaveBeenCalledWith(warning, { duration: 10000 })
+    expect(toastMock.success).not.toHaveBeenCalled()
+    expect(toastMock.error).not.toHaveBeenCalled()
     expect(refreshMock).toHaveBeenCalledOnce()
+  })
+})
+
+describe('EmployeeStatusActions resend invite', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function renderOnboarding() {
+    return render(
+      <EmployeeStatusActions
+        employeeId={EMPLOYEE_ID}
+        status="Onboarding"
+        canEdit
+        employmentStartDate={null}
+        employmentEndDate={null}
+      />,
+    )
+  }
+
+  // A warning means it may have gone (an email we could not confirm), so it is neither a success
+  // nor a failure to send again.
+  it('shows a warning, not a success or an error, when the invite may have gone', async () => {
+    const message = 'We could not confirm the invite email went. It may have reached them, so check with them before sending it again.'
+    resendMock.mockResolvedValue({ type: 'warning', message })
+    const user = userEvent.setup()
+    renderOnboarding()
+
+    await user.click(screen.getByRole('button', { name: 'Resend Invite' }))
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(message, { duration: 10000 }))
+    expect(toastMock.success).not.toHaveBeenCalled()
+    expect(toastMock.error).not.toHaveBeenCalled()
+    // Nothing sends it again on its own.
+    expect(resendMock).toHaveBeenCalledOnce()
+  })
+
+  // No answer from the server is not proof the email did not go, so it is not reported as a
+  // failure to send again.
+  it('says it cannot tell, rather than that it failed, when the request itself fails', async () => {
+    resendMock.mockRejectedValue(new Error('Failed to fetch'))
+    const user = userEvent.setup()
+    renderOnboarding()
+
+    await user.click(screen.getByRole('button', { name: 'Resend Invite' }))
+
+    await waitFor(() => expect(toastMock.warning).toHaveBeenCalledWith(
+      'We could not tell whether the invite was resent. Check with them before sending it again.',
+      { duration: 10000 },
+    ))
+    expect(toastMock.error).not.toHaveBeenCalled()
+    expect(resendMock).toHaveBeenCalledOnce()
+  })
+
+  it('shows success and error as before', async () => {
+    resendMock.mockResolvedValueOnce({ type: 'success', message: 'Invite resent.' })
+    resendMock.mockResolvedValueOnce({ type: 'error', message: 'Failed to resend invite.' })
+    const user = userEvent.setup()
+    renderOnboarding()
+
+    await user.click(screen.getByRole('button', { name: 'Resend Invite' }))
+    await waitFor(() => expect(toastMock.success).toHaveBeenCalledWith('Invite resent.'))
+
+    await user.click(screen.getByRole('button', { name: 'Resend Invite' }))
+    await waitFor(() => expect(toastMock.error).toHaveBeenCalledWith('Failed to resend invite.'))
+    expect(toastMock.warning).not.toHaveBeenCalled()
+  })
+})
+
+describe('EmployeeStatusActions cancel separation wording', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  function renderOnNotice(separationShiftPolicy?: string | null) {
+    return render(
+      <EmployeeStatusActions
+        employeeId={EMPLOYEE_ID}
+        status="Started Separation"
+        canEdit
+        employmentStartDate="2026-01-01"
+        employmentEndDate="2099-12-05"
+        separationShiftPolicy={separationShiftPolicy}
+      />,
+    )
+  }
+
+  async function openCancel() {
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: 'Cancel Separation' }))
+    return { user, dialog: screen.getByRole('dialog') }
+  }
+
+  it('says the shifts up to the last day are still theirs under work agreed shifts', async () => {
+    renderOnNotice('work_remaining')
+    const { dialog } = await openCancel()
+
+    expect(within(dialog).getByText(/kept their shifts up to the last working day, which are still theirs, but released any later shifts/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/released all their remaining shifts/)).not.toBeInTheDocument()
+  })
+
+  it('says every remaining shift was released when they were all released', async () => {
+    renderOnNotice('release_remaining')
+    const { dialog } = await openCancel()
+
+    expect(within(dialog).getByText(/released all their remaining shifts to open shifts and took them off every rota template/)).toBeInTheDocument()
+  })
+
+  it('claims nothing about which shifts went when it does not know the policy, and shows the server toast', async () => {
+    const message = 'Separation cancelled. They stay on as Active and keep their shifts up to the old last working day. Reassign any later shifts still wanted and add them back to their rota templates.'
+    cancelMock.mockResolvedValue({ success: true, message })
+    renderOnNotice()
+    const { user, dialog } = await openCancel()
+
+    expect(within(dialog).getByText(/Any shifts released when the separation started stay open/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/released all their remaining shifts/)).not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel Separation' }))
+
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith(EMPLOYEE_ID))
+    expect(toastMock.success).toHaveBeenCalledWith(message)
+    expect(refreshMock).toHaveBeenCalled()
   })
 })

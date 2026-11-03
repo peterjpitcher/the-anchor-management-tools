@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Card,
   CardBody,
+  Badge,
   Button,
   Empty,
   Input,
@@ -253,6 +254,10 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
     )
     if (blocked.length > 0) {
       toast.error('Only in-stock or issued vouchers can be reprinted.')
+      return
+    }
+    if (selectedRows.some((row) => row.digital)) {
+      toast.error('Vouchers sent by email have no printed card. Untick them to reprint the rest.')
       return
     }
     const hasIssued = selectedRows.some((row) => row.voucher.status === 'issued')
@@ -523,6 +528,11 @@ export function LedgerClient({ initialFilters, initialResult, types, batches }: 
                     <span className="font-mono font-medium text-text">
                       {row.voucher.voucherNumber}
                     </span>
+                    {row.digital && (
+                      <span className="ml-2 align-middle">
+                        <Badge tone="info">Digital</Badge>
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell>{row.typeTitle}</TableCell>
                   <TableCell>

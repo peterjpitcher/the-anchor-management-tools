@@ -1,15 +1,19 @@
 'use client';
 
 import type { EmployeeFinancialDetails } from '@/types/database';
-import { Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
+import { Alert, Card, CardBody, CardHeader, DescriptionList, LinkButton } from '@/ds';
 
 interface FinancialDetailsTabProps {
   employeeId: string;
   financialDetails: EmployeeFinancialDetails | null;
   canEdit: boolean;
+  /** The details were withheld from this viewer, so there is nothing to show, not nothing held. */
+  redacted?: boolean;
+  /** Why the details could not be loaded. Shown instead of a page of "N/A". */
+  loadError?: string | null;
 }
 
-export default function FinancialDetailsTab({ employeeId, financialDetails, canEdit }: FinancialDetailsTabProps) {
+export default function FinancialDetailsTab({ employeeId, financialDetails, canEdit, redacted, loadError }: FinancialDetailsTabProps) {
   const details = [
     { key: 'ni_number', label: 'NI Number', value: financialDetails?.ni_number },
     { key: 'payee_name', label: 'Account Name(s)', value: financialDetails?.payee_name },
@@ -31,7 +35,15 @@ export default function FinancialDetailsTab({ employeeId, financialDetails, canE
         ) : undefined}
       />
       <CardBody>
-        <DescriptionList items={details} />
+        {redacted ? (
+          <p className="text-sm text-text-muted">You do not have permission to see these details.</p>
+        ) : loadError ? (
+          <Alert tone="danger" title="Could not load financial details">{loadError}</Alert>
+        ) : !financialDetails ? (
+          <p className="text-sm text-text-muted">No financial details have been recorded yet.</p>
+        ) : (
+          <DescriptionList items={details} />
+        )}
       </CardBody>
     </Card>
   );

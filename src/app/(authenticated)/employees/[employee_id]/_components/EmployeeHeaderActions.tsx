@@ -14,6 +14,10 @@ interface EmployeeHeaderActionsProps {
   employeeName: string
   status: string
   employmentStartDate: string | null
+  /** The recorded last working day, which gates Mark as Former. */
+  employmentEndDate: string | null
+  /** separation_shift_policy, so Cancel Separation says which shifts were released. */
+  separationShiftPolicy?: string | null
   canEdit: boolean
   canDelete: boolean
 }
@@ -43,14 +47,30 @@ export function EmployeeHeaderActions({
   employeeName,
   status,
   employmentStartDate,
+  employmentEndDate,
+  separationShiftPolicy = null,
   canEdit,
   canDelete,
 }: EmployeeHeaderActionsProps): React.JSX.Element {
-  const statusActions = useEmployeeStatusActions({ employeeId, status, canEdit, employmentStartDate })
+  const statusActions = useEmployeeStatusActions({
+    employeeId,
+    status,
+    canEdit,
+    employmentStartDate,
+    employmentEndDate,
+    separationShiftPolicy,
+  })
   const deleteAction = useDeleteEmployeeAction({ employeeId, employeeName })
 
-  // An onboarding employee has no details to put in their starter pack or contract yet.
-  const documents: DocumentLink[] = status === 'Onboarding'
+  // Delete is for a record that never got going: an invite that was not taken up. Anyone who has
+  // worked here has shifts, clock history and pay behind them, and leaves through the separation
+  // flow instead (the server refuses the rest).
+  const showDelete = canDelete && status === 'Onboarding'
+
+  // An onboarding employee has no details to put in their starter pack or contract yet. Both PDFs
+  // print personal details (address, date of birth, NI number, pay), so they need employees edit,
+  // the same permission that shows those details on the record.
+  const documents: DocumentLink[] = status === 'Onboarding' || !canEdit
     ? []
     : [
         { key: 'starter-pack', label: 'New Starter PDF', href: `/api/employees/${employeeId}/starter-pack` },
@@ -58,7 +78,7 @@ export function EmployeeHeaderActions({
       ]
 
   const actionCount =
-    documents.length + statusActions.actions.length + (canEdit ? 1 : 0) + (canDelete ? 1 : 0)
+    documents.length + statusActions.actions.length + (canEdit ? 1 : 0) + (showDelete ? 1 : 0)
   const useMenu = actionCount > MAX_HEADER_ACTIONS
 
   const editLink = canEdit ? (
@@ -124,13 +144,13 @@ export function EmployeeHeaderActions({
           </>
         )}
         {editLink}
-        {canDelete && <EmployeeActionButton action={deleteAction.action} />}
+        {showDelete && <EmployeeActionButton action={deleteAction.action} />}
       </div>
 
       {/* Rendered once, outside both the menu and the row, so a dialog opened from a menu item
           outlives the menu closing. DS Modals render on the body. */}
       {statusActions.dialogs}
-      {canDelete && deleteAction.dialog}
+      {showDelete && deleteAction.dialog}
     </>
   )
 }

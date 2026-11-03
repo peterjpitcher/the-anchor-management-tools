@@ -8220,13 +8220,16 @@ export type Database = {
           id: string
           last_attempt_at: string | null
           lease_expires_at: string | null
+          lifecycle_anchor_date: string | null
           max_attempts: number
+          merge_fields: Json | null
           next_attempt_at: string | null
           provider_message_id: string | null
           sent_at: string | null
           skip_reason: string | null
           status: string
           updated_at: string
+          voucher_id: string | null
         }
         Insert: {
           attempt_count?: number
@@ -8242,13 +8245,16 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           lease_expires_at?: string | null
+          lifecycle_anchor_date?: string | null
           max_attempts?: number
+          merge_fields?: Json | null
           next_attempt_at?: string | null
           provider_message_id?: string | null
           sent_at?: string | null
           skip_reason?: string | null
           status?: string
           updated_at?: string
+          voucher_id?: string | null
         }
         Update: {
           attempt_count?: number
@@ -8264,13 +8270,16 @@ export type Database = {
           id?: string
           last_attempt_at?: string | null
           lease_expires_at?: string | null
+          lifecycle_anchor_date?: string | null
           max_attempts?: number
+          merge_fields?: Json | null
           next_attempt_at?: string | null
           provider_message_id?: string | null
           sent_at?: string | null
           skip_reason?: string | null
           status?: string
           updated_at?: string
+          voucher_id?: string | null
         }
         Relationships: [
           {
@@ -8315,6 +8324,13 @@ export type Database = {
             referencedRelation: "email_messages"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "marketing_campaign_recipients_voucher_id_fkey"
+            columns: ["voucher_id"]
+            isOneToOne: false
+            referencedRelation: "vouchers"
+            referencedColumns: ["id"]
+          },
         ]
       }
       marketing_campaigns: {
@@ -8329,20 +8345,26 @@ export type Database = {
           content: Json
           content_hash: string | null
           content_schema_version: number
+          cooldown_days: number | null
           created_at: string
           created_by: string | null
           event_id: string | null
+          holdout_percent: number
           id: string
           ignores_frequency_cap: boolean
+          kind: string
+          last_promoted_on: string | null
           link_map: Json
           locked_at: string | null
           name: string
           paused_at: string | null
           paused_by: string | null
           preheader: string
+          promote_at_local: string | null
           renderer_version: string
           scheduled_by: string | null
           scheduled_for: string | null
+          send_days: number[] | null
           started_at: string | null
           status: string
           subject: string
@@ -8360,20 +8382,26 @@ export type Database = {
           content: Json
           content_hash?: string | null
           content_schema_version?: number
+          cooldown_days?: number | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
+          holdout_percent?: number
           id?: string
           ignores_frequency_cap?: boolean
+          kind?: string
+          last_promoted_on?: string | null
           link_map?: Json
           locked_at?: string | null
           name: string
           paused_at?: string | null
           paused_by?: string | null
           preheader: string
+          promote_at_local?: string | null
           renderer_version?: string
           scheduled_by?: string | null
           scheduled_for?: string | null
+          send_days?: number[] | null
           started_at?: string | null
           status?: string
           subject: string
@@ -8391,20 +8419,26 @@ export type Database = {
           content?: Json
           content_hash?: string | null
           content_schema_version?: number
+          cooldown_days?: number | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
+          holdout_percent?: number
           id?: string
           ignores_frequency_cap?: boolean
+          kind?: string
+          last_promoted_on?: string | null
           link_map?: Json
           locked_at?: string | null
           name?: string
           paused_at?: string | null
           paused_by?: string | null
           preheader?: string
+          promote_at_local?: string | null
           renderer_version?: string
           scheduled_by?: string | null
           scheduled_for?: string | null
+          send_days?: number[] | null
           started_at?: string | null
           status?: string
           subject?: string
@@ -20500,7 +20534,9 @@ export type Database = {
           created_at: string
           created_by: string | null
           created_by_name: string
+          digital: boolean
           id: string
+          marketing_campaign_id: string | null
           note: string | null
           pdf_bytes: number | null
           pdf_pages: number | null
@@ -20517,7 +20553,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_name: string
+          digital?: boolean
           id?: string
+          marketing_campaign_id?: string | null
           note?: string | null
           pdf_bytes?: number | null
           pdf_pages?: number | null
@@ -20534,7 +20572,9 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           created_by_name?: string
+          digital?: boolean
           id?: string
+          marketing_campaign_id?: string | null
           note?: string | null
           pdf_bytes?: number | null
           pdf_pages?: number | null
@@ -20548,6 +20588,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "voucher_batches_marketing_campaign_id_fkey"
+            columns: ["marketing_campaign_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_campaigns"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "voucher_batches_terms_version_fkey"
             columns: ["terms_version"]
@@ -20700,10 +20747,13 @@ export type Database = {
           copy: Json
           cover_title: string
           created_at: string
+          digital_only: boolean
+          discount_kind: string
           display_title: string
           entitlement_html: string
           hero: Json
           id: string
+          percent_off: number | null
           requires_booking: boolean
           sort_order: number
           updated_at: string
@@ -20715,10 +20765,13 @@ export type Database = {
           copy: Json
           cover_title: string
           created_at?: string
+          digital_only?: boolean
+          discount_kind?: string
           display_title: string
           entitlement_html: string
           hero: Json
           id: string
+          percent_off?: number | null
           requires_booking: boolean
           sort_order: number
           updated_at?: string
@@ -20730,10 +20783,13 @@ export type Database = {
           copy?: Json
           cover_title?: string
           created_at?: string
+          digital_only?: boolean
+          discount_kind?: string
           display_title?: string
           entitlement_html?: string
           hero?: Json
           id?: string
+          percent_off?: number | null
           requires_booking?: boolean
           sort_order?: number
           updated_at?: string
@@ -20756,10 +20812,12 @@ export type Database = {
           issued_by: string | null
           issued_by_name: string | null
           issued_by_user_id: string | null
+          marketing_recipient_id: string | null
           redeemed_at: string | null
           redeemed_by: string | null
           redeemed_by_name: string | null
           redeemed_by_user_id: string | null
+          redeemed_value_pence: number | null
           replaced_by_id: string | null
           replaces_id: string | null
           status: string
@@ -20785,10 +20843,12 @@ export type Database = {
           issued_by?: string | null
           issued_by_name?: string | null
           issued_by_user_id?: string | null
+          marketing_recipient_id?: string | null
           redeemed_at?: string | null
           redeemed_by?: string | null
           redeemed_by_name?: string | null
           redeemed_by_user_id?: string | null
+          redeemed_value_pence?: number | null
           replaced_by_id?: string | null
           replaces_id?: string | null
           status: string
@@ -20814,10 +20874,12 @@ export type Database = {
           issued_by?: string | null
           issued_by_name?: string | null
           issued_by_user_id?: string | null
+          marketing_recipient_id?: string | null
           redeemed_at?: string | null
           redeemed_by?: string | null
           redeemed_by_name?: string | null
           redeemed_by_user_id?: string | null
+          redeemed_value_pence?: number | null
           replaced_by_id?: string | null
           replaces_id?: string | null
           status?: string
@@ -20871,6 +20933,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["employee_id"]
+          },
+          {
+            foreignKeyName: "vouchers_marketing_recipient_id_fkey"
+            columns: ["marketing_recipient_id"]
+            isOneToOne: true
+            referencedRelation: "marketing_campaign_recipients"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "vouchers_redeemed_by_fkey"
@@ -22436,13 +22505,16 @@ export type Database = {
           id: string
           last_attempt_at: string | null
           lease_expires_at: string | null
+          lifecycle_anchor_date: string | null
           max_attempts: number
+          merge_fields: Json | null
           next_attempt_at: string | null
           provider_message_id: string | null
           sent_at: string | null
           skip_reason: string | null
           status: string
           updated_at: string
+          voucher_id: string | null
         }[]
         SetofOptions: {
           from: "*"
@@ -23538,6 +23610,10 @@ export type Database = {
           total_this_month: number
         }[]
       }
+      get_lifecycle_campaign_stats: {
+        Args: { p_campaign_id: string }
+        Returns: Json
+      }
       get_menu_outstanding_count: { Args: never; Returns: number }
       get_message_template: {
         Args: { p_event_id: string; p_template_type: string }
@@ -23740,6 +23816,19 @@ export type Database = {
         }[]
       }
       get_table_booking_settings: { Args: never; Returns: Json }
+      get_table_return_visit_audience: {
+        Args: { p_filter: Json; p_london_today?: string }
+        Returns: {
+          anchor_date: string
+          anchor_was_no_show: boolean
+          anchor_was_sunday: boolean
+          customer_id: string
+          email: string
+          first_name: string
+          last_party_size: number
+          visit_count: number
+        }[]
+      }
       get_user_permissions: {
         Args: { p_user_id: string }
         Returns: {
@@ -23819,6 +23908,10 @@ export type Database = {
           p_window_start: string
         }
         Returns: boolean
+      }
+      issue_lifecycle_voucher: {
+        Args: { p_london_today?: string; p_recipient_id: string }
+        Returns: Json
       }
       issue_private_booking_charge_batch: {
         Args: {
@@ -24234,7 +24327,7 @@ export type Database = {
         }[]
       }
       promote_due_marketing_campaigns: {
-        Args: never
+        Args: { p_include_lifecycle?: boolean }
         Returns: {
           promoted_campaign_id: string
           promoted_recipients: number
@@ -25232,6 +25325,7 @@ export type Database = {
           p_employee_name: string
           p_idempotency_key: string
           p_london_today: string
+          p_redeemed_value_pence?: number
           p_source: string
           p_transaction_ref: string
           p_user_id: string

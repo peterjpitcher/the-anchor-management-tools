@@ -9,6 +9,8 @@
  *    additions file wins, because that is what "corrected" means: the September 2026
  *    redraw of media_row and two_up_cards replaces the original, and leaving the older
  *    slice on disk would let a stale fixture keep a fixed block passing.
+ *    anchor-email-blocks-voucher.html (November 2026) adds the return-visit voucher card
+ *    in five drawn variants, with the same markers, and is merged in the same way.
  * 2. anchor-christmas-and-lunch.html has no markers. Its slices are hand-chosen line
  *    ranges (CAMPAIGN_SLICES below). A hand-chosen boundary can be wrong, so the script
  *    proves the ranges tile the file exactly: every byte of the source belongs to exactly
@@ -30,6 +32,7 @@ const OUT_DIR = join(REPO_ROOT, 'src', 'lib', 'email', 'marketing', 'blocks', '_
 const CAMPAIGN_FILE = join(HANDOVER_DIR, 'anchor-christmas-and-lunch.html')
 const BLOCKS_FILE = join(HANDOVER_DIR, 'anchor-email-blocks.html')
 const ADDITIONS_FILE = join(HANDOVER_DIR, 'anchor-email-blocks-additions.html')
+const VOUCHER_FILE = join(HANDOVER_DIR, 'anchor-email-blocks-voucher.html')
 
 /**
  * Inclusive 1-indexed line ranges covering anchor-christmas-and-lunch.html.
@@ -179,7 +182,7 @@ function splitPullQuote(slice: ExtractedSlice): ExtractedSlice[] {
 }
 
 function extractMarkedBlocks(source: string): ExtractedSlice[] {
-  const pattern = /<!-- BLOCK: ([a-z_]+) -->([\s\S]*?)<!-- \/BLOCK: \1 -->/g
+  const pattern = /<!-- BLOCK: ([a-z0-9_]+) -->([\s\S]*?)<!-- \/BLOCK: \1 -->/g
   const slices: ExtractedSlice[] = []
   let match: RegExpExecArray | null
 
@@ -255,9 +258,13 @@ function main(): void {
   const campaignSource = readFileSync(CAMPAIGN_FILE, 'utf8')
   const blocksSource = readFileSync(BLOCKS_FILE, 'utf8')
   const additionsSource = readFileSync(ADDITIONS_FILE, 'utf8')
+  const voucherSource = readFileSync(VOUCHER_FILE, 'utf8')
 
   const campaignSlices = extractCampaign(campaignSource)
-  const markedSlices = mergeLibrary(extractMarkedBlocks(blocksSource), extractMarkedBlocks(additionsSource))
+  const markedSlices = mergeLibrary(
+    mergeLibrary(extractMarkedBlocks(blocksSource), extractMarkedBlocks(additionsSource)),
+    extractMarkedBlocks(voucherSource),
+  )
 
   mkdirSync(OUT_DIR, { recursive: true })
 
@@ -268,6 +275,10 @@ function main(): void {
       additions: {
         file: 'docs/design/email-handover/anchor-email-blocks-additions.html',
         sha256: sha256(additionsSource),
+      },
+      voucher: {
+        file: 'docs/design/email-handover/anchor-email-blocks-voucher.html',
+        sha256: sha256(voucherSource),
       },
     },
     campaign: campaignSlices.map(({ name, startOffset, endOffset, sha256: hash }) => ({
@@ -295,7 +306,7 @@ function main(): void {
   writeFileSync(join(OUT_DIR, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n', 'utf8')
 
   console.warn(`Campaign slices: ${campaignSlices.length} (tiling proof passed)`)
-  console.warn(`Library blocks:  ${markedSlices.length} (main library plus September 2026 additions)`)
+  console.warn(`Library blocks:  ${markedSlices.length} (main library, September 2026 additions, November 2026 voucher card)`)
   console.warn(`Written to ${OUT_DIR}`)
 }
 

@@ -1,8 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react';
-import { useActionState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Alert,
@@ -24,6 +22,7 @@ import {
   toast,
 } from '@/ds';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { employmentStatusLabel } from '@/app/(authenticated)/employees/_shared/status-ui';
 import type { ActionFormState } from '@/types/actions';
 import type { Employee } from '@/types/database';
 
@@ -34,7 +33,6 @@ interface EmployeeFormProps {
   /** Where Cancel goes. Without it the form has no Cancel button. */
   cancelHref?: string;
   submitButtonText?: string;
-  draftMode?: boolean;
 }
 
 type FormField = {
@@ -51,15 +49,29 @@ type FormField = {
   wide?: boolean;
   /** A checkbox's own label, beside the box; `label` heads the group. */
   checkboxLabel?: string;
+  /** Shown and sent, but not editable here (it is changed by an action on the employee page). */
+  readOnly?: boolean;
+  /**
+   * Read-only fields only: the words shown in place of the stored value (On Notice for Started
+   * Separation). The input then has no name, and the stored value goes in a hidden input instead.
+   */
+  displayValue?: string;
 }
 
-function SubmitButton({ text = 'Save Personal Details' }: { text?: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" loading={pending} variant="primary">
-      {text}
-    </Button>
-  );
+/**
+ * What the edit form says about a status it will not change. Only Onboarding to Active is a
+ * plain edit; every other move goes through the separation actions on the employee's page, which
+ * settle their last day, shifts and access.
+ */
+function statusLockedHint(status: Employee['status']): string {
+  switch (status) {
+    case 'Started Separation':
+      return 'This employee is on notice. Use Cancel Separation or Mark as Former on their page to change it.';
+    case 'Former':
+      return 'Former employees cannot be changed back here.';
+    default:
+      return 'To start a separation, use Begin Separation on the employee page.';
+  }
 }
 
 export default function EmployeeForm({
@@ -68,38 +80,20 @@ export default function EmployeeForm({
   initialFormState,
   cancelHref,
   submitButtonText = 'Save Personal Details',
-  draftMode = false,
 }: EmployeeFormProps) {
   const router = useRouter();
-  const [state, dispatch] = useActionState(formAction, initialFormState);
+  const [state, dispatch, pending] = useActionState(formAction, initialFormState);
   const [currentStep, setCurrentStep] = useState(0);
   // Phones fill the form in one step at a time; the switch matches the app shell's.
   const isMobile = useMediaQuery(SHELL_MEDIA_QUERY);
+  const handledState = useRef<ActionFormState | null>(initialFormState);
 
-  useEffect(() => {
-    if (state?.type === 'success' && !draftMode) {
-      // Only redirect if we're editing an existing employee
-      // For new employees, the parent component handles navigation
-      if (employee) {
-        toast.success(state.message || 'Employee updated successfully.');
-        router.push(`/employees/${employee.employee_id}`);
-      }
-    }
-    // No changes needed for error states here as they are handled by displaying messages in the form
-  }, [state, router, employee, draftMode]);
-
-  const statusOptions = (() => {
-    switch (employee?.status) {
-      case 'Onboarding':
-        return ['Onboarding', 'Active'];
-      case 'Started Separation':
-        return ['Active', 'Started Separation'];
-      case 'Former':
-        return ['Former'];
-      default:
-        return ['Active', 'Started Separation'];
-    }
-  })();
+  // Status is a choice only for a new starter (Onboarding or Active). Otherwise it is shown and
+  // sent unchanged: the separation flow owns every other move.
+  const statusEditable = !employee || employee.status === 'Onboarding';
+  const statusOptions = ['Onboarding', 'Active'];
+  // While separating, the last day is set by the separation and changed only through it.
+  const endDateLocked = employee?.status === 'Started Separation';
 
   const formSteps: { title: string; fields: FormField[] }[] = [
     {
@@ -124,9 +118,31 @@ export default function EmployeeForm({
       title: 'Employment Details',
       fields: [
         { name: 'job_title', label: 'Job Title', type: 'text', required: true, defaultValue: employee?.job_title },
-        { name: 'status', label: 'Status', type: 'select', required: true, options: statusOptions, defaultValue: employee?.status || 'Active' },
+        statusEditable
+          ? { name: 'status', label: 'Status', type: 'select', required: true, options: statusOptions, defaultValue: employee?.status || 'Active' }
+          : {
+              name: 'status',
+              label: 'Status',
+              type: 'text',
+              readOnly: true,
+              defaultValue: employee?.status,
+              // The words the employee page uses ("On Notice"); the stored value is still what is sent.
+              displayValue: employmentStatusLabel(employee?.status ?? 'Active'),
+              hint: statusLockedHint(employee?.status ?? 'Active'),
+            },
         { name: 'employment_start_date', label: 'Employment Start Date', type: 'date', required: true, defaultValue: employee?.employment_start_date?.split('T')[0] },
-        { name: 'employment_end_date', label: 'Employment End Date', type: 'date', defaultValue: employee?.employment_end_date?.split('T')[0] },
+        {
+          name: 'employment_end_date',
+          label: 'Employment End Date',
+          type: 'date',
+          defaultValue: employee?.employment_end_date?.split('T')[0],
+          ...(endDateLocked
+            ? {
+                readOnly: true,
+                hint: 'Set by the separation. To change it, use Cancel Separation on the employee page, then Begin Separation again with the new date.',
+              }
+            : {}),
+        },
         { name: 'first_shift_date', label: 'First Shift Date', type: 'date', defaultValue: employee?.first_shift_date?.split('T')[0] },
         ...(employee ? [{ name: 'timeclock_pin', label: 'Timeclock PIN', type: 'password' as const, defaultValue: '' }] : []),
       ]
@@ -154,6 +170,48 @@ export default function EmployeeForm({
   const isFirstStep = currentStep === 0;
 
   const fieldError = (name: string): string | undefined => state?.errors?.[name]?.join(' ') || undefined;
+
+  // Field errors from the server, in form order, for the summary above the buttons. On a phone
+  // the other steps are hidden, so without the summary (and the jump below) a refused save
+  // looked like nothing had happened.
+  const errorEntries = state?.type === 'error' && state.errors
+    ? Object.entries(state.errors).filter(([, messages]) => messages && messages.length > 0)
+    : [];
+  const fieldLabel = (name: string): string =>
+    formSteps.flatMap((step) => step.fields).find((field) => field.name === name)?.label ?? 'Form';
+  const firstErrorStep = formSteps.findIndex((step) =>
+    step.fields.some((field) => Boolean(state?.errors?.[field.name]?.length))
+  );
+
+  useEffect(() => {
+    if (!state || handledState.current === state) return;
+    handledState.current = state;
+
+    if (state.type === 'success') {
+      // Only an existing employee is sent to their page; a new one is routed by the caller.
+      if (employee) {
+        if (state.warning) {
+          toast.warning(state.message);
+        } else {
+          toast.success(state.message || 'Employee updated successfully.');
+        }
+        router.push(`/employees/${employee.employee_id}`);
+      }
+      return;
+    }
+
+    if (isMobile && firstErrorStep >= 0) {
+      setCurrentStep(firstErrorStep);
+    }
+  }, [state, router, employee, isMobile, firstErrorStep]);
+
+  // onSubmit rather than a form action: a React 19 form action resets the form after every
+  // submit, so a refused save wiped what had been typed.
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => dispatch(formData));
+  };
 
   const renderControl = (field: FormField) => {
     const error = fieldError(field.name);
@@ -191,24 +249,36 @@ export default function EmployeeForm({
         />
       );
     }
+    const showsLabel = field.readOnly && field.displayValue !== undefined;
     return (
       <Input
         type={field.type}
-        name={field.name}
+        name={showsLabel ? undefined : field.name}
         id={field.name}
-        defaultValue={field.defaultValue || ''}
+        defaultValue={(showsLabel ? field.displayValue : field.defaultValue) || ''}
         required={field.required}
+        readOnly={field.readOnly}
         error={error}
       />
     );
   };
 
   return (
-    <form action={dispatch} className="space-y-6">
+    // Phones skip the browser's own checks: it cannot point at a field on a hidden step, so it
+    // refused to submit without saying why. The server checks every field and the form jumps to
+    // the first step with an error.
+    <form onSubmit={handleSubmit} noValidate={isMobile} className="space-y-6">
       <input type="hidden" name="employee_id" value={employee?.employee_id || ''} />
       {/* An unticked checkbox sends nothing, so the hidden "false" goes first and a ticked box
           overrides it. It sits outside the field so it does not steal the label. */}
       <input type="hidden" name="keyholder_status" value="false" />
+      {/* The read-only status shows the words staff use (On Notice), so the stored value it
+          stands for is sent from here. updateEmployee reads status from the form. */}
+      {formSteps.flatMap((step) => step.fields)
+        .filter((field) => field.readOnly && field.displayValue !== undefined)
+        .map((field) => (
+          <input key={field.name} type="hidden" name={field.name} value={field.defaultValue ?? ''} />
+        ))}
 
       {/* Progress Indicator */}
       {isMobile && (
@@ -276,6 +346,18 @@ export default function EmployeeForm({
         <Alert tone="danger">{state.message}</Alert>
       )}
 
+      {errorEntries.length > 0 && (
+        <Alert tone="danger" title="Please check these fields">
+          <ul className="list-disc space-y-1 pl-5">
+            {errorEntries.map(([name, messages]) => (
+              <li key={name}>
+                {fieldLabel(name)}: {messages?.join(' ')}
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
       {/* Phones step through the form; Save appears on the last step. */}
       {isMobile && (
         <div className="grid grid-cols-2 gap-3">
@@ -307,7 +389,11 @@ export default function EmployeeForm({
             Cancel
           </LinkButton>
         )}
-        {(!isMobile || isLastStep) && <SubmitButton text={submitButtonText} />}
+        {(!isMobile || isLastStep) && (
+          <Button type="submit" loading={pending} variant="primary">
+            {submitButtonText}
+          </Button>
+        )}
       </FormFooter>
     </form>
   );

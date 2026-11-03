@@ -6,6 +6,7 @@ import {
   RELIABILITY_LEADERBOARD_LOAD_ERROR,
   type TeamReliabilityRow,
 } from '@/services/employee-reliability';
+import { hasNoShiftSignals, type ReliabilityScoreBreakdown } from '@/lib/employee-reliability-scoring';
 import {
   Alert,
   Badge,
@@ -23,8 +24,14 @@ import {
   TableRow,
 } from '@/ds';
 import { EMPLOYEES_NAV } from '../_shared/nav';
-import { RELIABILITY_LOW_SAMPLE_TONE, reliabilityScoreTone } from '../_shared/status-ui';
-import { normalizeReliabilitySort } from './_shared/sort';
+import {
+  employmentStatusLabel,
+  RELIABILITY_LOW_SAMPLE_TONE,
+  RELIABILITY_NO_SHIFTS_LABEL,
+  RELIABILITY_NO_SHIFTS_TONE,
+  reliabilityScoreTone,
+} from '../_shared/status-ui';
+import { normalizeReliabilitySort, reliabilitySortHref } from './_shared/sort';
 import { ReliabilitySortHead, ReliabilitySortSelect } from './_components/ReliabilitySortControls';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +42,22 @@ type PageProps = {
 
 function formatPercent(value: number | null): string {
   return value === null ? '--' : `${value}%`;
+}
+
+/**
+ * The score badge, or a neutral "No shifts yet" when there is nothing to score. With no shifts the
+ * formula still gives 45, which used to show in red as if the person were unreliable.
+ */
+function ScoreBadge({ score }: { score: ReliabilityScoreBreakdown }): React.JSX.Element {
+  if (hasNoShiftSignals(score)) {
+    return <Badge tone={RELIABILITY_NO_SHIFTS_TONE}>{RELIABILITY_NO_SHIFTS_LABEL}</Badge>;
+  }
+  return <Badge tone={reliabilityScoreTone(score.score)}>{score.score}</Badge>;
+}
+
+/** Low sample only means something when there is a sample; no shifts at all says so on its own. */
+function showsLowSample(score: ReliabilityScoreBreakdown): boolean {
+  return score.isLowSample && !hasNoShiftSignals(score);
 }
 
 export default async function EmployeeReliabilityLeaderboardPage({ searchParams }: PageProps) {
@@ -52,9 +75,10 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
   };
 
   // The Include Former filter sits directly above the leaderboard it filters, never in the header.
+  // It keeps the sort order: the link used to drop it, so the list jumped back to Score.
   const scopeFilter = (
     <LinkButton
-      href={includeFormer ? '/employees/reliability' : '/employees/reliability?includeFormer=1'}
+      href={reliabilitySortHref(sortBy, !includeFormer)}
       variant="secondary"
       size="sm"
     >
@@ -81,12 +105,16 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
     );
   }
   const rankedCount = rows.filter(row => !row.recent.isLowSample).length;
+  // Someone with no shifts at all is shown as "No shifts yet", not "Low sample", so the two are
+  // counted apart and the stats match the badges on the rows.
+  const noShiftsCount = rows.filter(row => hasNoShiftSignals(row.recent)).length;
 
   return (
     <PageLayout {...layoutProps}>
-      <StatGrid columns={4}>
+      <StatGrid columns={5}>
         <Stat label="Ranked" value={rankedCount} />
-        <Stat label="Low sample" value={rows.length - rankedCount} />
+        <Stat label="Low sample" value={rows.length - rankedCount - noShiftsCount} />
+        <Stat label={RELIABILITY_NO_SHIFTS_LABEL} value={noShiftsCount} />
         <Stat
           label="Couldn't Work"
           value={rows.reduce((sum, row) => sum + row.recent.counts.couldntWork, 0)}
@@ -132,14 +160,14 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
                       <Link href={`/employees/${row.employeeId}`} className="font-semibold text-primary hover:underline">
                         {row.employeeName}
                       </Link>
-                      <div className="text-xs text-text-muted">{row.jobTitle || 'No role'} · {row.status}</div>
+                      <div className="text-xs text-text-muted">{row.jobTitle || 'No role'} · {employmentStatusLabel(row.status)}</div>
                     </div>
                     <div className="flex flex-shrink-0 items-center gap-1.5">
                       <span className="text-xs text-text-muted">#{row.rank ?? '--'}</span>
-                      <Badge tone={reliabilityScoreTone(row.recent.score)}>{row.recent.score}</Badge>
+                      <ScoreBadge score={row.recent} />
                     </div>
                   </div>
-                  {row.recent.isLowSample && (
+                  {showsLowSample(row.recent) && (
                     <div className="mt-1.5"><Badge tone={RELIABILITY_LOW_SAMPLE_TONE}>Low sample</Badge></div>
                   )}
                   <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
@@ -193,13 +221,13 @@ export default async function EmployeeReliabilityLeaderboardPage({ searchParams 
                         {row.employeeName}
                       </Link>
                       <div className="text-xs text-text-muted">
-                        {row.jobTitle || 'No role'} · {row.status}
+                        {row.jobTitle || 'No role'} · {employmentStatusLabel(row.status)}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        <Badge tone={reliabilityScoreTone(row.recent.score)}>{row.recent.score}</Badge>
-                        {row.recent.isLowSample && <Badge tone={RELIABILITY_LOW_SAMPLE_TONE}>Low sample</Badge>}
+                        <ScoreBadge score={row.recent} />
+                        {showsLowSample(row.recent) && <Badge tone={RELIABILITY_LOW_SAMPLE_TONE}>Low sample</Badge>}
                       </div>
                     </TableCell>
                     <TableCell>{formatPercent(row.recent.rates.manualAcceptRate)}</TableCell>

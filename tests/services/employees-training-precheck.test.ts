@@ -6,13 +6,12 @@ const mocks = vi.hoisted(() => ({ client: null as unknown }))
 
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => mocks.client }))
 
-import { EmployeeService } from '@/services/employees'
-import { EmployeeDeleteRefusedError } from '@/lib/employees/delete-refused-error'
+import { EmployeeService, EmployeeServiceError } from '@/services/employees'
 
 const SAM = '11111111-1111-4111-8111-111111111111'
 const OTHER = '22222222-2222-4222-8222-222222222222'
 
-const HAS_RECORDS = 'This person has training records. Mark them as left instead.'
+const HAS_RECORDS = 'This starter already has training records, which are kept, so they cannot be deleted. Nothing was changed.'
 const COULD_NOT_CHECK = 'Could not check for training records, so the employee was not deleted. Please try again.'
 
 /** The three tables that refer to an employee with ON DELETE RESTRICT, each with one row for `employeeId`. */
@@ -26,7 +25,7 @@ let db: FakeDb
 
 beforeEach(() => {
   db = createFakeDb({
-    employees: [{ id: 'e1', employee_id: SAM, first_name: 'Sam', last_name: 'Example', status: 'Former', date_of_birth: null }],
+    employees: [{ id: 'e1', employee_id: SAM, first_name: 'Sam', last_name: 'Example', status: 'Onboarding', date_of_birth: null }],
   })
   mocks.client = db.client
 })
@@ -70,26 +69,25 @@ describe('deleteEmployee training pre-check', () => {
     expect(db.writes).toEqual([])
   })
 
-  // The deleteEmployee action shows the message of an EmployeeDeleteRefusedError as it is and
-  // turns any other error into 'Database error', so both refusals must use that class and a
-  // failure past the pre-check must not.
-  it('marks both refusals as EmployeeDeleteRefusedError, so the manager sees the wording', async () => {
+  // The deleteEmployee action shows the message of an EmployeeServiceError as it is and turns
+  // any other error into its generic message, so both refusals must use that class.
+  it('marks both refusals as EmployeeServiceError, so the manager sees the wording', async () => {
     db.rows('training_assignments').push(TRAINING_ROWS.training_assignments(SAM))
     const hasRecords = await EmployeeService.deleteEmployee(SAM).catch((error: unknown) => error)
-    expect(hasRecords).toBeInstanceOf(EmployeeDeleteRefusedError)
+    expect(hasRecords).toBeInstanceOf(EmployeeServiceError)
     expect((hasRecords as Error).message).toBe(HAS_RECORDS)
 
     db.rows('training_assignments').length = 0
     db.failNext({ table: 'training_profiles', operation: 'select', message: 'timeout', times: 1 })
     const couldNotCheck = await EmployeeService.deleteEmployee(SAM).catch((error: unknown) => error)
-    expect(couldNotCheck).toBeInstanceOf(EmployeeDeleteRefusedError)
+    expect(couldNotCheck).toBeInstanceOf(EmployeeServiceError)
     expect((couldNotCheck as Error).message).toBe(COULD_NOT_CHECK)
   })
 
-  it('does not mark a failure after the pre-check as a refusal', async () => {
+  it('does not mark an ordinary failure as a refusal', async () => {
     const missing = await EmployeeService.deleteEmployee(OTHER).catch((error: unknown) => error)
     expect(missing).toBeInstanceOf(Error)
-    expect(missing).not.toBeInstanceOf(EmployeeDeleteRefusedError)
+    expect(missing).not.toBeInstanceOf(EmployeeServiceError)
   })
 
   it('looks only at that person', async () => {

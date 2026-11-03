@@ -37,6 +37,8 @@ describe('voucher row mappers', () => {
       cancelled_reason: null,
       replaced_by_id: null,
       replaces_id: null,
+      marketing_recipient_id: 'mcr-1',
+      redeemed_value_pence: 450,
       created_at: '2026-06-30T10:00:00.000Z',
       updated_at: '2026-07-20T20:00:00.000Z',
     }
@@ -68,6 +70,8 @@ describe('voucher row mappers', () => {
       cancelledReason: null,
       replacedById: null,
       replacesId: null,
+      marketingRecipientId: 'mcr-1',
+      redeemedValuePence: 450,
       createdAt: '2026-06-30T10:00:00.000Z',
       updatedAt: '2026-07-20T20:00:00.000Z',
     })
@@ -123,10 +127,34 @@ describe('voucher row mappers', () => {
         copy: null,
         sort_order: 3,
         active: true,
+        discount_kind: 'fixed',
+        percent_off: null,
+        digital_only: false,
         created_at: '2026-07-30T00:00:00.000Z',
         updated_at: '2026-07-30T00:00:00.000Z',
       }).displayTitle
     ).toBe('£10 FOOD VOUCHER')
+
+    expect(
+      mapVoucherTypeRow({
+        id: 'return-10',
+        display_title: '10% OFF YOUR FOOD',
+        cover_title: '10% off your food',
+        value_pence: 600,
+        requires_booking: true,
+        alcohol: false,
+        entitlement_html: '<p>10% off food</p>',
+        hero: null,
+        copy: null,
+        sort_order: 10,
+        active: true,
+        discount_kind: 'percent',
+        percent_off: 10,
+        digital_only: true,
+        created_at: '2026-11-02T00:00:00.000Z',
+        updated_at: '2026-11-02T00:00:00.000Z',
+      })
+    ).toMatchObject({ discountKind: 'percent', percentOff: 10, digitalOnly: true })
 
     expect(
       mapTermsVersionRow({
@@ -154,6 +182,8 @@ describe('voucher row mappers', () => {
         pdf_pages: 80,
         render_attempts: 1,
         render_error: null,
+        digital: false,
+        marketing_campaign_id: null,
         updated_at: '2026-07-30T00:05:00.000Z',
       }).pdfStatus
     ).toBe('ready')

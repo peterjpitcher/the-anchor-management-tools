@@ -17,6 +17,7 @@ import {
 } from '@/lib/leave/working-days';
 import type { EmployeeLeaveDay } from '@/app/actions/leave';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
+import { leaveTypeLabel, ONBOARDING_LEAVE_ORIGIN_LABEL } from '@/lib/employees/leave-type-labels';
 
 interface EmployeeHolidaysTabProps {
   employeeId: string;
@@ -32,6 +33,12 @@ interface EmployeeHolidaysTabProps {
   rotaSettings: Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay' | 'defaultHolidayDays'>;
   /** Why the leave or the allowance could not be loaded. The tab then says so. */
   loadError?: string | null;
+  /**
+   * The starter's onboarding answer to "do you have time off booked?": 'none' or 'has_dates',
+   * with when they answered. A "nothing booked" answer leaves no leave rows behind, so without
+   * this the tab cannot tell "said nothing booked" from "never asked".
+   */
+  onboardingTimeOff?: { answer: string; answeredAt: string } | null;
 }
 
 function formatDate(iso: string) {
@@ -50,6 +57,7 @@ export default function EmployeeHolidaysTab({
   paySettings,
   rotaSettings,
   loadError,
+  onboardingTimeOff,
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
@@ -86,6 +94,19 @@ export default function EmployeeHolidaysTab({
 
   const progressPct = allowance > 0 ? Math.min(100, (approvedDays / allowance) * 100) : 0;
   const overAllowance = allowance > 0 && approvedDays >= allowance;
+  const daysLabel = (count: number) => `${count} ${count === 1 ? 'day' : 'days'}`;
+  // Exactly at the allowance is "used in full", not "0 days over allowance".
+  const remainingDays = allowance - approvedDays;
+  const allowanceSummary = remainingDays > 0
+    ? `${daysLabel(remainingDays)} remaining`
+    : remainingDays === 0
+      ? 'Allowance used in full'
+      : `${daysLabel(-remainingDays)} over allowance`;
+  const onboardingTimeOffText = onboardingTimeOff
+    ? `${onboardingTimeOff.answer === 'none'
+        ? 'At onboarding they said they had no time off already booked'
+        : 'At onboarding they listed time off already booked, shown in the requests below'} (answered ${formatDate(onboardingTimeOff.answeredAt)}).`
+    : null;
 
   const handleBook = () => {
     if (!bookStart) { setBookError('Choose a start date'); return; }
@@ -169,9 +190,11 @@ export default function EmployeeHolidaysTab({
               </Field>
             </div>
             <Field label="Note (optional)">
+              {/* The server keeps notes to 500 characters; this stops a longer one being typed. */}
               <Input
                 id="book-note"
                 placeholder="e.g. Annual leave"
+                maxLength={500}
                 value={bookNote}
                 onChange={e => setBookNote(e.target.value)}
               />
@@ -207,10 +230,14 @@ export default function EmployeeHolidaysTab({
             </div>
             <ProgressBar value={progressPct} tone={allowanceTone} size="md" label="Holiday allowance used" />
             <div className="flex gap-4 text-xs text-text-muted">
-              <span>{allowance - approvedDays > 0 ? `${allowance - approvedDays} days remaining` : `${approvedDays - allowance} days over allowance`}</span>
+              <span>{allowanceSummary}</span>
               {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
             </div>
           </div>
+
+          {onboardingTimeOffText && (
+            <p className="text-sm text-text-muted">{onboardingTimeOffText}</p>
+          )}
         </CardBody>
       </Card>
 
@@ -226,6 +253,14 @@ export default function EmployeeHolidaysTab({
           <ul className="divide-y divide-border">
             {yearRequests.map(r => {
               const days = countRequestDays(r.start_date, r.end_date);
+              // Each row says what it is: days a starter cannot work are not holiday, and the
+              // allowance above leaves them out, so the list must not read as if they were.
+              const details = [
+                leaveTypeLabel(r.leave_type),
+                `${days} ${days === 1 ? 'day' : 'days'}`,
+                r.leave_origin === 'agreed_at_hire' ? ONBOARDING_LEAVE_ORIGIN_LABEL : null,
+                r.note,
+              ].filter(Boolean).join(' · ');
               return (
                 <li key={r.id} className="flex items-center justify-between gap-3 px-pad-card py-2.5">
                   <div className="min-w-0">
@@ -233,10 +268,7 @@ export default function EmployeeHolidaysTab({
                       {formatDate(r.start_date)}
                       {r.start_date !== r.end_date && <> – {formatDate(r.end_date)}</>}
                     </p>
-                    <p className="text-xs text-text-muted">
-                      {days} {days === 1 ? 'day' : 'days'}
-                      {r.note && ` · ${r.note}`}
-                    </p>
+                    <p className="text-xs text-text-muted">{details}</p>
                   </div>
                   <Badge tone={rotaLeaveStatusTone(r.status)} size="sm">
                     {rotaLeaveStatusLabel(r.status)}

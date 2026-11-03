@@ -5,6 +5,7 @@ import { getLeaveRequestById, deleteLeaveRequest, updateLeaveRequestDates } from
 import type { LeaveRequest } from '@/app/actions/leave';
 import { Alert, Badge, Button, ConfirmDialog, DescriptionList, Input, Modal, PageLoading, toast } from '@/ds';
 import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
+import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
 
 interface HolidayDetailModalProps {
   requestId: string;
@@ -69,7 +70,7 @@ export default function HolidayDetailModal({
     setIsSaving(true);
     const res = await updateLeaveRequestDates(requestId, editStart, editEnd);
     if (res.success) {
-      toast.success('Holiday dates updated');
+      toast.success('Leave dates updated');
       onUpdated();
       onClose();
     } else {
@@ -81,7 +82,7 @@ export default function HolidayDetailModal({
   const handleDelete = async () => {
     const res = await deleteLeaveRequest(requestId);
     if (res.success) {
-      toast.success('Holiday request deleted');
+      toast.success('Leave request deleted');
       onDeleted(requestId);
       onClose();
     } else {
@@ -95,7 +96,9 @@ export default function HolidayDetailModal({
     <Modal
       open
       onClose={onClose}
-      title="Holiday Request"
+      // Not every request is holiday: days someone cannot work open here too, so the title is
+      // neutral and the Type row says which it is.
+      title="Leave Request"
       description={employeeName}
       width="md"
       footer={
@@ -157,6 +160,7 @@ export default function HolidayDetailModal({
           <DescriptionList
             columns={1}
             items={[
+              { key: 'type', label: 'Type', value: leaveTypeLabel(request.leave_type) },
               {
                 key: 'dates',
                 label: 'Dates',
@@ -211,7 +215,7 @@ export default function HolidayDetailModal({
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="Delete Holiday Request"
+        title="Delete Leave Request"
         message={`This removes ${days} day${days !== 1 ? 's' : ''} of leave for ${employeeName} and cannot be undone.`}
         confirmLabel="Delete"
         tone="danger"

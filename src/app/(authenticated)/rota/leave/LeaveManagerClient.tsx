@@ -22,6 +22,7 @@ import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from 
 import type { LeaveRequest } from '@/app/actions/leave';
 import { formatDateInLondon } from '@/lib/dateUtils';
 import { ROTA_LEAVE_STATUS_LABEL, rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
+import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
 import {
   LEAVE_ALLOWANCE_TEXT_CLASSES,
   LEAVE_ALLOWANCE_TONE,
@@ -154,6 +155,11 @@ function LeaveRequestRow({
             <p className="text-xs text-text-muted truncate">
               {formatDate(request.start_date)} – {formatDate(request.end_date)} · {days} day{days !== 1 ? 's' : ''}
             </p>
+            {/* Each row says what it is: days a new starter cannot work are not holiday, and their
+                allowance leaves them out, so the list must not read as if they were. On its own
+                line, which wraps rather than truncates: placed before the dates on the line above,
+                it pushed them behind the ellipsis on a phone, on exactly the rows it is for. */}
+            <p className="text-xs text-text-muted">{leaveTypeLabel(request.leave_type)}</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center justify-end gap-1.5 ml-3 shrink-0">

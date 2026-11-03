@@ -4,7 +4,6 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { formatDateInLondon, getTodayIsoDate, isValidIsoDate } from '@/lib/dateUtils'
-import { getErrorMessage } from '@/lib/errors'
 import { loadWorkerAgreement } from '@/lib/signing/documents/worker-agreement'
 import { applyWorkerAgreementSigningSlots } from '@/lib/signing/documents/worker-agreement-slots'
 import { prepareSigningDocument } from '@/lib/signing/prepare'
@@ -21,10 +20,11 @@ import { canSendSigningKind, canViewSigningKind, getSigningStaffUser, type Signi
 import { SINGLE_TEMPLATE_SLUGS } from '@/lib/signing/template-fields'
 import { TemplateMergeError } from '@/lib/signing/template-render'
 import { getSigningTemplateBySlug } from '@/lib/signing/templates'
-import type { SigningDocumentStatus, SigningKind } from '@/lib/signing/types'
+import { SIGNING_OPEN_STATUSES, type SigningDocumentStatus, type SigningKind } from '@/lib/signing/types'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { computeAgeAt } from '@/lib/worker-agreement'
+import { displayNameWithLegal } from '@/lib/employees/display-name'
 
 /**
  * Sending staff documents for signature: the worker agreement, changes to terms, consent forms
@@ -36,38 +36,154 @@ export interface SendResult {
   deliveries: PartyDelivery[]
 }
 type ActionResult<T = undefined> = { success?: boolean; error?: string; data?: T }
+/**
+ * A one-off send. `mayHaveGone` comes with an error when the send stopped after its request may
+ * have been created and emailed: the screen warns and does not offer to send again on the spot.
+ */
+export type StaffSendResult = ActionResult<SendResult> & { mayHaveGone?: boolean }
 
 const UuidSchema = z.string().uuid()
 const EmailSchema = z.string().trim().email('Enter a valid email address.').max(254)
 const NameSchema = z.string().trim().min(2, 'Enter their full name.').max(120)
 
-function failure(error: unknown): { error: string } {
+/**
+ * The message for a failed staff signing action. SigningError and TemplateMergeError are written
+ * for people. Anything else carries database, storage or provider text ("Could not read the
+ * employee: <Postgres message>"), which used to reach the policies page toast and the signing
+ * tab: it goes to the log and staff see the fixed sentence. The error itself is logged, so a
+ * thrown TypeError keeps its stack.
+ */
+function failure(error: unknown, fallback = 'Something went wrong. Please try again.'): { error: string } {
   if (error instanceof SigningError) return { error: error.message }
   if (error instanceof TemplateMergeError) {
     return { error: `This document needs details that are missing: ${error.missingFields.join(', ')}.` }
   }
   console.error('Staff signing action failed:', error)
-  return { error: getErrorMessage(error) || 'Something went wrong. Please try again.' }
+  return { error: fallback }
+}
+
+/** Created, and the link email may or may not have reached them. */
+const LINK_EMAIL_MAY_HAVE_GONE =
+  'Created, but we could not confirm the email went. It may have reached them, so check with them before sending again.'
+
+/**
+ * A link email that did not definitely go, in plain words. The provider's own text used to be
+ * shown in the policies page toast; it goes to the log instead. Only a delivery that says the
+ * provider definitely refused it (`uncertain: false`) is called not sent: anything else may have
+ * gone, and telling staff it was not sent invites a second email to someone who already has one.
+ */
+function linkEmailProblem(delivery: PartyDelivery): string {
+  if (delivery.code === 'email_suspended') {
+    return 'Created, but email is switched off, so no link was emailed. They can confirm it in person.'
+  }
+  if (delivery.uncertain !== false) return LINK_EMAIL_MAY_HAVE_GONE
+  if (delivery.code === 'recipient_suppressed') {
+    // Sending again would be refused the same way, so it says what to check instead.
+    return 'Created, but the email was not sent because their address has bounced before. Check the address on their record, or they can confirm it in person.'
+  }
+  return 'Created, but the email was not sent. Use Send Again, or they can confirm it in person.'
+}
+
+/** A one-off send that stopped once its request may have been created and emailed. */
+const REQUEST_MAY_HAVE_GONE =
+  'The request may have been created and the email may have gone. Check the Signing tab before sending again.'
+
+/**
+ * Whether a send that threw had already created the request, in this series for this employee.
+ * The signing service emails the link and then writes more (the "sent" event to the trail, for
+ * one), and the action writes the audit row after that, so some plain errors come after the email
+ * went. It is read here rather than guessed from the message. The series key is the one
+ * createSigningRequest files it under: the caller's seriesKey, or the kind. A failed read counts
+ * as yes: staff are then told it may have gone, never that it was not sent.
+ */
+async function requestCreatedSince(employeeId: string, seriesKey: string, since: string): Promise<boolean> {
+  try {
+    const { data, error } = await createAdminClient()
+      .from('signing_documents')
+      .select('id')
+      .eq('subject_type', 'employee')
+      .eq('subject_id', employeeId)
+      .eq('series_key', seriesKey)
+      .in('status', [...SIGNING_OPEN_STATUSES])
+      .gte('sent_at', since)
+      .limit(1)
+    if (error) throw error
+    return (data ?? []).length > 0
+  } catch (error) {
+    console.error('[staff signing] Could not check whether the request was created:', error)
+    return true
+  }
+}
+
+/** Where a one-off send had got to, so a failure after it can be checked for a request. */
+interface SendAttempt {
+  employeeId: string
+  seriesKey: string
+  /** Every request the send creates is stamped at or after this moment. */
+  startedAt: string
+}
+
+function startAttempt(employeeId: string, seriesKey: string): SendAttempt {
+  return { employeeId, seriesKey, startedAt: new Date().toISOString() }
+}
+
+/**
+ * The result for a one-off send that threw. A SigningError or TemplateMergeError is a refusal
+ * before anything is written. Any other error, once the request was under way, may come after it
+ * was created and emailed; "Please try again" would then mean a second request, which cancels the
+ * link they hold, and a second email.
+ */
+async function sendFailure(error: unknown, attempt: SendAttempt | null): Promise<StaffSendResult> {
+  const refusedBeforeCreating = error instanceof SigningError || error instanceof TemplateMergeError
+  if (attempt && !refusedBeforeCreating && (await requestCreatedSince(attempt.employeeId, attempt.seriesKey, attempt.startedAt))) {
+    console.error('[staff signing] Failed after the request was created; the email may have gone:', error)
+    return { error: REQUEST_MAY_HAVE_GONE, mayHaveGone: true }
+  }
+  return failure(error)
 }
 
 interface StaffEmployee {
   employee_id: string
   first_name: string | null
   last_name: string | null
+  preferred_name: string | null
   email_address: string | null
   date_of_birth: string | null
   status: string
 }
 
+const STAFF_EMPLOYEE_COLUMNS = 'employee_id, first_name, last_name, preferred_name, email_address, date_of_birth, status'
+
+/** The legal name: what the documents print and what the signer signs as. */
 function employeeName(employee: Pick<StaffEmployee, 'first_name' | 'last_name'>): string {
   return [employee.first_name, employee.last_name].map((part) => part?.trim()).filter(Boolean).join(' ')
+}
+
+/**
+ * The name staff see on screen: the name the team uses, with the legal name alongside where they
+ * differ ("Mandy (Amanda Smith)"), as on the employee list. The policies page used to show the
+ * legal name only, so people were listed under names nobody calls them.
+ */
+function staffScreenName(employee: Pick<StaffEmployee, 'first_name' | 'last_name' | 'preferred_name'>): string {
+  return displayNameWithLegal(employee, 'Unnamed')
+}
+
+/**
+ * Someone who has left cannot be sent anything new to sign: the documents govern working here,
+ * and the link would go to a former employee's inbox. The screens hide the buttons for them; this
+ * is the server's own check, so a stale page or a crafted call cannot get round it.
+ */
+const FORMER_EMPLOYEE_REFUSAL = 'This person has left, so documents can no longer be sent to them to sign.'
+
+function isFormer(employee: Pick<StaffEmployee, 'status'>): boolean {
+  return employee.status === 'Former'
 }
 
 async function loadEmployee(employeeId: string): Promise<StaffEmployee | null> {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('employees')
-    .select('employee_id, first_name, last_name, email_address, date_of_birth, status')
+    .select(STAFF_EMPLOYEE_COLUMNS)
     .eq('employee_id', employeeId)
     .maybeSingle()
   if (error) throw new Error(`Could not read the employee: ${error.message}`)
@@ -130,7 +246,9 @@ export async function sendEmploymentAgreement(input: {
   employeeId: string
   guardianName?: string
   guardianEmail?: string
-}): Promise<ActionResult<SendResult>> {
+}): Promise<StaffSendResult> {
+  // Set as the request is sent, so a failure after that is checked for one before it is reported.
+  let attempt: SendAttempt | null = null
   try {
     const parsed = AgreementSchema.safeParse(input)
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the details and try again.' }
@@ -139,6 +257,7 @@ export async function sendEmploymentAgreement(input: {
 
     const employee = await loadEmployee(parsed.data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
+    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
 
     // Whoever sends it signs for the business, so the agreement names them as issuing it.
     const built = await loadWorkerAgreement(employee.employee_id, {
@@ -174,6 +293,8 @@ export async function sendEmploymentAgreement(input: {
       sender: { name: auth.user.name, position: auth.user.position },
     })
 
+    // No series key is passed, so createSigningRequest files it under the kind.
+    attempt = startAttempt(employee.employee_id, 'employment_agreement')
     const result = await createSigningRequest({
       kind: 'employment_agreement',
       subjectId: employee.employee_id,
@@ -202,7 +323,7 @@ export async function sendEmploymentAgreement(input: {
 
     return { success: true, data: await recordSend(auth.user, 'employment_agreement', employee.employee_id, result) }
   } catch (error) {
-    return failure(error)
+    return sendFailure(error, attempt)
   }
 }
 
@@ -235,7 +356,9 @@ const StaffTemplateSchema = z.discriminatedUnion('kind', [
 ])
 export type StaffTemplateInput = z.input<typeof StaffTemplateSchema>
 
-export async function sendStaffTemplateDocument(input: StaffTemplateInput): Promise<ActionResult<SendResult>> {
+export async function sendStaffTemplateDocument(input: StaffTemplateInput): Promise<StaffSendResult> {
+  // Set as the request is sent, so a failure after that is checked for one before it is reported.
+  let attempt: SendAttempt | null = null
   try {
     const parsed = StaffTemplateSchema.safeParse(input)
     if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the details and try again.' }
@@ -245,6 +368,7 @@ export async function sendStaffTemplateDocument(input: StaffTemplateInput): Prom
 
     const employee = await loadEmployee(data.employeeId)
     if (!employee) return { error: 'Employee not found.' }
+    if (isFormer(employee)) return { error: FORMER_EMPLOYEE_REFUSAL }
     const name = employeeName(employee)
     if (!name) return { error: 'Add the employee\'s name to their record first.' }
     const age = computeAgeAt(employee.date_of_birth, getTodayIsoDate())
@@ -284,6 +408,8 @@ export async function sendStaffTemplateDocument(input: StaffTemplateInput): Prom
         break
     }
 
+    // No series key is passed, so createSigningRequest files it under the kind.
+    attempt = startAttempt(employee.employee_id, data.kind)
     const result = await sendTemplateSigningRequest({
       kind: data.kind,
       slug: SINGLE_TEMPLATE_SLUGS[data.kind],
@@ -296,7 +422,7 @@ export async function sendStaffTemplateDocument(input: StaffTemplateInput): Prom
     })
     return { success: true, data: await recordSend(auth.user, data.kind, employee.employee_id, result) }
   } catch (error) {
-    return failure(error)
+    return sendFailure(error, attempt)
   }
 }
 
@@ -336,13 +462,14 @@ async function loadActiveStaff(): Promise<StaffEmployee[]> {
     (from, to) =>
       admin
         .from('employees')
-        .select('employee_id, first_name, last_name, email_address, date_of_birth, status')
+        .select(STAFF_EMPLOYEE_COLUMNS)
         .eq('status', 'Active')
         .order('employee_id', { ascending: true })
         .range(from, to),
     { label: 'active staff for policies' }
   )
-  return staff.sort((left, right) => employeeName(left).localeCompare(employeeName(right)))
+  // In the order of the names on screen.
+  return staff.sort((left, right) => staffScreenName(left).localeCompare(staffScreenName(right)))
 }
 
 export interface PolicyTemplateSummary {
@@ -375,7 +502,7 @@ export async function getPolicyTemplates(): Promise<ActionResult<PolicyTemplateS
       })),
     }
   } catch (error) {
-    return failure(error)
+    return failure(error, 'Refresh the page to try again.')
   }
 }
 
@@ -434,7 +561,7 @@ export async function getPolicyOverview(slug: string): Promise<ActionResult<Poli
       else if (confirmed) state = 'outdated'
       return {
         employeeId: employee.employee_id,
-        name: employeeName(employee) || 'Unnamed',
+        name: staffScreenName(employee),
         email: employee.email_address,
         state,
         documentId: (state === 'confirmed' ? confirmed?.id : last?.id) ?? null,
@@ -448,7 +575,7 @@ export async function getPolicyOverview(slug: string): Promise<ActionResult<Poli
       data: { slug, title: template.title, version: template.version, isActive: template.is_active, staff: rows },
     }
   } catch (error) {
-    return failure(error)
+    return failure(error, 'Refresh the page to try again.')
   }
 }
 
@@ -458,7 +585,26 @@ const SendPolicySchema = z.object({
 })
 
 export interface PolicySendOutcome {
+  /** Emailed a link. */
   sent: number
+  /**
+   * Created, but with no email address on their record nothing was emailed: they read and
+   * confirm it in person, on a venue device or in the staff portal. These used to be counted as
+   * sent, so the page said a link had been emailed to people who got nothing.
+   */
+  signInPerson: Array<{ name: string }>
+  /**
+   * Created, but the link email did not definitely go: email is switched off, the provider
+   * refused it, it may have gone and we did not hear back, or the send stopped part way after
+   * the request was created. The reason says which. These used to be listed as "not sent",
+   * which is wrong when the email may have reached them.
+   */
+  emailNotConfirmed: Array<{ name: string; reason: string }>
+  /**
+   * Refused before any request existed for them, so nothing was emailed: not found, has left,
+   * details missing, or a failure before the request was written. A send that failed once the
+   * request existed is under emailNotConfirmed instead.
+   */
   failed: Array<{ name: string; reason: string }>
 }
 
@@ -473,40 +619,72 @@ export async function sendPolicyAcknowledgements(input: { slug: string; employee
     const auth = await authorise('policy_acknowledgement')
     if ('error' in auth) return auth
 
-    const outcome: PolicySendOutcome = { sent: 0, failed: [] }
+    const outcome: PolicySendOutcome = { sent: 0, signInPerson: [], emailNotConfirmed: [], failed: [] }
     for (const employeeId of parsed.data.employeeIds) {
       const employee = await loadEmployee(employeeId)
-      const name = employee ? employeeName(employee) || 'Unnamed' : 'Unknown'
+      const name = employee ? staffScreenName(employee) : 'Unknown'
       if (!employee) {
         outcome.failed.push({ name, reason: 'Employee not found.' })
         continue
       }
+      if (isFormer(employee)) {
+        outcome.failed.push({ name, reason: FORMER_EMPLOYEE_REFUSAL })
+        continue
+      }
+      const attempt = startAttempt(employee.employee_id, policySeriesKey(parsed.data.slug))
+      let result: CreateSigningRequestResult
       try {
-        const result = await sendTemplateSigningRequest({
+        result = await sendTemplateSigningRequest({
           kind: 'policy_acknowledgement',
           slug: parsed.data.slug,
           subjectId: employee.employee_id,
-          mergeValues: { worker_name: name },
+          // The document carries the legal name, as every official record does.
+          mergeValues: { worker_name: employeeName(employee) || 'Unnamed' },
           parties: [workerParty(employee)],
           user: auth.user,
           summary: 'Please read this policy and confirm you have understood it. Ask your manager about anything that is unclear.',
           seriesKey: policySeriesKey(parsed.data.slug),
         })
-        const delivery = result.deliveries[0]
-        if (delivery?.email_status === 'failed') {
-          outcome.failed.push({ name, reason: `Created, but the email failed: ${delivery.error ?? 'unknown error'}` })
-        } else {
-          outcome.sent += 1
-        }
-        await recordSend(auth.user, 'policy_acknowledgement', employee.employee_id, result)
       } catch (error) {
         // A template that is off or unfinished stops everyone, so say so once and stop.
         if (error instanceof SigningError && error.code.startsWith('template_')) return { error: error.message }
-        outcome.failed.push({ name, reason: failure(error).error })
+        // A SigningError or TemplateMergeError is a refusal before anything is written. Any other
+        // error may come after the request was created and its email went, which is never "not sent".
+        const refusedBeforeCreating = error instanceof SigningError || error instanceof TemplateMergeError
+        if (!refusedBeforeCreating && (await requestCreatedSince(attempt.employeeId, attempt.seriesKey, attempt.startedAt))) {
+          console.error('[policy send] Failed after the request was created; the email may have gone:', error)
+          outcome.emailNotConfirmed.push({ name, reason: LINK_EMAIL_MAY_HAVE_GONE })
+        } else {
+          outcome.failed.push({ name, reason: failure(error).error })
+        }
+        continue
+      }
+
+      const delivery: PartyDelivery | undefined = result.deliveries[0]
+      if (delivery?.email_status === 'failed') {
+        console.error('[policy send] Link email did not go:', {
+          documentId: result.documentId,
+          partyId: delivery.partyId,
+          code: delivery.code ?? null,
+          uncertain: delivery.uncertain ?? null,
+          message: delivery.error ?? null,
+        })
+        outcome.emailNotConfirmed.push({ name, reason: linkEmailProblem(delivery) })
+      } else if (delivery?.email_status === 'none') {
+        outcome.signInPerson.push({ name })
+      } else {
+        outcome.sent += 1
+      }
+      try {
+        await recordSend(auth.user, 'policy_acknowledgement', employee.employee_id, result)
+      } catch (error) {
+        // It was created and counted above. A failed audit row or page refresh must not move
+        // them into "not sent".
+        console.error('[policy send] Created, but the send could not be recorded:', error)
       }
     }
     return { success: true, data: outcome }
   } catch (error) {
-    return failure(error)
+    return failure(error, 'The policy could not be sent. Refresh the page to see who has it, then try again.')
   }
 }

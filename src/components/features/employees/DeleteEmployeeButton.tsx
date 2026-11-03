@@ -1,8 +1,9 @@
 'use client'
 
-import { useActionState, useState, type ReactNode } from 'react';
+import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { deleteEmployee } from '@/app/actions/employeeActions';
-import { Alert, Button, Icon, Modal } from '@/ds';
+import { Alert, Button, Icon, Modal, toast } from '@/ds';
 import { EmployeeActionButton, type EmployeeHeaderAction } from './employeeHeaderActions';
 
 interface DeleteEmployeeButtonProps {
@@ -18,10 +19,34 @@ export function useDeleteEmployeeAction({
   employeeId,
   employeeName,
 }: DeleteEmployeeButtonProps): { action: EmployeeHeaderAction; dialog: ReactNode } {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
-  // Success is handled by redirect in the server action; an error is shown inside the dialog.
+  // The action returns its result rather than redirecting: on success this hook closes the
+  // dialog and goes to the list (the employee's own page no longer exists); an error is shown
+  // inside the dialog.
   const [state, dispatch, pending] = useActionState(deleteEmployee, null);
   const formId = `delete-employee-${employeeId}`;
+  const handledState = useRef<typeof state>(null);
+
+  useEffect(() => {
+    if (state?.type !== 'success' || handledState.current === state) return;
+    handledState.current = state;
+    setIsOpen(false);
+    if (state.warning) {
+      toast.warning(state.warning, { duration: 10000 });
+    } else {
+      toast.success(state.message ?? 'Employee deleted.');
+    }
+    router.push('/employees');
+  }, [state, router]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    // Once it has gone, a second click would only fail.
+    if (pending || state?.type === 'success') return;
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => dispatch(formData));
+  };
 
   const action: EmployeeHeaderAction = {
     key: 'delete',
@@ -31,9 +56,9 @@ export function useDeleteEmployeeAction({
     icon: <Icon name="trash" size={16} />,
   };
 
-  // A DS Modal rather than ConfirmDialog: the delete is a server-action form (it redirects on
-  // success). Its footer mirrors ConfirmDialog, and the submit button reaches the form through
-  // form=, reading the pending state from useActionState.
+  // A DS Modal rather than ConfirmDialog: the delete is a server-action form. Its footer mirrors
+  // ConfirmDialog, and the submit button reaches the form through form=, reading the pending
+  // state from useActionState.
   const dialog = (
     <Modal
       open={isOpen}
@@ -45,16 +70,27 @@ export function useDeleteEmployeeAction({
           <Button type="button" variant="secondary" onClick={() => setIsOpen(false)}>
             Cancel
           </Button>
-          <Button type="submit" form={formId} variant="danger" loading={pending}>
+          <Button
+            type="submit"
+            form={formId}
+            variant="danger"
+            loading={pending}
+            disabled={state?.type === 'success'}
+          >
             Delete
           </Button>
         </>
       }
     >
-      <form id={formId} action={dispatch} className="space-y-4">
+      <form id={formId} onSubmit={handleSubmit} className="space-y-4">
         <p className="text-sm text-text-muted">
-          Are you sure you want to delete {employeeName}? This action cannot be undone.
-          All associated data (like notes and attachments if configured with CASCADE delete) might also be removed.
+          Delete {employeeName}? This removes their record, documents, notes, contacts, bank and
+          health details, any rota shifts, clock times and holiday already set up for them, their
+          pay settings, and their login if they have one. It cannot be undone.
+        </p>
+        <p className="text-sm text-text-muted">
+          Only a new starter who is still onboarding can be deleted. For anyone who has worked here,
+          use Begin Separation instead, so their shifts, hours and pay history are kept.
         </p>
         {state?.type === 'error' && (
           <Alert tone="danger" size="sm">

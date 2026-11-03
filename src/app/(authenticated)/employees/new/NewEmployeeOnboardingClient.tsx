@@ -34,6 +34,9 @@ import {
 } from '@/app/actions/employeeActions'
 import { useSupabase } from '@/components/providers/SupabaseProvider'
 import { MAX_FILE_SIZE } from '@/lib/constants'
+import { formatPhoneForStorage } from '@/lib/utils'
+import { RIGHT_TO_WORK_ACCEPT, RIGHT_TO_WORK_TYPE_MESSAGE, isAllowedRightToWorkType } from '@/lib/employees/document-rules'
+import { HEALTH_CONDITION_FIELDS, HEALTH_QUESTIONS } from '@/lib/employees/health-questions'
 
 type EmployeeStatus = 'Active' | 'Former' | 'Onboarding'
 
@@ -52,8 +55,6 @@ const DIGIT_WORDS = [
   'eight',
   'nine'
 ] as const
-
-const RIGHT_TO_WORK_ALLOWED_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png'] as const
 
 function digitsToWords(input: string) {
   const digits = input.replace(/\D/g, '')
@@ -89,12 +90,14 @@ type EmployeeSetupState = {
       relationship: string
       phone_number: string
       mobile_number: string
+      address: string
     }
     secondary: {
       name: string
       relationship: string
       phone_number: string
       mobile_number: string
+      address: string
     }
   }
   financial: {
@@ -113,6 +116,8 @@ type EmployeeSetupState = {
     had_absence_over_2_weeks_last_3_years: boolean
     had_outpatient_treatment_over_3_months_last_3_years: boolean
     absence_or_treatment_details: string
+    illness_history: string
+    recent_treatment: string
     has_diabetes: boolean
     has_epilepsy: boolean
     has_skin_condition: boolean
@@ -140,7 +145,8 @@ type EmployeeSetupState = {
     team_whatsapp_added: boolean
     till_system_setup: boolean
     training_flow_setup: boolean
-    employee_agreement_accepted: boolean
+    // No employee_agreement_accepted: it is ticked by the signing feature when the employee
+    // signs their agreement, never by hand.
   }
 }
 
@@ -164,8 +170,8 @@ const DEFAULT_STATE: EmployeeSetupState = {
     keyholder_status: false
   },
   emergency_contacts: {
-    primary: { name: '', relationship: '', phone_number: '', mobile_number: '' },
-    secondary: { name: '', relationship: '', phone_number: '', mobile_number: '' }
+    primary: { name: '', relationship: '', phone_number: '', mobile_number: '', address: '' },
+    secondary: { name: '', relationship: '', phone_number: '', mobile_number: '', address: '' }
   },
   financial: {
     ni_number: '',
@@ -183,6 +189,8 @@ const DEFAULT_STATE: EmployeeSetupState = {
     had_absence_over_2_weeks_last_3_years: false,
     had_outpatient_treatment_over_3_months_last_3_years: false,
     absence_or_treatment_details: '',
+    illness_history: '',
+    recent_treatment: '',
     has_diabetes: false,
     has_epilepsy: false,
     has_skin_condition: false,
@@ -209,21 +217,100 @@ const DEFAULT_STATE: EmployeeSetupState = {
     private_whatsapp_added: false,
     team_whatsapp_added: false,
     till_system_setup: false,
-    training_flow_setup: false,
-    employee_agreement_accepted: false
+    training_flow_setup: false
   }
 }
 
-function hasAnyEmergencyContact(contact: EmployeeSetupState['emergency_contacts']['primary']) {
-  return Boolean(contact.name || contact.relationship || contact.phone_number || contact.mobile_number)
+const CHECKLIST_LABELS: Record<keyof EmployeeSetupState['onboarding'], string> = {
+  private_whatsapp_added: 'Added to private WhatsApp',
+  team_whatsapp_added: 'Added to team WhatsApp',
+  till_system_setup: 'Setup on till system',
+  training_flow_setup: 'Training setup in Flow',
 }
 
-function getActionErrorMessage(result: Awaited<ReturnType<typeof addEmployee>> | null | undefined) {
+function hasAnyEmergencyContact(contact: EmployeeSetupState['emergency_contacts']['primary']) {
+  return Boolean(
+    contact.name.trim() ||
+      contact.relationship.trim() ||
+      contact.phone_number.trim() ||
+      contact.mobile_number.trim() ||
+      contact.address.trim()
+  )
+}
+
+type ActionResultWithErrors = { message?: string; errors?: Record<string, string[] | undefined> | null } | null | undefined
+
+function getActionErrorMessage(result: ActionResultWithErrors) {
   const fieldError = result?.errors
     ? Object.values(result.errors).flat().find((message): message is string => Boolean(message))
     : undefined
 
   return fieldError ? `${result?.message ?? 'Failed to create employee'} ${fieldError}` : result?.message
+}
+
+/** A follow-up save's failure in plain words: the field's own message where there is one. */
+function describeFollowUpError(result: ActionResultWithErrors, fallback: string) {
+  const fieldError = result?.errors
+    ? Object.values(result.errors).flat().find((message): message is string => Boolean(message))
+    : undefined
+  return fieldError || result?.message || fallback
+}
+
+type SetupTab = 'employee' | 'contacts' | 'bank' | 'health' | 'rtw' | 'agreement'
+
+/**
+ * Everything that would stop a section saving, checked before the employee is created. These
+ * sections are saved one by one after the employee exists, so a problem found then left a
+ * half-made employee and a vague "some sections could not be saved".
+ */
+function isValidPhoneNumber(value: string): boolean {
+  try {
+    formatPhoneForStorage(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function findSetupProblems(state: EmployeeSetupState): Array<{ tab: SetupTab; message: string }> {
+  const problems: Array<{ tab: SetupTab; message: string }> = []
+  const employee = state.employee
+  if (!employee.first_name.trim()) problems.push({ tab: 'employee', message: 'First name' })
+  if (!employee.last_name.trim()) problems.push({ tab: 'employee', message: 'Last name' })
+  if (!employee.email_address.trim()) problems.push({ tab: 'employee', message: 'Email address' })
+  if (!employee.job_title.trim()) problems.push({ tab: 'employee', message: 'Job title' })
+  if (!employee.employment_start_date) problems.push({ tab: 'employee', message: 'Employment start date' })
+
+  const { primary, secondary } = state.emergency_contacts
+  if (hasAnyEmergencyContact(primary)) {
+    if (!primary.name.trim()) problems.push({ tab: 'contacts', message: 'Primary contact name' })
+    if (!primary.phone_number.trim() && !primary.mobile_number.trim()) {
+      problems.push({ tab: 'contacts', message: 'Primary contact telephone or mobile' })
+    }
+  }
+  if (hasAnyEmergencyContact(secondary) && !secondary.name.trim()) {
+    problems.push({ tab: 'contacts', message: 'Secondary contact name' })
+  }
+  // The contact save checks each number's format only after the employee exists, so a mistyped
+  // number left a half-made record. The same check runs here first.
+  const numbers: Array<[string, string]> = [
+    ['Primary contact telephone', primary.phone_number],
+    ['Primary contact mobile', primary.mobile_number],
+    ['Secondary contact telephone', secondary.phone_number],
+    ['Secondary contact mobile', secondary.mobile_number],
+  ]
+  for (const [label, value] of numbers) {
+    if (value.trim() && !isValidPhoneNumber(value)) {
+      problems.push({ tab: 'contacts', message: `${label} (not a valid phone number)` })
+    }
+  }
+
+  if (state.right_to_work.enabled) {
+    if (!state.right_to_work.document_type) problems.push({ tab: 'rtw', message: 'Right to work document type' })
+    if (!state.right_to_work.verification_date) problems.push({ tab: 'rtw', message: 'Right to work verification date' })
+  }
+
+  return problems
 }
 
 export default function NewEmployeeOnboardingClient() {
@@ -279,26 +366,20 @@ export default function NewEmployeeOnboardingClient() {
     setState((prev) => ({ ...prev, onboarding: { ...prev.onboarding, [key]: value } }))
   }
 
-  const validateRequiredFields = () => {
-    const missing: string[] = []
-    if (!state.employee.first_name.trim()) missing.push('First name')
-    if (!state.employee.last_name.trim()) missing.push('Last name')
-    if (!state.employee.email_address.trim()) missing.push('Email address')
-    if (!state.employee.job_title.trim()) missing.push('Job title')
-    if (!state.employee.employment_start_date) missing.push('Employment start date')
-    return missing
-  }
-
   const handleCreateEmployee = () => {
-    const missing = validateRequiredFields()
-    if (missing.length > 0) {
-      toast.error(`Missing required fields: ${missing.join(', ')}`)
-      setActiveTab('employee')
+    const problems = findSetupProblems(state)
+    if (problems.length > 0) {
+      toast.error(`Please fill in or correct: ${problems.map((problem) => problem.message).join(', ')}. Nothing has been saved yet.`, {
+        duration: 10000,
+      })
+      setActiveTab(problems[0].tab)
       return
     }
 
     startTransition(async () => {
       let employeeId: string
+      // Parts that did not save, said together once everything has been tried.
+      const followUpErrors: string[] = []
 
       try {
         const employeeFormData = new FormData()
@@ -353,6 +434,8 @@ export default function NewEmployeeOnboardingClient() {
         ) {
           employeeFormData.append('absence_or_treatment_details', state.health.absence_or_treatment_details)
         }
+        if (state.health.illness_history.trim()) employeeFormData.append('illness_history', state.health.illness_history.trim())
+        if (state.health.recent_treatment.trim()) employeeFormData.append('recent_treatment', state.health.recent_treatment.trim())
 
         employeeFormData.append('has_diabetes', String(state.health.has_diabetes))
         employeeFormData.append('has_epilepsy', String(state.health.has_epilepsy))
@@ -370,145 +453,128 @@ export default function NewEmployeeOnboardingClient() {
           if (state.health.disability_details) employeeFormData.append('disability_details', state.health.disability_details)
         }
 
-        const createResult = await addEmployee(null as any, employeeFormData)
+        const createResult = await addEmployee(null, employeeFormData)
         if (!createResult || createResult.type !== 'success' || !createResult.employeeId) {
           throw new Error(getActionErrorMessage(createResult) || 'Failed to create employee')
         }
 
         employeeId = createResult.employeeId
+        if (createResult.followUpError) followUpErrors.push(createResult.followUpError)
       } catch (error) {
         console.error('[NewEmployeeOnboarding] Create failed', error)
         toast.error(error instanceof Error ? error.message : 'Failed to create employee. Please check the form and try again.')
         return
       }
 
-      const followUpErrors: string[] = []
 
       // Emergency contacts (Section 1)
       const primary = state.emergency_contacts.primary
       const secondary = state.emergency_contacts.secondary
 
-      if (hasAnyEmergencyContact(primary)) {
-        if (!primary.name.trim()) {
-          followUpErrors.push('Primary emergency contact name is missing.')
-        } else {
-          try {
-            const contactForm = new FormData()
-            contactForm.append('employee_id', employeeId)
-            contactForm.append('name', primary.name.trim())
-            contactForm.append('priority', 'Primary')
-            if (primary.relationship) contactForm.append('relationship', primary.relationship)
-            if (primary.phone_number) contactForm.append('phone_number', primary.phone_number)
-            if (primary.mobile_number) contactForm.append('mobile_number', primary.mobile_number)
+      // Checked before the employee was created, so each contact here has a name (and the
+      // primary a phone); a failure now is the server's, and is named in the summary below.
+      const contactsToSave = [
+        { contact: primary, priority: 'Primary', label: 'Primary emergency contact' },
+        { contact: secondary, priority: 'Secondary', label: 'Secondary emergency contact' },
+      ] as const
+      for (const { contact, priority, label } of contactsToSave) {
+        if (!hasAnyEmergencyContact(contact)) continue
+        try {
+          const contactForm = new FormData()
+          contactForm.append('employee_id', employeeId)
+          contactForm.append('name', contact.name.trim())
+          contactForm.append('priority', priority)
+          if (contact.relationship.trim()) contactForm.append('relationship', contact.relationship.trim())
+          if (contact.phone_number.trim()) contactForm.append('phone_number', contact.phone_number.trim())
+          if (contact.mobile_number.trim()) contactForm.append('mobile_number', contact.mobile_number.trim())
+          if (contact.address.trim()) contactForm.append('address', contact.address.trim())
 
-            const res = await addEmergencyContact(null, contactForm)
-            if (res?.type === 'error') {
-              followUpErrors.push(res.message || 'Failed to save primary emergency contact.')
-            }
-          } catch (error) {
-            console.error('[NewEmployeeOnboarding] Primary emergency contact save failed', error)
-            followUpErrors.push('Failed to save primary emergency contact.')
+          const res = await addEmergencyContact(null, contactForm)
+          if (res?.type === 'error') {
+            followUpErrors.push(`${label}: ${describeFollowUpError(res, 'it could not be saved')}`)
           }
+        } catch (error) {
+          console.error('[NewEmployeeOnboarding] Emergency contact save failed', { priority, error })
+          followUpErrors.push(`${label}: it could not be saved`)
         }
       }
 
-      if (hasAnyEmergencyContact(secondary)) {
-        if (!secondary.name.trim()) {
-          followUpErrors.push('Secondary emergency contact name is missing.')
-        } else {
-          try {
-            const contactForm = new FormData()
-            contactForm.append('employee_id', employeeId)
-            contactForm.append('name', secondary.name.trim())
-            contactForm.append('priority', 'Secondary')
-            if (secondary.relationship) contactForm.append('relationship', secondary.relationship)
-            if (secondary.phone_number) contactForm.append('phone_number', secondary.phone_number)
-            if (secondary.mobile_number) contactForm.append('mobile_number', secondary.mobile_number)
-
-            const res = await addEmergencyContact(null, contactForm)
-            if (res?.type === 'error') {
-              followUpErrors.push(res.message || 'Failed to save secondary emergency contact.')
-            }
-          } catch (error) {
-            console.error('[NewEmployeeOnboarding] Secondary emergency contact save failed', error)
-            followUpErrors.push('Failed to save secondary emergency contact.')
-          }
-        }
-      }
-
-      // Right to work (Section 4)
+      // Right to work (Section 4). Its document type and verification date were checked before
+      // the employee was created.
       if (state.right_to_work.enabled) {
-        if (!state.right_to_work.document_type || !state.right_to_work.verification_date) {
-          followUpErrors.push('Right to Work is enabled but document type or verification date is missing.')
-        } else {
-	          try {
-	            const rtwForm = new FormData()
-	            rtwForm.append('employee_id', employeeId)
-	            rtwForm.append('document_type', state.right_to_work.document_type)
-	            if (state.right_to_work.check_method) rtwForm.append('check_method', state.right_to_work.check_method)
-	            if (state.right_to_work.document_reference) rtwForm.append('document_reference', state.right_to_work.document_reference)
-	            rtwForm.append('verification_date', state.right_to_work.verification_date)
-	            if (state.right_to_work.document_expiry_date) rtwForm.append('document_expiry_date', state.right_to_work.document_expiry_date)
-	            if (state.right_to_work.follow_up_date) rtwForm.append('follow_up_date', state.right_to_work.follow_up_date)
-	            if (state.right_to_work.document_details) rtwForm.append('document_details', state.right_to_work.document_details)
+        try {
+          const rtwForm = new FormData()
+          rtwForm.append('employee_id', employeeId)
+          rtwForm.append('document_type', state.right_to_work.document_type)
+          if (state.right_to_work.check_method) rtwForm.append('check_method', state.right_to_work.check_method)
+          if (state.right_to_work.document_reference) rtwForm.append('document_reference', state.right_to_work.document_reference)
+          rtwForm.append('verification_date', state.right_to_work.verification_date)
+          if (state.right_to_work.document_expiry_date) rtwForm.append('document_expiry_date', state.right_to_work.document_expiry_date)
+          if (state.right_to_work.follow_up_date) rtwForm.append('follow_up_date', state.right_to_work.follow_up_date)
+          if (state.right_to_work.document_details) rtwForm.append('document_details', state.right_to_work.document_details)
 
-	            const rtwDocumentPhoto = state.right_to_work.document_photo
-	            if (rtwDocumentPhoto) {
-	              const signedUpload = await createRightToWorkDocumentUploadUrl(
-	                employeeId,
-	                rtwDocumentPhoto.name,
-	                rtwDocumentPhoto.type,
-	                rtwDocumentPhoto.size
-	              )
+          const rtwDocumentPhoto = state.right_to_work.document_photo
+          if (rtwDocumentPhoto) {
+            const signedUpload = await createRightToWorkDocumentUploadUrl(
+              employeeId,
+              rtwDocumentPhoto.name,
+              rtwDocumentPhoto.type,
+              rtwDocumentPhoto.size
+            )
 
-	              if (signedUpload.type === 'error') {
-	                followUpErrors.push(signedUpload.message || 'Failed to prepare right to work document upload.')
-	              } else {
-	                const uploadResult = await supabase.storage
-	                  .from('employee-attachments')
-	                  .uploadToSignedUrl(signedUpload.path, signedUpload.token, rtwDocumentPhoto, {
-	                    upsert: false,
-	                    contentType: rtwDocumentPhoto.type
-	                  })
+            if (signedUpload.type === 'error') {
+              followUpErrors.push(`Right to work document: ${signedUpload.message || 'the upload could not be prepared'}`)
+            } else {
+              const uploadResult = await supabase.storage
+                .from('employee-attachments')
+                .uploadToSignedUrl(signedUpload.path, signedUpload.token, rtwDocumentPhoto, {
+                  upsert: false,
+                  contentType: rtwDocumentPhoto.type
+                })
 
-	                if (uploadResult.error) {
-	                  console.error('[NewEmployeeOnboarding] Right to work document upload failed', uploadResult.error)
-	                  followUpErrors.push(uploadResult.error.message || 'Failed to upload right to work document photo.')
-	                } else {
-	                  rtwForm.append('photo_storage_path', signedUpload.path)
-	                }
-	              }
-	            }
-
-	            const rtwResult = await upsertRightToWork(null, rtwForm)
-	            if (rtwResult?.type === 'error') {
-	              followUpErrors.push(rtwResult.message || 'Failed to save right to work information.')
-	            }
-          } catch (error) {
-            console.error('[NewEmployeeOnboarding] Right to work save failed', error)
-            followUpErrors.push('Failed to save right to work information.')
+              if (uploadResult.error) {
+                // Storage's own text stays in the console; the summary says what happened.
+                console.error('[NewEmployeeOnboarding] Right to work document upload failed', uploadResult.error)
+                followUpErrors.push('Right to work document: it could not be uploaded')
+              } else {
+                rtwForm.append('photo_storage_path', signedUpload.path)
+              }
+            }
           }
+
+          const rtwResult = await upsertRightToWork(null, rtwForm)
+          if (rtwResult?.type === 'error') {
+            followUpErrors.push(`Right to work check: ${describeFollowUpError(rtwResult, 'it could not be saved')}`)
+          }
+        } catch (error) {
+          console.error('[NewEmployeeOnboarding] Right to work save failed', error)
+          followUpErrors.push('Right to work check: it could not be saved')
         }
       }
 
-      // Office checklist (Section 7 - for office use)
+      // Office checklist (Section 7 - for office use). The agreement is not among these: it is
+      // ticked when the employee signs it.
       const checklistFields = Object.entries(state.onboarding) as Array<[keyof EmployeeSetupState['onboarding'], boolean]>
       for (const [field, checked] of checklistFields) {
         if (!checked) continue
+        const label = CHECKLIST_LABELS[field]
         try {
           const result = await updateOnboardingChecklist(employeeId, field, true)
           if (!result.success) {
-            followUpErrors.push(result.error || `Failed to update onboarding checklist: ${field}`)
+            followUpErrors.push(`Checklist "${label}": ${result.error || 'it could not be ticked'}`)
           }
         } catch (error) {
           console.error('[NewEmployeeOnboarding] Onboarding checklist update failed', { field, error })
-          followUpErrors.push(`Failed to update onboarding checklist: ${field}`)
+          followUpErrors.push(`Checklist "${label}": it could not be ticked`)
         }
       }
 
       if (followUpErrors.length > 0) {
         console.warn('[NewEmployeeOnboarding] Follow-up errors:', followUpErrors)
-        toast.error('Employee created, but some sections could not be saved. Please review the employee profile.')
+        toast.error(
+          `Employee created, but these did not save: ${followUpErrors.join('; ')}. Add them on the employee's page.`,
+          { duration: 20000 }
+        )
       } else {
         toast.success('Employee created successfully!')
       }
@@ -534,6 +600,9 @@ export default function NewEmployeeOnboardingClient() {
           </Field>
           <Field label="Mobile">
             <Input value={contact.mobile_number} onChange={(e) => updateContact(which, 'mobile_number', e.target.value)} />
+          </Field>
+          <Field label="Address" className="sm:col-span-2">
+            <Textarea value={contact.address} onChange={(e) => updateContact(which, 'address', e.target.value)} rows={2} />
           </Field>
         </CardBody>
       </Card>
@@ -644,7 +713,8 @@ export default function NewEmployeeOnboardingClient() {
       content: (
         <div className="space-y-6">
           <Alert tone="info">
-            Add at least one contact who can be reached quickly in an emergency.
+            Add at least one contact who can be reached quickly in an emergency. A primary contact
+            needs a name and a telephone or mobile number.
           </Alert>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -714,15 +784,18 @@ export default function NewEmployeeOnboardingClient() {
     {
       id: 'health',
       label: 'Health Information',
+      // Every question is worded from lib/employees/health-questions.ts, as the starter's own
+      // onboarding form and the staff health form and tab are, so each column is entered and read
+      // against the same question.
       content: (
         <div className="space-y-6">
           <Card>
             <CardHeader title="Doctor" />
             <CardBody className="grid gap-4 sm:grid-cols-2">
-              <Field label="Doctor's Name">
+              <Field label={HEALTH_QUESTIONS.doctor_name}>
                 <Input value={state.health.doctor_name} onChange={(e) => updateHealth('doctor_name', e.target.value)} />
               </Field>
-              <Field label="Doctor's Address" className="sm:col-span-2">
+              <Field label={HEALTH_QUESTIONS.doctor_address} className="sm:col-span-2">
                 <Textarea value={state.health.doctor_address} onChange={(e) => updateHealth('doctor_address', e.target.value)} rows={2} />
               </Field>
             </CardBody>
@@ -731,7 +804,7 @@ export default function NewEmployeeOnboardingClient() {
           <Card>
             <CardHeader title="Health Questionnaire" />
             <CardBody className="space-y-4">
-              <Fieldset legend="Do you have any allergies?">
+              <Fieldset legend={HEALTH_QUESTIONS.has_allergies}>
                 <div className="flex flex-wrap gap-6">
                   <Radio
                     name="has_allergies"
@@ -751,7 +824,7 @@ export default function NewEmployeeOnboardingClient() {
               </Fieldset>
 
               {state.health.has_allergies && (
-                <Field label="If yes, please specify">
+                <Field label={HEALTH_QUESTIONS.allergies}>
                   <Textarea value={state.health.allergies} onChange={(e) => updateHealth('allergies', e.target.value)} rows={2} />
                 </Field>
               )}
@@ -759,16 +832,16 @@ export default function NewEmployeeOnboardingClient() {
               <Checkbox
                 checked={state.health.had_absence_over_2_weeks_last_3_years}
                 onChange={(checked) => updateHealth('had_absence_over_2_weeks_last_3_years', checked)}
-                label="In the past 3 years, been off work for 2+ weeks due to illness/accident?"
+                label={HEALTH_QUESTIONS.had_absence_over_2_weeks_last_3_years}
               />
               <Checkbox
                 checked={state.health.had_outpatient_treatment_over_3_months_last_3_years}
                 onChange={(checked) => updateHealth('had_outpatient_treatment_over_3_months_last_3_years', checked)}
-                label="In the past 3 years, attended outpatient treatment for 3+ months?"
+                label={HEALTH_QUESTIONS.had_outpatient_treatment_over_3_months_last_3_years}
               />
 
               {(state.health.had_absence_over_2_weeks_last_3_years || state.health.had_outpatient_treatment_over_3_months_last_3_years) && (
-                <Field label="If yes to either, please provide details">
+                <Field label={HEALTH_QUESTIONS.absence_or_treatment_details}>
                   <Textarea
                     value={state.health.absence_or_treatment_details}
                     onChange={(e) => updateHealth('absence_or_treatment_details', e.target.value)}
@@ -779,15 +852,30 @@ export default function NewEmployeeOnboardingClient() {
             </CardBody>
           </Card>
 
+          {/* The same two questions the employee answers in their own onboarding form. */}
+          <Card>
+            <CardHeader title="Medical History" />
+            <CardBody className="space-y-4">
+              <Field label={HEALTH_QUESTIONS.illness_history}>
+                <Textarea value={state.health.illness_history} onChange={(e) => updateHealth('illness_history', e.target.value)} rows={3} />
+              </Field>
+              <Field label={HEALTH_QUESTIONS.recent_treatment}>
+                <Textarea value={state.health.recent_treatment} onChange={(e) => updateHealth('recent_treatment', e.target.value)} rows={3} />
+              </Field>
+            </CardBody>
+          </Card>
+
           <Card>
             <CardHeader title="Medical Conditions" subtitle="Tick if applicable" />
             <CardBody className="grid gap-4 sm:grid-cols-2">
-              <Checkbox checked={state.health.has_diabetes} onChange={(checked) => updateHealth('has_diabetes', checked)} label="Diabetes" />
-              <Checkbox checked={state.health.has_epilepsy} onChange={(checked) => updateHealth('has_epilepsy', checked)} label="Epilepsy / Fits / Blackouts" />
-              <Checkbox checked={state.health.has_skin_condition} onChange={(checked) => updateHealth('has_skin_condition', checked)} label="Eczema / Dermatitis / Skin Disease" />
-              <Checkbox checked={state.health.has_depressive_illness} onChange={(checked) => updateHealth('has_depressive_illness', checked)} label="Depressive Illness" />
-              <Checkbox checked={state.health.has_bowel_problems} onChange={(checked) => updateHealth('has_bowel_problems', checked)} label="Bowel Problems" />
-              <Checkbox checked={state.health.has_ear_problems} onChange={(checked) => updateHealth('has_ear_problems', checked)} label="Ear Problems" />
+              {HEALTH_CONDITION_FIELDS.map((field) => (
+                <Checkbox
+                  key={field}
+                  checked={state.health[field]}
+                  onChange={(checked) => updateHealth(field, checked)}
+                  label={HEALTH_QUESTIONS[field]}
+                />
+              ))}
             </CardBody>
           </Card>
 
@@ -797,22 +885,22 @@ export default function NewEmployeeOnboardingClient() {
               <Checkbox
                 checked={state.health.is_registered_disabled}
                 onChange={(checked) => updateHealth('is_registered_disabled', checked)}
-                label="Registered disabled?"
+                label={HEALTH_QUESTIONS.is_registered_disabled}
               />
 
               {state.health.is_registered_disabled && (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Registration number">
+                  <Field label={HEALTH_QUESTIONS.disability_reg_number}>
                     <Input value={state.health.disability_reg_number} onChange={(e) => updateHealth('disability_reg_number', e.target.value)} />
                   </Field>
-                  <Field label="Expiry">
+                  <Field label={HEALTH_QUESTIONS.disability_reg_expiry_date}>
                     <Input
                       type="date"
                       value={state.health.disability_reg_expiry_date}
                       onChange={(e) => updateHealth('disability_reg_expiry_date', e.target.value)}
                     />
                   </Field>
-                  <Field label="Details" className="sm:col-span-2">
+                  <Field label={HEALTH_QUESTIONS.disability_details} className="sm:col-span-2">
                     <Textarea value={state.health.disability_details} onChange={(e) => updateHealth('disability_details', e.target.value)} rows={3} />
                   </Field>
                 </div>
@@ -905,11 +993,11 @@ export default function NewEmployeeOnboardingClient() {
                         file is kept in state and uploaded after the employee is created. */}
                     <FileButton
                       id="new-employee-document-photo"
-                      accept=".pdf,.jpg,.jpeg,.png"
+                      accept={RIGHT_TO_WORK_ACCEPT}
                       icon={<Icon name="upload" size={16} />}
                       onFiles={([file]) => {
-                        if (!RIGHT_TO_WORK_ALLOWED_MIME_TYPES.includes(file.type as (typeof RIGHT_TO_WORK_ALLOWED_MIME_TYPES)[number])) {
-                          toast.error('Only PDF, JPG, and PNG files are allowed.')
+                        if (!isAllowedRightToWorkType(file.type)) {
+                          toast.error(RIGHT_TO_WORK_TYPE_MESSAGE)
                           updateRightToWork('document_photo', null)
                           return
                         }
@@ -986,14 +1074,15 @@ export default function NewEmployeeOnboardingClient() {
             </div>
           </Section>
 
+          {/* No tick box: the agreement is signed through the signing feature, and the checklist
+              records it when the employee signs. A hand-set tick had no signed copy behind it. */}
           <Card>
             <CardHeader title="Employee Agreement" />
             <CardBody>
-              <Checkbox
-                checked={state.onboarding.employee_agreement_accepted}
-                onChange={(checked) => updateOnboarding('employee_agreement_accepted', checked)}
-                label="Employee has read, understood, and agreed to the staff handbook and rules"
-              />
+              <p className="text-sm text-text">
+                Once the employee is created, use Send for Signature on their page to send them the
+                agreement. It is marked as accepted when they sign it.
+              </p>
             </CardBody>
           </Card>
 

@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
   sendWaiver: vi.fn(),
-  toast: { success: vi.fn(), error: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
 }))
 
 vi.mock('@/app/actions/signing-bookings', () => ({
@@ -157,21 +157,61 @@ describe('sending the food agreement from the booking', () => {
     expect(mocks.getState).toHaveBeenCalledTimes(2)
   })
 
-  it('tells the user when the request was created but the email failed', async () => {
+  it('says it was not sent when the provider definitely refused the email', async () => {
     const user = userEvent.setup()
     await renderLoaded(signingState())
     mocks.sendWaiver.mockResolvedValue({
       success: true,
-      data: { documentId: 'doc-waiver', deliveries: [{ partyId: 'p1', name: 'Sam Example', email: 'sam@example.com', email_status: 'failed', error: 'Mailbox unavailable' }] },
+      data: { documentId: 'doc-waiver', deliveries: [{ partyId: 'p1', name: 'Sam Example', email: 'sam@example.com', email_status: 'failed', error: 'Mailbox unavailable', uncertain: false }] },
     })
 
     await user.click(screen.getByRole('button', { name: SEND }))
 
     await waitFor(() =>
-      expect(mocks.toast.error).toHaveBeenCalledWith('Food agreement created, but the email failed. Use "Send New Link" or "Sign in Person".')
+      expect(mocks.toast.error).toHaveBeenCalledWith('Food agreement created, but the email to Sam Example was not sent. Use "Send New Link" or "Sign in Person".')
     )
-    // Never a plain "sent" when the customer has no link.
+    // Never a plain "sent" when the customer has no link, and never the provider's text.
     expect(mocks.toast.success).not.toHaveBeenCalled()
+    expect(JSON.stringify(mocks.toast.error.mock.calls)).not.toContain('Mailbox unavailable')
+  })
+
+  // A failed email was always an error saying to send a new link, even when it may have reached
+  // the customer: a new link cancels the one they may be holding.
+  it('warns, and says to check with the customer first, when the email may have gone', async () => {
+    const user = userEvent.setup()
+    await renderLoaded(signingState())
+    mocks.sendWaiver.mockResolvedValue({
+      success: true,
+      data: { documentId: 'doc-waiver', deliveries: [{ partyId: 'p1', name: 'Sam Example', email: 'sam@example.com', email_status: 'failed', error: 'Request timed out', uncertain: true }] },
+    })
+
+    await user.click(screen.getByRole('button', { name: SEND }))
+
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        'Food agreement created, but we could not confirm the email to Sam Example went. It may have reached them, so check with them before sending a new link.'
+      )
+    )
+    expect(mocks.toast.error).not.toHaveBeenCalled()
+    expect(mocks.toast.success).not.toHaveBeenCalled()
+  })
+
+  it('says email is switched off, and to sign in person, when the kill switch stopped it', async () => {
+    const user = userEvent.setup()
+    await renderLoaded(signingState())
+    mocks.sendWaiver.mockResolvedValue({
+      success: true,
+      data: { documentId: 'doc-waiver', deliveries: [{ partyId: 'p1', name: 'Sam Example', email: 'sam@example.com', email_status: 'failed', code: 'email_suspended', uncertain: false }] },
+    })
+
+    await user.click(screen.getByRole('button', { name: SEND }))
+
+    await waitFor(() =>
+      expect(mocks.toast.warning).toHaveBeenCalledWith(
+        'Food agreement created, but email is switched off, so no link was emailed to Sam Example. Use "Sign in Person".'
+      )
+    )
+    expect(mocks.toast.error).not.toHaveBeenCalled()
   })
 
   it('tells the user to sign in person when there is no email address', async () => {

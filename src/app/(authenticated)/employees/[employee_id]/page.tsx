@@ -7,7 +7,7 @@ import { EmployeeHeaderActions } from './_components/EmployeeHeaderActions'
 import { QuickAddNoteSheet } from './_components/QuickAddNoteSheet'
 import { EMPLOYEES_BACK_TO_LIST } from '../_shared/nav'
 import { employeePageTitle } from '../_shared/employee-title'
-import { employmentStatusTone } from '../_shared/status-ui'
+import { employmentStatusLabel, employmentStatusTone } from '../_shared/status-ui'
 import EmployeeNotesList from '@/components/features/employees/EmployeeNotesList'
 import AddEmployeeNoteForm from '@/components/features/employees/AddEmployeeNoteForm'
 import EmployeeAttachmentsList from '@/components/features/employees/EmployeeAttachmentsList'
@@ -58,7 +58,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     leaveRequestsResult,
     leaveDaysResult,
     rotaSettings,
-    canCreateLeave,
+    hasLeaveCreatePermission,
     reliabilityData,
   ] = await Promise.all([
     getEmployeeDetailData(employeeId),
@@ -93,7 +93,10 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     emergencyContacts,
     rightToWork,
     auditLogs,
-    permissions
+    onboardingAnswers,
+    loadErrors,
+    permissions,
+    redacted,
   } = result.data
 
   const paySettings = paySettingsResult.success ? paySettingsResult.data : null
@@ -111,10 +114,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
 
   // Resolve current rate for display (today's date in London timezone)
   const today = getTodayIsoDate()
-  const [currentRate, signingResult] = await Promise.all([
+  const [currentRateResult, signingResult] = await Promise.all([
     getHourlyRate(employeeId, today),
     getSigningDocumentsForSubject('employee', employeeId),
   ])
+  // A failed read is shown as an error on the Pay tab, never as the age-band rate in its place.
+  const currentRate = currentRateResult.success ? currentRateResult.data : null
+  const currentRateError = currentRateResult.success ? null : currentRateResult.error
 
   const attachmentCategoryMap = attachmentCategories.reduce<Record<string, string>>((acc, category) => {
     acc[category.category_id] = category.category_name
@@ -122,6 +128,10 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
   }, {})
 
   const isOnboarding = employee.status === 'Onboarding'
+  // A former employee's record is history: no new holiday, pay changes or documents to sign.
+  // The leave and pay actions refuse them on the server as well.
+  const isFormer = employee.status === 'Former'
+  const canCreateLeave = hasLeaveCreatePermission && !isFormer
   // The record's name (preferred, then legal in brackets), or the email address before onboarding.
   const headerName = employeePageTitle(employee)
   const age = calculateAge(employee.date_of_birth ?? null)
@@ -153,7 +163,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     {
       key: 'status',
       label: 'Employment Status',
-      value: <Badge tone={employmentStatusTone(employee.status)}>{employee.status}</Badge>,
+      value: <Badge tone={employmentStatusTone(employee.status)}>{employmentStatusLabel(employee.status)}</Badge>,
     },
     { key: 'first_shift_date', label: 'First Shift Date', value: employee.first_shift_date ? formatDate(employee.first_shift_date) : 'N/A' },
     { key: 'employment_start_date', label: 'Start Date', value: employee.employment_start_date ? formatDate(employee.employment_start_date) : 'N/A' },
@@ -173,14 +183,27 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     { key: 'address', label: 'Address', value: employee.address || 'N/A', span: 2 as const },
   ]
 
-  const setupMissingItems = isOnboarding ? [] : [
-    ...(emergencyContacts.length === 0 ? ['Emergency contacts'] : []),
-    ...(!financialDetails ? ['Bank details'] : []),
-    ...(!healthRecord ? ['Health information'] : []),
-    ...(!rightToWork ? ['Right to Work'] : []),
+  // Each item checks the fields themselves, not just that a row exists: a saved row with a blank
+  // sort code is still missing bank details. A section this viewer cannot see, or that failed to
+  // load, is left out rather than reported as missing.
+  const hasText = (value: string | null | undefined) => Boolean(value?.trim())
+  const canCheckFinancial = !redacted.financial && !loadErrors.financial
+  const canCheckHealth = !redacted.health && !loadErrors.health
+  const setupMissingItems = isOnboarding || isFormer ? [] : [
+    ...(!loadErrors.emergencyContacts && emergencyContacts.length === 0 ? ['Emergency contacts'] : []),
+    ...(canCheckFinancial && !(hasText(financialDetails?.bank_sort_code) && hasText(financialDetails?.bank_account_number))
+      ? ['Bank details (sort code and account number)']
+      : []),
+    ...(canCheckFinancial && !hasText(financialDetails?.ni_number) ? ['NI number'] : []),
+    ...(canCheckHealth && !healthRecord ? ['Health information'] : []),
+    ...(!loadErrors.rightToWork && !rightToWork ? ['Right to Work'] : []),
     ...(!employee.post_code ? ['Post code'] : []),
     ...(!employee.mobile_number && !employee.phone_number ? ['Telephone/mobile number'] : []),
   ]
+
+  // A section that failed to load says so on its tab, not as an empty one.
+  const sectionError = (message: string | undefined) =>
+    message ? <Alert tone="danger" title="Could not load this section">{message}</Alert> : null
 
   const tabs = [
     {
@@ -202,6 +225,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           employeeId={employee.employee_id}
           financialDetails={financialDetails}
           canEdit={permissions.canEdit}
+          redacted={redacted.financial}
+          loadError={loadErrors.financial ?? null}
         />
       )
     },
@@ -213,13 +238,15 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           employeeId={employee.employee_id}
           healthRecord={healthRecord}
           canEdit={permissions.canEdit}
+          redacted={redacted.health}
+          loadError={loadErrors.health ?? null}
         />
       )
     },
     {
       key: 'contacts',
       label: 'Emergency Contacts',
-      content: (
+      content: sectionError(loadErrors.emergencyContacts) ?? (
         <EmergencyContactsTab
           employeeId={employee.employee_id}
           contacts={emergencyContacts}
@@ -230,12 +257,15 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
     {
       key: 'right_to_work',
       label: 'Right to Work',
-      content: (
+      content: sectionError(loadErrors.rightToWork) ?? (
         <RightToWorkTab
           employeeId={employee.employee_id}
           rightToWork={rightToWork}
           canEdit={permissions.canEdit}
           canViewDocuments={permissions.canViewDocuments}
+          canUploadDocuments={permissions.canUploadDocuments}
+          canDeleteDocuments={permissions.canDeleteDocuments}
+          documentWithheld={redacted.rightToWorkDocument && rightToWork !== null}
         />
       )
     },
@@ -246,6 +276,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         <OnboardingChecklistTab
           employeeId={employee.employee_id}
           canEdit={permissions.canEdit}
+          rightToWorkNoticeAt={onboardingAnswers.rightToWorkNotice?.answeredAt ?? null}
+          answersLoadError={loadErrors.onboardingAnswers ?? null}
         />
       )
     },
@@ -258,8 +290,9 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           isUnder18={typeof age === 'number' ? age < 18 : null}
           hasEmail={Boolean(employee.email_address)}
           documents={signingResult.data ?? []}
-          canSend={permissions.canEdit}
+          canSend={permissions.canEdit && !isFormer}
           loadError={signingResult.error ?? null}
+          closedReason={isFormer ? 'They no longer work here, so nothing new can be sent for signature. Anything still waiting to be signed is withdrawn.' : null}
         />
       )
     },
@@ -269,10 +302,12 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
       content: (
         <EmployeePayTab
           employeeId={employee.employee_id}
-          canEdit={permissions.canEdit}
+          canEdit={permissions.canEdit && !isFormer}
           initialPaySettings={paySettings}
           initialOverrides={rateOverrides}
           currentRate={currentRate}
+          currentRateError={currentRateError}
+          readOnlyReason={isFormer && permissions.canEdit ? 'They no longer work here, so their pay can no longer be changed.' : null}
           loadError={payLoadError}
         />
       )
@@ -289,6 +324,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           paySettings={paySettings}
           rotaSettings={rotaSettings}
           loadError={holidaysLoadError}
+          onboardingTimeOff={onboardingAnswers.bookedTimeOff}
         />
       )
     },
@@ -310,6 +346,8 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
         employeeName={headerName}
         status={employee.status}
         employmentStartDate={employee.employment_start_date}
+        employmentEndDate={employee.employment_end_date ?? null}
+        separationShiftPolicy={employee.separation_shift_policy ?? null}
         canEdit={permissions.canEdit}
         canDelete={permissions.canDelete}
       />
@@ -330,11 +368,11 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             <CardBody className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <Stat
                 label="Employment"
-                value={`${employee.status}${employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}`}
+                value={`${employmentStatusLabel(employee.status)}${employee.employment_start_date ? ` • Started ${formatDate(employee.employment_start_date)}` : ''}`}
                 hint={employee.employment_start_date ? calculateLengthOfService(employee.employment_start_date) : undefined}
               />
               <Badge tone={employmentStatusTone(employee.status)} dot>
-                {employee.status}
+                {employmentStatusLabel(employee.status)}
               </Badge>
             </CardBody>
           </Card>
@@ -342,6 +380,13 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           {isOnboarding && (
             <Alert tone="info" title="Onboarding in progress">
               This employee has been invited but has not yet completed their profile. Use the &ldquo;Resend Invite&rdquo; button to send them a new invite link.
+            </Alert>
+          )}
+
+          {employee.status === 'Started Separation' && employee.employment_end_date && (
+            <Alert tone="info" title="Leaving">
+              Their last working day is {formatDate(employee.employment_end_date)}. They can be marked as Former from that day, and
+              are marked automatically the day after, once no shifts or leave are booked after it.
             </Alert>
           )}
 
@@ -366,7 +411,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
                 </div>
               )}
 
-              <EmployeeNotesList notes={notes} />
+              {sectionError(loadErrors.notes) ?? <EmployeeNotesList notes={notes} />}
             </CardBody>
           </Card>
 
@@ -380,7 +425,9 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
               }
             />
             <CardBody className="space-y-4">
-              {permissions.canViewDocuments ? (
+              {permissions.canViewDocuments && loadErrors.attachments ? (
+                sectionError(loadErrors.attachments)
+              ) : permissions.canViewDocuments ? (
                 <EmployeeAttachmentsList
                   employeeId={employee.employee_id}
                   attachments={attachments}
@@ -412,6 +459,7 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
             auditLogs={auditLogs}
             notes={notes}
             canViewAudit={permissions.canView}
+            loadError={loadErrors.auditLogs ?? null}
           />
 
           <EmployeeRecentChanges employeeId={employee.employee_id} />

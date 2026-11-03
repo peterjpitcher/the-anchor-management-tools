@@ -23,11 +23,6 @@ interface EmployeeBirthday {
   turning_age: number;
 }
 
-const monthNames = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
-
 export default async function EmployeeBirthdaysPage() {
   const [canView, canManage] = await Promise.all([
     checkUserPermission('employees', 'view'),
@@ -49,7 +44,6 @@ export default async function EmployeeBirthdaysPage() {
   // Count from the London date, as getUpcomingBirthday does, so the page and the helper agree
   // about the day. The host clock is UTC on the server, still yesterday from 00:00 to 00:59 BST.
   const todayIso = getTodayIsoDate();
-  const monthIndexOf = (isoDate: string) => Number(isoDate.slice(5, 7)) - 1;
   const getUpcomingBirthdayDate = (daysUntil: number) => {
     return shiftIsoDate(todayIso, daysUntil) ?? todayIso;
   };
@@ -62,31 +56,23 @@ export default async function EmployeeBirthdaysPage() {
     return `In ${Math.floor(days / 30)} month${Math.floor(days / 30) !== 1 ? 's' : ''}`;
   };
 
-  // Group birthdays by month
-  const groupedByMonth = birthdays.reduce((acc, birthday) => {
+  // Group by the month and year each next birthday falls in. Grouping by month alone put a
+  // birthday from earlier this month (next due in eleven months' time) at the top, under this
+  // month, beside the ones still to come. The list arrives soonest first, so the groups come out
+  // in date order; the year is in the title because this month can appear twice, a year apart.
+  const sortedMonths: Array<[string, { birthdays: EmployeeBirthday[] }]> = [];
+  const monthGroups = new Map<string, { birthdays: EmployeeBirthday[] }>();
+  for (const birthday of [...birthdays].sort((a, b) => a.days_until_birthday - b.days_until_birthday)) {
     const birthdayDate = getUpcomingBirthdayDate(birthday.days_until_birthday);
-    const monthIndex = monthIndexOf(birthdayDate);
-    const monthName = monthNames[monthIndex];
-
-    if (!acc[monthName]) {
-      acc[monthName] = {
-        monthIndex,
-        birthdays: []
-      };
+    const monthKey = birthdayDate.slice(0, 7);
+    let group = monthGroups.get(monthKey);
+    if (!group) {
+      group = { birthdays: [] };
+      monthGroups.set(monthKey, group);
+      sortedMonths.push([formatDateInLondon(`${monthKey}-01`, { month: 'long', year: 'numeric' }), group]);
     }
-
-    acc[monthName].birthdays.push(birthday);
-    return acc;
-  }, {} as Record<string, { monthIndex: number; birthdays: EmployeeBirthday[] }>);
-
-  // Sort months in chronological order starting from current month
-  const currentMonth = monthIndexOf(todayIso);
-  const sortedMonths = Object.entries(groupedByMonth)
-    .sort(([, a], [, b]) => {
-      const aIndex = a.monthIndex >= currentMonth ? a.monthIndex : a.monthIndex + 12;
-      const bIndex = b.monthIndex >= currentMonth ? b.monthIndex : b.monthIndex + 12;
-      return aIndex - bIndex;
-    });
+    group.birthdays.push(birthday);
+  }
 
   const headerActions = canManage ? <SendBirthdayRemindersButton /> : undefined;
 
@@ -97,8 +83,10 @@ export default async function EmployeeBirthdaysPage() {
       navItems={EMPLOYEES_NAV}
       headerActions={headerActions}
     >
+      {/* Matches the code: the cron in vercel.json runs at 09:00 UTC (9am GMT, 10am BST) and the
+          email goes to MANAGER_EMAIL. No address is named here, so the page cannot go stale. */}
       <Alert tone="info" title="Automatic Birthday Reminders" icon={<Icon name="alertTriangle" size={16} />}>
-        Birthday reminders are automatically sent to manager@the-anchor.pub every morning at 8 AM for employees with birthdays exactly 1 week away.
+        Every morning at 9am (10am in British Summer Time), a reminder is emailed to the manager&apos;s email address for anyone whose birthday is exactly 7 days away.
       </Alert>
 
       {/* A failed load says so; it is never shown as an empty list. */}

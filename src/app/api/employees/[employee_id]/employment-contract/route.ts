@@ -5,6 +5,7 @@ export const maxDuration = 60
 
 import { createClient } from '@/lib/supabase/server'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { logAuditEvent } from '@/app/actions/audit'
 import { buildWorkerAgreementDocument } from '@/lib/signing/documents/worker-agreement'
 
 function sanitizeFilename(value: string, fallback: string): string {
@@ -36,7 +37,9 @@ export async function GET(
     return new NextResponse('Unauthorized', { status: 401 })
   }
 
-  const hasPermission = await checkUserPermission('employees', 'view')
+  // The agreement prints the home address, date of birth and hourly rate, which the employee
+  // record only shows to employees edit, so the download needs the same permission.
+  const hasPermission = await checkUserPermission('employees', 'edit')
   if (!hasPermission) {
     return new NextResponse('Permission denied', { status: 403 })
   }
@@ -49,6 +52,16 @@ export async function GET(
       return new NextResponse('Employee not found', { status: 404 })
     }
     const { employee, pdf } = document
+
+    await logAuditEvent({
+      user_id: user.id,
+      user_email: user.email ?? undefined,
+      operation_type: 'download',
+      resource_type: 'employee',
+      resource_id: employee.employee_id,
+      operation_status: 'success',
+      additional_info: { action: 'download_worker_agreement', document_type: 'Casual worker agreement' },
+    })
 
     const safeName = sanitizeFilename(
       `zero-hours-worker-agreement-${employee.last_name}-${employee.first_name}.pdf`,

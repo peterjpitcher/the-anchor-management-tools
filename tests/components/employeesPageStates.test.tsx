@@ -56,6 +56,7 @@ import AddNoteModal from '@/components/modals/AddNoteModal'
 import EmployeePayTab from '@/components/features/employees/EmployeePayTab'
 import EmployeeHolidaysTab from '@/components/features/employees/EmployeeHolidaysTab'
 import AddEmployeeAttachmentForm from '@/components/features/employees/AddEmployeeAttachmentForm'
+import { HEALTH_QUESTIONS } from '@/lib/employees/health-questions'
 import type { Employee } from '@/types/database'
 
 beforeAll(() => {
@@ -117,7 +118,7 @@ describe('employees pages on the page contract', () => {
     expect(screen.getByLabelText(/First Name/)).toHaveValue('Sam')
     render(<FinancialDetailsForm employeeId="e1" financialDetails={null} cancelHref="/employees/e1" />)
     render(<HealthRecordsForm employeeId="e1" healthRecord={null} cancelHref="/employees/e1" />)
-    expect(screen.getByLabelText('Is Registered Disabled?')).toBeInTheDocument()
+    expect(screen.getByLabelText(HEALTH_QUESTIONS.is_registered_disabled)).toBeInTheDocument()
   })
 
   it('renders the new employee flow with a FormFooter, and the edit page', async () => {
@@ -130,7 +131,7 @@ describe('employees pages on the page contract', () => {
     await user.click(screen.getByRole('tab', { name: 'Agreement & Setup' }))
     expect(screen.getByText('Zero Tolerance')).toBeInTheDocument()
     render(
-      <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments />,
+      <EmployeeEditClient employee={employee} financialDetails={null} healthRecord={null} rightToWork={null} canViewDocuments canUploadDocuments canDeleteDocuments />,
     )
     expect(screen.getAllByRole('heading', { level: 1, name: 'Edit Employee' }).length).toBeGreaterThan(0)
     // The employee's name is the subtitle, as their page is titled.

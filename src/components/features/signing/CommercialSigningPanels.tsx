@@ -14,6 +14,7 @@ import {
 } from '@/app/actions/signing-commercial'
 import type { SigningDocumentSummary } from '@/lib/signing/service'
 import type { SigningSubjectType } from '@/lib/signing/types'
+import { failedDeliveryToasts } from './delivery-outcome'
 import { SignaturePanel } from './SignaturePanel'
 
 /**
@@ -22,13 +23,15 @@ import { SignaturePanel } from './SignaturePanel'
  * has to place it.
  */
 
-function reportSent(result: SendResult, sentMessage: string): void {
-  const failed = result.deliveries.some((delivery) => delivery.email_status === 'failed')
-  if (failed) {
-    toast.error('Created, but the email failed. Use "Send new link" or "Sign in person".')
-  } else {
-    toast.success(sentMessage)
-  }
+/**
+ * After a send: sent, or what to do about a link email that did not definitely go. An email we
+ * did not hear back about may have reached them, so it is a warning to check with them before a
+ * new link cancels the one they may be holding.
+ */
+function reportSent(result: SendResult, sentMessage: string, noun: string): void {
+  const problems = failedDeliveryToasts(result.deliveries, { noun })
+  for (const problem of problems) toast[problem.kind](problem.message)
+  if (problems.length === 0) toast.success(sentMessage)
 }
 
 function useSubjectDocuments(subjectType: SigningSubjectType, subjectId: string): {
@@ -108,7 +111,7 @@ export function QuoteSigningPanel(props: QuoteSigningPanelProps): React.JSX.Elem
         setError(result.error ?? 'Could not send the quote.')
         return
       }
-      reportSent(result.data, `Quote ${props.quoteNumber} sent for acceptance.`)
+      reportSent(result.data, `Quote ${props.quoteNumber} sent for acceptance.`, 'Acceptance request')
       setOpen(false)
       await reload()
       props.onChanged?.()
@@ -195,7 +198,7 @@ export function ClientAgreementPanel(props: ClientAgreementPanelProps): React.JS
         setError(result.error ?? 'Could not send the agreement.')
         return
       }
-      reportSent(result.data, `Agreement sent to ${props.clientName}.`)
+      reportSent(result.data, `Agreement sent to ${props.clientName}.`, 'Agreement')
       setOpen(false)
       await reload()
     })
@@ -303,7 +306,7 @@ export function BookingSuppliersPanel({ bookingId }: { bookingId: string }): Rea
         setError(result.error ?? 'Could not send the confirmation.')
         return
       }
-      reportSent(result.data, `Confirmation sent to ${supplier.name}.`)
+      reportSent(result.data, `Confirmation sent to ${supplier.name}.`, 'Confirmation request')
       setSupplier(null)
       await load()
     })

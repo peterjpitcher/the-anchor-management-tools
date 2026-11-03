@@ -17,6 +17,8 @@ interface EmployeeEditClientProps {
   healthRecord: EmployeeHealthRecord | null
   rightToWork: EmployeeRightToWork | null
   canViewDocuments: boolean
+  canUploadDocuments: boolean
+  canDeleteDocuments: boolean
 }
 
 export default function EmployeeEditClient({
@@ -24,7 +26,9 @@ export default function EmployeeEditClient({
   financialDetails,
   healthRecord,
   rightToWork,
-  canViewDocuments
+  canViewDocuments,
+  canUploadDocuments,
+  canDeleteDocuments
 }: EmployeeEditClientProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -90,6 +94,8 @@ export default function EmployeeEditClient({
           rightToWork={rightToWork}
           canEdit={true}
           canViewDocuments={canViewDocuments}
+          canUploadDocuments={canUploadDocuments}
+          canDeleteDocuments={canDeleteDocuments}
           cancelHref={employeeHref}
         />
       )
