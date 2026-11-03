@@ -42,7 +42,7 @@ const SUB_LABEL_CLASS = 'font-anchor-body text-guest-body text-guest-text-strong
 const UL_CLASS = 'flex list-disc flex-col gap-guest-2xs pl-5 font-anchor-body text-guest-lead text-guest-text'
 
 export default function PrivacyPolicy() {
-  const lastUpdated = new Date('2026-10-13').toLocaleDateString('en-GB', {
+  const lastUpdated = new Date('2026-11-03').toLocaleDateString('en-GB', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

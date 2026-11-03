@@ -10,10 +10,8 @@ Every step below that touches production needs the owner's explicit yes at the t
 - [ ] Settle the open content and policy points raised in chat. Course files live outside the repo
       in `~/Documents/Anchor training content/` (one `course.json` per course; `_parts` is stale,
       never re-merge it). Edit the `course.json`, then upload again.
-- [ ] The employees release on main has three migrations that are not applied in production
-      either (`20261102230000`, `20261102230100`, `20261102230200`; checked read-only on
-      3 November, latest applied `20261102210508`). They go first, through their own release
-      checklist, so the history stays in timestamp order.
+- [x] The employees release's three migrations are applied (production versions
+      `20261103070932`, `20261103070948` and `20261103070955`, 3 November 2026).
 
 ## 1. Database, before or with the deploy
 
@@ -122,14 +120,11 @@ retired courses and removed groups, release waiting items a manager assigned onc
 need is done, and end pauses. The daily run records `autoAssignEnabled` in its summary.
 
 - [ ] Leave it off until the owner decides to switch it on (owner, 3 November 2026).
-- [ ] Before switching it on, decide how training people did before the app is recorded (an open
-      owner decision). Otherwise the next check (the 09:00 UTC daily run, or sooner, whenever a
-      manager opens a Training tab or someone opens My Training) gives every Active member of
-      staff each course in their audience. What the app can record today: a practical sign-off
-      (on the person's Training tab, confirmed by them on a venue device) and an external
-      qualification (with its certificate). An online course (Essentials, Team training) is only
-      ever marked done by the person taking it in the app; there is no way to record that it was
-      done before.
+- [ ] Before switching it on, record the training people had before the app with Record Trained
+      In Person on each person's Training tab (owner decision, 3 November 2026). Otherwise the next
+      check (the 09:00 UTC daily run, or sooner, whenever a manager opens a Training tab or someone
+      opens My Training) gives every Active member of staff each course in their audience that is
+      not already done and in date.
 - [ ] Never waive Essentials or Team training to stand for training done before the app. A waived
       first go counts for nothing: every practical that needs it (the walkthrough needs
       Essentials; chemicals, kegs, gas, BIBs, ramp, hot drinks and pool table need Team training)
