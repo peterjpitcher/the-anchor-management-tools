@@ -14,7 +14,7 @@ Buckets: SAFE = code fix in this release. DB = migration, drafted and tested loc
 
 | ID | Sev | Finding | Fix | Bucket |
 |---|---|---|---|---|
-| FF-01 | High | `employee_rate_overrides` policy `auth.uid() IS NOT NULL` FOR ALL: any login reads every personal pay rate and can write one (live). | Migration `20261102230000`: read with employees view, payroll view or own rows; write with employees edit; anon revoked. Harness passes 17 checks. | DB |
+| FF-01 | High | `employee_rate_overrides` policy `auth.uid() IS NOT NULL` FOR ALL: any login reads every personal pay rate and can write one (live). | Migration `20261103070932`: read with employees view, payroll view or own rows; write with employees edit; anon revoked. Harness passes 17 checks. | DB |
 | FF-02 | High | `create_employee_invite` is SECURITY DEFINER, no permission check, EXECUTE to authenticated, returns the raw token (live). Any login can mint an employee and then a confirmed login. | Revoke from authenticated; service_role only (the app calls it with the admin client). | DB |
 | FF-03 | High | `restore_employee_version` checks the permission of a caller-supplied `p_user_id`; EXECUTE to authenticated (live). Any login can overwrite an employee record with an old version by passing an admin's id. `compare_employee_versions` and `get_employee_at_timestamp` read version history with no check (live). None is called by the app. | Revoke all three from authenticated. | DB |
 | FF-04 | High | audit_logs policy "Users can view limited audit logs for dashboard" lets any login read every employee create, update and delete audit row, old and new values included (address, date of birth, phones) (live). | Employee rows need employees view (and holders then see every employee event type). Sanitise the delete audit payload. | DB + SAFE |
@@ -150,8 +150,10 @@ Checked and not a defect: the new employee form does not check the person's own 
   - knip: nothing new;
   - Postgres harnesses: 4 of 4 pass;
   - browser (fixture harness, no live data): leave list at phone width, reliability "Not scored" and the health tab wording.
-- Drafted and tested on a throwaway Postgres, not applied: FF-01 (17 checks), FF-02 to FF-04 (32 checks), FF-59. Need the owner's yes through prod-migrate.
-- Owner decisions, recommendation applied where safe: FF-21 (HMRC starter details), FF-55 (staff on notice in the policies roll call).
+- FF-01 (17 checks), FF-02 to FF-04 (32 checks) and FF-59 were tested on a throwaway Postgres, then applied to production on 3 November 2026 as 20261103070932, 20261103070948 and 20261103070955, and verified live (release.md, "What happened").
+- Owner decisions:
+  - FF-21 (HMRC starter details): kept out, as the owner chose.
+  - FF-55 (staff on notice in the policies roll call): the owner left the recommendation (include them) in place. The live check on 3 November showed the roll call still listed Active staff only, so it was fixed then; it now uses `SELECTABLE_EMPLOYEE_STATUSES`.
 - Partly done, reported: FF-16 (onboarding now needs 12 characters; password reset and change-password still accept 8, which affects every login).
 - Reported, not in this release:
   - OUT-1, OUT-2, OUT-3;

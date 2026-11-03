@@ -1,6 +1,6 @@
 # Employees and new starter onboarding: release pack (2 November 2026)
 
-Status: built and verified locally on branch `fix/employees-onboarding-review`. Not pushed, not merged, not deployed. No migration applied. Production needs the owner's approval first.
+Status: LIVE. The owner approved the release on 2 November 2026. Code went to main as `daa447089` (production deployment `dpl_AYopr6tmXa5c48aoUUkLNqed2TEg`), and the three migrations were applied on 3 November 2026. See "What happened" at the end.
 
 Defect log: `defect-log.md` in this folder (FF-01 to FF-85, OUT-1 to OUT-3, final statuses at the end).
 
@@ -17,13 +17,13 @@ Touched outside the section because the same fault ran through them:
 - the reliability scoring (FF-82);
 - one additive result code on `sendEmail` (`recipient_suppressed`, FF-71).
 
-Three migrations, in this order. None is applied.
+Three migrations, in this order. All three are applied (versions below are the ones production recorded).
 
 | Order | File | What it does | Fixes |
 |---|---|---|---|
-| 1 | `supabase/migrations/20261102230000_employee_rate_overrides_rls.sql` | Pay rate overrides: read needs employees view, payroll view or your own rows; write needs employees edit. Removes anon access. | FF-01 |
-| 2 | `supabase/migrations/20261102230100_employee_records_access.sql` | `create_employee_invite` and the three version-history functions become service role only; audit log rows about employees need employees view, message rows need messages view; the version history view is closed to anon and signed-in sessions. | FF-02, FF-03, FF-04 |
-| 3 | `supabase/migrations/20261102230200_employees_status_check_reassert.sql` | Re-states the four employee statuses. No change in production (already in place); fixes a fresh rebuild. | FF-59 |
+| 1 | `supabase/migrations/20261103070932_employee_rate_overrides_rls.sql` | Pay rate overrides: read needs employees view, payroll view or your own rows; write needs employees edit. Removes anon access. | FF-01 |
+| 2 | `supabase/migrations/20261103070948_employee_records_access.sql` | `create_employee_invite` and the three version-history functions become service role only; audit log rows about employees need employees view, message rows need messages view; the version history view is closed to anon and signed-in sessions. | FF-02, FF-03, FF-04 |
+| 3 | `supabase/migrations/20261103070955_employees_status_check_reassert.sql` | Re-states the four employee statuses. No change in production (already in place); fixes a fresh rebuild. | FF-59 |
 
 Rollbacks: `tasks/employee-rate-overrides-rls/rollback.sql` (1), `tasks/employee-records-access/rollback.sql` (2). Migration 3 needs none: production already holds that exact check.
 
@@ -40,8 +40,9 @@ Anon allowlist: `employee_rate_overrides` removed from `scripts/security/anon-ac
 3. Run `npx tsx scripts/security/assert-anon-surface.ts` (read only).
 4. Merge the branch to main and let Vercel deploy. Main has gained 18 commits since the branch was cut. The only shared file, `docs/standards/UI_UX.md`, merges cleanly (checked with `git merge-tree` on 2 November).
 
-The three migrations were renumbered from 202611022000xx to 202611022300xx. That puts them after main's `20261102210508_return_visit_lifecycle.sql`, which is already applied in production, so they still run last.
 5. Check the deployment id and run the post-deploy checks below.
+
+The order actually used was code first, then migrations (see "What happened"): the migrations only tighten access, and the deployed code reads nothing they add.
 
 The code works with or without the migrations (every changed reader already runs behind the matching permission), so a delay between steps 2 and 4 is safe in either direction.
 
@@ -93,3 +94,33 @@ A starter who already created their password on an older link must now sign in o
 - The rota grid chip says "Leave" for every leave day. Naming the type needs the rota leave query to carry it.
 - The browser still receives the provider's error text inside the signing delivery data, though it is no longer shown on screen.
 - Two right to work and onboarding progress actions still return the service's own message. Those messages are written for staff, so they were left alone.
+- `get_employee_at_timestamp` fails in production with `42703 column e.id does not exist` (found on 3 November while smoke-testing the grants). Nothing in the app calls it, and only the service role can now run it. It predates this release.
+
+## What happened (2 and 3 November 2026)
+
+1. Main's 18 newer commits were merged into the branch (`daa447089`). On the merged tree: lint, `tsc`, `typecheck:tests`, 17,835 tests in London and again in UTC, and the build all passed.
+2. Pushed to main as a fast-forward. Vercel production deployment `dpl_AYopr6tmXa5c48aoUUkLNqed2TEg` was Ready, and the production domain served that id.
+3. The owner applied the three migrations from an interactive `claude` session in the terminal. Production recorded:
+
+| Repo file before | Applied version | Name |
+|---|---|---|
+| `20261102230000` | `20261103070932` | `employee_rate_overrides_rls` |
+| `20261102230100` | `20261103070948` | `employee_records_access` |
+| `20261102230200` | `20261103070955` | `employees_status_check_reassert` |
+
+   The SQL in the ledger is each file without its final newline; with it added back, the SHA-256 matches the approved checksum for all three. The repo files were renamed to the applied versions.
+4. Live checks, read only or in transactions that were always rolled back:
+   - anon is refused on `employee_rate_overrides`, `employee_version_history`, `create_employee_invite` and `get_employee_at_timestamp`, and sees no audit rows;
+   - a staff login sees only their own pay rate override and cannot add one;
+   - a super admin sees all 3 overrides, can add one, and sees all 2,767 employee audit rows;
+   - the service role reads overrides and version history, and `compare_employee_versions` runs;
+   - the status check is unchanged (11 Active, 1 Started Separation, 49 Former);
+   - all nine checks in `public.v_anon_surface_report` pass.
+5. Logs after the release: no 4xx or 5xx on any employee or audit path in Supabase. The Vercel errors were a mistyped sign-in password and an older receipts warning.
+6. Post-deploy checks in the browser (signed in as a super admin, nothing saved or sent):
+   - `/employees` counts match the database;
+   - Laura shows On Notice;
+   - a profile's Pay tab loads its override, and its Health and Right to Work tabs load (Health uses the onboarding wording);
+   - reliability ranks 12, and the one "Cannot work" request (Harry, now Former) shows "Not scored" on both events.
+   Not exercised live: the `/employees/new` bad-mobile refusal (it would mean submitting a real form) and the next-morning invite chase run.
+7. Follow-up found in step 6: the policies roll call still listed Active staff only, although the recommendation for owner question 5 (include staff on notice) was recorded as applied. It now lists everyone still working here, staff on notice included, through `SELECTABLE_EMPLOYEE_STATUSES`; the send action already accepted them.
