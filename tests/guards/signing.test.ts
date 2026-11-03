@@ -36,15 +36,32 @@ import {
 const ROOT = process.cwd()
 const FOUNDATION = readFileSync(join(ROOT, 'supabase/migrations/20261013080854_document_signing_foundation.sql'), 'utf8')
 const DRAFTS = readFileSync(join(ROOT, 'supabase/migrations/20261013080952_document_signing_template_drafts.sql'), 'utf8')
+interface KindAddition {
+  file: string
+  sql: string
+  /**
+   * True when the migration seeds draft wording for its kinds (template kinds). False for
+   * generator kinds, whose document the app builds: they have no wording to seed, so the
+   * migration replaces only the signing_documents CHECK.
+   */
+  seedsDrafts: boolean
+}
+
+function kindAddition(file: string, seedsDrafts: boolean): KindAddition {
+  return { file, sql: readFileSync(join(ROOT, 'supabase/migrations', file), 'utf8'), seedsDrafts }
+}
+
 /**
- * Kinds added since the foundation. Each such migration replaces the two kind CHECKs with a
- * longer list and seeds its own draft wording, so the guard reads it beside the first two.
+ * Kinds added since the foundation, oldest first. Each such migration replaces the kind CHECKs
+ * with a longer list, so the guard reads it beside the first two. One that adds a template kind
+ * also seeds its draft wording.
  */
-const KIND_ADDITIONS = [
-  readFileSync(join(ROOT, 'supabase/migrations/20261014084753_signing_deposit_deduction_agreement.sql'), 'utf8'),
+const KIND_ADDITIONS: KindAddition[] = [
+  kindAddition('20261014084753_signing_deposit_deduction_agreement.sql', true),
+  kindAddition('20261103141853_training_signing_kinds.sql', false),
 ]
 /** Every migration that seeds draft wording. */
-const DRAFT_SOURCES = [DRAFTS, ...KIND_ADDITIONS]
+const DRAFT_SOURCES = [DRAFTS, ...KIND_ADDITIONS.filter((addition) => addition.seedsDrafts).map((addition) => addition.sql)]
 
 function withoutComments(sql: string): string {
   return sql.replace(/^\s*--.*$/gm, '')
@@ -67,12 +84,23 @@ function checkValues(table: string, column: string): string[] {
  * the list it replaces.
  */
 function kindCheckValues(table: string): string[] {
+  return kindCheckHistory(table).at(-1)?.values ?? checkValues(table, 'kind')
+}
+
+/** The kinds a migration added to `table`'s CHECK (empty when it left the CHECK alone). */
+function kindsAddedBy(table: string, file: string): string[] {
+  return kindCheckHistory(table).find((step) => step.file === file)?.added ?? []
+}
+
+/** The CHECK on `table` after the foundation and after each kind addition, in order. */
+function kindCheckHistory(table: string): Array<{ file: string; values: string[]; added: string[] }> {
   let values = checkValues(table, 'kind')
+  const history: Array<{ file: string; values: string[]; added: string[] }> = [{ file: 'foundation', values, added: values }]
   const pattern = new RegExp(
     `ALTER TABLE public\\.${table}\\s+DROP CONSTRAINT IF EXISTS ${table}_kind_check,\\s+ADD CONSTRAINT ${table}_kind_check CHECK \\(kind = ANY \\(ARRAY\\[([^\\]]*)\\]\\)\\);`
   )
   for (const addition of KIND_ADDITIONS) {
-    const statements = withoutComments(addition)
+    const statements = withoutComments(addition.sql)
     // Every statement that touches the constraint is the one-statement replacement.
     const mentions = statements.split(';').filter((statement) => statement.includes(`${table}_kind_check`))
     const match = statements.match(pattern)
@@ -82,9 +110,10 @@ function kindCheckValues(table: string): string[] {
     const replaced = Array.from((match as RegExpMatchArray)[1].matchAll(/'([a-z0-9_]+)'::text/g)).map((m) => m[1])
     expect(replaced.slice(0, values.length), `${table}_kind_check dropped or reordered a kind`).toEqual(values)
     expect(replaced.length, `${table}_kind_check added nothing`).toBeGreaterThan(values.length)
+    history.push({ file: addition.file, values: replaced, added: replaced.slice(values.length) })
     values = replaced
   }
-  return values
+  return history
 }
 
 function sorted(values: readonly string[]): string[] {
@@ -131,16 +160,39 @@ describe('signing: code and database agree', () => {
     expect(sorted(kindCheckValues(table))).toEqual(sorted(values))
   })
 
-  it('holds thirteen kinds, nine of them with wording in a template', () => {
-    expect(SIGNING_KINDS).toHaveLength(13)
+  it('holds fifteen kinds, nine of them with wording in a template', () => {
+    expect(SIGNING_KINDS).toHaveLength(15)
     expect(SIGNING_TEMPLATE_KINDS).toHaveLength(9)
-    expect(kindCheckValues('signing_documents')).toHaveLength(13)
+    expect(kindCheckValues('signing_documents')).toHaveLength(15)
     expect(kindCheckValues('signing_templates')).toHaveLength(9)
+  })
+
+  it('adds generator kinds only where a migration seeds no wording, and template kinds only where it does', () => {
+    for (const addition of KIND_ADDITIONS) {
+      const added = kindsAddedBy('signing_documents', addition.file)
+      expect(added.length, `${addition.file} adds no kind to signing_documents`).toBeGreaterThan(0)
+      const addedTemplates = kindsAddedBy('signing_templates', addition.file)
+      if (addition.seedsDrafts) {
+        // A template kind is allowed in both tables, and its wording is seeded beside it.
+        expect(sorted(addedTemplates), `${addition.file} must add its kinds to signing_templates too`).toEqual(sorted(added))
+        expect(addition.sql).toContain('INSERT INTO public.signing_templates')
+      } else {
+        // A generator kind has no template, so it must not be allowed in signing_templates, and
+        // its definition must say the app builds the document.
+        expect(addedTemplates, `${addition.file} adds a kind to signing_templates but seeds no wording`).toEqual([])
+        expect(withoutComments(addition.sql)).not.toMatch(/signing_templates/)
+        for (const kind of added) {
+          const definition = SIGNING_KIND_DEFINITIONS[kind as keyof typeof SIGNING_KIND_DEFINITIONS]
+          expect(definition, `${kind} has no definition`).toBeTruthy()
+          expect(definition.source, `${kind} is added with no wording, so it must be a generator kind`).toBe('generator')
+        }
+      }
+    }
   })
 
   it('adds a kind without opening anything: no table, grant, function or policy in a later migration', () => {
     for (const addition of KIND_ADDITIONS) {
-      const statements = withoutComments(addition)
+      const statements = withoutComments(addition.sql)
       expect(statements).not.toMatch(/\b(CREATE|DROP)\s+(TABLE|FUNCTION|POLICY|TRIGGER|VIEW|INDEX)\b/i)
       expect(statements).not.toMatch(/\b(GRANT|REVOKE)\b/i)
       expect(statements).not.toMatch(/SECURITY DEFINER/i)
@@ -166,6 +218,16 @@ describe('signing: every kind is complete', () => {
     expect(sorted(Object.keys(SIGNING_COMPLETION_HOOKS))).toEqual(sorted(SIGNING_KINDS))
     for (const kind of SIGNING_KINDS) {
       expect(typeof SIGNING_COMPLETION_HOOKS[kind], `${kind} has no completion hook`).toBe('function')
+    }
+  })
+
+  it('keeps a kind signed only in person off every route a link or a chaser would take', () => {
+    for (const kind of SIGNING_KINDS) {
+      const definition = SIGNING_KIND_DEFINITIONS[kind]
+      if (!definition.inPersonOnly) continue
+      expect(definition.signingReminders, `${kind} is signed in person only, so it must not send reminders`).toBe(false)
+      expect(definition.allowSendNewLink, `${kind} is signed in person only, so it must not offer a new link`).toBe(false)
+      expect(definition.signerRoles, `${kind} is signed in person only, so its signer must be on staff`).toEqual(['worker'])
     }
   })
 
