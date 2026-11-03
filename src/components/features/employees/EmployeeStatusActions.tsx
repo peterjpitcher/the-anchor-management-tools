@@ -280,8 +280,8 @@ export function useEmployeeStatusActions({
   }
 
   const revokeMessage = employmentEndDate
-    ? `This sets their status to "Former", keeps ${formatDateFull(employmentEndDate)} as their employment end date, removes all their system permissions and deletes their login. This cannot be undone automatically.`
-    : 'This sets their status to "Former", sets their employment end date to today, removes all their system permissions and deletes their login. This cannot be undone automatically.';
+    ? `This sets their status to "Former", keeps ${formatDateFull(employmentEndDate)} as their employment end date, removes any holiday booked after that day, removes all their system permissions and deletes their login. This cannot be undone automatically.`
+    : 'This sets their status to "Former", sets their employment end date to today, removes any holiday booked after today, removes all their system permissions and deletes their login. This cannot be undone automatically.';
 
   const dialogs = (
     <>
@@ -428,16 +428,18 @@ export function useEmployeeStatusActions({
             Starting the separation takes them off every rota template straight away, whichever option you choose, so rota weeks built from the templates show their usual shifts as open. Cancelling the separation later does not put them back on the templates.
           </Alert>
 
+          {/* finalizeEmployeeSeparation removes leave after the last working day when they are
+              marked as Former, so nobody has to clear it first. Kept until then in case the
+              separation is cancelled. */}
           {leaveAfterEndDate.length > 0 && (
             <Alert tone="warning" size="sm">
-              There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. Cancel {leaveAfterEndDate.length === 1 ? 'it' : 'them'} separately before finalising the employee.
+              There {leaveAfterEndDate.length === 1 ? 'is' : 'are'} {leaveAfterEndDate.length} approved leave day{leaveAfterEndDate.length === 1 ? '' : 's'} after the last working day. {leaveAfterEndDate.length === 1 ? 'It is' : 'They are'} removed automatically when they are marked as Former. Cancelling the separation keeps {leaveAfterEndDate.length === 1 ? 'it' : 'them'}.
             </Alert>
           )}
 
-          {/* Pending leave already sits on the rota, so it blocks finalising just as approved leave does. */}
           {pendingLeaveAfterEndDate.length > 0 && (
             <Alert tone="warning" size="sm">
-              There {pendingLeaveAfterEndDate.length === 1 ? 'is' : 'are'} {pendingLeaveAfterEndDate.length} leave day{pendingLeaveAfterEndDate.length === 1 ? '' : 's'} waiting for a decision after the last working day. Decline {pendingLeaveAfterEndDate.length === 1 ? 'it' : 'them'} before finalising the employee, or they cannot be marked as Former.
+              There {pendingLeaveAfterEndDate.length === 1 ? 'is' : 'are'} {pendingLeaveAfterEndDate.length} leave day{pendingLeaveAfterEndDate.length === 1 ? '' : 's'} waiting for a decision after the last working day. {pendingLeaveAfterEndDate.length === 1 ? 'It is' : 'They are'} removed automatically when they are marked as Former.
             </Alert>
           )}
 

@@ -2,8 +2,9 @@
 //
 // The employee's auth_user_id was cleared whether or not deleting their login worked, which left
 // a live login that nothing pointed at. It is now cleared only once the login is gone, and a
-// failed delete comes back as a warning. The refusals for future shifts and leave also name the
-// dates, so whoever reads the nightly job's alert knows what to clear.
+// failed delete comes back as a warning. The refusal for future shifts also names the dates, so
+// whoever reads the nightly job's alert knows what to clear. Leave after the last working day is
+// removed rather than refused (employeeSeparationLeaverTidy.test.ts).
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
@@ -119,7 +120,8 @@ describe('finalizeEmployeeSeparation and the login link', () => {
     const result = await finalizeEmployeeSeparation(EMPLOYEE_ID, { adminClient: client, todayIso: TODAY })
 
     expect(result).toEqual({ success: true, employmentEndDate: TODAY, authUserDeleted: true })
-    expect(deleteUser).toHaveBeenCalledWith(AUTH_USER_ID)
+    // Soft: a hard delete fails for anyone named on audit_logs (every current member of staff).
+    expect(deleteUser).toHaveBeenCalledWith(AUTH_USER_ID, true)
     expect(authLinkClears(calls)).toHaveLength(1)
     expect(authLinkClears(calls)[0].args[0]).toEqual({ auth_user_id: null })
   })
@@ -143,17 +145,5 @@ describe('finalizeEmployeeSeparation refusals name the dates', () => {
       code: 'future_rota_shifts',
     })
     expect(deleteUser).not.toHaveBeenCalled()
-  })
-
-  it('names the leave in the way, approved or still waiting for a decision', async () => {
-    const { client } = adminClientFor({ futureLeave: [{ leave_date: '2026-11-09' }] })
-
-    const result = await finalizeEmployeeSeparation(EMPLOYEE_ID, { adminClient: client, todayIso: TODAY })
-
-    expect(result).toEqual({
-      success: false,
-      error: 'This employee still has leave booked on 9 November 2026 (approved or waiting for a decision). Cancel or decline that leave before marking them as Former.',
-      code: 'future_booked_leave',
-    })
   })
 })

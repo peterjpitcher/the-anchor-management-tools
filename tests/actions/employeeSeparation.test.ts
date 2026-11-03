@@ -44,11 +44,12 @@ function shiftsQuery(data: unknown, error: unknown = null) {
   return { select: vi.fn().mockReturnValue({ eq: firstEq }) }
 }
 
+// No lower date bound: a last working day can be set in the past, and leave between it and today
+// is removed when they are marked as Former, so the preview has to see it too.
 function leaveQuery(data: unknown, error: unknown = null) {
   const order = vi.fn().mockResolvedValue({ data, error })
   const statusIn = vi.fn().mockReturnValue({ order })
-  const gte = vi.fn().mockReturnValue({ in: statusIn })
-  const firstEq = vi.fn().mockReturnValue({ gte })
+  const firstEq = vi.fn().mockReturnValue({ in: statusIn })
   return { select: vi.fn().mockReturnValue({ eq: firstEq }), statusIn }
 }
 
