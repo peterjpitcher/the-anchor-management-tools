@@ -276,9 +276,6 @@ type UsageDayRow = {
 function mockHolidayUsageClient(options: {
   paySettings?: { holiday_allowance_days: number | null } | null
   paySettingsError?: { message: string } | null
-  /** Employed all year unless given. */
-  employment?: { employment_start_date: string | null; employment_end_date: string | null } | null
-  employmentError?: { message: string } | null
   /** Every dated row in the holiday year, whatever its status or type. */
   days?: UsageDayRow[]
   daysError?: { message: string } | null
@@ -289,14 +286,6 @@ function mockHolidayUsageClient(options: {
       ? { holiday_allowance_days: 20 }
       : options.paySettings,
     error: options.paySettingsError ?? null,
-  })
-
-  const employmentQuery = chain()
-  employmentQuery.maybeSingle.mockResolvedValue({
-    data: options.employment === undefined
-      ? { employment_start_date: '2024-01-15', employment_end_date: null }
-      : options.employment,
-    error: options.employmentError ?? null,
   })
 
   // getHolidayUsage now makes ONE dated query bounded by the holiday year, rather than
@@ -317,9 +306,6 @@ function mockHolidayUsageClient(options: {
     from: vi.fn((table: string) => {
       if (table === 'employee_pay_settings') {
         return { select: vi.fn(() => payQuery) }
-      }
-      if (table === 'employees') {
-        return { select: vi.fn(() => employmentQuery) }
       }
       if (table === 'leave_days') {
         return { select: vi.fn(() => daysQuery) }
@@ -589,8 +575,6 @@ describe('leave actions', () => {
         count: 5,
         pendingCount: 2,
         allowance: 10,
-        fullAllowance: 10,
-        proRated: false,
         overThreshold: false,
       })
     })
@@ -623,46 +607,6 @@ describe('leave actions', () => {
       const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
 
       expect(result).toMatchObject({ success: true, count: 2, overThreshold: true })
-    })
-
-    it('pro-rates the allowance for someone who started part way through the year', async () => {
-      mockedPermission.mockResolvedValue(true)
-      mockHolidayUsageClient({
-        paySettings: { holiday_allowance_days: 25 },
-        employment: { employment_start_date: '2026-10-01', employment_end_date: null },
-        // Thirteen days, 2 to 14 November.
-        days: Array.from({ length: 13 }, (_, index) => holidayDay(`2026-11-${String(index + 2).padStart(2, '0')}`)),
-      })
-
-      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
-
-      // The mocked holiday year runs 1 April 2026 to 31 March 2027. 1 October onwards is 182 of its
-      // 365 days: 25 x 182 / 365 = 12.5, so thirteen days is over what they have earned, though
-      // well inside the whole year's 25.
-      expect(result).toMatchObject({ success: true, count: 13, allowance: 12.5, fullAllowance: 25, proRated: true, overThreshold: true })
-    })
-
-    it('pro-rates the allowance for a leaver up to their last working day', async () => {
-      mockedPermission.mockResolvedValue(true)
-      mockHolidayUsageClient({
-        paySettings: { holiday_allowance_days: 25 },
-        employment: { employment_start_date: '2025-05-01', employment_end_date: '2026-10-28' },
-        days: [],
-      })
-
-      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
-
-      // 1 April to 28 October is 211 of 365 days: 25 x 211 / 365 = 14.5.
-      expect(result).toMatchObject({ success: true, allowance: 14.5, fullAllowance: 25, proRated: true })
-    })
-
-    it('says the allowance could not be loaded when the employment dates fail to load', async () => {
-      mockedPermission.mockResolvedValue(true)
-      mockHolidayUsageClient({ employmentError: { message: 'boom' } })
-
-      const result = await getHolidayUsage(EMPLOYEE_ID, 2026)
-
-      expect(result).toEqual({ success: false, error: 'The holiday allowance could not be loaded. Refresh the page to try again.' })
     })
 
     it('falls back to the default allowance when the employee has no pay settings', async () => {

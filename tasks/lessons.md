@@ -464,3 +464,7 @@ The owner wants the Orange Jelly logo to occupy the expanded navigation width an
 
 ## 2026-11-03 A question about a document must show what the document says
 - Two of the six staff training questions came back as "what do you mean?": what age counts as a "child" for the licence, and which rooms are the yellow dining area. Both pointed at the premises licence without saying what it says or showing the plan. When a question depends on a document, quote or summarise the exact condition, show the part of the plan or page it means, and say what each answer would change.
+
+## 2026-11-04 Read how the business pays before building pay logic
+- PR 304 gave leavers a pro-rated "earned" holiday allowance and an untaken-holiday figure "to include in their final pay", and I told the owner a leaver had taken 16.4 days more than she had earned. Staff here are on rolled-up holiday pay (12.07% on every payslip, `src/lib/worker-agreement-template.ts`), so nothing is owed either way when they leave. I took the textbook accrual model as fact without reading the contract staff sign.
+- Before any pay, holiday or leave logic, read the worker agreement and the payroll code for how the business actually pays it, and quote it in the plan. A legal default is not this business's rule.
