@@ -112,6 +112,35 @@ SELECT fixture_assert(
 UPDATE public.rota_shifts SET employee_id = NULL, is_open_shift = true WHERE id = '30000000-0000-0000-0000-000000000012';
 SELECT fixture_assert(true, 'a shift can still be taken off someone on notice');
 
+-- The rota's snapshot restore upserts a whole published week. INSERT ... ON CONFLICT runs the guard
+-- as an INSERT before the conflict is resolved, so a row already on the rota that keeps its employee
+-- and date must count as an edit, or one historic row refuses the whole batch.
+INSERT INTO public.rota_shifts (id, week_id, employee_id, shift_date, start_time, end_time, department, status, is_open_shift, name)
+VALUES
+  ('30000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000012', '2026-10-29', '12:00', '17:00', 'bar', 'sick', false, 'Historic sick day restored'),
+  ('30000000-0000-0000-0000-000000000026', '10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000013', '2026-10-30', '18:00', '22:00', 'bar', 'scheduled', false, 'Restored current staff')
+ON CONFLICT (id) DO UPDATE SET
+  week_id = EXCLUDED.week_id, employee_id = EXCLUDED.employee_id, shift_date = EXCLUDED.shift_date,
+  start_time = EXCLUDED.start_time, end_time = EXCLUDED.end_time, department = EXCLUDED.department,
+  status = EXCLUDED.status, is_open_shift = EXCLUDED.is_open_shift, name = EXCLUDED.name;
+SELECT fixture_assert(
+  (SELECT name = 'Historic sick day restored' FROM public.rota_shifts WHERE id = '30000000-0000-0000-0000-000000000014')
+  AND EXISTS (SELECT 1 FROM public.rota_shifts WHERE id = '30000000-0000-0000-0000-000000000026'),
+  'restoring a published week saves, even with a row already on the rota after a last working day'
+);
+
+SELECT fixture_expect_refusal($$
+  INSERT INTO public.rota_shifts (id, week_id, employee_id, shift_date, start_time, end_time, department, status, is_open_shift, name)
+  VALUES ('30000000-0000-0000-0000-000000000013', '10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000011', '2026-10-31', '12:00', '17:00', 'bar', 'scheduled', false, 'Current staff')
+  ON CONFLICT (id) DO UPDATE SET employee_id = EXCLUDED.employee_id, shift_date = EXCLUDED.shift_date
+$$, 'an upsert cannot hand an existing shift to someone after their last working day');
+
+SELECT fixture_expect_refusal($$
+  INSERT INTO public.rota_shifts (id, week_id, employee_id, shift_date, start_time, end_time, department, status, is_open_shift, name)
+  VALUES ('30000000-0000-0000-0000-000000000027', '10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000012', '2026-10-31', '12:00', '17:00', 'bar', 'sick', false, 'New via upsert')
+  ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status
+$$, 'an upsert of a new row after a last working day is still refused');
+
 SELECT fixture_assert(
   NOT has_function_privilege('anon', 'public.guard_shift_after_last_working_day()', 'EXECUTE')
   AND NOT has_function_privilege('authenticated', 'public.guard_shift_after_last_working_day()', 'EXECUTE'),
