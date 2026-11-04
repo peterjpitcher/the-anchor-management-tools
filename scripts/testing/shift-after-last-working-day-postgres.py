@@ -16,6 +16,8 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 BASE_MIGRATION = ROOT / 'supabase/migrations/20260914075843_employee_separation_shift_policy.sql'
 MIGRATION = ROOT / 'supabase/migrations/20261104143348_guard_shifts_after_last_working_day.sql'
 ROLLBACK = ROOT / 'supabase/rollbacks/20261104143348_guard_shifts_after_last_working_day.sql'
+UPSERT_MIGRATION = ROOT / 'supabase/migrations/20261104144148_guard_shifts_after_last_working_day_upsert.sql'
+UPSERT_ROLLBACK = ROOT / 'supabase/rollbacks/20261104144148_guard_shifts_after_last_working_day_upsert.sql'
 TEST = ROOT / 'tests/db/shift-after-last-working-day.sql'
 
 # The separation harness's fixture (employees, rota weeks, shifts, templates), so the two never drift.
@@ -55,7 +57,24 @@ def main() -> None:
             sql('BEGIN;\n' + MIGRATION.read_text() + '\nROLLBACK;')
             print('PASS migration executes inside a rolled-back transaction')
             sql(MIGRATION.read_text())
+            sql('BEGIN;\n' + UPSERT_MIGRATION.read_text() + '\nROLLBACK;')
+            print('PASS upsert follow-up executes inside a rolled-back transaction')
+            sql(UPSERT_MIGRATION.read_text())
             sql(TEST.read_text())
+            sql(UPSERT_ROLLBACK.read_text())
+            sql("""
+                DO $$ BEGIN
+                  BEGIN
+                    INSERT INTO public.rota_shifts (id, week_id, employee_id, shift_date, start_time, end_time, department, status, is_open_shift, name)
+                    VALUES ('30000000-0000-0000-0000-000000000014', '10000000-0000-0000-0000-000000000011', '00000000-0000-0000-0000-000000000012', '2026-10-29', '12:00', '17:00', 'bar', 'sick', false, 'Historic sick day restored')
+                    ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name;
+                  EXCEPTION WHEN check_violation THEN
+                    RETURN;
+                  END;
+                  RAISE EXCEPTION 'upsert rollback did not put the original guard back';
+                END $$;
+            """)
+            print('PASS upsert rollback puts the original guard back')
             sql(ROLLBACK.read_text())
             sql("""
                 DO $$ BEGIN

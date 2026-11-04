@@ -36,6 +36,13 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
    guard reads `employees` as the caller (SECURITY INVOKER, like the existing guard), so it relies
    on the writer seeing the employee: true for the service-role writes the rota actions use, and
    for every live role that can edit the rota, all of which can view employees.
+   Review follow-up (Codex on PR 305): INSERT ... ON CONFLICT runs the guard as an INSERT before the
+   conflict is resolved, so the rota's snapshot restore (an upsert of a whole published week) would
+   be refused in full by one historic row after a leaver's last day. Migration
+   `20261104144148_guard_shifts_after_last_working_day_upsert.sql` lets an upsert through when the
+   row is already on the rota with the same employee and date; anything else is checked as before.
+   No week met the restore condition on 4 November, so nothing had been refused. Needs its own
+   approval before it is applied.
 
 ## Assumptions
 
