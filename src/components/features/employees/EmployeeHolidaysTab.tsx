@@ -13,10 +13,7 @@ import type { RotaSettings } from '@/app/actions/rota-settings';
 import {
   countAllowanceDays,
   countRequestDays,
-  formatHolidayDays,
-  getHolidayEntitlement,
   getHolidayYear,
-  getUntakenHoliday,
 } from '@/lib/leave/working-days';
 import type { EmployeeLeaveDay } from '@/app/actions/leave';
 import { formatDateInLondon, getTodayIsoDate } from '@/lib/dateUtils';
@@ -42,12 +39,6 @@ interface EmployeeHolidaysTabProps {
    * this the tab cannot tell "said nothing booked" from "never asked".
    */
   onboardingTimeOff?: { answer: string; answeredAt: string } | null;
-  /**
-   * Their first and last working days. A starter or leaver is entitled to the share of the holiday
-   * year they are employed for, and a leaver's untaken holiday is worked out to their last day.
-   */
-  employmentStartDate?: string | null;
-  employmentEndDate?: string | null;
 }
 
 function formatDate(iso: string) {
@@ -67,11 +58,9 @@ export default function EmployeeHolidaysTab({
   rotaSettings,
   loadError,
   onboardingTimeOff,
-  employmentStartDate = null,
-  employmentEndDate = null,
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
-  const yearlyAllowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
+  const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
 
   const currentYear = getHolidayYear(getTodayIsoDate(), holidayYearStartMonth, holidayYearStartDay);
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -92,14 +81,8 @@ export default function EmployeeHolidaysTab({
   }
 
   // Years offered in the selector come from the dated rows, so a request that began in the
-  // previous year still surfaces the year its days actually land in. The year of a leaver's last
-  // working day is always offered: it holds their final-pay figure, even when they took no leave.
-  const lastDayYear = employmentEndDate
-    ? getHolidayYear(employmentEndDate, holidayYearStartMonth, holidayYearStartDay)
-    : null;
-  const availableYears = [
-    ...new Set([...daysByYear.keys(), currentYear, ...(lastDayYear === null ? [] : [lastDayYear])]),
-  ].sort((a, b) => b - a);
+  // previous year still surfaces the year its days actually land in.
+  const availableYears = [...new Set([...daysByYear.keys(), currentYear])].sort((a, b) => b - a);
 
   const selectedDays = daysByYear.get(selectedYear) ?? [];
   const approvedDays = countAllowanceDays(selectedDays.filter(d => d.status === 'approved'));
@@ -109,52 +92,16 @@ export default function EmployeeHolidaysTab({
   // the request header means. Totals above deliberately do not use it.
   const yearRequests = leaveRequests.filter(r => r.holiday_year === selectedYear);
 
-  // What they are entitled to in the selected year: the whole allowance, or the share of the year
-  // they are employed for when they start or leave part way through it.
-  const entitlement = getHolidayEntitlement({
-    allowance: yearlyAllowance,
-    holidayYear: selectedYear,
-    startMonth: holidayYearStartMonth,
-    startDay: holidayYearStartDay,
-    employmentStartDate,
-    employmentEndDate,
-  });
-  const allowance = entitlement.entitlement;
-  const proRatedText = entitlement.proRated
-    ? entitlement.employedFrom && entitlement.employedTo
-      ? `Pro-rated from ${yearlyAllowance} days a year, for ${formatDate(entitlement.employedFrom)} to ${formatDate(entitlement.employedTo)}.`
-      : `They were not employed in ${yearLabel(selectedYear)}, so they had no allowance that year.`
-    : null;
-
-  // A leaver's holiday for their final pay: what they earned to their last working day, less what
-  // they took up to it. Shown for the year their last day falls in.
-  const lastDayInYear = Boolean(
-    employmentEndDate && entitlement.employedTo && entitlement.employedTo === employmentEndDate,
-  );
-  const untakenHoliday = lastDayInYear && employmentEndDate
-    ? getUntakenHoliday(
-        allowance,
-        countAllowanceDays(selectedDays.filter(d => d.status === 'approved' && d.leave_date <= employmentEndDate)),
-      )
-    : null;
-  const untakenHolidayText = untakenHoliday === null || !employmentEndDate
-    ? null
-    : untakenHoliday > 0
-      ? `${formatHolidayDays(untakenHoliday)} earned but not taken by their last working day, ${formatDate(employmentEndDate)}, to include in their final pay.`
-      : untakenHoliday === 0
-        ? `No untaken holiday at their last working day, ${formatDate(employmentEndDate)}.`
-        : `They took ${formatHolidayDays(-untakenHoliday)} more than they had earned by their last working day, ${formatDate(employmentEndDate)}. Check their final pay.`;
-
   const progressPct = allowance > 0 ? Math.min(100, (approvedDays / allowance) * 100) : 0;
   const overAllowance = allowance > 0 && approvedDays >= allowance;
-  // Exactly at the allowance is "used in full", not "0 days over allowance". A pro-rated allowance
-  // can be fractional, so the difference is rounded as the allowance is.
-  const remainingDays = getUntakenHoliday(allowance, approvedDays);
+  const daysLabel = (count: number) => `${count} ${count === 1 ? 'day' : 'days'}`;
+  // Exactly at the allowance is "used in full", not "0 days over allowance".
+  const remainingDays = allowance - approvedDays;
   const allowanceSummary = remainingDays > 0
-    ? `${formatHolidayDays(remainingDays)} remaining`
+    ? `${daysLabel(remainingDays)} remaining`
     : remainingDays === 0
       ? 'Allowance used in full'
-      : `${formatHolidayDays(-remainingDays)} over allowance`;
+      : `${daysLabel(-remainingDays)} over allowance`;
   const onboardingTimeOffText = onboardingTimeOff
     ? `${onboardingTimeOff.answer === 'none'
         ? 'At onboarding they said they had no time off already booked'
@@ -287,16 +234,6 @@ export default function EmployeeHolidaysTab({
               {pendingDays > 0 && <span className="text-warning-fg">{pendingDays} pending</span>}
             </div>
           </div>
-
-          {proRatedText && (
-            <p className="text-sm text-text-muted">{proRatedText}</p>
-          )}
-
-          {untakenHolidayText && (
-            <Alert tone={untakenHoliday !== null && untakenHoliday < 0 ? 'warning' : 'info'} size="sm" role="status" title="Holiday for their final pay">
-              {untakenHolidayText}
-            </Alert>
-          )}
 
           {onboardingTimeOffText && (
             <p className="text-sm text-text-muted">{onboardingTimeOffText}</p>
