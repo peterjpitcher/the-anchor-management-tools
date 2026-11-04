@@ -16,8 +16,8 @@ PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 BASE_MIGRATION = ROOT / 'supabase/migrations/20260914075843_employee_separation_shift_policy.sql'
 MIGRATION = ROOT / 'supabase/migrations/20261104143348_guard_shifts_after_last_working_day.sql'
 ROLLBACK = ROOT / 'supabase/rollbacks/20261104143348_guard_shifts_after_last_working_day.sql'
-UPSERT_MIGRATION = ROOT / 'supabase/migrations/20261104144148_guard_shifts_after_last_working_day_upsert.sql'
-UPSERT_ROLLBACK = ROOT / 'supabase/rollbacks/20261104144148_guard_shifts_after_last_working_day_upsert.sql'
+UPSERT_MIGRATION = ROOT / 'supabase/migrations/20261104144422_guard_shifts_after_last_working_day_upsert.sql'
+UPSERT_ROLLBACK = ROOT / 'supabase/rollbacks/20261104144422_guard_shifts_after_last_working_day_upsert.sql'
 TEST = ROOT / 'tests/db/shift-after-last-working-day.sql'
 
 # The separation harness's fixture (employees, rota weeks, shifts, templates), so the two never drift.
