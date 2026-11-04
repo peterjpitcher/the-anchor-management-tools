@@ -28,7 +28,6 @@ import {
 } from '@/services/employee-reliability';
 import {
   countAllowanceDays,
-  getHolidayEntitlement,
   getHolidayYear,
   getHolidayYearBounds,
 } from '@/lib/leave/working-days';
@@ -753,18 +752,7 @@ export async function getLeaveRequests(filters?: {
 // ---------------------------------------------------------------------------
 
 export async function getHolidayUsage(employeeId: string, holidayYear: number): Promise<
-  | {
-      success: true;
-      count: number;
-      pendingCount: number;
-      /** What they are entitled to this holiday year: the yearly allowance, pro-rated for a starter or leaver. */
-      allowance: number;
-      /** The yearly allowance before pro-rating. */
-      fullAllowance: number;
-      proRated: boolean;
-      overThreshold: boolean;
-    }
-  | { success: false; error: string }
+  { success: true; count: number; pendingCount: number; allowance: number; overThreshold: boolean } | { success: false; error: string }
 > {
   const canView = await checkUserPermission('leave', 'view');
   if (!canView && !(await isOwnEmployeeRecord(employeeId))) {
@@ -773,15 +761,10 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
 
   const supabase = await createClient();
 
-  const [paySettingRes, employmentRes, rotaSettings, allowanceConsuming] = await Promise.all([
+  const [paySettingRes, rotaSettings, allowanceConsuming] = await Promise.all([
     supabase
       .from('employee_pay_settings')
       .select('holiday_allowance_days')
-      .eq('employee_id', employeeId)
-      .maybeSingle(),
-    supabase
-      .from('employees')
-      .select('employment_start_date, employment_end_date')
       .eq('employee_id', employeeId)
       .maybeSingle(),
     getRotaSettings(),
@@ -796,27 +779,9 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
     return { success: false, error: 'The holiday allowance could not be loaded. Refresh the page to try again.' };
   }
 
-  if (employmentRes.error) {
-    console.error('[leave] Failed to load employment dates:', {
-      code: employmentRes.error.code,
-      message: employmentRes.error.message,
-    });
-    return { success: false, error: 'The holiday allowance could not be loaded. Refresh the page to try again.' };
-  }
-
   const paySetting = paySettingRes.data as EmployeeLeaveSettings | null;
-  const employment = employmentRes.data as { employment_start_date: string | null; employment_end_date: string | null } | null;
   const { defaultHolidayDays, holidayYearStartMonth, holidayYearStartDay } = rotaSettings;
-  // A starter or leaver is entitled to the share of the year they work, not the whole allowance,
-  // so "over allowance" is judged against that share.
-  const { entitlement: allowance, fullAllowance, proRated } = getHolidayEntitlement({
-    allowance: paySetting?.holiday_allowance_days ?? defaultHolidayDays,
-    holidayYear,
-    startMonth: holidayYearStartMonth,
-    startDay: holidayYearStartDay,
-    employmentStartDate: employment?.employment_start_date ?? null,
-    employmentEndDate: employment?.employment_end_date ?? null,
-  });
+  const allowance = paySetting?.holiday_allowance_days ?? defaultHolidayDays;
 
   // Select the DATED rows inside the holiday year rather than filtering requests on their
   // holiday_year column. A request running 28 December to 3 January is then charged to the
@@ -864,15 +829,7 @@ export async function getHolidayUsage(employeeId: string, holidayYear: number): 
   const total = countByStatus('approved');
   const pendingTotal = countByStatus('pending');
 
-  return {
-    success: true,
-    count: total,
-    pendingCount: pendingTotal,
-    allowance,
-    fullAllowance,
-    proRated,
-    overThreshold: allowance > 0 && total >= allowance,
-  };
+  return { success: true, count: total, pendingCount: pendingTotal, allowance, overThreshold: allowance > 0 && total >= allowance };
 }
 
 // ---------------------------------------------------------------------------

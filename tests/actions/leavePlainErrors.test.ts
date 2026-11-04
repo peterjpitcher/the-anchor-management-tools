@@ -328,7 +328,6 @@ describe('reading one request and the allowance', () => {
   it('an allowance that cannot be read', async () => {
     sessionClient({
       employee_pay_settings: { data: null, error: TIMEOUT },
-      employees: { data: { employment_start_date: null, employment_end_date: null }, error: null },
       leave_types: { data: [{ code: 'holiday', consumes_allowance: true }], error: null },
     })
 
@@ -341,7 +340,6 @@ describe('reading one request and the allowance', () => {
   it('holiday days that cannot be read', async () => {
     sessionClient({
       employee_pay_settings: { data: { holiday_allowance_days: 28 }, error: null },
-      employees: { data: { employment_start_date: null, employment_end_date: null }, error: null },
       leave_types: { data: [{ code: 'holiday', consumes_allowance: true }], error: null },
       leave_days: { data: null, error: TIMEOUT },
     })

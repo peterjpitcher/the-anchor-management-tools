@@ -20,6 +20,14 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
    last working day. Marking someone as Former writes it to their record as a note (earned, taken,
    untaken) and into the `access_revoked` audit row (`untaken_holiday`). If it cannot be worked
    out, the note says to check by hand; the separation never waits on it.
+
+   **Items 2 and 3 were removed on 4 November 2026** (branch `fix/remove-final-pay-holiday`). The
+   owner: "Staff don't earn holidays, they get paid them as part of their pay." The worker
+   agreement (`src/lib/worker-agreement-template.ts`) makes staff irregular-hours workers on
+   rolled-up holiday pay, 12.07% paid on every payslip, so there is no untaken holiday to pay or
+   claw back when someone leaves, and the final-pay figures were wrong. The Holidays tab, the
+   leave pages' allowance, `getHolidayUsage` and `finalizeEmployeeSeparation` are back exactly as
+   they were before PR 304. No untaken-holiday note had been written in production. Item 1 stays.
 4. **Database backstop for shifts after the last day.** Migration
    `20261104143348_guard_shifts_after_last_working_day.sql` (drafted as 20261103145125) adds trigger
    `guard_shift_after_last_working_day` on `rota_shifts`: a new assignment or a moved date after

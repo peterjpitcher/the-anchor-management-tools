@@ -325,8 +325,6 @@ export default async function EmployeeDetailPage({ params }: EmployeeDetailPageP
           rotaSettings={rotaSettings}
           loadError={holidaysLoadError}
           onboardingTimeOff={onboardingAnswers.bookedTimeOff}
-          employmentStartDate={employee.employment_start_date ?? null}
-          employmentEndDate={employee.employment_end_date ?? null}
         />
       )
     },
