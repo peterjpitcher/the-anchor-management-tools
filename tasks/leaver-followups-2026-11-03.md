@@ -39,10 +39,13 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
    Review follow-up (Codex on PR 305): INSERT ... ON CONFLICT runs the guard as an INSERT before the
    conflict is resolved, so the rota's snapshot restore (an upsert of a whole published week) would
    be refused in full by one historic row after a leaver's last day. Migration
-   `20261104144148_guard_shifts_after_last_working_day_upsert.sql` lets an upsert through when the
-   row is already on the rota with the same employee and date; anything else is checked as before.
-   No week met the restore condition on 4 November, so nothing had been refused. Needs its own
-   approval before it is applied.
+   `20261104144422_guard_shifts_after_last_working_day_upsert.sql` (drafted as 20261104144148) lets
+   an upsert through when the row is already on the rota with the same employee and date; anything
+   else is checked as before. No week met the restore condition on 4 November, so nothing had been
+   refused. Applied with the owner's yes on 4 November at 14:44 UTC (checksum faf7d4f6...388fa6
+   unchanged) and smoke-tested in rolled-back transactions: an unchanged upsert of a row after a
+   last day saved; an upsert handing an existing shift to a leaver, or adding a new row, after the
+   last day was refused; the earlier cases behaved as before.
 
 ## Assumptions
 

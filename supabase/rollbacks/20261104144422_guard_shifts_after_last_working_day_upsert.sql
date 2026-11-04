@@ -1,4 +1,4 @@
--- Rollback for 20261104144148_guard_shifts_after_last_working_day_upsert.sql.
+-- Rollback for 20261104144422_guard_shifts_after_last_working_day_upsert.sql.
 -- Puts back the guard exactly as 20261104143348 created it, so an upsert of an existing row is
 -- checked as a new insert again. The trigger itself is untouched.
 
