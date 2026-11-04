@@ -36,7 +36,9 @@ export const ANCHOR_VENUE_CONTEXT: VenueContext = {
   // SSOT §16 short form, plus the no: the writer must never infer an accessible toilet.
   accessibility: 'Step free from the car park. One step between the bar and the garden, with a ramp on request. No accessible toilet',
   facilities: [
-    'Dog and family friendly',
+    'Dog friendly',
+    // Owner decision 4 November 2026: children with a supervising adult, and nobody under 18 after 9pm.
+    'Children welcome until 9pm with a supervising adult, and everyone under 18 leaves by 9pm',
     'Full menu available while the kitchen is open',
   ],
   nearby: [
