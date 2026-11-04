@@ -21,7 +21,7 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
    untaken) and into the `access_revoked` audit row (`untaken_holiday`). If it cannot be worked
    out, the note says to check by hand; the separation never waits on it.
 4. **Database backstop for shifts after the last day.** Migration
-   `20261103145125_guard_shifts_after_last_working_day.sql` adds trigger
+   `20261104143348_guard_shifts_after_last_working_day.sql` (drafted as 20261103145125) adds trigger
    `guard_shift_after_last_working_day` on `rota_shifts`: a new assignment or a moved date after
    the last working day of someone on notice or Former is refused, whatever their separation
    policy. Edits to rows already on the rota still save. Tested by
@@ -29,6 +29,13 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
    `feat/shift-last-day-guard`, so main never holds a migration production has not had; it merges
    once applied, renamed to its applied version. The app's own check already refuses these writes,
    so items 1 to 3 do not depend on it.
+   Applied to production on 4 November 2026 at 14:33 UTC with the owner's yes (checksum
+   6693550c...4d87b unchanged). Smoke-tested in transactions that rolled back: a new shift or a
+   moved date after the last day was refused, the last day itself, an edit to an existing row and
+   a cancelled shift were allowed, and a signed-in manager session was refused the same way. The
+   guard reads `employees` as the caller (SECURITY INVOKER, like the existing guard), so it relies
+   on the writer seeing the employee: true for the service-role writes the rota actions use, and
+   for every live role that can edit the rota, all of which can view employees.
 
 ## Assumptions
 
