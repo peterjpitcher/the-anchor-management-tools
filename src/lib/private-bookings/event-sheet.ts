@@ -367,7 +367,7 @@ export function generateEventSheetHTML(data: EventSheetData, options: { logoUrl?
       (row) => `<tr><td>${escapeHtml(row.activity)}</td><td>${escapeHtml(row.times)}</td></tr>`
     ).join('')}</tbody>
   </table>
-  <p class="muted">Challenge 25 applies (passport or photocard driving licence). No external drinks of any kind. Under-18s must be accompanied and supervised by adults between 11:00 and 21:00 (dining area until 23:00); the host is responsible for supervision. No under-18s in the pool table area unsupervised.</p>
+  <p class="muted">Challenge 25 applies (passport or photocard driving licence). No external drinks of any kind. Under-18s must be accompanied and supervised by adults and must leave by 21:00; the host is responsible for supervision. No under-18s in the pool table area unsupervised.</p>
 
   <h2>Risk</h2>
   <table class="kv">
