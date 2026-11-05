@@ -415,7 +415,7 @@ function buildPaymentLines(context: EventTicketEmailContext): string[] {
 
   if (context.isCashBingo) {
     lines.push('Books and daubers are cash only: £10 a book and £1 a dauber.')
-    lines.push('It is 18+ to play. Supervised under-18s are welcome to come along, but cannot play.')
+    lines.push('It is 18+ to play. Supervised under-18s are welcome to come along until 9pm, but cannot play.')
   }
 
   return lines
