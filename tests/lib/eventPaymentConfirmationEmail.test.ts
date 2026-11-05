@@ -294,7 +294,7 @@ describe('event guest emails', () => {
       const sent = lastSend()
       assertCleanRender(sent)
       expect(sent.text).toContain('Books and daubers are cash only: £10 a book and £1 a dauber.')
-      expect(sent.text).toContain('It is 18+ to play. Supervised under-18s are welcome to come along, but cannot play.')
+      expect(sent.text).toContain('It is 18+ to play. Supervised under-18s are welcome to come along until 9pm, but cannot play.')
       expect(sent.text).toContain('Seating is shared on the night, so there is no reserved table for your group.')
       expect(sent.text).not.toContain('your table')
     })

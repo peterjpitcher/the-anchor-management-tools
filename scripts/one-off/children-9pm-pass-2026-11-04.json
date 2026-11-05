@@ -1,0 +1,49 @@
+{
+  "fields": [
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "description", "from": ", while children remain welcome.", "to": ". Children are welcome until 9pm." },
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "short_description", "from": "and children are welcome.", "to": "and children are welcome until 9pm." },
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "meta_description", "from": "Children are welcome with adults.", "to": "Children are welcome with adults until 9pm." },
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "highlights", "from": "Children welcome", "to": "Children welcome until 9pm" },
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "faqs", "from": "Yes. Children are welcome with a supervising adult, but only guests aged 18 and over can play.", "to": "Yes. Children are welcome with a supervising adult until 9pm, but only guests aged 18 and over can play." },
+    { "table": "event_categories", "id": "715cc457-a90c-48e8-a774-da13addf19ed", "label": "Cash Bingo (category)", "field": "long_description", "from": "Children are welcome to attend with their family or supervising adult, but they cannot play for cash.", "to": "Children are welcome to attend with their family or supervising adult until 9pm, but they cannot play for cash." },
+
+    { "table": "event_categories", "id": "65bf6647-3d76-4bb8-a719-572acbb6fb5a", "label": "Quiz Night (category)", "field": "faqs", "from": "Yes. Quiz Night is family-friendly and children are welcome when accompanied by an adult.", "to": "Yes. Children are welcome with an adult until 9pm, and everyone under 18 needs to leave by then." },
+    { "table": "event_categories", "id": "65bf6647-3d76-4bb8-a719-572acbb6fb5a", "label": "Quiz Night (category)", "field": "long_description", "from": "Children are welcome, making this", "to": "Children are welcome with an adult until 9pm, making this" },
+
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "description", "from": "Free, family-friendly karaoke at", "to": "Free karaoke at" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "short_description", "from": "Sing at our free, family-friendly Karaoke Night", "to": "Sing at our free Karaoke Night" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "meta_description", "from": "Join free, family-friendly Karaoke Night", "to": "Join free Karaoke Night" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "highlights", "from": "Family-friendly", "to": "Under-18s welcome until 9pm" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "faqs", "from": "Is Karaoke Night family-friendly?", "to": "Can children come to Karaoke Night?" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "faqs", "from": "Yes. Karaoke Night is family-friendly and children are welcome with a supervising adult.", "to": "Yes, until 9pm. Children are welcome with a supervising adult, and everyone under 18 needs to leave by 9pm." },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "long_description", "from": "is a free, family-friendly evening for", "to": "is a free evening for" },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "long_description", "from": "Families are welcome.", "to": "Children are welcome with a supervising adult until 9pm." },
+    { "table": "event_categories", "id": "cd28081e-7840-47a6-b5ea-fdec561147c1", "label": "Karaoke Night (category)", "field": "long_description", "from": "a family-friendly karaoke night near Staines", "to": "a karaoke night near Staines" },
+
+    { "table": "event_categories", "id": "422d262b-f20d-40a6-845f-1565c52425ec", "label": "Nikki's Karaoke Night (category)", "field": "faqs", "from": "All ages are welcome but expect adult language and themes throughout the night.", "to": "Under-18s are welcome with a supervising adult until 9pm. Expect adult language and themes throughout the night." },
+
+    { "table": "event_faqs", "id": "f37534be-31ff-4bc2-bb4b-5e3aa4bd035a", "label": "Sparks & Sparklers Quiz Night, 4 Nov (FAQ)", "field": "answer", "from": "Yes. Quiz Night is family-friendly and children are welcome when accompanied by an adult.", "to": "Yes. Children are welcome with an adult until 9pm, and everyone under 18 needs to leave by then." },
+    { "table": "event_faqs", "id": "cf9fe699-6fd6-4ac8-b6c4-dee3be8a63e0", "label": "Tinsel & Trivia Quiz Night, 2 Dec (FAQ)", "field": "answer", "from": "Yes. Quiz Night is family-friendly and children are welcome when accompanied by an adult.", "to": "Yes. Children are welcome with an adult until 9pm, and everyone under 18 needs to leave by then." },
+
+    { "table": "events", "id": "6e761f65-8b17-4bc9-8a01-d032b77f6a66", "label": "Snowball Showdown Cash Bingo, 18 Nov", "field": "highlights", "from": "Children welcome", "to": "Children welcome until 9pm" },
+    { "table": "events", "id": "6e761f65-8b17-4bc9-8a01-d032b77f6a66", "label": "Snowball Showdown Cash Bingo, 18 Nov", "field": "long_description", "from": "Families and children are welcome to attend, but players", "to": "Families and children are welcome until 9pm, but players" },
+    { "table": "events", "id": "6e761f65-8b17-4bc9-8a01-d032b77f6a66", "label": "Snowball Showdown Cash Bingo, 18 Nov", "field": "brief", "from": "Families are welcome, but players must be", "to": "Families are welcome until 9pm, but players must be" },
+    { "table": "event_faqs", "id": "39932e96-6a44-482e-acb2-fed3e9fd9f20", "label": "Snowball Showdown Cash Bingo, 18 Nov (FAQ)", "field": "answer", "from": "Yes. Children are welcome with a supervising adult, but only guests aged 18 and over can play.", "to": "Yes. Children are welcome with a supervising adult until 9pm, but only guests aged 18 and over can play." },
+
+    { "table": "events", "id": "b9334958-76b4-4504-a64a-0d47145bd75e", "label": "Christmas Jackpot Cash Bingo, 16 Dec", "field": "highlights", "from": "Children welcome", "to": "Children welcome until 9pm" },
+    { "table": "events", "id": "b9334958-76b4-4504-a64a-0d47145bd75e", "label": "Christmas Jackpot Cash Bingo, 16 Dec", "field": "long_description", "from": "Families and children are welcome to attend, but players", "to": "Families and children are welcome until 9pm, but players" },
+    { "table": "events", "id": "b9334958-76b4-4504-a64a-0d47145bd75e", "label": "Christmas Jackpot Cash Bingo, 16 Dec", "field": "brief", "from": "Families are welcome, but players must be", "to": "Families are welcome until 9pm, but players must be" },
+    { "table": "event_faqs", "id": "07c0dbbd-057c-4bfd-b357-91931778f7b0", "label": "Christmas Jackpot Cash Bingo, 16 Dec (FAQ)", "field": "answer", "from": "Yes. Children are welcome with a supervising adult, but only guests aged 18 and over can play.", "to": "Yes. Children are welcome with a supervising adult until 9pm, but only guests aged 18 and over can play." },
+
+    { "table": "events", "id": "c3e9fbbd-df4a-41f2-a1c6-8194a5979735", "label": "Sequins & Showstoppers Music Bingo, 13 Nov", "field": "brief", "from": "## All ages welcome", "to": "## All ages welcome until 9pm" },
+    { "table": "events", "id": "9b8f85f8-c5cc-4956-ad1f-72f569e7fc4a", "label": "Sleigh My Name Music Bingo, 11 Dec", "field": "brief", "from": "## All ages welcome", "to": "## All ages welcome until 9pm" }
+  ],
+  "campaigns": [
+    {
+      "reason": "cash bingo: supervised under-18s until 9pm",
+      "from": "Supervised under-18s are welcome to attend but may not play.",
+      "to": "Supervised under-18s are welcome to attend until 9pm but may not play.",
+      "expected_rows": 2
+    }
+  ]
+}
