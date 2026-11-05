@@ -21,9 +21,17 @@ describe('FOH event booking extras', () => {
     expect(fohEventBookingExtras({ option: typed, partySize: '2', quantities: {}, guestRows: [] })).toEqual({ ok: false, error: 'Choose at least one ticket' })
   })
   it('uses the seats typed when the event has one ticket type, and sends guest rows only when something was given', () => {
-    expect(fohEventBookingExtras({ option: base, partySize: '2', quantities: undefined, guestRows: [] })).toEqual({ ok: true, seats: 2 })
-    const extras = fohEventBookingExtras({ option: base, partySize: '2', quantities: undefined, guestRows: [row('Sam')] })
+    const asks: FohEventOption = { ...base, payment_mode: 'prepaid', guest_details_required: true }
+    expect(fohEventBookingExtras({ option: asks, partySize: '2', quantities: undefined, guestRows: [] })).toEqual({ ok: true, seats: 2 })
+    const extras = fohEventBookingExtras({ option: asks, partySize: '2', quantities: undefined, guestRows: [row('Sam')] })
     expect(extras).toEqual({ ok: true, seats: 2, attendees: [{ id: 'id-Sam', name: 'Sam', answers: {} }, expect.objectContaining({ name: '', answers: {} })] })
+  })
+  // Owner, 5 November 2026: only an event that asks for each guest (by default, paid online in
+  // advance) takes guest names. A pay-on-the-night event sends none, whatever is in the form.
+  it('sends no guest rows for an event that does not ask for guest details', () => {
+    expect(fohEventBookingExtras({ option: base, partySize: '2', quantities: undefined, guestRows: [row('Sam'), row('Jo')] })).toEqual({ ok: true, seats: 2 })
+    const unasked: FohEventOption = { ...base, guest_details_required: false }
+    expect(fohEventBookingExtras({ option: unasked, partySize: '2', quantities: undefined, guestRows: [row('Sam'), row('Jo')] })).toEqual({ ok: true, seats: 2 })
   })
 })
 

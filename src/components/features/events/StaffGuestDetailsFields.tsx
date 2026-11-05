@@ -10,6 +10,9 @@ import type { BookingQuestion } from '@/lib/events/booking-questions'
  *
  * Every field may be left blank. Whatever is missing is saved as "details to follow" and the
  * booker can add it from their manage link, or staff from the event page later.
+ *
+ * Shown only on an event that asks for each guest (requiresGuestDetails: by default, tickets
+ * paid online in advance). Every other event takes no guest names (owner, 5 November 2026).
  */
 export interface StaffGuestRow {
   id: string
@@ -43,25 +46,23 @@ export function staffGuestRowsForSubmit(rows: StaffGuestRow[]): Array<{ id: stri
 interface StaffGuestDetailsFieldsProps {
   rows: StaffGuestRow[]
   questions: BookingQuestion[]
-  /** The event's own setting says every ticket should carry guest details (BK-014). */
-  required: boolean
   disabled?: boolean
   onChange: (rows: StaffGuestRow[]) => void
   /** Prefix for field ids, so two forms on one page never share an id. */
   idPrefix: string
 }
 
-export function StaffGuestDetailsFields({ rows, questions, required, disabled, onChange, idPrefix }: StaffGuestDetailsFieldsProps): React.ReactElement | null {
+export function StaffGuestDetailsFields({ rows, questions, disabled, onChange, idPrefix }: StaffGuestDetailsFieldsProps): React.ReactElement | null {
   if (rows.length === 0) return null
   const update = (id: string, change: Partial<StaffGuestRow>): void => {
     onChange(rows.map((row) => (row.id === id ? { ...row, ...change } : row)))
   }
-  const hint = required
-    ? 'This event asks for each guest. Take what the guest can give now; anything left blank follows later from the booker\'s link.'
-    : 'Optional. Anything left blank can be added later.'
 
   return (
-    <Fieldset legend={required ? 'Guest details for each ticket' : 'Guest details (optional)'} hint={hint}>
+    <Fieldset
+      legend="Guest details for each ticket"
+      hint="This event asks for each guest. Take what the guest can give now; anything left blank follows later from the booker's link."
+    >
       <div className="space-y-3">
         {rows.map((row, index) => (
           <div key={row.id} className="space-y-2 rounded-default border border-border p-3">
