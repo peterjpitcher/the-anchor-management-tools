@@ -580,7 +580,7 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                 </div>
               )}
 
-              {selectedEventOption && (() => {
+              {selectedEventOption?.guest_details_required === true && (() => {
                 const seatCount = fohEventSeatCount({ option: selectedEventOption, partySize: createForm.party_size, quantities: createForm.event_ticket_quantities })
                 if (seatCount < 1 || seatCount > MAX_FOH_EVENT_SEATS) return null
                 return (
@@ -589,7 +589,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
                       idPrefix="foh-event-guest"
                       rows={resizeStaffGuestRows(createForm.event_guest_rows ?? [], seatCount)}
                       questions={selectedEventOption.booking_questions ?? []}
-                      required={selectedEventOption.guest_details_required === true}
                       onChange={(rows) => onSetCreateForm((current) => ({ ...current, event_guest_rows: rows }))}
                     />
                   </div>

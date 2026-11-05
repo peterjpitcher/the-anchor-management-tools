@@ -122,13 +122,14 @@ export function AddManualBookingForm({
   }, [])
 
   // One guest card per ticket (BK-011): the basket total, or the seats typed (blank is one).
+  // Only on an event that asks for each guest; every other event takes no names.
   const questions = useMemo(() => event.booking_questions ?? [], [event.booking_questions])
   const guestDetailsRequired = requiresGuestDetails(event)
   const plainSeats = seats.trim() === '' ? 1 : validateSeatsInput(seats).seats ?? 0
   const ticketCount = useBasket ? totalSeats : plainSeats
   const visibleGuestRows = useMemo(
-    () => (ticketCount > 0 && ticketCount <= MAX_MANUAL_BOOKING_SEATS ? resizeStaffGuestRows(guestRows, ticketCount) : []),
-    [guestRows, ticketCount],
+    () => (guestDetailsRequired && ticketCount > 0 && ticketCount <= MAX_MANUAL_BOOKING_SEATS ? resizeStaffGuestRows(guestRows, ticketCount) : []),
+    [guestDetailsRequired, guestRows, ticketCount],
   )
 
   const resetForm = useCallback(() => {
@@ -185,7 +186,7 @@ export function AddManualBookingForm({
     }
     setErrors({})
     setOutcome(null)
-    const attendees = staffGuestRowsForSubmit(resizeStaffGuestRows(guestRows, seatsToBook))
+    const attendees = guestDetailsRequired ? staffGuestRowsForSubmit(resizeStaffGuestRows(guestRows, seatsToBook)) : []
 
     startTransition(async () => {
       const result = await createEventManualBooking({
@@ -409,7 +410,6 @@ export function AddManualBookingForm({
             idPrefix="event-manual-booking-guest"
             rows={visibleGuestRows}
             questions={questions}
-            required={guestDetailsRequired}
             disabled={isPending}
             onChange={setGuestRows}
           />

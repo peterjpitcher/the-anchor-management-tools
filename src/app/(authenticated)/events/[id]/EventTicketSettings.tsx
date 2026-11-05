@@ -98,7 +98,7 @@ export function EventTicketSettings({ event, canManage, activeBookingCount = 0 }
               <p className="text-sm text-text-muted">
                 {collectGuestDetails
                   ? 'Website bookings need a name for every ticket and answers to the questions below. Staff, bar and text bookings take what the guest can give, and the booker adds the rest from their booking link. Each guest can also give their own mobile, used only for this booking.'
-                  : 'Website bookings only need the booker\'s details. Switch this on to ask every guest for their name and answers.'}
+                  : 'Bookings only need the booker\'s details, on the website and from staff. Switch this on to ask every guest for their name and answers.'}
                 {' '}Events paid online ask by default.
               </p>
               {!collectGuestDetails && questions.length > 0 && (
