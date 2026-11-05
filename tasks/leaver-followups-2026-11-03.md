@@ -74,3 +74,25 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
   after their last day of 26 June. It does not count against holiday.
 - Seven sick shifts sit after leavers' last days. They no longer block anything (only scheduled
   shifts block finalising), and the new trigger leaves edits to them alone.
+
+## Holiday requests filed under the wrong year (5 November)
+
+- Found while checking PR 306: 23 leave requests (14 staff), all entered on 6 March 2026 while the
+  holiday year still began on 6 April, kept their April-based `holiday_year`. The setting is now
+  1 January (matching the worker agreement), so the Holidays tab and the rota leave page listed
+  them under the year before the one their days count in. Totals were always right (they read the
+  dated `leave_days` rows); only the list and the "Allowance used" label were off. Example: Laura
+  B's 10 to 27 February 2026 holiday was listed under 2025/26, so her 2026/27 list showed 19 of
+  the 37 days counted.
+- Owner said yes on 5 November. Migration
+  `20261105163417_restamp_leave_request_holiday_year.sql` (drafted as 20261105163320, checksum
+  d6c53284...ee37f36d) recomputes `holiday_year` with `holiday_year_for_date` where it differs, and
+  stops if more than 23 rows would change. Dry run in a rolled-back transaction: 23 changed, 0 left
+  wrong, rollback restored all 23 and the table matched its starting state. Applied 16:34 UTC:
+  23 rows updated, 0 mismatched of 193. The only trigger on `leave_requests` sets `updated_at`;
+  nothing was sent or synced.
+- Checked live: Laura B's Holidays tab lists all four 2026/27 requests (37 days, matching the
+  total); the rota leave page shows her February request as holiday year 2026/27, allowance used
+  37 / 25.
+- Rollback: `supabase/rollbacks/20261105163417_restamp_leave_request_holiday_year.sql` puts the 23
+  back by id, only where they still hold the new year.
