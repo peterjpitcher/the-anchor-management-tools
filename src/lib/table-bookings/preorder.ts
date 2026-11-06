@@ -800,6 +800,9 @@ export type LegacyPreorderChaseInput = {
  * the cutoff, the manager is told seven days out. Slipping an internal email by a day costs nothing;
  * asking a guest and dobbing them in simultaneously costs the pub's manners.
  *
+ * THE ESCALATION WAITS FOR THE FORM TO LOCK. While the organiser can still choose online, the
+ * manager is not asked to ring them, whichever sweep of the day this is.
+ *
  * A BOOKING WHOSE FORM HAS ALREADY LOCKED is never sent the booker reminder. The reminder says
  * "choose here" and links to the manage page, and once the cutoff has passed that page will not take
  * a choice, so the text only tells a guest to do something they cannot. That was the case for every
@@ -828,7 +831,12 @@ export function decideLegacyPreorderChases(input: LegacyPreorderChaseInput): Pre
   // Locked before the booker was ever asked: waiting for their turn would mean waiting for ever.
   const bookerCannotAct = preorderClosed && bookerReminderSentOn === null
 
+  // Only once the form has locked. The cron used to run once, at 12:00 UTC, which is at or after
+  // noon London, so on the cutoff day the form had always locked by the time the manager was told.
+  // It now runs at 09:00 as well, while the form is still open until noon: the manager must not be
+  // asked to ring a booker who can still choose online, so the escalation waits for the locked run.
   if (
+    preorderClosed &&
     !managerEscalationSent &&
     cutoffDays !== null &&
     daysUntilBooking <= cutoffDays &&
@@ -1218,7 +1226,47 @@ export async function savePreorderCover(
     throw new Error('Choose 1, 2 or 3 courses.')
   }
 
-  // The tier first, one seat at a time and atomically, so an organiser and a guest saving different
+  const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
+  const chosen = selections.filter(
+    (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
+  )
+
+  // Every dish is checked against the tier the seat will have after this save, BEFORE the tier is
+  // set and before any dish is deleted, so a refused save leaves the seat's tier and dishes exactly
+  // as they were. (A withdrawn dessert on a move from 2 to 3 courses used to leave the seat on 3
+  // courses with its starter or dessert cleared.)
+  const currentCourseCount = await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
+  const nextCourseCount =
+    input.courseCount !== undefined ? toPreorderSeatCourseCount(input.courseCount) : currentCourseCount
+  let items: Map<string, SnapshotMenuItem> = new Map()
+  if (chosen.length > 0) {
+    items = await loadMenuItemsForSnapshot(
+      supabase,
+      cover.table_booking_id,
+      chosen.map((entry) => entry.menuItemId),
+    )
+    for (const entry of chosen) {
+      const item = items.get(entry.menuItemId)
+      // Not found here means it is not on this booking's own period.
+      if (!item) throw new Error('That dish is not on the menu for this booking.')
+      if (!item.isActive) throw new Error(`${item.name} has been taken off the menu. Please choose again.`)
+      if (item.course !== entry.course) {
+        throw new Error(`${item.name} is not a ${entry.course}.`)
+      }
+      // Kids mains are 1 course only (A1). The database refuses it too; this says why.
+      if (item.isChildOption && (nextCourseCount === 2 || nextCourseCount === 3)) {
+        throw new PreorderCourseLimitError(cover.ordinal, nextCourseCount, 'child_option')
+      }
+    }
+    await assertCoursesWithinTier(supabase, cover, {
+      from: currentCourseCount,
+      to: nextCourseCount,
+      cleared,
+      chosen: chosen.map((entry) => entry.course),
+    })
+  }
+
+  // Then the tier, one seat at a time and atomically, so an organiser and a guest saving different
   // seats never overwrite each other's tier. The database clears any dish the new tier does not have.
   if (input.courseCount !== undefined) {
     const { error } = await supabase.rpc('set_christmas_seat_course_v01', {
@@ -1230,15 +1278,9 @@ export async function savePreorderCover(
     if (error) throw error
   }
 
-  const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
-  const chosen = selections.filter(
-    (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
-  )
-
-  const courseCount = await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
-  if (chosen.length > 0) {
-    await assertCoursesWithinTier(supabase, cover, courseCount, cleared, chosen.map((entry) => entry.course))
-  }
+  const courseCount = input.courseCount !== undefined
+    ? await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
+    : currentCourseCount
 
   const patch: Record<string, unknown> = {
     last_saved_by: input.actor.savedBy,
@@ -1280,23 +1322,10 @@ export async function savePreorderCover(
     }
 
     if (chosen.length > 0) {
-      const items = await loadMenuItemsForSnapshot(
-        supabase,
-        cover.table_booking_id,
-        chosen.map((entry) => entry.menuItemId),
-      )
-
+      // Every item was checked above, before anything was written.
       const rows = chosen.map((entry) => {
         const item = items.get(entry.menuItemId)
         if (!item) throw new Error('That dish is not on the menu for this booking.')
-        if (!item.isActive) throw new Error(`${item.name} has been taken off the menu. Please choose again.`)
-        if (item.course !== entry.course) {
-          throw new Error(`${item.name} is not a ${entry.course}.`)
-        }
-        // Kids mains are 1 course only (A1). The database refuses it too; this says why.
-        if (item.isChildOption && (courseCount === 2 || courseCount === 3)) {
-          throw new PreorderCourseLimitError(cover.ordinal, courseCount, 'child_option')
-        }
         return {
           cover_id: cover.id,
           course: entry.course,
@@ -1374,14 +1403,23 @@ async function loadSeatCourseCount(
  * on 0 or 1 course, or both together on 2. A main is allowed on every tier. The database refuses the
  * first case too, and the kitchen would otherwise cook a course the guest has not paid for. 3 courses
  * and untiered seats cannot go over: a seat holds at most one of each course.
+ *
+ * Runs before the tier is set, so it judges the seat as it WILL stand: when the tier changes, the
+ * database trigger (assert_christmas_course_snapshot_v01) first clears both the starter and the
+ * dessert if the new tier is 0 or 1 course, or if the seat holds more of them than the new tier
+ * allows. That clearing is mirrored here, then this save's own changes are applied on top.
  */
 async function assertCoursesWithinTier(
   supabase: Db,
   cover: PreorderCoverRow,
-  courseCount: PreorderSeatCourseCount | null,
-  cleared: PreorderCourse[],
-  chosen: PreorderCourse[],
+  tier: {
+    from: PreorderSeatCourseCount | null
+    to: PreorderSeatCourseCount | null
+    cleared: PreorderCourse[]
+    chosen: PreorderCourse[]
+  },
 ): Promise<void> {
+  const courseCount = tier.to
   if (courseCount === null || courseCount === 3) return
 
   const { data, error } = await supabase
@@ -1395,8 +1433,15 @@ async function assertCoursesWithinTier(
   for (const row of (data ?? []) as Array<{ course: string }>) {
     if (isPreorderCourse(row.course)) after.add(row.course)
   }
-  for (const course of cleared) after.delete(course)
-  for (const course of chosen) after.add(course)
+  if (tier.from !== courseCount) {
+    const others = (after.has('starter') ? 1 : 0) + (after.has('dessert') ? 1 : 0)
+    if (courseCount <= 1 || others > courseCount - 1) {
+      after.delete('starter')
+      after.delete('dessert')
+    }
+  }
+  for (const course of tier.cleared) after.delete(course)
+  for (const course of tier.chosen) after.add(course)
 
   const others = (after.has('starter') ? 1 : 0) + (after.has('dessert') ? 1 : 0)
   if (others > maxOtherCourses(courseCount)) throw new PreorderCourseLimitError(cover.ordinal, courseCount)

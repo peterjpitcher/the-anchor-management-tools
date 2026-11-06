@@ -29,6 +29,7 @@ describe('decideLegacyPreorderChases', () => {
   })
 
   it('tells the manager on the next sweep, once the booker has had a day to act', () => {
+    // Six days out on a seven-day cutoff: the form locked at noon yesterday.
     expect(
       decideLegacyPreorderChases({
         daysUntilBooking: 6,
@@ -36,9 +37,36 @@ describe('decideLegacyPreorderChases', () => {
         bookerReminderSentOn: '2026-12-16',
         managerEscalationSent: false,
         todayIso: TODAY,
-        preorderClosed: false,
+        preorderClosed: true,
       }),
     ).toEqual(['manager_escalation'])
+  })
+
+  it('holds the escalation at the 09:00 run on the cutoff day, while the form is open until noon', () => {
+    const onCutoffDay = {
+      daysUntilBooking: 7,
+      cutoffDays: 7,
+      bookerReminderSentOn: '2026-12-14',
+      managerEscalationSent: false,
+      todayIso: TODAY,
+    }
+    // 09:00 UTC: the organiser can still choose online, so nobody is asked to ring them.
+    expect(decideLegacyPreorderChases({ ...onCutoffDay, preorderClosed: false })).toEqual([])
+    // 12:00 UTC: the form has locked, so the manager is told, as when the cron ran at noon only.
+    expect(decideLegacyPreorderChases({ ...onCutoffDay, preorderClosed: true })).toEqual(['manager_escalation'])
+  })
+
+  it('holds the escalation on the booking day too while a same-day cutoff is still open', () => {
+    expect(
+      decideLegacyPreorderChases({
+        daysUntilBooking: 0,
+        cutoffDays: 0,
+        bookerReminderSentOn: '2026-12-10',
+        managerEscalationSent: false,
+        todayIso: TODAY,
+        preorderClosed: false,
+      }),
+    ).toEqual([])
   })
 
   it('does not escalate on a second run of the same day as the reminder', () => {

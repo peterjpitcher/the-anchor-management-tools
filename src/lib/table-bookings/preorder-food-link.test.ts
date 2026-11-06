@@ -111,6 +111,8 @@ describe('savePreorderCover, the food link fields', () => {
         { id: 'starter-1', period_id: 'period-1', name: 'Fixture starter', course: 'starter', price_gbp: 10, is_active: true, is_child_option: false },
         { id: 'main-1', period_id: 'period-1', name: 'Fixture main', course: 'main', price_gbp: 24, is_active: true, is_child_option: false },
         { id: 'kids-1', period_id: 'period-1', name: 'Fixture kids main', course: 'main', price_gbp: 12, is_active: true, is_child_option: true },
+        { id: 'dessert-gone', period_id: 'period-1', name: 'Fixture withdrawn dessert', course: 'dessert', price_gbp: 8, is_active: false, is_child_option: false },
+        { id: 'dessert-other', period_id: 'period-2', name: 'Fixture other period dessert', course: 'dessert', price_gbp: 8, is_active: true, is_child_option: false },
       ],
     })
     // The seat-course function, as the database runs it: one seat's tier, atomically.
@@ -287,6 +289,113 @@ describe('savePreorderCover, the food link fields', () => {
       selections: [{ course: 'main', menuItemId: 'kids-1' }],
     })
     expect(fake.tables.booking_preorder_selections.map((row) => row.menu_item_id)).toEqual(['kids-1'])
+  })
+
+  describe('a refused save changes nothing', () => {
+    /** Seat 1 on 2 courses with a main and a starter, as saved earlier. */
+    function seated() {
+      const fake = db([2, 0])
+      fake.tables.booking_preorder_covers[0].guest_name = 'Sam'
+      fake.tables.booking_preorder_selections.push(
+        { id: 'sel-main', cover_id: 'cover-1', course: 'main', menu_item_id: 'main-1', item_name: 'Fixture main', price_gbp: 24, created_at: 'x', updated_at: 'x' },
+        { id: 'sel-starter', cover_id: 'cover-1', course: 'starter', menu_item_id: 'starter-1', item_name: 'Fixture starter', price_gbp: 10, created_at: 'x', updated_at: 'x' },
+      )
+      return fake
+    }
+
+    function expectUntouched(fake: ReturnType<typeof seated>) {
+      expect(fake.rpc).not.toHaveBeenCalled()
+      expect(fake.tables.table_bookings[0].christmas_course_counts).toEqual([2, 0])
+      expect(fake.tables.booking_preorder_selections.map((row) => row.id).sort()).toEqual(['sel-main', 'sel-starter'])
+      expect(coverRow(fake, 'cover-1').guest_name).toBe('Sam')
+      expect(coverRow(fake, 'cover-1').last_saved_by).toBeUndefined()
+    }
+
+    it('a withdrawn dessert on a move from 2 to 3 courses leaves the tier and the dishes as they were', async () => {
+      const fake = seated()
+      await expect(
+        savePreorderCover(fake as never, {
+          coverId: 'cover-1',
+          actor: { savedBy: 'organiser' },
+          tableBookingId: BOOKING,
+          guestName: 'Changed',
+          courseCount: 3,
+          selections: [{ course: 'dessert', menuItemId: 'dessert-gone' }],
+        }),
+      ).rejects.toThrow('Fixture withdrawn dessert has been taken off the menu. Please choose again.')
+      expectUntouched(fake)
+    })
+
+    it("a dish from another period's menu is refused before the tier moves", async () => {
+      const fake = seated()
+      await expect(
+        savePreorderCover(fake as never, {
+          coverId: 'cover-1',
+          actor: { savedBy: 'organiser' },
+          courseCount: 3,
+          selections: [{ course: 'dessert', menuItemId: 'dessert-other' }],
+        }),
+      ).rejects.toThrow('That dish is not on the menu for this booking.')
+      expectUntouched(fake)
+    })
+
+    it('a dish on the wrong course is refused before the tier moves', async () => {
+      const fake = seated()
+      await expect(
+        savePreorderCover(fake as never, {
+          coverId: 'cover-1',
+          actor: { savedBy: 'organiser' },
+          courseCount: 3,
+          selections: [{ course: 'dessert', menuItemId: 'starter-1' }],
+        }),
+      ).rejects.toThrow('Fixture starter is not a dessert.')
+      expectUntouched(fake)
+    })
+
+    it('a kids main is judged on the new tier, before the tier moves', async () => {
+      const fake = db([1, 0])
+      await expect(
+        savePreorderCover(fake as never, {
+          coverId: 'cover-1',
+          actor: { savedBy: 'organiser' },
+          courseCount: 2,
+          selections: [{ course: 'main', menuItemId: 'kids-1' }],
+        }),
+      ).rejects.toThrow('Kids Christmas dinners are 1 course only.')
+      expect(fake.rpc).not.toHaveBeenCalled()
+      expect(fake.tables.table_bookings[0].christmas_course_counts).toEqual([1, 0])
+    })
+
+    it('a starter on a move down to 1 course is refused before the tier moves', async () => {
+      const fake = seated()
+      await expect(
+        savePreorderCover(fake as never, {
+          coverId: 'cover-1',
+          actor: { savedBy: 'organiser' },
+          courseCount: 1,
+          selections: [{ course: 'starter', menuItemId: 'starter-1' }],
+        }),
+      ).rejects.toThrow('Seat 1 is on 1 course, so choose a main only.')
+      expectUntouched(fake)
+    })
+
+    it('still takes a move to 3 courses with a good dessert, keeping the starter', async () => {
+      const fake = db([2, 0])
+      fake.tables.booking_period_menu_items.push(
+        { id: 'dessert-1', period_id: 'period-1', name: 'Fixture dessert', course: 'dessert', price_gbp: 8, is_active: true, is_child_option: false },
+      )
+      fake.tables.booking_preorder_selections.push(
+        { id: 'sel-starter', cover_id: 'cover-1', course: 'starter', menu_item_id: 'starter-1', item_name: 'Fixture starter', price_gbp: 10, created_at: 'x', updated_at: 'x' },
+      )
+      const saved = await savePreorderCover(fake as never, {
+        coverId: 'cover-1',
+        actor: { savedBy: 'organiser' },
+        courseCount: 3,
+        selections: [{ course: 'dessert', menuItemId: 'dessert-1' }],
+      })
+      expect(saved.courseCount).toBe(3)
+      expect(fake.tables.booking_preorder_selections.map((row) => row.course).sort()).toEqual(['dessert', 'starter'])
+    })
   })
 
   it('refuses a tier outside 0 to 3 before calling the database', async () => {
