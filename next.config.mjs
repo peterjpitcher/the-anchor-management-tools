@@ -7,6 +7,8 @@ const scriptSources = [
   ...(isDevelopment ? ["'unsafe-eval'"] : []),
   'https://www.paypal.com',
   'https://www.paypalobjects.com',
+  // Cloudflare Turnstile widget (recruitment interview booking page)
+  'https://challenges.cloudflare.com',
 ]
 
 const connectSources = [
@@ -30,7 +32,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   `script-src ${scriptSources.join(' ')}`,
   `connect-src ${connectSources.join(' ')}`,
-  "frame-src 'self' https://www.paypal.com https://*.paypal.com",
+  "frame-src 'self' https://www.paypal.com https://*.paypal.com https://challenges.cloudflare.com",
   "worker-src 'self' blob:",
   "media-src 'self' data: blob: https:",
   "manifest-src 'self'",
