@@ -104,6 +104,9 @@ tmp/
 # real applicants' names, emails and phone numbers, which must not enter git
 # history, where deleting it later does not remove it.
 analysis/
+# scripts/analysis/ is real, tested source (tests/scripts/testAnalysisScriptsFailClosed.test.ts),
+# not scratch, so the broad rule above must not catch it.
+!scripts/analysis/
 backups/
 temp/
 
