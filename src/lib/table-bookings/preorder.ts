@@ -1628,6 +1628,11 @@ export type PreorderChristmasTierTotals = {
   threeCourses: number
   /** Guests on Christmas bookings that recorded no tiers (older staff bookings). */
   notRecorded: number
+  /**
+   * Guests whose seat is on 0, "not chosen yet": since the food link release every Christmas
+   * booking starts with a 0 per guest, and the guest chooses their courses on the food page.
+   */
+  notChosen: number
   /** Every guest on a Christmas booking that day. */
   guests: number
 }
@@ -1668,7 +1673,7 @@ export type PreorderDishTotals = {
 
 /** The shape to return when a date has nothing on it. One definition, so no caller invents its own. */
 export function emptyChristmasTierTotals(): PreorderChristmasTierTotals {
-  return { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 }
+  return { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, notChosen: 0, guests: 0 }
 }
 
 /** Tally each guest's tier across a day's Christmas bookings. */
@@ -1685,10 +1690,11 @@ export function summariseChristmasTiers(
       continue
     }
     for (const count of counts) {
-      const tier = toPreorderCourseCount(count)
+      const tier = toPreorderSeatCourseCount(count)
       if (tier === 1) totals.oneCourse += 1
       else if (tier === 2) totals.twoCourses += 1
       else if (tier === 3) totals.threeCourses += 1
+      else if (tier === 0) totals.notChosen += 1
       else totals.notRecorded += 1
       totals.guests += 1
     }

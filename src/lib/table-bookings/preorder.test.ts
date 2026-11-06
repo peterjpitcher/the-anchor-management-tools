@@ -401,7 +401,7 @@ describe('summarisePreorderDishTotals', () => {
       // Added for BK-058 and BK-051: tiers, unpaid holds, late changes and withdrawn dishes, all empty.
       pendingPaymentBookingCount: 0,
       lateChangeCount: 0,
-      christmasTiers: { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 },
+      christmasTiers: { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, notChosen: 0, guests: 0 },
       withdrawn: [],
       byCourse: { starter: [], main: [], dessert: [] },
       addons: [],
@@ -774,8 +774,10 @@ describe('kitchen totals by tier', () => {
         { partySize: 4, courseCounts: [3, 3, 2, 1] },
         { partySize: 5, courseCounts: [1, 1, 1, 1, 1] },
         { partySize: 6, courseCounts: null },
+        // Since the food link release a seat starts on 0, "not chosen yet".
+        { partySize: 3, courseCounts: [0, 0, 2] },
       ]),
-    ).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 2, notRecorded: 6, guests: 15 })
+    ).toEqual({ oneCourse: 6, twoCourses: 2, threeCourses: 2, notRecorded: 6, notChosen: 2, guests: 18 })
   })
 
   it('loads a day: tiers from bookings with no seats, withdrawn dishes apart, unpaid holds counted', async () => {
@@ -804,7 +806,7 @@ describe('kitchen totals by tier', () => {
 
     const totals = await loadPreorderDishTotals(fake as never, '2026-12-12')
 
-    expect(totals.christmasTiers).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 5, notRecorded: 0, guests: 12 })
+    expect(totals.christmasTiers).toEqual({ oneCourse: 6, twoCourses: 1, threeCourses: 5, notRecorded: 0, notChosen: 0, guests: 12 })
     expect(totals.byCourse.main).toEqual([{ menuItemId: 'item-a', itemName: 'Fixture main', count: 2 }])
     expect(totals.withdrawn).toEqual([{ course: 'main', menuItemId: 'item-b', itemName: 'Withdrawn main', count: 1 }])
     expect(totals.pendingPaymentBookingCount).toBe(1)

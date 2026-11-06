@@ -98,7 +98,7 @@ function partySizeLabel(partySize: number | null | undefined): string | null {
 
 type DetailRow = { label: string; value: string | null | undefined }
 
-type EmailLayout = {
+export type EmailLayout = {
   subject: string
   /** The line the inbox shows next to the subject. Says what the email is about, not hello. */
   preheader: string
@@ -122,7 +122,7 @@ type EmailLayout = {
  * The contact block comes from `@/lib/email/guest-footer` rather than being written here, so a
  * booking email can never again say "reply to this email or call the pub" with no number in it.
  */
-function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
+export function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
   const rows = layout.details.filter(
     (row): row is { label: string; value: string } => typeof row.value === 'string' && row.value.trim().length > 0
   )
@@ -798,9 +798,13 @@ export type PreorderChoicesCopySeat = {
   addons: string[]
 }
 
+/**
+ * One seat's line. Every tier chooses in advance since the food link release (owner decision D4,
+ * 6 November 2026): 1 course is a main, so its main is listed like any other course. A seat still
+ * on 0 has not chosen its number of courses, and says so.
+ */
 function describeCopySeat(seat: PreorderChoicesCopySeat): string {
   const tier = seat.courseCount ? `, ${seat.courseCount} course${seat.courseCount === 1 ? '' : 's'}` : ''
-  if (seat.courseCount === 1) return `Seat ${seat.ordinal}${tier}: chosen on the day.`
   if (seat.courses.length === 0) return `Seat ${seat.ordinal}${tier}: not chosen yet.`
   const courses = seat.courses
     .map(
@@ -809,12 +813,14 @@ function describeCopySeat(seat: PreorderChoicesCopySeat): string {
     )
     .join(' ')
   const addons = seat.addons.length > 0 ? ` Add-ons: ${seat.addons.join(', ')}.` : ''
-  return `Seat ${seat.ordinal}${tier}: ${courses}${addons}`
+  const unchosenTier = seat.courseCount === 0 ? ' Number of courses not chosen yet.' : ''
+  return `Seat ${seat.ordinal}${tier}: ${courses}${addons}${unchosenTier}`
 }
 
 /**
  * The booker's copy of their food choices, sent once when the pre-order closes (BK-149), so they
- * have a record of what everyone is having. Seat numbers and dishes only: names and dietary notes
+ * have a record of what everyone is having, or on request from the food page before then
+ * (`stillOpenUntil`). Seat numbers and dishes only: names and dietary notes
  * stay on staff screens (spec section 8). Sent only while the messaging flag
  * `table_preorder_choices_copy` is on.
  */
@@ -826,6 +832,11 @@ export function buildTableBookingPreorderChoicesEmail(
     complete: boolean
     /** The add-on money note, verbatim, when any seat has an add-on. */
     addonNote?: string | null
+    /**
+     * A ready-made London phrase for when choices close, such as "noon on Friday 4 December 2026",
+     * for a copy asked for before the cutoff. Absent means choices have closed.
+     */
+    stillOpenUntil?: string | null
   }
 ): TableBookingEmail {
   const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
@@ -843,7 +854,9 @@ export function buildTableBookingPreorderChoicesEmail(
     opening: [
       `Hi ${input.firstName}, here is a copy of the food choices for your booking at The Anchor` +
         `${moment ? ` on ${moment}` : ''}${reference}.`,
-      'Choices have now closed, and the kitchen orders from this list.',
+      input.stillOpenUntil?.trim()
+        ? `You can change them until ${input.stillOpenUntil.trim()}.`
+        : 'Choices have now closed, and the kitchen orders from this list.',
       ...(input.complete
         ? []
         : [`Some choices are still missing. Please ring us on ${GUEST_CONTACT.phoneDisplay} so we can add them.`]),

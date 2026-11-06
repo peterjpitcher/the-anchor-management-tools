@@ -131,10 +131,14 @@ export function buildKitchenOrderEmail(input: {
       (totals.pendingPaymentBookingCount
         ? `, including ${totals.pendingPaymentBookingCount} still waiting for a deposit.`
         : '.'),
+    // Every tier chooses in advance since the food link release (D4): 1 course is a main, counted
+    // in the dishes below. A seat still on 0 has not chosen its courses, which the kitchen must see.
     ...(tiers.guests > 0
       ? [
           `Christmas guests: ${tiers.guests} (${tiers.threeCourses} on 3 courses, ${tiers.twoCourses} on 2 courses, ` +
-            `${tiers.oneCourse} on 1 course choosing on the day${tiers.notRecorded ? `, ${tiers.notRecorded} with no courses recorded` : ''}).`,
+            `${tiers.oneCourse} on 1 course` +
+            `${tiers.notChosen ? `, ${tiers.notChosen} not chosen yet` : ''}` +
+            `${tiers.notRecorded ? `, ${tiers.notRecorded} with no courses recorded` : ''}).`,
         ]
       : []),
   ]
