@@ -7,6 +7,7 @@ import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
 import { toLocalIsoDate } from '@/lib/dateUtils'
+import { ACCESSIBILITY_NOTES_MAX_LENGTH } from '@/lib/events/field-limits'
 import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { EventCategoryService } from '@/services/event-categories'
 import { getErrorMessage } from '@/lib/errors'
@@ -134,7 +135,7 @@ const categorySchema = z.object({
   local_seo_keywords: z.array(z.string().max(100)).max(10).default([]).optional(),
   image_alt_text: z.string().max(200).nullable().optional(),
   cancellation_policy: z.string().max(300).nullable().optional(),
-  accessibility_notes: z.string().max(300).nullable().optional(),
+  accessibility_notes: z.string().max(ACCESSIBILITY_NOTES_MAX_LENGTH).nullable().optional(),
   default_promo_sms_enabled: z.boolean().optional(),
   default_bookings_enabled: z.boolean().optional(),
 })
