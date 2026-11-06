@@ -314,7 +314,7 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       throw new ChristmasCourseValidationError('Tick the guests who are not coming before making a Christmas party smaller.')
     }
     if (nextCourses?.length !== newPartySize
-        || nextCourses.some(course => !Number.isInteger(course) || course < 1 || course > 3)) {
+        || nextCourses.some(course => !Number.isInteger(course) || course < 0 || course > 3)) {
       throw new ChristmasCourseValidationError('Choose one, two or three courses for every Christmas guest before changing the party size.')
     }
   } else if (input.christmasCourseCounts) {

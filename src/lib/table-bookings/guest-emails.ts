@@ -96,7 +96,7 @@ function partySizeLabel(partySize: number | null | undefined): string | null {
   return `${whole} ${whole === 1 ? 'person' : 'people'}`
 }
 
-type DetailRow = { label: string; value: string | null | undefined }
+export type DetailRow = { label: string; value: string | null | undefined }
 
 export type EmailLayout = {
   subject: string

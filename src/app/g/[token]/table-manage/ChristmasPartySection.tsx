@@ -5,7 +5,6 @@ import {
   guestFieldControlProps,
   GuestSection,
   GUEST_BODY_CLASS,
-  GUEST_MUTED_CLASS,
 } from '@/components/features/guest'
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
@@ -19,22 +18,18 @@ type ChristmasPartySectionProps = GuestChristmasParty & {
 
 const LEGEND_CLASS = 'px-1 font-anchor-body text-guest-body font-bold leading-guest-snug text-guest-text-strong'
 
-/** The tiers a guest can join on, with the form field each one posts. */
-const JOIN_FIELDS = [
-  { name: 'add_1', label: 'On 1 course' },
-  { name: 'add_2', label: 'On 2 courses' },
-  { name: 'add_3', label: 'On 3 courses' },
-] as const
-
+/** "Guest 2 (Sam), 3 courses". A guest on 0 has not chosen their number of courses yet. */
 function seatLabel(seat: number, tier: number, name: string | null): string {
-  const courses = tier === 1 ? '1 course' : `${tier} courses`
+  const courses = tier === 0 ? 'courses not chosen yet' : tier === 1 ? '1 course' : `${tier} courses`
   return name ? `Guest ${seat} (${name}), ${courses}` : `Guest ${seat}, ${courses}`
 }
 
 /**
  * The numbers on a Christmas booking, changed by the booker until noon seven days before the date
  * (owner decision D21, BK-053). The booker ticks anyone not coming, so that guest's own food choices
- * go and nobody else's move, and adds guests on 1, 2 or 3 courses. After the deadline, or on a
+ * go and nobody else's move, and says how many are joining. A guest who joins chooses their number
+ * of courses and their dishes on the food page, like everyone else (D4), so the form asks only how
+ * many. Seats still on 0 (courses not chosen yet) are listed like any other. After the deadline, or on a
  * booking with no courses recorded, the page asks them to ring instead, because a manager makes the
  * change then. Plain server-rendered HTML posting to the route next door, like the rest of the page.
  */
@@ -96,24 +91,25 @@ export function ChristmasPartySection({ courseCounts, seatNames, canChangeOnline
 
         <fieldset className="flex flex-col gap-guest-md">
           <legend className={LEGEND_CLASS}>Anyone joining?</legend>
-          <p className={GUEST_MUTED_CLASS}>
-            Guests joining on 2 or 3 courses choose their food in the food choices section once you&apos;ve saved.
-          </p>
-          <div className="grid grid-cols-1 gap-guest-md sm:grid-cols-3">
-            {JOIN_FIELDS.map((field) => (
-              <GuestField key={field.name} id={`christmas-${field.name}`} label={field.label}>
-                <GuestInput
-                  {...guestFieldControlProps({ id: `christmas-${field.name}` })}
-                  name={field.name}
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  max={String(CHRISTMAS_MAX_PARTY_SIZE - CHRISTMAS_MIN_PARTY_SIZE)}
-                  defaultValue="0"
-                />
-              </GuestField>
-            ))}
-          </div>
+          <GuestField
+            id="christmas-add-guests"
+            label="How many more guests?"
+            hint="Once you've saved, add their names, allergies, courses and dishes in the food section below."
+          >
+            <GuestInput
+              {...guestFieldControlProps({
+                id: 'christmas-add-guests',
+                hint: "Once you've saved, add their names, allergies, courses and dishes in the food section below.",
+              })}
+              name="add_guests"
+              type="number"
+              inputMode="numeric"
+              min="0"
+              max={String(CHRISTMAS_MAX_PARTY_SIZE - CHRISTMAS_MIN_PARTY_SIZE)}
+              defaultValue="0"
+              className="sm:max-w-40"
+            />
+          </GuestField>
         </fieldset>
 
         <div>
