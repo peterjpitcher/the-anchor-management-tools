@@ -12,6 +12,7 @@ type GuestTokenActionType =
   | 'private_booking_outcome'
   | 'booking_confirm'
   | 'email_capture'
+  | 'preorder_guest'
 
 export type CreateGuestTokenInput = {
   customerId: string
@@ -22,6 +23,8 @@ export type CreateGuestTokenInput = {
   privateBookingId?: string | null
   chargeRequestId?: string | null
   waitlistOfferId?: string | null
+  /** Only for 'preorder_guest': the one seat the link may change. The database requires it there. */
+  preorderCoverId?: string | null
 }
 
 /**
@@ -56,6 +59,7 @@ export async function createGuestToken(
       private_booking_id: input.privateBookingId ?? null,
       charge_request_id: input.chargeRequestId ?? null,
       waitlist_offer_id: input.waitlistOfferId ?? null,
+      preorder_cover_id: input.preorderCoverId ?? null,
       action_type: input.actionType,
       expires_at: input.expiresAt
     })
