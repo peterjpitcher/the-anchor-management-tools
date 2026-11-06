@@ -29,6 +29,7 @@ import {
   type EventPaymentModeValue,
 } from '@/lib/events/event-change-guard';
 import { resolveEventPaymentMode } from '@/lib/events/pricing';
+import { ACCESSIBILITY_NOTES_MAX_LENGTH } from '@/lib/events/field-limits';
 
 // Waitlist rows still open when an event is cancelled. These must be values the tables' status
 // checks allow (supabase/migrations/20260420000003_bookings_v05_foundations.sql): the cascade
@@ -419,7 +420,7 @@ export const eventSchema = z.object({
   previous_event_summary: z.string().max(300).nullable().optional(),
   attendance_note: z.string().max(200).nullable().optional(),
   cancellation_policy: z.string().max(300).nullable().optional(),
-  accessibility_notes: z.string().max(300).nullable().optional(),
+  accessibility_notes: z.string().max(ACCESSIBILITY_NOTES_MAX_LENGTH).nullable().optional(),
   slug: z.string().regex(/^[a-z0-9-]+$/, 'Slug must only contain lowercase letters, numbers, and hyphens').nullable().optional(),
   meta_title: z.string().max(255).nullable().optional(),
   meta_description: z.string().max(500).nullable().optional(),

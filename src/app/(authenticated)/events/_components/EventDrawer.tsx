@@ -23,6 +23,7 @@ import type { EventCategory } from '@/types/event-categories'
 import type { EventChecklistItem } from '@/lib/event-checklist'
 import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { utcIsoToLondonLocalInput } from '@/lib/dateUtils'
+import { ACCESSIBILITY_NOTES_MAX_LENGTH } from '@/lib/events/field-limits'
 import { eventPreflightIssueTextClass } from '../_shared/status-ui'
 
 type GenerationPhase = 'checking' | 'drafting' | null
@@ -1048,8 +1049,8 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
           />
           <Textarea
             label="Accessibility Notes"
-            error={accessibilityNotes.trim().length > 300 ? `Use 300 characters or fewer (${accessibilityNotes.trim().length} entered).` : fieldErrors.accessibility_notes}
-            hint={`${accessibilityNotes.trim().length}/300 characters`}
+            error={accessibilityNotes.trim().length > ACCESSIBILITY_NOTES_MAX_LENGTH ? `Use ${ACCESSIBILITY_NOTES_MAX_LENGTH} characters or fewer (${accessibilityNotes.trim().length} entered).` : fieldErrors.accessibility_notes}
+            hint={`${accessibilityNotes.trim().length}/${ACCESSIBILITY_NOTES_MAX_LENGTH} characters`}
             value={accessibilityNotes}
             onChange={(e) => { setAccessibilityNotes(e.target.value); clearFieldError('accessibility_notes') } }
             rows={2}
