@@ -77,6 +77,26 @@ describe('Christmas numbers form', () => {
     expect(mocks.updateTableBookingByRawToken).not.toHaveBeenCalled()
   })
 
+  // Since the food link release a guest joins with their courses still to choose, and a booking
+  // taken without courses holds a 0 per guest (D4, 6 November 2026).
+  it('takes a single "how many more" count, and accepts seats still on 0', async () => {
+    const response = await post([
+      ['action', 'christmas_party'], ['expected_courses', '0,0,3,0'], ['remove_seat', '4'], ['add_guests', '2'],
+    ])
+
+    expect(statusOf(response)).toBe('christmas_updated')
+    expect(mocks.changeChristmasPartyByRawToken).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      removedSeats: [4],
+      expectedCourses: [0, 0, 3, 0],
+      added: { oneCourse: 2, twoCourses: 0, threeCourses: 0 },
+    }))
+  })
+
+  it('refuses a "how many more" count that is not a whole number', async () => {
+    expect(statusOf(await post([['action', 'christmas_party'], ['add_guests', 'lots']]))).toBe('christmas_size')
+    expect(mocks.changeChristmasPartyByRawToken).not.toHaveBeenCalled()
+  })
+
   it.each([
     ['christmas_closed', 'christmas_closed'],
     ['christmas_size', 'christmas_size'],
