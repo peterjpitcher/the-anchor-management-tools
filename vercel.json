@@ -1,5 +1,6 @@
 {
   "buildCommand": "npm run build",
+  "fluid": true,
   "rewrites": [
     {
       "source": "/l/:code",
