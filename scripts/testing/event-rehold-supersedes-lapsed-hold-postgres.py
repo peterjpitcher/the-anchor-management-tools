@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the "Hold them again" migration in an isolated socket-only PostgreSQL database.
 
-20261106112933_event_rehold_supersedes_lapsed_hold. Builds create_event_booking_v05 exactly as
+20261106145933_event_rehold_supersedes_lapsed_hold. Builds create_event_booking_v05 exactly as
 production holds it on 6 November 2026 (md5(prosrc) checked) from the event bookable rules chain
 (tests/database/event-physical-capacity/setup.sql, 20260921074304, 20261026212246, 20261027132945,
 20261027133013, 20261029091454) and confirm_event_paypal_payment_v01 from 20261026212408 (also
@@ -45,8 +45,8 @@ ROOM_WINDOW = ROOT / 'supabase/migrations/20261027132945_private_hire_room_windo
 WHOLE_PUB = ROOT / 'supabase/migrations/20261027133013_whole_pub_hire_stops_ticket_sales.sql'
 BOOKABLE = ROOT / 'supabase/migrations/20261029091454_event_bookable_rules.sql'
 LATE_PAYMENT = ROOT / 'supabase/migrations/20261026212408_event_late_payment_capacity_check.sql'
-MIGRATION = ROOT / 'supabase/migrations/20261106112933_event_rehold_supersedes_lapsed_hold.sql'
-ROLLBACK = ROOT / 'supabase/rollbacks/20261106112933_event_rehold_supersedes_lapsed_hold.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261106145933_event_rehold_supersedes_lapsed_hold.sql'
+ROLLBACK = ROOT / 'supabase/rollbacks/20261106145933_event_rehold_supersedes_lapsed_hold.sql'
 LIVE_PROSRC = '7ee06c16846fa8a22e57382a6ad37db5'
 LIVE_DEFINITION = '583e6a10e772ab1f5b608cb6c102b5be'
 SIGNATURE = 'create_event_booking_v05(uuid,uuid,integer,text,text)'

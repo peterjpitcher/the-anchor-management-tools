@@ -1,4 +1,4 @@
--- Rollback for 20261106112933_event_rehold_supersedes_lapsed_hold.sql.
+-- Rollback for 20261106145933_event_rehold_supersedes_lapsed_hold.sql.
 -- Puts create_event_booking_v05 and confirm_event_paypal_payment_v01 back exactly as production
 -- held them on 6 November 2026: create_event_booking_v05 (pg_get_functiondef md5
 -- 583e6a10e772ab1f5b608cb6c102b5be, md5(prosrc) 7ee06c16846fa8a22e57382a6ad37db5) and
