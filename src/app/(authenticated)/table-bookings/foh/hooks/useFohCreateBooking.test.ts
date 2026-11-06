@@ -472,22 +472,25 @@ describe('useFohCreateBooking high chairs, outside and step-free', () => {
     expect(body.requires_accessible_table).toBeUndefined()
   })
 
-  // BK-057: a Christmas booking taken here records each guest's 1, 2 or 3 courses.
-  it('sends the Christmas courses chosen for every guest', async () => {
-    const calls = stubBookingFetch({ christmas_courses_saved: true })
-    await submitBooking({ purpose: 'christmas', christmas_course_counts: [3, 2, 1, 1] })
-    expect(bookingBody(calls)).toMatchObject({ purpose: 'christmas', christmas_course_counts: [3, 2, 1, 1] })
+  // Owner decision D1, 6 November 2026: no courses at booking. The database starts every guest on 0.
+  it('posts a Christmas booking with no courses', async () => {
+    const calls = stubBookingFetch({})
+    await submitBooking({ purpose: 'christmas', party_size: '8' })
+    const body = bookingBody(calls)
+    expect(body).toMatchObject({ purpose: 'christmas', party_size: 8 })
+    expect(body.christmas_course_counts).toBeUndefined()
   })
 
-  it('will not post a Christmas booking until every guest has a course choice', async () => {
+  // A3: staff may book a Christmas party bigger than the website's 20; the server checks the limit.
+  it('posts a staff Christmas party of more than 20 without a cap of its own', async () => {
     const calls = stubBookingFetch({})
-    await submitBooking({ purpose: 'christmas', christmas_course_counts: [3, 0, 1] })
-    expect(calls.some((call) => call.url === '/api/foh/bookings')).toBe(false)
+    await submitBooking({ purpose: 'christmas', party_size: '45' })
+    expect(bookingBody(calls)).toMatchObject({ purpose: 'christmas', party_size: 45 })
   })
 
   it('tells staff to set the courses on the booking when they did not save', async () => {
     stubBookingFetch({ christmas_courses_saved: false })
-    const { setStatusMessage } = await submitBooking({ purpose: 'christmas', christmas_course_counts: [1, 1, 1, 1] })
+    const { setStatusMessage } = await submitBooking({ purpose: 'christmas' })
     expect(setStatusMessage).toHaveBeenLastCalledWith(
       expect.stringContaining('The Christmas courses did not save: set them on the booking.')
     )

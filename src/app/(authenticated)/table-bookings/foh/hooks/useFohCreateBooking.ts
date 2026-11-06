@@ -161,8 +161,9 @@ export function useFohCreateBooking(input: {
     last_name: '',
     time: '19:00',
     party_size: '2',
-    // `christmas` posts a Christmas table booking: 4 guests or more, 24 hours
-    // notice, and a deposit every time. The rules are enforced in the database.
+    // `christmas` posts a Christmas table booking: 4 guests or more and a deposit every time, with
+    // no courses: every guest's courses are chosen later on the food page (owner decision D1). The
+    // rules are enforced in the database.
     purpose: 'food' as 'food' | 'drinks' | 'event' | 'christmas',
     seating_preference: 'seated',
     sunday_deposit_method: 'payment_link' as 'payment_link' | 'cash',
@@ -173,8 +174,7 @@ export function useFohCreateBooking(input: {
     bypass_pacing: false,
     high_chair_count: '0',
     outside_seating: false,
-    requires_accessible_table: false,
-    christmas_course_counts: []
+    requires_accessible_table: false
   })
 
   // --- Customer search ---
@@ -419,7 +419,6 @@ export function useFohCreateBooking(input: {
       sunday_deposit_method: 'payment_link',
       notes: '', allergies: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
       high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-      christmas_course_counts: [],
       event_guest_rows: [],
       event_ticket_quantities: {}
     }))
@@ -482,7 +481,7 @@ export function useFohCreateBooking(input: {
         notes: walkInMode ? '' : current.notes, allergies: walkInMode ? '' : current.allergies,
         waive_deposit: false, is_venue_event: false, bypass_pacing: false,
         high_chair_count: '0', outside_seating: false, requires_accessible_table: false,
-        christmas_course_counts: [], marketing_texts_yes: false, event_guest_rows: [], event_ticket_quantities: {}
+        marketing_texts_yes: false, event_guest_rows: [], event_ticket_quantities: {}
       }
     })
     if (walkInMode) {
@@ -648,16 +647,9 @@ export function useFohCreateBooking(input: {
     if (requiresDepositValidation && !createForm.sunday_deposit_method) {
       setErrorMessage('Choose whether the deposit was taken in cash or should be sent by payment link.'); return
     }
-    // Christmas bookings taken here record each guest's 1, 2 or 3 courses (BK-057), so the guest's
-    // pre-order form, the chase and the kitchen sheet know what each guest is having. Walk-ins are on
-    // the day, inside the pre-order deadline, so the server records them as 1 course itself.
-    const christmasCourseCounts =
-      isChristmasBooking && createMode === 'booking'
-        ? Array.from({ length: partySize }, (_, index) => createForm.christmas_course_counts?.[index] ?? 0)
-        : undefined
-    if (christmasCourseCounts?.some((count) => count < 1 || count > 3)) {
-      setErrorMessage('Choose 1, 2 or 3 courses for every Christmas guest.'); return
-    }
+    // No Christmas courses are sent (owner decision D1, 6 November 2026): the database starts every
+    // guest on 0, "not chosen yet", and the courses are chosen on the food page or by staff on the
+    // booking. The party can be bigger than the website's for staff (A3); the server checks the limit.
     const requestedHighChairs = Math.max(0, Math.min(2, Number.parseInt(createForm.high_chair_count, 10) || 0))
     setSubmittingBooking(true)
     try {
@@ -684,7 +676,6 @@ export function useFohCreateBooking(input: {
           // Indoor only: an outside booking holds no indoor table to make step-free.
           requires_accessible_table:
             (createMode === 'booking' && !createForm.outside_seating && createForm.requires_accessible_table) || undefined,
-          christmas_course_counts: christmasCourseCounts,
           marketing_texts_yes: (!isManagement && createForm.marketing_texts_yes === true) || undefined,
           // The seasonal answer, as an inseparable pair. `false` is a real
           // answer (the normal menu at normal terms), so this tests the type and
@@ -722,7 +713,7 @@ export function useFohCreateBooking(input: {
       const highChairText = describeHighChairs(requestedHighChairs, payload.data.high_chairs_granted)
       await reloadSchedule()
       const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
-      // The booking exists either way; staff are told to set the courses on the booking itself.
+      // Only an older screen sends courses, so this is now only ever false for one of those.
       const coursesText = payload.data.christmas_courses_saved === false
         ? ' The Christmas courses did not save: set them on the booking.'
         : ''

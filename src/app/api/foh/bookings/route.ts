@@ -11,9 +11,7 @@ import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
-  oneCourseForEveryone,
   recordChristmasCourseCounts,
-  recordOneCourseInsideCutoff,
 } from '@/lib/table-bookings/christmas-one-course'
 import { syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -47,7 +45,8 @@ import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/servi
 import { fohBookingBypassesPacing } from '@/lib/foh/pacing-bypass'
 import {
   PARTY_SIZE_INPUT_CEILING,
-  readTableBookingPartyLimit,
+  readStaffPartyLimit,
+  staffChristmasPartyLimitMessage,
   staffPartyLimitMessage,
 } from '@/lib/table-bookings/party-limit'
 import {
@@ -111,9 +110,11 @@ const CreateFohTableBookingSchema = z.object({
   high_chair_count: z.coerce.number().int().min(0).max(2).optional(),
   outside_seating: z.boolean().optional(),
   requires_accessible_table: z.boolean().optional(),
-  // Christmas only: the 1, 2 or 3 courses each guest is having, seat 1 first (BK-057). Optional so
-  // an older FOH bundle that never sends it keeps working; the database checks it again.
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(1).max(20).optional(),
+  // Christmas only, and only from an older FOH bundle: the 1, 2 or 3 courses each guest is having,
+  // seat 1 first (BK-057). The current screen sends none (owner decision D1, 6 November 2026): every
+  // guest starts on 0 and chooses on the food page. Up to the input ceiling, because a staff
+  // Christmas party may be bigger than 20 (A3); the party limit is checked below.
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(1).max(PARTY_SIZE_INPUT_CEILING).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
   waive_deposit: z.boolean().optional(),
@@ -862,6 +863,24 @@ async function createFohTableBooking(
     serviceDateNow,
   })
 
+  // One party limit for every channel (owner decision D30, BK-146), from the setting the booking
+  // functions read, except that staff may book a Christmas party up to christmas_staff_max_party
+  // (A3, 6 November 2026), as create_table_booking_staff_v06 allows. The override inserts directly,
+  // so it is always checked here. A Christmas request is checked here too, so staff hear the
+  // Christmas limit before anything is made. Any other booking goes through the staff booking
+  // function, which refuses a bigger party as too_large_party.
+  const isChristmasRequest = isChristmasPurpose(payload.purpose)
+  const partyLimit =
+    payload.management_override === true || isChristmasRequest
+      ? await readStaffPartyLimit(auth.supabase, { christmas: isChristmasRequest })
+      : null
+  if (partyLimit !== null && payload.party_size > partyLimit) {
+    return NextResponse.json(
+      { error: isChristmasRequest ? staffChristmasPartyLimitMessage(partyLimit) : staffPartyLimitMessage(partyLimit) },
+      { status: 400 }
+    )
+  }
+
   // Management override: verify caller is super_admin, then bypass all booking rules.
   if (payload.management_override === true) {
     const { data: roleRows } = await auth.supabase
@@ -872,14 +891,6 @@ async function createFohTableBooking(
       ?.some((r) => r.roles?.name === 'super_admin') ?? false
     if (!isSuperAdmin) {
       return NextResponse.json({ error: 'Management override requires super_admin role' }, { status: 403 })
-    }
-
-    // One party limit for every channel (owner decision D30, BK-146), from the setting the booking
-    // functions read. The override inserts directly, so it checks here; every other path goes
-    // through create_table_booking_staff_v06, which refuses a bigger party as too_large_party.
-    const partyLimit = await readTableBookingPartyLimit(auth.supabase)
-    if (payload.party_size > partyLimit) {
-      return NextResponse.json({ error: staffPartyLimitMessage(partyLimit) }, { status: 400 })
     }
 
     // Customer must already be resolved (schema enforces customer_id is set)
@@ -1537,12 +1548,10 @@ async function createFohTableBooking(
       ? await saveStaffBookingAllergies(auth.supabase, bookingResult.table_booking_id, payload.allergies ?? [])
       : undefined
 
-  // The courses staff chose for each guest are recorded on the booking (BK-057), so the pre-order
-  // forms, the chase and the kitchen know who is on 1, 2 or 3 courses. A request without them (an
-  // older FOH bundle) keeps the earlier rule: inside the Christmas pre-order deadline the 1 course
-  // tier is the only one on offer (SSOT §7, owner decision 10 September 2026), so every guest is
-  // recorded as one course, with nothing to pre-order and nobody to chase. Non-fatal either way:
-  // the booking already exists, and staff are told when the courses did not save.
+  // Courses at booking come only from a request that still sends them (BK-057); they are recorded as
+  // before. The current screen sends none (owner decision D1, 6 November 2026), and the branch below
+  // sets up the seats for a booking whose guests all start on 0. Non-fatal either way: the booking
+  // already exists, and staff are told when sent courses did not save.
   let christmasCoursesSaved: boolean | undefined
   if (
     isChristmasBooking &&
@@ -1583,19 +1592,25 @@ async function createFohTableBooking(
     bookingResult.table_booking_id &&
     (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
   ) {
-    const outcome = await recordOneCourseInsideCutoff(auth.supabase, {
-      id: bookingResult.table_booking_id,
-      bookingDate: payload.date,
-      partySize: payload.party_size,
-    })
-    // The confirmation text is built from this result, not from the row, so without this it would
-    // still say "Choose your food" and link to a form that has already locked.
-    if (outcome === 'recorded') {
-      bookingResult = {
-        ...bookingResult,
-        booking_period_requires_preorder: false,
-        christmas_course_counts: oneCourseForEveryone(payload.party_size),
-      }
+    // No courses at booking (owner decision D1): the table_bookings trigger starts every guest on 0,
+    // "not chosen yet". The seats are made now, so the food page and the staff seat editor open
+    // ready to fill. Non-fatal: the booking page can set them up too.
+    const createdBookingId = bookingResult.table_booking_id
+    try {
+      await syncPreorderCovers(auth.supabase, createdBookingId)
+    } catch (syncError) {
+      logger.warn('Could not set up pre-order seats for a new staff Christmas booking', {
+        metadata: {
+          tableBookingId: createdBookingId,
+          error: syncError instanceof Error ? syncError.message : String(syncError)
+        }
+      })
+    }
+    // Booked inside the deadline, the organiser's food page is already locked, so the confirmation
+    // must not send them to choose: staff take those choices themselves. The confirmation text is
+    // built from this result, not from the row.
+    if ((await getChristmasCourseAvailability(auth.supabase, payload.date)) !== 'available') {
+      bookingResult = { ...bookingResult, booking_period_requires_preorder: false }
     }
   }
 
