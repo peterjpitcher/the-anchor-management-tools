@@ -1028,6 +1028,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
+      <Button size="sm" variant="secondary" onClick={() => router.push(`/table-bookings/${booking.id}/sheet`)}>Booking sheet</Button>
       {!bookingClosed && !eventLink && (
         <Button
           size="sm"

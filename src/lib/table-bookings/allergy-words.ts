@@ -35,17 +35,30 @@ export type BookingNoteFacts = {
   allergies?: readonly string[] | null
   dietaryRequirements?: readonly string[] | null
   notes?: string | null
+  /**
+   * True when a guest's own seat says they have an allergy (`booking_preorder_covers.has_allergies`),
+   * the food link's allergy question. Read by the FOH schedule and BOH list routes.
+   */
+  guestAllergies?: boolean | null
 }
 
 /**
- * What a booking row should be marked with: `allergy` when the allergy field is filled in or any
- * note mentions an allergen, `note` when there is any other note or dietary need, or null.
+ * What a booking row should be marked with: `allergy` when the allergy field is filled in, any note
+ * mentions an allergen or a guest's seat records an allergy, `note` when there is any other note or
+ * dietary need, or null.
  */
 export function bookingNoteMarker(facts: BookingNoteFacts): 'allergy' | 'note' | null {
   const allergies = (facts.allergies ?? []).filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
   const dietary = (facts.dietaryRequirements ?? []).filter((entry) => typeof entry === 'string' && entry.trim().length > 0)
   const notes = typeof facts.notes === 'string' ? facts.notes.trim() : ''
-  if (allergies.length > 0 || mentionsAllergy(notes) || dietary.some((entry) => mentionsAllergy(entry))) return 'allergy'
+  if (
+    facts.guestAllergies === true ||
+    allergies.length > 0 ||
+    mentionsAllergy(notes) ||
+    dietary.some((entry) => mentionsAllergy(entry))
+  ) {
+    return 'allergy'
+  }
   if (notes.length > 0 || dietary.length > 0) return 'note'
   return null
 }

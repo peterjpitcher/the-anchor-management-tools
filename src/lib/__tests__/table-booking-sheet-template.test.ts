@@ -887,7 +887,9 @@ describe('generateTableBookingSheetsHTML', () => {
 
   // BK-058: the sheet follows each guest's Christmas tier.
   describe('Christmas course tiers', () => {
-    it('prints each seat tier and a 1 course seat as choosing on the day, not as missing', () => {
+    // Since the food link release a 1 course guest chooses a main ahead like everyone else (D4), so an
+    // empty 1 course seat is a gap, and the old "choosing on the day" line is gone.
+    it('prints each seat tier, and an empty 1 course seat as not chosen', () => {
       const html = generateTableBookingSheetsHTML(
         [
           makeSheet({
@@ -900,7 +902,7 @@ describe('generateTableBookingSheetsHTML', () => {
                   courses: [{ courseLabel: 'Main', itemName: 'Fixture main' }],
                   dietaryNote: null,
                 },
-                { seatLabel: 'Seat 2', tierLabel: '1 course', choosesOnTheDay: true, courses: [], dietaryNote: null },
+                { seatLabel: 'Seat 2', tierLabel: '1 course', courses: [], dietaryNote: null },
               ],
             }),
           }),
@@ -910,11 +912,46 @@ describe('generateTableBookingSheetsHTML', () => {
 
       expect(html).toContain('Seat 1 · 3 courses')
       expect(html).toContain('Seat 2 · 1 course')
-      expect(html).toContain('1 course, choosing on the day')
-      expect(html).not.toContain('Nothing chosen yet')
+      expect(html).not.toContain('choosing on the day')
+      expect(countOccurrences(html, 'Nothing chosen yet')).toBe(1)
       // On the booking page, so front of house can price the bill, and on the kitchen page.
       expect(countOccurrences(html, '1 x 3 courses, 1 x 1 course')).toBe(2)
       expect(html).toContain('Christmas courses')
+    })
+
+    it("prints each guest's own allergy answer, and a guest's allergy in the whole-booking box", () => {
+      const html = generateTableBookingSheetsHTML(
+        [
+          makeSheet({
+            guestNotes: { allergies: [], dietary: [], notes: null, guestAllergies: ['Seat 2, Sam: peanuts'] },
+            preorder: makePreorder({
+              guestAllergies: ['Seat 2, Sam: peanuts'],
+              covers: [
+                { seatLabel: 'Seat 1', tierLabel: '1 course', allergyLabel: 'None', courses: [], dietaryNote: null },
+                {
+                  seatLabel: 'Seat 2 · Sam',
+                  tierLabel: '1 course',
+                  allergyLabel: 'Yes: peanuts',
+                  hasAllergy: true,
+                  courses: [],
+                  dietaryNote: null,
+                },
+                { seatLabel: 'Seat 3', allergyLabel: 'Not answered, ask before serving', courses: [], dietaryNote: null },
+              ],
+            }),
+          }),
+        ],
+        { logoDataUrl: LOGO }
+      )
+
+      expect(html).toContain('<span class="seat-course-label">Allergies</span>None</p>')
+      expect(html).toContain('<p class="seat-course seat-allergy"><span class="seat-course-label">Allergies</span>Yes: peanuts</p>')
+      expect(html).toContain('Not answered, ask before serving')
+      expect(html).toContain('Guest allergy: Seat 2, Sam: peanuts')
+      expect(html).toContain('None in the allergy field, see the guests below')
+      // The booking page raises it too.
+      expect(html).toContain('<span class="confidential-key">Guests</span>Seat 2, Sam: peanuts')
+      for (const bad of ['undefined', 'Invalid Date', 'NaN']) expect(html).not.toContain(bad)
     })
 
     it('flags a withdrawn dish so the kitchen does not cook it as chosen', () => {

@@ -26,9 +26,14 @@ import {
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadDayLoads, type DayLoadHire } from '@/services/day-load'
 import { privateHireSheet, privateHireSortTime, privateHiresNotLoadedSheet } from '@/lib/table-bookings/private-hire-sheets'
-import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
-  describeCourseCount,
+  bookingHasGuestSeats,
+  describeChristmasTiers,
+  describeSeatAllergy,
+  describeSeatTier,
+  formatSheetTableLabel,
+} from '@/lib/table-bookings/booking-sheet'
+import {
   formatPreorderAddonPrice,
   getPreorderCutoff,
   isCoverChangedAfterCutoff,
@@ -39,13 +44,12 @@ import {
   mapPreorderSelectionRow,
   summariseCoverAddons,
   summariseOrderAddons,
-  toPreorderCourseCount,
+  toPreorderSeatCourseCount,
 } from '@/lib/table-bookings/preorder'
 import {
   PREORDER_SELECTION_COURSES,
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderAddonSummary,
-  type PreorderCourseCount,
   type PreorderCover,
   type PreorderCoverRow,
   type PreorderSelectionRow,
@@ -89,8 +93,11 @@ type BookingRow = {
   high_chair_count: number | null
   requires_accessible_table: boolean | null
   booking_type: string | null
-  /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. The tier source, not the cover rows. */
+  /** Christmas only: 0 to 3 courses per guest, seat 1 first (0 is not chosen yet). The tier source, not the cover rows. */
   christmas_course_counts: number[] | null
+  /** The guest accepted the seasonal offer. With the next column, whether every guest has a seat to choose for. */
+  booking_period_answer: boolean | null
+  booking_period_requires_preorder: boolean | null
   /** The seasonal period, for when its pre-order form locked. */
   booking_period_id: string | null
   /** Booking-level allergy list. Printed on both pages, marked confidential (D6, BK-052). */
@@ -127,47 +134,6 @@ function customerName(row: BookingRow): string {
   return name || row.booking_reference || 'Walk-in guest'
 }
 
-const tableCollator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
-
-/**
- * Outside-ness is a property of the BOOKING, not the table — an outside booking with a
- * stray indoor assignment must still read "Outside", so that check comes first.
- */
-function tableField(row: BookingRow): string {
-  if (row.is_outside_seating) return 'Outside'
-
-  // De-dup by table id. Keep name and table_number separately: the label staff read is the
-  // name, but the ORDER must be by table_number to match the BOH screen (see below).
-  const seen = new Map<string, { label: string; tableNumber: string; name: string }>()
-  for (const assignment of row.table_booking_tables ?? []) {
-    const table = firstOrSelf(assignment?.table ?? null)
-    if (!table || table.is_bookable === false) continue
-    const label = table.name || table.table_number
-    if (!label) continue
-    seen.set(table.id, {
-      label,
-      tableNumber: table.table_number || '',
-      name: table.name || '',
-    })
-  }
-
-  // Sort to match the BOH screen exactly (src/app/api/boh/table-bookings/route.ts:444-453):
-  // table_number numerically first, then name. Sorting by the *label* instead would order the
-  // sheet alphabetically by name ("Dining Room 6a, High 4") while the screen shows the numeric
-  // order ("High 4, Dining Room 6a") — every real table has a name, so the label is never a digit.
-  const labels = [...seen.values()]
-    .sort((a, b) => {
-      if (a.tableNumber && b.tableNumber) {
-        const byNumber = tableCollator.compare(a.tableNumber, b.tableNumber)
-        if (byNumber !== 0) return byNumber
-      }
-      return tableCollator.compare(a.name, b.name)
-    })
-    .map((table) => table.label)
-
-  return labels.length ? labels.join(', ') : 'Unassigned'
-}
-
 /** Seating needs staff must prepare for. Step-free first: it decides which table works at all. */
 function requirementsField(row: BookingRow): string[] {
   const requirements: string[] = []
@@ -186,7 +152,7 @@ function requirementsField(row: BookingRow): string[] {
  * that sheet exactly as it printed before). The owner agreed these may be printed, marked
  * confidential, because the sheets are shredded after service (decision D6, BK-052).
  */
-function guestNotesField(row: BookingRow): TableBookingSheetGuestNotes | undefined {
+function guestNotesField(row: BookingRow, guestAllergies: string[] = []): TableBookingSheetGuestNotes | undefined {
   const clean = (values: string[] | null) =>
     (values ?? []).map((value) => (typeof value === 'string' ? value.trim() : '')).filter((value) => value.length > 0)
   const allergies = clean(row.allergies)
@@ -194,8 +160,10 @@ function guestNotesField(row: BookingRow): TableBookingSheetGuestNotes | undefin
   const notes = typeof row.special_requirements === 'string' && row.special_requirements.trim()
     ? row.special_requirements.trim()
     : null
-  if (allergies.length === 0 && dietary.length === 0 && !notes) return undefined
-  return { allergies, dietary, notes }
+  if (allergies.length === 0 && dietary.length === 0 && !notes && guestAllergies.length === 0) return undefined
+  // A guest's own allergy (the food link's question) raises the booking page's block too, so the
+  // floor never reads "None in the allergy field" for a table where someone is allergic.
+  return { allergies, dietary, notes, ...(guestAllergies.length ? { guestAllergies } : {}) }
 }
 
 function toSheetData(
@@ -210,15 +178,15 @@ function toSheetData(
     bookingDate,
     startTime: formatTime12Hour(row.booking_time),
     partySize: String(row.party_size),
-    tableLabel: tableField(row),
+    tableLabel: formatSheetTableLabel(row),
     status: getTableBookingStatusLabel(getTableBookingVisualState(row)),
     requirements: requirementsField(row),
     generatedAt,
     ...(preorder ? { preorder } : {}),
     ...(row.booking_type === 'christmas'
-      ? { christmasCourses: formatChristmasCourseTally(row.christmas_course_counts) || 'Not recorded' }
+      ? { christmasCourses: describeChristmasTiers(row.christmas_course_counts) || 'Not recorded' }
       : {}),
-    ...(guestNotesField(row) ? { guestNotes: guestNotesField(row) } : {}),
+    ...(guestNotesField(row, preorder?.guestAllergies) ? { guestNotes: guestNotesField(row, preorder?.guestAllergies) } : {}),
   }
 }
 
@@ -240,7 +208,7 @@ function toSheetAddonTotal(summary: PreorderAddonSummary): TableBookingSheetPreo
  */
 function toSheetCover(
   cover: PreorderCover,
-  courseCount: PreorderCourseCount | null,
+  courseCount: ReturnType<typeof toPreorderSeatCourseCount>,
   closesAt: Date | null = null
 ): TableBookingSheetPreorderCover {
   const addons = summariseCoverAddons(cover)
@@ -249,10 +217,16 @@ function toSheetCover(
     seatLabel: cover.guestName
       ? `Seat ${cover.ordinal} · ${cover.guestName}`
       : `Seat ${cover.ordinal}`,
-    // The tier is what the guest pays for, so it is printed per seat; a 1 course guest chooses on
-    // the day and must not read as a missing order (BK-058).
-    ...(courseCount ? { tierLabel: describeCourseCount(courseCount) } : {}),
-    ...(courseCount === 1 ? { choosesOnTheDay: true } : {}),
+    // The tier is what the guest pays for, so it is printed per seat (BK-058). Since the food link
+    // release every tier, 1 course included, chooses a main ahead (D4), and 0 is not chosen yet.
+    ...(courseCount !== null ? { tierLabel: describeSeatTier(courseCount) } : {}),
+    allergyLabel:
+      cover.hasAllergies === true
+        ? `Yes: ${cover.allergyDetail?.trim() || 'details not given, ask the guest'}`
+        : cover.hasAllergies === false
+          ? 'None'
+          : 'Not answered, ask before serving',
+    ...(cover.hasAllergies === true ? { hasAllergy: true } : {}),
     // Recorded by a manager after the form locked (D21): the kitchen ordered before it (BK-051).
     ...(isCoverChangedAfterCutoff(cover, closesAt) ? { lateChange: true } : {}),
     courses: cover.selections
@@ -285,13 +259,33 @@ function toSheetCover(
  * tables are service-role only under RLS, so this uses the admin client. Permission was already
  * proven by requireBohTableBookingPermission before we got here.
  *
- * Bookings with no covers get no entry, and so no food page: an order nobody has started is the
- * reminder cron's business (spec section 7), not the kitchen's.
+ * A booking that needs a pre-order (a seat per guest, `hasGuestSeats`) gets a food page even before
+ * anyone has chosen, listing every seat as not chosen, so the kitchen sees the gap rather than no
+ * page at all (spec section 3.5). A booking with covers but no guest seats keeps its old page.
  */
 type SheetBookingFacts = {
   bookingDate: string
   courseCounts: number[] | null
   periodId: string | null
+  partySize: number
+  /** Every guest has a seat to choose for, chosen or not. */
+  hasGuestSeats: boolean
+}
+
+/** A seat with no cover row yet: nobody has saved anything for it. */
+function blankCover(tableBookingId: string, ordinal: number): PreorderCover {
+  return {
+    id: `blank-${tableBookingId}-${ordinal}`,
+    tableBookingId,
+    ordinal,
+    guestName: null,
+    dietaryNote: null,
+    hasAllergies: null,
+    allergyDetail: null,
+    selections: [],
+    createdAt: '',
+    updatedAt: '',
+  }
 }
 
 async function loadPreordersForSheets(
@@ -330,26 +324,27 @@ async function loadPreordersForSheets(
 
   const { data: coverData, error: coverError } = await admin
     .from('booking_preorder_covers')
-    .select('id, table_booking_id, ordinal, guest_name, dietary_note, created_at, updated_at')
+    .select('id, table_booking_id, ordinal, guest_name, dietary_note, has_allergies, allergy_detail, created_at, updated_at')
     .in('table_booking_id', bookingIds)
     .order('ordinal', { ascending: true })
 
   if (coverError) throw coverError
 
   const coverRows = (coverData ?? []) as unknown as PreorderCoverRow[]
-  if (coverRows.length === 0) return byBooking
 
-  const { data: selectionData, error: selectionError } = await admin
-    .from('booking_preorder_selections')
-    .select('id, cover_id, course, menu_item_id, item_name, price_gbp, created_at, updated_at')
-    .in(
-      'cover_id',
-      coverRows.map((cover) => cover.id)
-    )
+  let selectionRows: PreorderSelectionRow[] = []
+  if (coverRows.length > 0) {
+    const { data: selectionData, error: selectionError } = await admin
+      .from('booking_preorder_selections')
+      .select('id, cover_id, course, menu_item_id, item_name, price_gbp, created_at, updated_at')
+      .in(
+        'cover_id',
+        coverRows.map((cover) => cover.id)
+      )
 
-  if (selectionError) throw selectionError
-
-  const selectionRows = (selectionData ?? []) as unknown as PreorderSelectionRow[]
+    if (selectionError) throw selectionError
+    selectionRows = (selectionData ?? []) as unknown as PreorderSelectionRow[]
+  }
 
   // Which chosen dishes have since come off the menu, so the sheet flags them instead of printing
   // them as a plate to cook (BK-058).
@@ -394,14 +389,31 @@ async function loadPreordersForSheets(
     else coversByBooking.set(cover.tableBookingId, [cover])
   }
 
+  // Every seat of a booking that needs a pre-order, chosen or not.
+  for (const tableBookingId of bookingIds) {
+    const facts = factsByBooking.get(tableBookingId)
+    if (!facts?.hasGuestSeats) continue
+    const covers = coversByBooking.get(tableBookingId) ?? []
+    const present = new Set(covers.map((cover) => cover.ordinal))
+    for (let ordinal = 1; ordinal <= facts.partySize; ordinal += 1) {
+      if (!present.has(ordinal)) covers.push(blankCover(tableBookingId, ordinal))
+    }
+    covers.sort((a, b) => a.ordinal - b.ordinal)
+    coversByBooking.set(tableBookingId, covers)
+  }
+
   for (const [tableBookingId, covers] of coversByBooking) {
     const addons = summariseOrderAddons({ covers })
+    const guestAllergies = covers
+      .filter((cover) => cover.hasAllergies === true)
+      .map((cover) => describeSeatAllergy({ ordinal: cover.ordinal, guestName: cover.guestName, detail: cover.allergyDetail ?? null }))
     byBooking.set(tableBookingId, {
       allergies: [],
+      ...(guestAllergies.length ? { guestAllergies } : {}),
       covers: covers.map((cover) =>
         toSheetCover(
           cover,
-          toPreorderCourseCount(factsByBooking.get(tableBookingId)?.courseCounts?.[cover.ordinal - 1] ?? null),
+          toPreorderSeatCourseCount(factsByBooking.get(tableBookingId)?.courseCounts?.[cover.ordinal - 1] ?? null),
           closesAtFor(tableBookingId)
         )
       ),
@@ -436,6 +448,8 @@ export async function GET(request: NextRequest) {
         booking_type,
         christmas_course_counts,
         booking_period_id,
+        booking_period_answer,
+        booking_period_requires_preorder,
         is_outside_seating,
         high_chair_count,
         requires_accessible_table,
@@ -505,6 +519,8 @@ export async function GET(request: NextRequest) {
             bookingDate: row.booking_date,
             courseCounts: row.christmas_course_counts ?? null,
             periodId: row.booking_period_id ?? null,
+            partySize: Math.max(0, Math.trunc(Number(row.party_size) || 0)),
+            hasGuestSeats: bookingHasGuestSeats(row),
           },
         ])
       )

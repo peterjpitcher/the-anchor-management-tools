@@ -44,6 +44,8 @@ export type FohBooking = {
   // Guest requirements. Optional because private-hire and communal blocks are
   // synthesised rows with no underlying booking to read them from.
   allergies?: string[]
+  /** True when a guest's own seat records an allergy (the food link question): raises the Allergy marker. */
+  guest_allergies?: boolean
   dietary_requirements?: string[]
   celebration_type?: string | null
   internal_notes?: string | null
