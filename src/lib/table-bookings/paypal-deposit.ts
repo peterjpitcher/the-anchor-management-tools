@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
-import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from '@/lib/table-bookings/bookings'
+import { sendTableBookingDepositConfirmation } from '@/lib/table-bookings/bookings'
 
 export type PayPalDepositCaptureBooking = {
   id: string
@@ -134,6 +134,11 @@ export function buildPayPalDepositCompletedUpdate(
   }
 }
 
+/**
+ * Tells the guest their deposit is in. Answers with the channel that reached them, or null when
+ * none is known to have, so the payment page can name the real channel (R11). Never throws: a
+ * failed send is logged and audited by the sender, and the payment page then promises nothing.
+ */
 export async function sendTableBookingDepositCapturedNotifications(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
@@ -141,23 +146,19 @@ export async function sendTableBookingDepositCapturedNotifications(
     customerId?: string | null
     createdVia: string
   },
-): Promise<void> {
-  const tasks: Promise<unknown>[] = []
+): Promise<{ confirmationChannel: 'email' | 'sms' | null }> {
+  if (!input.customerId) return { confirmationChannel: null }
 
-  if (input.customerId) {
-    tasks.push(sendTableBookingConfirmedAfterDepositSmsIfAllowed(supabase, input.tableBookingId))
+  try {
+    const result = await sendTableBookingDepositConfirmation(supabase, input.tableBookingId)
+    return { confirmationChannel: result.channel }
+  } catch (error) {
+    // An error, not a warning: warnings are silent in production, and this guest has paid and may
+    // have heard nothing.
+    logger.error('Table booking post-deposit notification task failed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId: input.tableBookingId, createdVia: input.createdVia },
+    })
+    return { confirmationChannel: null }
   }
-
-  const outcomes = await Promise.allSettled(tasks)
-  outcomes.forEach((outcome, index) => {
-    if (outcome.status === 'rejected') {
-      logger.warn('Table booking post-deposit notification task failed', {
-        metadata: {
-          tableBookingId: input.tableBookingId,
-          taskIndex: index,
-          error: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
-        },
-      })
-    }
-  })
 }

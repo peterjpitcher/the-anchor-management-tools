@@ -12,7 +12,7 @@ const {
   capturePayPalPayment: vi.fn(),
   getPayPalOrder: vi.fn(),
   loggerError: vi.fn(),
-  sendTableBookingConfirmedAfterDepositSmsIfAllowed: vi.fn().mockResolvedValue({ sms: null }),
+  sendTableBookingConfirmedAfterDepositSmsIfAllowed: vi.fn().mockResolvedValue({ meta: null, channel: 'email' }),
 }))
 
 vi.mock('@/lib/api/auth', () => ({
@@ -37,8 +37,10 @@ vi.mock('@/lib/logger', () => ({
   logger: { error: loggerError, warn: vi.fn(), info: vi.fn() },
 }))
 
+// The capture path sends the deposit confirmation through sendTableBookingDepositConfirmation, which
+// also says which channel reached the guest. The mock keeps its older name for the assertions below.
 vi.mock('@/lib/table-bookings/bookings', () => ({
-  sendTableBookingConfirmedAfterDepositSmsIfAllowed: (...args: unknown[]) =>
+  sendTableBookingDepositConfirmation: (...args: unknown[]) =>
     sendTableBookingConfirmedAfterDepositSmsIfAllowed(...args),
 }))
 
@@ -143,7 +145,8 @@ describe('POST /api/external/table-bookings/[id]/paypal/capture-order', () => {
 
     expect(response.status).toBe(200)
     const payload = await response.json()
-    expect(payload).toEqual({ success: true })
+    // The channel the confirmation actually went by, so the website never says "text" for an email.
+    expect(payload).toEqual({ success: true, confirmation_channel: 'email' })
 
     // Regression: SELECT must use the real column booking_type, NOT sunday_lunch.
     const selectArg = tableBookingsSelect.mock.calls[0]?.[0]

@@ -26,8 +26,9 @@ import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notifi
  * This sends one reminder about six hours before the hold ends, by email first with a text as the
  * fallback, through notifyTableBookingGuestEmailFirst like every other table booking message.
  *
- * It is a new automated guest message, so it runs only while the messaging flag
- * table_deposit_hold_reminder is on, which it is not until the owner has read the wording.
+ * It runs only while the messaging flag table_deposit_hold_reminder is on. The owner switched it
+ * on with the Christmas food link (migration 20261106210000_christmas_food_link.sql, 6 November
+ * 2026); turning the flag off is the kill switch, and stops the reminder with no deploy.
  *
  * WHO GETS ONE (decideDepositHoldReminder, pure so it can be tested without a clock):
  *  - the hold ends in 6 hours or less, and in 2 hours or more: the 24-hour hold of a booking made

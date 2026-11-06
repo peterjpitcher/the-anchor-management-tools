@@ -103,7 +103,12 @@ export async function POST(
         createdVia: 'api',
       });
 
-      return result.ok ? NextResponse.json({ success: true }) : refusal(result);
+      // `confirmation_channel` is the channel the deposit confirmation actually reached the guest by
+      // ('email' or 'sms'), or null when none is known to have, so the website's success screen
+      // never says "we've texted you" when it went by email (R11). Additive: older readers ignore it.
+      return result.ok
+        ? NextResponse.json({ success: true, confirmation_channel: result.confirmationChannel })
+        : refusal(result);
     },
     ['payments:capture'],
     request,

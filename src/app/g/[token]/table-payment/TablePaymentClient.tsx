@@ -14,7 +14,30 @@ import { GuestCard } from '@/components/features/guest/GuestCard'
 import { GuestIntro } from '@/components/features/guest/GuestIntro'
 import { GuestHelpLine, GuestPhoneLink } from '@/components/features/guest/GuestLink'
 import { TrustLine } from '@/components/features/guest/TrustLine'
-import { GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
+import { GUEST_MESSAGE_CLASS, GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+import {
+  TablePaymentSuccessPanel,
+  type TablePaymentConfirmation,
+  type TablePaymentSuccessDetails,
+} from './TablePaymentSuccessPanel'
+
+/** What the capture server action answers. `confirmation` names how the guest was told. */
+export type TablePaymentCaptureResult = {
+  success: boolean
+  error?: string
+  confirmation?: TablePaymentConfirmation
+}
+
+/**
+ * Every payment problem gives the phone number (R11), so a guest whose payment would not go
+ * through always has a way to finish booking.
+ */
+export function withPhoneNumber(message: string): string {
+  return message.includes(GUEST_CONTACT.phoneDisplay)
+    ? message
+    : `${message} Call us on ${GUEST_CONTACT.phoneDisplay}.`
+}
 
 interface TablePaymentClientProps {
   orderId: string
@@ -28,18 +51,21 @@ interface TablePaymentClientProps {
   showCancelledMessage: boolean
   paypalClientId: string
   paypalEnvironment: string
-  captureAction: (orderId: string) => Promise<{ success: boolean; error?: string }>
+  captureAction: (orderId: string) => Promise<TablePaymentCaptureResult>
   // Outside bookings hold no indoor table, so the "reserved" copy stays table-free.
   isOutsideSeating?: boolean
   /** Greeting line under the h1, computed on the server from the customer record. */
   greeting: string
   /**
-   * The whole success state, computed on the server (spec, "table-payment
-   * success-state boundary"). This component owns everything below
-   * `GuestShell`, so on capture success it swaps the entire page body, h1
-   * included, with no refresh and no second trip to the server.
+   * The facts for the success state, computed on the server (spec, "table-payment
+   * success-state boundary"). This component owns everything below `GuestShell`,
+   * so on capture success it swaps the entire page body, h1 included, to the same
+   * `TablePaymentSuccessPanel` the server renders, with the channel the capture
+   * reported and no second trip to the server.
    */
-  success: React.ReactNode
+  success: TablePaymentSuccessDetails
+  /** A Christmas booking (D1): the charge secures the table, and the food is chosen afterwards. */
+  isChristmas?: boolean
 }
 
 type PaymentState = 'idle' | 'paying' | 'success' | 'error'
@@ -78,15 +104,17 @@ export function TablePaymentClient({
   isOutsideSeating = false,
   greeting,
   success,
+  isChristmas = false,
 }: TablePaymentClientProps) {
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [confirmation, setConfirmation] = useState<TablePaymentConfirmation>('earlier')
 
   const holdExpired = new Date(holdExpiresAt) < new Date()
   const seatWord = partySize === 1 ? 'person' : 'people'
 
   if (paymentState === 'success') {
-    return <>{success}</>
+    return <TablePaymentSuccessPanel {...success} confirmation={confirmation} />
   }
 
   return (
@@ -105,6 +133,13 @@ export function TablePaymentClient({
       <GuestCard variant="accent">
         <div className="flex flex-col gap-guest-lg">
           <GuestAmount label="Deposit due now" value={formatMoney(depositAmount, currency)} />
+
+          {isChristmas && (
+            <p className={GUEST_MESSAGE_CLASS}>
+              Your {formatMoney(depositAmount, currency)} booking charge secures your Christmas table.
+              You&apos;ll choose everyone&apos;s food afterwards.
+            </p>
+          )}
 
           <div>
             <DetailRow label="Booking reference" value={bookingReference} />
@@ -144,7 +179,7 @@ export function TablePaymentClient({
                     </GuestButton>
                   }
                 >
-                  {errorMessage || 'Payment failed. Please try again.'}
+                  {withPhoneNumber(errorMessage || 'Payment failed. Please try again.')}
                 </GuestAlert>
               )}
 
@@ -168,14 +203,15 @@ export function TablePaymentClient({
                     try {
                       const result = await captureAction(orderId)
                       if (result.success) {
+                        setConfirmation(result.confirmation ?? 'earlier')
                         setPaymentState('success')
                       } else {
-                        setErrorMessage(result.error || 'Payment capture failed. Please call us.')
+                        setErrorMessage(result.error || 'Payment capture failed.')
                         setPaymentState('error')
                       }
                     } catch {
                       setErrorMessage(
-                        'An unexpected error occurred. Please call us to confirm your payment.'
+                        "Something went wrong while we checked your payment, so please don't pay again yet."
                       )
                       setPaymentState('error')
                     }
@@ -184,7 +220,7 @@ export function TablePaymentClient({
                     setPaymentState('idle')
                   }}
                   onError={() => {
-                    setErrorMessage('PayPal encountered an error. Please try again.')
+                    setErrorMessage("PayPal couldn't take the payment. Please try again.")
                     setPaymentState('error')
                   }}
                 />

@@ -325,7 +325,7 @@ describe('sendTableBookingCreatedSmsIfAllowed — wording', () => {
     const rendered = await capture()
     for (const content of [rendered.sms, rendered.html, rendered.text]) {
       expect(content).toContain('Christmas courses: 4 x 1 course, 1 x 2 courses, 1 x 3 courses.')
-      expect(content).toContain('Guests on one course have nothing to pre-order.')
+      expect(content).not.toContain('nothing to pre-order')
       expect(content).not.toMatch(/undefined|Invalid Date|NaN/)
     }
   })

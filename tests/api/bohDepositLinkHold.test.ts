@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/lib/foh/api-auth', () => ({ requireBohTableBookingPermission: mocks.requireBohTableBookingPermission }))
 vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: mocks.checkUserPermission }))
 vi.mock('@/lib/guest/tokens', () => ({ createGuestToken: mocks.createGuestToken }))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({})) }))
+const admin = vi.hoisted(() => ({ client: {} as unknown }))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => admin.client) }))
 vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.orangejelly.co.uk' }))
 vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn(async () => undefined) }))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
@@ -27,8 +28,9 @@ import { GET } from '@/app/api/boh/table-bookings/[id]/deposit-link/route'
 
 const BOOKING_ID = 'aaaaaaaa-0000-4000-8000-000000000001'
 
-function seed(holdExpiresAt: string | null) {
+function seed(holdExpiresAt: string | null, guestTokens: Record<string, unknown>[] = []) {
   const db = createFakeSupabase({
+    guest_tokens: guestTokens,
     table_bookings: [{
       id: BOOKING_ID,
       customer_id: 'customer-1',
@@ -40,6 +42,7 @@ function seed(holdExpiresAt: string | null) {
     }],
   })
   mocks.requireBohTableBookingPermission.mockResolvedValue({ ok: true, userId: 'user-1', supabase: db })
+  admin.client = db
   return db
 }
 
@@ -80,7 +83,28 @@ describe('copying a deposit link', () => {
     expect(mocks.checkUserPermission).toHaveBeenCalledWith('table_bookings', 'manage', 'user-1')
     expect(body.expiresAt).toBe('2026-11-02T12:00:00.000Z')
     expect(db.tables.table_bookings[0].hold_expires_at).toBe('2026-11-02T12:00:00.000Z')
-    expect(mocks.createGuestToken).toHaveBeenCalledWith({}, expect.objectContaining({ expiresAt: '2026-11-02T12:00:00.000Z' }))
+    expect(mocks.createGuestToken).toHaveBeenCalledWith(db, expect.objectContaining({ expiresAt: '2026-11-02T12:00:00.000Z' }))
+  })
+
+  it('moves the links the guest already holds on to the re-opened hold (R11)', async () => {
+    const db = seed('2026-11-01T10:00:00.000Z', [
+      // The link in the guest's first message, which ran out with the old hold.
+      { id: 'tok-old', table_booking_id: BOOKING_ID, action_type: 'payment', consumed_at: null, expires_at: '2026-11-01T10:00:00.000Z' },
+      // A used link stays used, and another booking's link is never touched.
+      { id: 'tok-used', table_booking_id: BOOKING_ID, action_type: 'payment', consumed_at: '2026-11-01T09:00:00.000Z', expires_at: '2026-11-01T10:00:00.000Z' },
+      { id: 'tok-other', table_booking_id: 'other-booking', action_type: 'payment', consumed_at: null, expires_at: '2026-11-01T10:00:00.000Z' },
+    ])
+    mocks.checkUserPermission.mockResolvedValue(true)
+
+    const { status } = await copyLink()
+
+    expect(status).toBe(200)
+    const byId = Object.fromEntries(db.tables.guest_tokens.map((row: Record<string, unknown>) => [row.id, row.expires_at]))
+    expect(byId).toEqual({
+      'tok-old': '2026-11-02T12:00:00.000Z',
+      'tok-used': '2026-11-01T10:00:00.000Z',
+      'tok-other': '2026-11-01T10:00:00.000Z',
+    })
   })
 
   it('leaves a lapsed hold alone, and says who can help, for anyone else', async () => {

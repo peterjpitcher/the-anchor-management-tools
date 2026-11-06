@@ -13,6 +13,7 @@
 
 import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
@@ -42,12 +43,12 @@ export function formatLondonDateTime(isoDateTime?: string | null): string {
 }
 
 /**
- * "Christmas courses: 2 x 3 courses, 1 x 1 course. Guests on one course have nothing to
- * pre-order."
+ * "Christmas courses: 2 x 3 courses, 1 x 1 course."
  *
- * The closing sentence used to read "One course needs no pre-order.", which a guest reads as an
- * instruction about their booking rather than about the one-course tier: it can be taken as "you
- * only need to pre-order one course". It now says who it applies to.
+ * It used to close with "Guests on one course have nothing to pre-order.", which stopped being true
+ * on 6 November 2026: under owner decision D4 every guest, on 1, 2 or 3 courses, chooses their
+ * dishes in advance on the food page (1 course is a main). A Christmas deposit-received message
+ * prints no summary at all and points to the food link and its deadline instead.
  */
 export function describeChristmasCourseCounts(counts?: number[] | null): string {
   if (!counts?.length) return ''
@@ -55,7 +56,10 @@ export function describeChristmasCourseCounts(counts?: number[] | null): string 
     const guests = counts.filter(count => count === course).length
     return guests ? `${guests} x ${course} course${course === 1 ? '' : 's'}` : null
   }).filter(Boolean).join(', ')
-  return `Christmas courses: ${summary}. Guests on one course have nothing to pre-order.`
+  // A booking taken with no courses has every seat on 0, "not chosen yet" (food link, 6 November
+  // 2026). There is nothing to summarise, and "Christmas courses: ." must never reach a guest.
+  if (!summary) return ''
+  return `Christmas courses: ${summary}.`
 }
 
 // ---------------------------------------------------------------------------
@@ -220,18 +224,29 @@ export type DepositConfirmedTextBooking = {
   is_outside_seating: boolean | null
   high_chair_count: number | null
   christmas_course_counts?: number[] | null
+  /** 'christmas' switches to the food-link wording (D3). */
+  booking_type?: string | null
 }
 
 /**
  * The deposit-confirmed text, word for word as it has always read, ready to send. `manageLink` is
  * left out when there is none.
+ *
+ * A Christmas booking is the exception (owner decision D3, 6 November 2026): it thanks the organiser
+ * for the booking and the deposit and leads with choosing everyone's food, with the deadline when it
+ * is known. It goes only when the guest has no usable email, which carries the full detail.
  */
 export function buildDepositConfirmedText(input: {
   booking: DepositConfirmedTextBooking
   /** As the text shows it (getSmartFirstName). */
   firstName: string
   manageLink: string | null
+  /** Christmas only: when everyone's choices close, as an ISO instant. Left out when unknown. */
+  foodDeadlineIso?: string | null
 }): string {
+  // The same test the sender uses for the email, so the text and the email always agree.
+  if (isChristmasBookingType(input.booking.booking_type)) return buildChristmasDepositConfirmedText(input)
+
   const partySize = Math.max(1, Number(input.booking.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
   // Outside bookings hold no indoor table: booking/outside wording and the granted chair count.
@@ -245,6 +260,28 @@ export function buildDepositConfirmedText(input: {
 
   // Calm and exact, as SSOT section 1 asks of money messages (BK-171, owner decision D15).
   const body = `The Anchor: ${input.firstName}, we've received your deposit. Your ${bookingNoun} for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.${highChairSuffix}${outsideSuffix}${input.manageLink ? ` ${input.manageLink}` : ''}${christmasCourseSummary ? ` ${christmasCourseSummary}` : ''}`
+  return ensureReplyInstruction(body, supportPhone())
+}
+
+function buildChristmasDepositConfirmedText(input: {
+  booking: DepositConfirmedTextBooking
+  firstName: string
+  manageLink: string | null
+  foodDeadlineIso?: string | null
+}): string {
+  const partySize = Math.max(1, Number(input.booking.party_size ?? 1))
+  const seatWord = partySize === 1 ? 'person' : 'people'
+  const bookingMoment = formatLondonDateTime(input.booking.start_datetime)
+  const deadline = input.foodDeadlineIso && Number.isFinite(Date.parse(input.foodDeadlineIso))
+    ? formatLondonDateTime(input.foodDeadlineIso)
+    : null
+  const food = input.manageLink
+    ? `Choose everyone's food${deadline ? ` by ${deadline}` : ''}: ${input.manageLink}`
+    : `Call us on ${GUEST_CONTACT.phoneDisplay} for your link to choose everyone's food${deadline ? ` by ${deadline}` : ''}.`
+  const body =
+    `The Anchor: ${input.firstName}, thanks for booking Christmas with us and for your deposit. ` +
+    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed. ${food} ` +
+    "We'll remind you if anyone's choices are missing."
   return ensureReplyInstruction(body, supportPhone())
 }
 
