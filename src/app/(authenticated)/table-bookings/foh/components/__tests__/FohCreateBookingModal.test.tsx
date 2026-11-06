@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
-import { christmasPreorderDeadlineText, FohCreateBookingModal, type CreateForm } from '../FohCreateBookingModal'
+import {
+  christmasPreorderDeadlineText,
+  FohCreateBookingModal,
+  isLargeStaffChristmasParty,
+  type CreateForm,
+} from '../FohCreateBookingModal'
 import type { FohEventOption } from '../../types'
 
 const CHRISTMAS_FORM: CreateForm = {
@@ -146,38 +151,36 @@ describe('FohCreateBookingModal: high chairs, outside and step-free', () => {
   })
 })
 
-// BK-057: a Christmas booking taken here records each guest's 1, 2 or 3 courses.
-describe('FohCreateBookingModal: Christmas courses for each guest', () => {
-  it('asks for a course choice for every guest on a Christmas booking', () => {
+// Owner decision D1, 6 November 2026: a Christmas booking takes the table and the deposit only.
+// Every guest's courses and dishes are chosen afterwards on the food page, so this form asks for none.
+describe('FohCreateBookingModal: no Christmas courses at booking', () => {
+  it('asks for no courses on a Christmas booking', () => {
     renderModal(CHRISTMAS_FORM)
-    expect(screen.getByText('Christmas courses for each guest')).toBeInTheDocument()
-    for (const guest of [1, 2, 3, 4]) {
-      expect(screen.getByLabelText(`Guest ${guest}`)).toHaveValue('0')
-    }
-  })
-
-  it('sets every guest at once from "Everyone", and one guest on their own', () => {
-    let form = CHRISTMAS_FORM
-    const onSetCreateForm = vi.fn((updater: (current: CreateForm) => CreateForm) => {
-      form = updater(form)
-    })
-    renderModal(CHRISTMAS_FORM, { onSetCreateForm })
-
-    fireEvent.change(screen.getByLabelText('Everyone'), { target: { value: '3' } })
-    expect(form.christmas_course_counts).toEqual([3, 3, 3, 3])
-
-    fireEvent.change(screen.getByLabelText('Guest 2'), { target: { value: '1' } })
-    expect(form.christmas_course_counts).toEqual([0, 1, 0, 0])
-  })
-
-  it('does not ask on a walk-in, which is on the day and so 1 course', () => {
-    renderModal(CHRISTMAS_FORM, { createMode: 'walk_in' })
     expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Everyone')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Guest 1')).not.toBeInTheDocument()
+    expect(screen.getByText(/Nobody chooses courses now/)).toBeInTheDocument()
   })
 
-  it('does not ask on any other kind of booking', () => {
-    renderModal({ ...CHRISTMAS_FORM, purpose: 'food' })
-    expect(screen.queryByText('Christmas courses for each guest')).not.toBeInTheDocument()
+  it('says staff can book more than the website takes, and never calls more than 20 private hire', () => {
+    renderModal(CHRISTMAS_FORM)
+    expect(screen.getByText(/You can book more\s+than 20 here/)).toBeInTheDocument()
+    expect(screen.queryByText(/private hire/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/nothing to pre-order/)).not.toBeInTheDocument()
+  })
+
+  it('does not offer the free times list for a Christmas party above 20, which it would mark too large', () => {
+    renderModal({ ...CHRISTMAS_FORM, party_size: '40' })
+    expect(screen.getByText(/The free times list stops at 20 guests/)).toBeInTheDocument()
+    expect(screen.getByLabelText('Time')).toBeInTheDocument()
+  })
+
+  it('keeps the free times note away from an ordinary booking', () => {
+    renderModal({ ...CHRISTMAS_FORM, purpose: 'food', party_size: '40' })
+    expect(screen.queryByText(/The free times list stops at 20 guests/)).not.toBeInTheDocument()
+    expect(isLargeStaffChristmasParty('food', '40')).toBe(false)
+    expect(isLargeStaffChristmasParty('christmas', '20')).toBe(false)
+    expect(isLargeStaffChristmasParty('christmas', '21')).toBe(true)
   })
 })
 
@@ -231,14 +234,13 @@ describe('the Pub Event tick', () => {
 describe('FohCreateBookingModal: the Christmas pre-order deadline', () => {
   it('quotes the period setting', () => {
     renderModal(CHRISTMAS_FORM, { christmasPreorderCutoffDays: 10 })
-    expect(screen.getByText(/need food choices by noon 10 days before the date/)).toBeInTheDocument()
-    expect(screen.getByText(/Booked after noon 10 days before the date/)).toBeInTheDocument()
+    expect(screen.getByText(/food from their food link by noon 10 days before the date/)).toBeInTheDocument()
     expect(screen.queryByText(/7 days/)).not.toBeInTheDocument()
   })
 
   it('names no number when the setting is not known', () => {
     renderModal(CHRISTMAS_FORM)
-    expect(screen.getByText(/need food choices by the pre-order deadline/)).toBeInTheDocument()
+    expect(screen.getByText(/food from their food link by the pre-order deadline/)).toBeInTheDocument()
   })
 
   it('words one day and the day itself', () => {

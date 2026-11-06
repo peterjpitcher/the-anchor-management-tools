@@ -8,11 +8,7 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
   LARGE_GROUP_DEPOSIT_THRESHOLD,
 } from '@/lib/table-bookings/deposit'
-import {
-  CHRISTMAS_MAX_PARTY_SIZE,
-  CHRISTMAS_MIN_NOTICE_HOURS,
-  CHRISTMAS_MIN_PARTY_SIZE,
-} from '@/lib/table-bookings/christmas'
+import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import type {
   FohCreateMode,
   FohCustomerSearchResult,
@@ -59,8 +55,6 @@ export type CreateForm = {
   high_chair_count: string
   outside_seating: boolean
   requires_accessible_table: boolean
-  /** Christmas only: 1, 2 or 3 courses per guest, seat 1 first. 0 means not chosen yet. */
-  christmas_course_counts?: number[]
   /** Staff read the guest the marketing notice and they said yes (D32). Never assumed. */
   marketing_texts_yes?: boolean
   /** Event bookings: each ticket's guest details, any of which may follow (BK-011). */
@@ -121,21 +115,8 @@ const RADIO_LABEL_CLASS = 'flex min-h-touch items-center gap-2 text-xs text-text
 const CHECKBOX_ROW_CLASS = 'flex items-center gap-2 rounded-md border border-border bg-surface-2 px-3'
 const CHECKBOX_LABEL_CLASS = 'flex min-h-touch flex-1 cursor-pointer items-center text-xs font-medium text-text'
 
-const CHRISTMAS_COURSE_OPTIONS = [
-  { value: '0', label: 'Choose courses' },
-  { value: '1', label: '1 course' },
-  { value: '2', label: '2 courses' },
-  { value: '3', label: '3 courses' },
-]
-
 /**
- * The 1, 2 or 3 courses each Christmas guest is having (BK-057). Without these a phone booking was
- * stored with no tiers, so every guest was chased for a main, 1 course guests included, and the
- * kitchen could not tell who was paying for what. "Everyone" fills every guest at once, because a
- * table often all has the same.
- */
-/**
- * When pre-orders close, from the period setting rather than a fixed 7 (BK-150).
+ * When Christmas food choices close, from the period setting rather than a fixed 7 (BK-150).
  * "noon 7 days before the date", or "the pre-order deadline" when the setting is not known.
  */
 export function christmasPreorderDeadlineText(cutoffDays: number | null | undefined): string {
@@ -144,52 +125,14 @@ export function christmasPreorderDeadlineText(cutoffDays: number | null | undefi
   return `noon ${cutoffDays} day${cutoffDays === 1 ? '' : 's'} before the date`
 }
 
-function ChristmasCreateCourses({
-  partySize,
-  counts,
-  cutoffDays,
-  onChange,
-}: {
-  partySize: number
-  counts: number[]
-  cutoffDays: number | null
-  onChange: (counts: number[]) => void
-}) {
-  const seats = Number.isFinite(partySize) ? Math.max(0, Math.min(CHRISTMAS_MAX_PARTY_SIZE, partySize)) : 0
-  if (seats === 0) return null
-  const current = Array.from({ length: seats }, (_, index) => counts[index] ?? 0)
-  const allSame = current.every((count) => count === current[0]) ? String(current[0]) : '0'
-
-  return (
-    <fieldset className="space-y-2 md:col-span-2">
-      <legend className="text-sm font-medium text-text">Christmas courses for each guest</legend>
-      <p className="text-xs text-text-muted">
-        Guests on 1 course have nothing to pre-order. 2 courses is a main plus a starter or a dessert;
-        3 courses is all three. 2 and 3 courses need food choices by {christmasPreorderDeadlineText(cutoffDays)}.
-      </p>
-      <Select
-        label="Everyone"
-        value={allSame}
-        options={CHRISTMAS_COURSE_OPTIONS}
-        onChange={(event) => onChange(current.map(() => Number(event.target.value)))}
-        className={FIELD_CLASS}
-      />
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        {current.map((count, index) => (
-          <Select
-            key={index}
-            label={`Guest ${index + 1}`}
-            value={String(count)}
-            options={CHRISTMAS_COURSE_OPTIONS}
-            onChange={(event) =>
-              onChange(current.map((value, seat) => (seat === index ? Number(event.target.value) : value)))
-            }
-            className={FIELD_CLASS}
-          />
-        ))}
-      </div>
-    </fieldset>
-  )
+/**
+ * True for a Christmas party bigger than the website takes. Staff may book one up to the seated
+ * Christmas capacity (A3, christmas_staff_max_party), but the free-times check still applies the
+ * ordinary table limit and would mark every time as too large, so those times are not offered.
+ */
+export function isLargeStaffChristmasParty(purpose: CreateForm['purpose'], partySize: string): boolean {
+  const size = Number.parseInt(partySize, 10)
+  return purpose === 'christmas' && Number.isFinite(size) && size > CHRISTMAS_MAX_PARTY_SIZE
 }
 
 function isPhoneLikeCustomerQuery(value: string): boolean {
@@ -357,7 +300,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             />
           )}
 
-          {createForm.purpose !== 'event' && (
+          {createForm.purpose !== 'event' && isLargeStaffChristmasParty(createForm.purpose, createForm.party_size) && (
+            <p className="text-xs text-text-muted md:col-span-2">
+              The free times list stops at {CHRISTMAS_MAX_PARTY_SIZE} guests. Type the time; the booking is
+              checked against the tables when you save it.
+            </p>
+          )}
+
+          {createForm.purpose !== 'event' && !isLargeStaffChristmasParty(createForm.purpose, createForm.party_size) && (
             <FohTimeSlots
               date={createForm.booking_date}
               partySize={createForm.party_size}
@@ -463,24 +413,14 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             </Select>
             {createForm.purpose === 'christmas' && (
               <p className="mt-1 text-xs text-text-muted">
-                Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more,
-                at least {CHRISTMAS_MIN_NOTICE_HOURS} hours notice, and always take a
-                deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person.
-                Over {CHRISTMAS_MAX_PARTY_SIZE} guests is private hire. Booked after{' '}
-                {christmasPreorderDeadlineText(christmasPreorderCutoffDays)}, it&apos;s the 1 course menu for
-                everyone, with no pre-order.
+                Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more and always take a
+                deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person. You can book more
+                than {CHRISTMAS_MAX_PARTY_SIZE} here, up to the seated Christmas capacity; the website
+                stops at {CHRISTMAS_MAX_PARTY_SIZE}. Nobody chooses courses now: the organiser chooses
+                everyone&apos;s food from their food link by {christmasPreorderDeadlineText(christmasPreorderCutoffDays)}.
               </p>
             )}
           </div>
-
-          {createForm.purpose === 'christmas' && createMode === 'booking' && (
-            <ChristmasCreateCourses
-              partySize={Number.parseInt(createForm.party_size, 10)}
-              counts={createForm.christmas_course_counts ?? []}
-              cutoffDays={christmasPreorderCutoffDays}
-              onChange={(counts) => onSetCreateForm((current) => ({ ...current, christmas_course_counts: counts }))}
-            />
-          )}
 
           {createForm.purpose === 'event' && (
             <>
