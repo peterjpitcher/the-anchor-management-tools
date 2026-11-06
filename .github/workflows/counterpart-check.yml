@@ -1,0 +1,43 @@
+name: Counterpart check
+
+# The Anchor website (OJ-The-Anchor.pub) and the management app (OJ-AnchorManagementTools)
+# are one system. The same defect has been fixed twice, days apart, more than once, because
+# a change to hours, availability, bookings or bot protection landed in one repository only.
+# A pull request that touches those areas must say it checked the other repository.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  counterpart-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require a counterpart line when shared areas change
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          COUNTERPART_REPO: peterjpitcher/the-anchor.pub (the Anchor website)
+        run: |
+          set -euo pipefail
+          files=$(gh api --paginate "repos/${REPO}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
+          matches=$(printf '%s\n' "$files" | grep -iE 'hours|opening|availability|booking|kitchen|sitting|turnstile|deposit' || true)
+          if [ -z "$matches" ]; then
+            echo "No hours, availability, booking or bot protection paths changed. Nothing to check."
+            exit 0
+          fi
+          echo "Changed paths in shared areas:"
+          printf '%s\n' "$matches" | sed 's/^/  /'
+          if printf '%s\n' "${PR_BODY:-}" | tr -d '\r' | grep -qE '^[[:space:]]*Counterpart checked:'; then
+            echo "Counterpart line found."
+            exit 0
+          fi
+          echo "::error::This pull request changes hours, availability, booking or bot protection code. Check whether ${COUNTERPART_REPO} needs the same change, then add a line to the pull request description starting 'Counterpart checked:' saying what you found."
+          exit 1
