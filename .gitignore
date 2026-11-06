@@ -147,5 +147,6 @@ Thumbs.db
 private/
 **/raw/
 
-# Claude Code settings backups (may hold tokens)
+# Claude Code local settings and settings backups (may hold tokens)
+.claude/settings.local.json
 tasks/claude-audit-backups/
