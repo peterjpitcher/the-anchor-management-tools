@@ -5,6 +5,7 @@ import { EventDrawer } from '../EventDrawer'
 import { updateEvent } from '@/app/actions/events'
 import { cancelEvent, getEventLifecycleImpact } from '@/app/actions/event-lifecycle'
 import type { Event } from '@/types/database'
+import { ACCESSIBILITY_NOTES_MAX_LENGTH } from '@/lib/events/field-limits'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }))
 vi.mock('@/app/actions/events', () => ({ createEvent: vi.fn(), updateEvent: vi.fn() }))
@@ -220,7 +221,7 @@ describe('EventDrawer validation feedback', () => {
   }
 
   it('shows the server error beside its field, focuses the summary and clears the error after editing', async () => {
-    const message = 'String must contain at most 300 character(s)'
+    const message = `String must contain at most ${ACCESSIBILITY_NOTES_MAX_LENGTH} character(s)`
     vi.mocked(updateEvent).mockResolvedValue({
       error: `Accessibility notes: ${message}`,
       fieldErrors: { accessibility_notes: message },
@@ -244,13 +245,22 @@ describe('EventDrawer validation feedback', () => {
   })
 
   it('shows the length problem immediately for existing accessibility notes', () => {
-    renderDrawer('a'.repeat(301))
+    const tooLong = ACCESSIBILITY_NOTES_MAX_LENGTH + 1
+    renderDrawer('a'.repeat(tooLong))
     const field = screen.getByRole('textbox', { name: 'Accessibility Notes' })
     expect(field).toHaveAttribute('aria-invalid', 'true')
     expect(document.getElementById(field.getAttribute('aria-describedby')!)).toHaveTextContent(
-      'Use 300 characters or fewer (301 entered).',
+      `Use ${ACCESSIBILITY_NOTES_MAX_LENGTH} characters or fewer (${tooLong} entered).`,
     )
     expect(updateEvent).not.toHaveBeenCalled()
+  })
+
+  // Every event and category carries the 382 or 418 character access wording since 11 September
+  // 2026; the old 300 limit refused every save of them.
+  it('accepts the approved access wording without a length problem', () => {
+    renderDrawer('a'.repeat(418))
+    const field = screen.getByRole('textbox', { name: 'Accessibility Notes' })
+    expect(field).not.toHaveAttribute('aria-invalid')
   })
 })
 
