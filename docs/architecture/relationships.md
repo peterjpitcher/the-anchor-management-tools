@@ -75,7 +75,7 @@ Most-referenced tables (from `.from('…')` usage in `'use server'` files; via-s
 | ExcelJS | `src/lib/rota/excel-export.ts`, `src/lib/pnl/spreadsheet-export.ts` | `/api/rota/export`, P&L export |
 | QR codes | `src/services/event-marketing.ts` | event marketing short links ([[routes#Guest-token / public endpoints\|/api/redirect]]) |
 | GitHub | bug reporter (`GITHUB_BUG_REPORTER_TOKEN`) | `/api/bug-report` |
-| Cloudflare Turnstile | `TURNSTILE_SECRET_KEY` | public form protection (private-booking enquiry / applications) |
+| Cloudflare Turnstile | `TURNSTILE_SECRET_KEY` | this app's own public recruitment pages and keyless job applications; the private-booking enquiry is checked by the website, not here |
 | Upstash Redis | `UPSTASH_REDIS_REST_*` | rate limiting (`src/lib/rate-limit-server.ts`) |
 | Supabase | `src/lib/supabase/server.ts` (cookie), `src/lib/supabase/admin.ts` (service role) | everything; admin client in crons/webhooks/system paths |
 

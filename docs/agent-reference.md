@@ -29,7 +29,7 @@ Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hou
 
 Webhooks: `webhooks/paypal` (root plus `event-bookings`, `table-bookings`, `invoices`, `private-bookings`, `parking`), `webhooks/resend`, `webhooks/twilio`, `stripe/webhook`.
 
-Turnstile-checked endpoints: `feedback`, `recruitment/applications`, `recruitment/booking/[token]` (plus `cancel` and `reschedule`). `event-bookings` and `table-bookings` take API-key callers only and the website verifies its own Turnstile token before it proxies (BK-129). `verifyTurnstileToken` skips the check without `TURNSTILE_SECRET_KEY` in development and tests, and refuses in production.
+Turnstile-checked endpoints: `recruitment/applications` (keyless callers only), `recruitment/booking/[token]` (plus `cancel` and `reschedule`). `event-bookings` and `table-bookings` take API-key callers only and the website verifies its own Turnstile token before it proxies (BK-129). `verifyTurnstileToken` skips the check without `TURNSTILE_SECRET_KEY` in development and tests, and refuses in production.
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
 
