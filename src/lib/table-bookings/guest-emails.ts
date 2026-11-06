@@ -96,9 +96,9 @@ function partySizeLabel(partySize: number | null | undefined): string | null {
   return `${whole} ${whole === 1 ? 'person' : 'people'}`
 }
 
-type DetailRow = { label: string; value: string | null | undefined }
+export type DetailRow = { label: string; value: string | null | undefined }
 
-type EmailLayout = {
+export type EmailLayout = {
   subject: string
   /** The line the inbox shows next to the subject. Says what the email is about, not hello. */
   preheader: string
@@ -122,7 +122,7 @@ type EmailLayout = {
  * The contact block comes from `@/lib/email/guest-footer` rather than being written here, so a
  * booking email can never again say "reply to this email or call the pub" with no number in it.
  */
-function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
+export function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
   const rows = layout.details.filter(
     (row): row is { label: string; value: string } => typeof row.value === 'string' && row.value.trim().length > 0
   )

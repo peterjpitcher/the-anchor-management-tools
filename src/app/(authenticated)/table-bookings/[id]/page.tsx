@@ -284,6 +284,7 @@ async function loadSeasonalPreorder(rawBooking: any, canEdit: boolean, canManage
       closed={cutoff.closed}
       closesAtIso={cutoff.closesAt?.toISOString() ?? null}
       canRecordLate={canManage}
+      bookingConfirmed={rawBooking.status === 'confirmed'}
     />
   )
 }
