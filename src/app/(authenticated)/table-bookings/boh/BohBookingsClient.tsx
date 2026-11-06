@@ -102,6 +102,8 @@ type PreorderDishTotalsResponse = {
       twoCourses: number
       threeCourses: number
       notRecorded: number
+      /** Seats on tier 0: courses not chosen yet on the food page. */
+      notChosen?: number
       guests: number
     }
     /** Chosen dishes since taken off the menu. Never in `byCourse`; each is a guest to ring. */
@@ -116,8 +118,9 @@ function describeTierTotals(tiers: NonNullable<NonNullable<PreorderDishTotalsRes
     tiers.twoCourses ? `${tiers.twoCourses} on 2 courses` : null,
     // 1 course guests choose their main ahead like everyone else since the food link release (D4).
     tiers.oneCourse ? `${tiers.oneCourse} on 1 course` : null,
-    // Tier 0 (not chosen yet) is counted here by summariseChristmasTiers, with older bookings.
-    tiers.notRecorded ? `${tiers.notRecorded} with courses not chosen or not recorded` : null,
+    tiers.notChosen ? `${tiers.notChosen} not chosen yet` : null,
+    // Older bookings with no course list at all.
+    tiers.notRecorded ? `${tiers.notRecorded} with courses not recorded` : null,
   ].filter(Boolean)
   return parts.join(', ')
 }
