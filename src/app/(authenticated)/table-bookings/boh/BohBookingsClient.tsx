@@ -114,8 +114,10 @@ function describeTierTotals(tiers: NonNullable<NonNullable<PreorderDishTotalsRes
   const parts = [
     tiers.threeCourses ? `${tiers.threeCourses} on 3 courses` : null,
     tiers.twoCourses ? `${tiers.twoCourses} on 2 courses` : null,
-    tiers.oneCourse ? `${tiers.oneCourse} on 1 course, choosing on the day` : null,
-    tiers.notRecorded ? `${tiers.notRecorded} with no courses recorded` : null,
+    // 1 course guests choose their main ahead like everyone else since the food link release (D4).
+    tiers.oneCourse ? `${tiers.oneCourse} on 1 course` : null,
+    // Tier 0 (not chosen yet) is counted here by summariseChristmasTiers, with older bookings.
+    tiers.notRecorded ? `${tiers.notRecorded} with courses not chosen or not recorded` : null,
   ].filter(Boolean)
   return parts.join(', ')
 }
@@ -168,6 +170,8 @@ type BohBooking = {
   visual_status: string
   special_requirements: string | null
   allergies?: string[]
+  /** True when a guest's own seat records an allergy (the food link question). */
+  guest_allergies?: boolean
   dietary_requirements?: string[]
   seated_at: string | null
   left_at: string | null
@@ -398,6 +402,7 @@ function noteFacts(booking: BohBooking): BookingNoteFacts {
     allergies: booking.allergies ?? [],
     dietaryRequirements: booking.dietary_requirements ?? [],
     notes: booking.special_requirements,
+    guestAllergies: booking.guest_allergies === true,
   }
 }
 

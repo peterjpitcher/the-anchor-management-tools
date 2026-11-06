@@ -5,6 +5,7 @@ import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
 import { whenLondonClockReaches } from '@/lib/dateUtils'
 import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadSeatAllergyBookingIds } from '@/lib/table-bookings/seat-allergies'
 import { loadDayLoads, type DayLoad } from '@/services/day-load'
 
 function isIsoDate(value: string): boolean {
@@ -408,6 +409,10 @@ export async function GET(request: NextRequest) {
   const scheduleStartIso = fromZonedTime(`${date}T00:00:00`, 'Europe/London').toISOString()
   const scheduleEndIso = fromZonedTime(`${shiftIsoDate(date, 1)}T06:00:00`, 'Europe/London').toISOString()
 
+  // Guests whose own seat records an allergy raise the booking's Allergy marker (spec section 3.5).
+  // Never rejects: a failed read is logged and only loses that marker.
+  const seatAllergyIdsPromise = loadSeatAllergyBookingIds(bookingIds)
+
   // Run follow-up queries in parallel (they only depend on the initial results, not each other)
   const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult, guestChangesResult, dayLoadResult] = await Promise.all([
     eventIds.length > 0
@@ -472,6 +477,8 @@ export async function GET(request: NextRequest) {
     // Who is in tonight, counted the same way as the dashboard, calendar and rota (BK-075).
     loadFohDayLoad(date),
   ])
+
+  const seatAllergyIds = await seatAllergyIdsPromise
 
   // A marker that cannot be read is left off rather than failing the floor plan.
   const guestPartySizeChangeByBooking = new Map<string, { at: string; from: number | null; to: number | null }>()
@@ -737,6 +744,7 @@ export async function GET(request: NextRequest) {
           // the FOH screen read them, so an allergy could only be discovered by
           // opening the booking in the back office.
           allergies: Array.isArray(booking.allergies) ? booking.allergies : [],
+          guest_allergies: seatAllergyIds.has(booking.id),
           dietary_requirements: Array.isArray(booking.dietary_requirements)
             ? booking.dietary_requirements
             : [],
@@ -810,7 +818,8 @@ export async function GET(request: NextRequest) {
       requires_accessible_table: booking.requires_accessible_table ?? false,
       christmas_course_counts: Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null,
       guest_party_size_change: guestPartySizeChangeByBooking.get(booking.id) ?? null,
-      guest_confirmed_at: typeof booking.guest_confirmed_at === 'string' ? booking.guest_confirmed_at : null
+      guest_confirmed_at: typeof booking.guest_confirmed_at === 'string' ? booking.guest_confirmed_at : null,
+      guest_allergies: seatAllergyIds.has(booking.id)
     }))
 
   // Outside bookings hold no table assignment, so they land in the untabled bucket.
