@@ -1417,8 +1417,9 @@ function AttendeesTab({
       )
     }
 
+    // Only an event that asks for each guest takes guest names (owner, 5 November 2026).
     const canEditNames =
-      booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1 && !booking.attendees?.length
+      requiresGuestDetails(event) && booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1 && !booking.attendees?.length
 
     return (
       <div className="flex flex-wrap items-center gap-1">

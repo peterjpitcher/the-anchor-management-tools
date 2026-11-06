@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { fireEvent, render, screen } from '@testing-library/react'
 import { christmasPreorderDeadlineText, FohCreateBookingModal, type CreateForm } from '../FohCreateBookingModal'
+import type { FohEventOption } from '../../types'
 
 const CHRISTMAS_FORM: CreateForm = {
   booking_date: '2026-12-05',
@@ -33,6 +34,7 @@ function renderModal(
     walkInTargetTable?: { id: string; name: string } | null
     canWaiveDeposit?: boolean
     christmasPreorderCutoffDays?: number | null
+    selectedEventOption?: FohEventOption | null
   } = {},
 ) {
   render(
@@ -48,10 +50,10 @@ function renderModal(
       customerResults={[]}
       selectedCustomer={null}
       searchingCustomers={false}
-      eventOptions={[]}
+      eventOptions={options.selectedEventOption ? [options.selectedEventOption] : []}
       loadingEventOptions={false}
       eventOptionsError={null}
-      selectedEventOption={null}
+      selectedEventOption={options.selectedEventOption ?? null}
       overlappingEventForTable={null}
       tableEventPromptAcknowledgedEventId={null}
       walkInPurposeAutoSelectionEnabled={false}
@@ -181,6 +183,31 @@ describe('FohCreateBookingModal: Christmas courses for each guest', () => {
 
 // BK-106 (D18): the Pub Event tick takes the deposit off, so only staff who may waive one see it,
 // and never on a Christmas booking, which always takes its deposit.
+// Owner, 5 November 2026: only an event that asks for each guest (by default, tickets paid online
+// in advance) takes guest names. A pay-on-the-night event shows no guest cards.
+describe('FohCreateBookingModal: guest details on an event booking', () => {
+  const EVENT_FORM: CreateForm = { ...CHRISTMAS_FORM, purpose: 'event', event_id: 'event-1', party_size: '2' }
+  const BINGO: FohEventOption = {
+    id: 'event-1', name: 'Music Bingo', date: '2026-11-13', time: '19:00', start_datetime: null, end_datetime: null,
+    payment_mode: 'cash_only', price_per_seat: 5, capacity: 41, seated_capacity: null, standing_capacity: null,
+    seats_remaining: 41, seated_remaining: null, standing_remaining: null, total_remaining: 41, is_full: false,
+    booking_mode: 'general', booking_questions: [], guest_details_required: false,
+  }
+  const TASTING: FohEventOption = { ...BINGO, name: 'Tasting Night', payment_mode: 'prepaid', price_per_seat: 45, guest_details_required: true }
+
+  it('asks for no guest names on a pay-on-the-night event', () => {
+    renderModal(EVENT_FORM, { selectedEventOption: BINGO })
+    expect(screen.queryByText('Guest details for each ticket')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Guest name')).not.toBeInTheDocument()
+  })
+
+  it('shows one guest card per ticket on an event paid online in advance', () => {
+    renderModal(EVENT_FORM, { selectedEventOption: TASTING })
+    expect(screen.getByText('Guest details for each ticket')).toBeInTheDocument()
+    expect(screen.getAllByLabelText('Guest name')).toHaveLength(2)
+  })
+})
+
 describe('the Pub Event tick', () => {
   const FOOD_FORM: CreateForm = { ...CHRISTMAS_FORM, purpose: 'food', party_size: '20' }
 
