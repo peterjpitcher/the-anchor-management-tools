@@ -20,9 +20,11 @@ import {
 } from '@/ds';
 import { deleteLeaveRequest, reviewLeaveRequest, updateLeaveRequestDates } from '@/app/actions/leave';
 import type { LeaveRequest } from '@/app/actions/leave';
+import type { RotaSettings } from '@/app/actions/rota-settings';
 import { formatDateInLondon } from '@/lib/dateUtils';
 import { ROTA_LEAVE_STATUS_LABEL, rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
+import { formatHolidayYear } from '@/lib/leave/working-days';
 import {
   LEAVE_ALLOWANCE_TEXT_CLASSES,
   LEAVE_ALLOWANCE_TONE,
@@ -35,7 +37,11 @@ interface LeaveManagerClientProps {
   canApprove: boolean;
   canEdit: boolean;
   usageMap: Record<string, { count: number; allowance: number }>; // `${emp_id}:${year}` -> usage
+  /** When the holiday year starts, so a 1 January year reads "2026" and not "2026/27". */
+  holidayYearStart: HolidayYearStart;
 }
+
+type HolidayYearStart = Pick<RotaSettings, 'holidayYearStartMonth' | 'holidayYearStartDay'>;
 
 type LeaveFilter = 'all' | 'pending' | 'approved' | 'declined';
 
@@ -74,6 +80,7 @@ function LeaveRequestRow({
   onUpdated,
   onDeleted,
   usage,
+  holidayYearStart,
 }: {
   request: LeaveRequest;
   empName: string;
@@ -82,6 +89,7 @@ function LeaveRequestRow({
   onUpdated: (updated: LeaveRequest) => void;
   onDeleted: (requestId: string) => void;
   usage?: { count: number; allowance: number };
+  holidayYearStart: HolidayYearStart;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [managerNote, setManagerNote] = useState('');
@@ -137,7 +145,11 @@ function LeaveRequestRow({
     onDeleted(request.id);
   };
 
-  const holidayYear = `${request.holiday_year}/${String(request.holiday_year + 1).slice(2)}`;
+  const holidayYear = formatHolidayYear(
+    request.holiday_year,
+    holidayYearStart.holidayYearStartMonth,
+    holidayYearStart.holidayYearStartDay,
+  );
 
   return (
     // The weekly Insights report links straight to a pending request as /rota/leave#leave-<id>.
@@ -376,6 +388,7 @@ export default function LeaveManagerClient({
   canApprove,
   canEdit,
   usageMap,
+  holidayYearStart,
 }: LeaveManagerClientProps) {
   const [requests, setRequests] = useState(initialRequests);
   const [filter, setFilter] = useState<LeaveFilter>('pending');
@@ -431,6 +444,7 @@ export default function LeaveManagerClient({
                 onUpdated={handleUpdated}
                 onDeleted={handleDeleted}
                 usage={usageMap[`${req.employee_id}:${req.holiday_year}`]}
+                holidayYearStart={holidayYearStart}
               />
             ))}
           </ul>

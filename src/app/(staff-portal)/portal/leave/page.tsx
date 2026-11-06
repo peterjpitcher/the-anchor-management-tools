@@ -6,7 +6,7 @@ import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
 import { getRotaSettings } from '@/app/actions/rota-settings';
 import type { LeaveRequest } from '@/app/actions/leave';
 import { CancelLeaveRequestButton } from './CancelLeaveRequestButton';
-import { getHolidayYear } from '@/lib/leave/working-days';
+import { formatHolidayYear, getHolidayYear } from '@/lib/leave/working-days';
 import { getTodayIsoDate } from '@/lib/dateUtils';
 import { rotaLeaveStatusLabel, rotaLeaveStatusTone } from '@/lib/rota/status-ui';
 import { leaveTypeLabel } from '@/lib/employees/leave-type-labels';
@@ -84,7 +84,7 @@ export default async function MyLeavePage() {
       {/* A failed count shows a dash, never a made-up zero. */}
       <StatGrid columns={2}>
         <Stat
-          label={`${holidayYear}/${String(holidayYear + 1).slice(2)} holiday taken`}
+          label={`${formatHolidayYear(holidayYear, rotaSettings.holidayYearStartMonth, rotaSettings.holidayYearStartDay)} holiday taken`}
           value={usageResult.success ? `${usedDays} day${usedDays !== 1 ? 's' : ''}` : '-'}
         />
       </StatGrid>
