@@ -64,8 +64,10 @@ const BOOKING = {
   customer_id: 'cust-7',
   booking_period_id: 'period-xmas',
   booking_period_name: 'Christmas 2026',
-  // Four on one course, one on two and one on three: what is still owed depends on the tier.
-  christmas_course_counts: [1, 1, 1, 1, 2, 3],
+  // No tier per guest: an older booking, so it stays on the first release's rule. A booking with
+  // tiers is on the reminder ladder instead (preorderRemindersLadderRoute.test.ts).
+  christmas_course_counts: null,
+  created_at: '2026-11-01T10:00:00.000Z',
 }
 
 const ALEX = {

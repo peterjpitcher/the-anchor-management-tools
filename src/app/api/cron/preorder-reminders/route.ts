@@ -1,29 +1,34 @@
 /**
- * Chasing a seasonal pre-order. Spec section 7.
+ * Chasing a seasonal pre-order. Runs twice a day, at 09:00 and 12:00 UTC (9am and noon London
+ * through the Christmas window, A5), and behaves the same whichever run calls it, because every
+ * decision is made from the clock.
  *
- * One pass a day over future bookings that owe us food choices. Two messages per booking, ever:
- * a reminder to the booker seven days out, and an email to the manager once the booker has had that
- * reminder and the period's cutoff has come round. An incomplete order never cancels a booking. It
- * becomes a telephone call, which is exactly how the pub handles it today.
+ * TWO RULES, ONE ROUTE.
+ * - A booking that records a course tier per guest (every Christmas booking since the food link
+ *   release, owner decisions D1 and D4 of 6 November 2026) is on the reminder ladder: organiser
+ *   emails at 21, 14 and 10 days, email and text the day before the cutoff and at 9am on cutoff
+ *   day, the owner's call list the day before the cutoff, and one reminder to each guest who was
+ *   sent their own link. `runPreorderLadder` (src/lib/table-bookings/preorder-ladder.ts) sends it,
+ *   on `decidePreorderChases`. The old at-cutoff manager escalation does not apply to these.
+ * - A booking with no tiers keeps the first release's rule, written out below: one reminder to the
+ *   booker ten days out and an email to the manager once the cutoff has come round
+ *   (`decideLegacyPreorderChases`).
  *
- * WHICH CHASES ARE DUE IS NOT DECIDED HERE. `decideLegacyPreorderChases` in the shared library owns
- * it (the old two-step rule; the reminder ladder in `decidePreorderChases` replaces it in a later change),
- * including the rule that stops the manager escalation riding along with the booker's first reminder.
- * This route reads the ledger, asks, and sends.
+ * THE LEDGER IS THE IDEMPOTENCY for both. `booking_preorder_reminders` has a unique index on
+ * (table_booking_id, kind) for booking-level rows and on (table_booking_id, kind, cover_id) for a
+ * guest's, so a row is claimed BEFORE anything is sent and a duplicate key means somebody already
+ * chased. Two runs racing, or one run twice, both lose the race at the database and send nothing.
  *
- * THE LEDGER IS THE IDEMPOTENCY. `booking_preorder_reminders` has a unique index on
- * (table_booking_id, kind) for booking-level rows, so the row is claimed BEFORE anything is sent and a duplicate key means
- * somebody already chased. There is deliberately no second mechanism: two crons racing, or one cron
- * running twice, both lose the race at the database and send nothing.
- *
- * A claimed row is never rolled back when the send itself fails. Deleting it to retry tomorrow would
- * turn an ambiguous failure (the SMS went out but the log write did not) into a second message to the
- * guest, and the spec caps this at two messages precisely to avoid that. A failed send is logged loudly
- * instead, and the pub rings the guest, which is the fallback for every case here anyway.
+ * On the legacy rule a claimed row is never rolled back when the send fails, as before. On the
+ * ladder a send that reached nobody gives its row back so the next run tries again, and every failure
+ * is reported (see preorder-ladder.ts).
  *
  * WITHDRAWN DISHES ARE NOT CHASED. `getPreorderCompleteness` reports them separately from `complete`
  * and this cron only chases on `complete === false`. Deactivating one dish must not message every
  * affected Christmas booker; that is a short call list for a manager, per spec section 7.
+ *
+ * The same run sends a date's kitchen order and the bookers' copies when its form locks (BK-149),
+ * and clears guests' own email addresses once their booking date has passed (A4).
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -63,6 +68,14 @@ import { buildTableBookingPreorderReminderEmail } from '@/lib/table-bookings/gue
 import { buildPreorderReminderText } from '@/lib/table-bookings/guest-texts'
 import { sendPreorderCutoffDigests, type CutoffDigestResult } from '@/lib/table-bookings/preorder-cutoff-digest'
 import { preorderReminderFacts } from '@/lib/table-bookings/fallback-details'
+import {
+  emptyLadderResult,
+  purgeGuestInviteEmails,
+  runPreorderLadder,
+  type LadderBooking,
+  type LadderLedgerRow,
+  type LadderResult,
+} from '@/lib/table-bookings/preorder-ladder'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -86,6 +99,8 @@ const MANAGER_ESCALATION_EMAIL = 'manager@the-anchor.pub'
 const CHASEABLE_BOOKING_STATUSES = ['confirmed']
 /** A season's worth of Christmas bookings is a few hundred; the cap is a runaway guard, not a page size. */
 const MAX_BOOKINGS_PER_RUN = 500
+/** The ladder's first rung, 21 days before the booking (D6). */
+const LADDER_FIRST_RUNG_DAYS = 21
 
 type CandidateBooking = {
   id: string
@@ -99,6 +114,13 @@ type CandidateBooking = {
   booking_period_name: string | null
   /** The course tier each guest is on, which decides what is still owed. */
   christmas_course_counts: number[] | null
+  /** When the booking was made: a ladder rung that fell due before it is never sent. */
+  created_at: string | null
+}
+
+/** On the ladder when the booking records a tier per guest; otherwise the first release's rule. */
+function isOnLadder(booking: CandidateBooking): boolean {
+  return Array.isArray(booking.christmas_course_counts) && booking.christmas_course_counts.length > 0
 }
 
 /** The deadline this booking is being chased against, for the wording of the chase. */
@@ -198,7 +220,13 @@ export async function GET(request: NextRequest) {
       shortLinkFallbacks: 0,
       // The kitchen order and the bookers' copies for dates whose form has just locked (BK-149).
       cutoffDigests: null as CutoffDigestResult | null,
+      // The reminder ladder, for bookings with a course tier per guest (D6, D7).
+      ladder: emptyLadderResult() as LadderResult,
+      // Guests' own addresses cleared after their booking (A4), or null when that step failed.
+      inviteEmailsCleared: null as number | null,
     }
+
+    let cutoffDigestsThrew = false
 
     // Cutoffs are per period, so the window has to reach the furthest one. Without this a period
     // configured to escalate fourteen days out would never be looked at.
@@ -214,16 +242,19 @@ export async function GET(request: NextRequest) {
       if (Number.isFinite(days) && days >= 0) cutoffByPeriod.set(row.id, days)
     }
 
+    // The ladder's call list and guest reminders fall the day before the cutoff, so a period's
+    // window reaches one day past its cutoff; the organiser's first rung is 21 days out.
     const windowDays = Array.from(cutoffByPeriod.values()).reduce(
-      (furthest, days) => Math.max(furthest, days),
-      PREORDER_BOOKER_REMINDER_DAYS,
+      (furthest, days) => Math.max(furthest, days + 1),
+      Math.max(PREORDER_BOOKER_REMINDER_DAYS, LADDER_FIRST_RUNG_DAYS),
     )
     const today = getTodayIsoDate()
     const windowEnd = getLocalIsoDateDaysAhead(windowDays)
 
-    // This sweep runs at noon, the moment a date's form locks, so it is also when the kitchen is
-    // sent that date's order and each booker their copy (BK-149). A failure here is logged as an
-    // error and never stops the chase below.
+    // The noon run is the moment a date's form locks, so it is also when the kitchen is sent that
+    // date's order and each booker their copy (BK-149); the 09:00 run finds nothing newly locked and
+    // only catches up a date a missed run left behind. A failure here is reported and never stops the
+    // chase below.
     try {
       result.cutoffDigests = await sendPreorderCutoffDigests(supabase, {
         todayIso: today,
@@ -231,6 +262,7 @@ export async function GET(request: NextRequest) {
         choicesCopyEnabled: await isMessagingFlagOn('table_preorder_choices_copy'),
       })
     } catch (digestError) {
+      cutoffDigestsThrew = true
       logger.error('Pre-order cutoff digests failed', {
         error: digestError instanceof Error ? digestError : new Error(String(digestError)),
       })
@@ -240,7 +272,7 @@ export async function GET(request: NextRequest) {
       .from('table_bookings')
       .select(
         'id, booking_reference, booking_date, booking_time, start_datetime, party_size, customer_id, ' +
-          'booking_period_id, booking_period_name, christmas_course_counts',
+          'booking_period_id, booking_period_name, christmas_course_counts, created_at',
       )
       .gte('booking_date', today)
       .lte('booking_date', windowEnd)
@@ -255,32 +287,42 @@ export async function GET(request: NextRequest) {
     if (bookingError) throw bookingError
 
     const bookings = (bookingRows ?? []) as unknown as CandidateBooking[]
-    if (bookings.length === 0) {
-      return NextResponse.json({ success: true, result, window: { from: today, to: windowEnd } })
-    }
 
     // One read of the ledger for the whole batch, so a booking already chased costs nothing further.
-    // The claim below is still the authority; this only keeps the loop cheap.
+    // The claim is still the authority; this only keeps the loop cheap.
     //
-    // `sent_at` comes back as well as the kind, because the escalation rule needs to know not just
-    // whether the booker was reminded but on which London day: a reminder claimed in this same sweep
-    // has not been acted on yet.
-    const { data: ledgerRows, error: ledgerError } = await supabase
-      .from('booking_preorder_reminders')
-      .select('table_booking_id, kind, sent_at')
-      .in(
-        'table_booking_id',
-        bookings.map((booking) => booking.id),
-      )
+    // `sent_at` comes back as well as the kind, because the legacy escalation rule needs to know not
+    // just whether the booker was reminded but on which London day: a reminder claimed in this same
+    // sweep has not been acted on yet. `cover_id` names the seat of a guest's own reminder.
+    let ledger: LadderLedgerRow[] = []
+    if (bookings.length > 0) {
+      const { data: ledgerRows, error: ledgerError } = await supabase
+        .from('booking_preorder_reminders')
+        .select('table_booking_id, kind, cover_id, sent_at')
+        .in(
+          'table_booking_id',
+          bookings.map((booking) => booking.id),
+        )
 
-    if (ledgerError) throw ledgerError
+      if (ledgerError) throw ledgerError
+      ledger = (ledgerRows ?? []) as LadderLedgerRow[]
+    }
+
+    const ladderBookings = bookings.filter(isOnLadder)
+    const legacyBookings = bookings.filter((booking) => !isOnLadder(booking))
+
+    result.ladder = await runPreorderLadder(supabase, {
+      now: new Date(),
+      bookings: ladderBookings as LadderBooking[],
+      ledger,
+      cutoffByPeriod,
+      appBaseUrl: process.env.NEXT_PUBLIC_APP_URL,
+    })
 
     const sentOn = new Map<string, string>()
-    for (const row of (ledgerRows ?? []) as Array<{
-      table_booking_id: string
-      kind: string
-      sent_at: string | null
-    }>) {
+    for (const row of ledger) {
+      // Guest rows are about one seat and never part of the booking-level legacy rule.
+      if (row.cover_id) continue
       const sentAt = row.sent_at ? new Date(row.sent_at) : null
       // A row with no readable timestamp is still a row: it was sent. Dating it today is the cautious
       // reading, because it defers the escalation to the next sweep rather than firing it early.
@@ -288,7 +330,7 @@ export async function GET(request: NextRequest) {
       sentOn.set(`${row.table_booking_id}:${row.kind}`, sentIsoDate)
     }
 
-    for (const booking of bookings) {
+    for (const booking of legacyBookings) {
       result.checked++
 
       const days = daysUntil(today, booking.booking_date)
@@ -363,6 +405,38 @@ export async function GET(request: NextRequest) {
           })
         }
       }
+    }
+
+    try {
+      result.inviteEmailsCleared = await purgeGuestInviteEmails(supabase, today)
+    } catch (purgeError) {
+      logger.error('Clearing guest invite emails after their booking failed', {
+        error: purgeError instanceof Error ? purgeError : new Error(String(purgeError)),
+      })
+    }
+
+    // Every message that did not go is reported, not only logged: the ladder's failures (with the
+    // booking reference, the message and the error, never an address), the legacy rule's count, a
+    // failed kitchen digest and a failed purge.
+    const ladderTrouble = result.ladder.failed + result.ladder.partial
+    const digestFailed = (result.cutoffDigests?.failed ?? 0) + (cutoffDigestsThrew ? 1 : 0)
+    if (ladderTrouble > 0 || result.failed > 0 || digestFailed > 0 || result.inviteEmailsCleared === null) {
+      await reportCronFailure(
+        'preorder-reminders',
+        new Error(
+          `Pre-order sweep finished with problems: ${result.ladder.failed} ladder message(s) not sent, ` +
+            `${result.ladder.partial} sent on one channel only, ${result.failed} legacy chase(s) failed, ` +
+            `${digestFailed} cutoff digest(s) failed${result.inviteEmailsCleared === null ? ', guest invite emails not cleared' : ''}.`,
+        ),
+        {
+          failures: result.ladder.failures.map((failure) => ({
+            reference: failure.reference,
+            kind: failure.kind,
+            outcome: failure.outcome,
+            error: failure.error,
+          })),
+        },
+      )
     }
 
     logger.info('Pre-order reminder sweep completed', {
