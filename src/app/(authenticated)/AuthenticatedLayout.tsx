@@ -41,7 +41,9 @@ function AuthenticatedLayoutContent({
   const isFohPath =
     pathname.startsWith('/table-bookings/foh') ||
     pathname.startsWith('/checklists') ||
-    pathname.startsWith('/vouchers/foh')
+    pathname.startsWith('/vouchers/foh') ||
+    // A booking's one-pager, which the shared FOH login may view on screen (owner decision D14).
+    /^\/table-bookings\/[^/]+\/sheet\/?$/.test(pathname)
 
   useEffect(() => {
     let mounted = true

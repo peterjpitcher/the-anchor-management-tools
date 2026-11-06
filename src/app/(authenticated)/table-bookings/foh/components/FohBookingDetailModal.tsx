@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Badge, Button, Input, Modal, Textarea } from '@/ds'
+import { Badge, Button, Input, LinkButton, Modal, Textarea } from '@/ds'
 import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
@@ -205,6 +205,19 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
 
         <GuestRequirements booking={selectedBooking} />
 
+        {!selectedBooking.is_private_block && !selectedBookingIsEventOnly && (
+          // The booking's one-pager: who is eating what and every guest's allergy (D14). View only on
+          // this login; the sheet page decides who may download it.
+          <LinkButton
+            href={`/table-bookings/${selectedBooking.id}/sheet`}
+            variant="secondary"
+            size="lg"
+            className="min-h-touch w-full"
+          >
+            Open the booking sheet
+          </LinkButton>
+        )}
+
         {canManageDeposit && selectedBookingDeposit.kind === 'pending' && !selectedBookingIsEventOnly && !selectedBooking.is_private_block && (
           <FohDepositActions
             bookingId={selectedBooking.id}
@@ -301,16 +314,25 @@ function GuestRequirements({ booking }: { booking: FohBooking }) {
   if (booking.notes) rows.push({ label: 'Guest note', value: booking.notes })
   if (booking.internal_notes) rows.push({ label: 'Staff note', value: booking.internal_notes })
 
-  if (allergies.length === 0 && rows.length === 0) return null
+  const guestAllergies = booking.guest_allergies === true
+
+  if (allergies.length === 0 && rows.length === 0 && !guestAllergies) return null
 
   return (
     <div className="rounded-md border border-border p-3">
       <p className="text-sm font-semibold text-text">Guest requirements</p>
 
-      {allergies.length > 0 && (
+      {(allergies.length > 0 || guestAllergies) && (
         <div className="mt-2 rounded-md border border-danger-border bg-danger-soft px-3 py-2">
           <p className="text-xs font-bold uppercase tracking-wide text-danger-fg">Allergies</p>
-          <p className="mt-0.5 text-sm font-semibold text-danger-fg">{allergies.join(', ')}</p>
+          {allergies.length > 0 && (
+            <p className="mt-0.5 text-sm font-semibold text-danger-fg">{allergies.join(', ')}</p>
+          )}
+          {guestAllergies && (
+            <p className="mt-0.5 text-sm font-semibold text-danger-fg">
+              A guest has an allergy. Open the booking sheet to see who.
+            </p>
+          )}
         </div>
       )}
 

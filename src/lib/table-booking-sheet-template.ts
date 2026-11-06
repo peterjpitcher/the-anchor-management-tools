@@ -26,10 +26,18 @@ export interface TableBookingSheetPreorderAddonTotal {
 export interface TableBookingSheetPreorderCover {
   /** "Seat 1", or "Seat 1 · Jo Bloggs" when a name was given. Never blank. */
   seatLabel: string
-  /** "3 courses", "2 courses" or "1 course": what this guest is paying for. Omitted with no tier. */
+  /**
+   * "3 courses", "2 courses", "1 course" or "Not chosen yet": what this guest is paying for. Omitted
+   * on a booking with no tier list. Every tier, 1 course included, chooses its main ahead (D4).
+   */
   tierLabel?: string
-  /** A 1 course guest chooses on the day, so an empty course list is not a missing order. */
-  choosesOnTheDay?: boolean
+  /**
+   * This guest's own answer to the allergy question: "Yes: peanuts", "None" or "Not answered, ask
+   * before serving". Omitted by callers written before the question existed.
+   */
+  allergyLabel?: string
+  /** True when `allergyLabel` records an allergy, so it prints as loudly as the booking's own. */
+  hasAllergy?: boolean
   /** A manager changed this seat after the pre-order cutoff, so the kitchen ordered before it. */
   lateChange?: boolean
   /**
@@ -58,6 +66,11 @@ export interface TableBookingSheetPreorder {
    * here so the food page can never show only the per-cover notes and silently drop an allergy.
    */
   allergies: string[]
+  /**
+   * "Seat 3, Sam: peanuts" for every guest whose own seat records an allergy. Printed in the
+   * whole-booking allergy box beside `allergies`. Omitted when no guest has one.
+   */
+  guestAllergies?: string[]
   covers: TableBookingSheetPreorderCover[]
   /** The whole booking's add-on total, so the bill is right. Omitted when nobody ticked anything. */
   addonTotal?: TableBookingSheetPreorderAddonTotal
@@ -75,6 +88,8 @@ export interface TableBookingSheetGuestNotes {
   dietary: string[]
   /** `table_bookings.special_requirements`, the notes box on every booking form. */
   notes: string | null
+  /** "Seat 3, Sam: peanuts", from the guests' own seats. Omitted when no guest has an allergy. */
+  guestAllergies?: string[]
 }
 
 export interface TableBookingSheetData {
@@ -218,15 +233,23 @@ function guestNotesStyles(): string {
  * allergies" when the guest may have written one in the notes instead.
  */
 function renderGuestNotes(notes: TableBookingSheetGuestNotes): string {
+  const guestAllergies = notes.guestAllergies ?? []
   const lines = [
     `<p class="confidential-line confidential-allergy"><span class="confidential-key">Allergies</span>${
       notes.allergies.length
         ? notes.allergies.map((item) => escapeHtml(item)).join(' · ')
-        : notes.notes
-          ? 'None in the allergy field, read the notes below'
-          : 'None in the allergy field'
+        : guestAllergies.length
+          ? 'None in the allergy field, see the guests below'
+          : notes.notes
+            ? 'None in the allergy field, read the notes below'
+            : 'None in the allergy field'
     }</p>`,
   ]
+  if (guestAllergies.length) {
+    lines.push(
+      `<p class="confidential-line confidential-allergy"><span class="confidential-key">Guests</span>${guestAllergies.map((item) => escapeHtml(item)).join(' · ')}</p>`
+    )
+  }
   if (notes.dietary.length) {
     lines.push(
       `<p class="confidential-line"><span class="confidential-key">Dietary</span>${notes.dietary.map((item) => escapeHtml(item)).join(' · ')}</p>`
@@ -276,6 +299,7 @@ function preorderPageStyles(): string {
   .seat-course:last-child{ margin-bottom:0; }
   .seat-course-label{ display:inline-block; width:20mm; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); }
   .seat-empty{ font-size:13px; color:var(--ink-mute); margin:0; }
+  .seat-allergy{ font-weight:700; }
   .seat-withdrawn{ font-weight:600; font-size:11px; letter-spacing:.04em; margin-left:2mm; }
   .seat-note{ margin:2.6mm 0 0; padding-top:2.4mm; border-top:1px solid var(--rule); }
   .seat-note-label{ display:block; font-weight:600; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--ink-mute); margin:0 0 1.4mm; }
@@ -337,13 +361,16 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
             `<p class="seat-course"><span class="seat-course-label">${escapeHtml(course.courseLabel)}</span>${escapeHtml(course.itemName)}${course.withdrawn ? '<span class="seat-withdrawn">OFF THE MENU, ring the guest</span>' : ''}</p>`
         )
         .join('\n          ')
-    : cover.choosesOnTheDay
-      ? '<p class="seat-empty">1 course, choosing on the day</p>'
-      : '<p class="seat-empty">Nothing chosen yet</p>'
+    : '<p class="seat-empty">Nothing chosen yet</p>'
 
   const head = [cover.seatLabel, cover.tierLabel, cover.lateChange ? 'CHANGED AFTER THE CUTOFF' : null]
     .filter(Boolean)
     .join(' · ')
+
+  const allergy = cover.allergyLabel
+    ? `
+          <p class="seat-course${cover.hasAllergy ? ' seat-allergy' : ''}"><span class="seat-course-label">Allergies</span>${escapeHtml(cover.allergyLabel)}</p>`
+    : ''
 
   const note = cover.dietaryNote
     ? `
@@ -356,7 +383,7 @@ function renderPreorderCover(cover: TableBookingSheetPreorderCover): string {
   return `
         <div class="seat">
           <p class="seat-head">${escapeHtml(head)}</p>
-          ${courses}${renderCoverAddons(cover)}${note}
+          ${courses}${allergy}${renderCoverAddons(cover)}${note}
         </div>`
 }
 
@@ -394,12 +421,16 @@ function renderPreorderPage(
   // Never a bare "None recorded": allergies have mostly arrived in the booking notes, so an empty
   // allergy field says to read them, and the notes are printed right here (BK-052, D6).
   const notesText = data.guestNotes?.notes ?? null
+  const guestAllergies = preorder.guestAllergies ?? []
   const allergies = preorder.allergies.length
     ? `<p class="alerts-value">${preorder.allergies.map((item) => escapeHtml(item)).join(' · ')}</p>`
-    : notesText
-      ? '<p class="alerts-value alerts-none">None in the allergy field, read the booking notes below</p>'
-      : '<p class="alerts-value alerts-none">None in the allergy field, and no booking notes</p>'
+    : guestAllergies.length
+      ? '<p class="alerts-value alerts-none">None in the allergy field, see the guests below</p>'
+      : notesText
+        ? '<p class="alerts-value alerts-none">None in the allergy field, read the booking notes below</p>'
+        : '<p class="alerts-value alerts-none">None in the allergy field, and no booking notes</p>'
   const extra = [
+    ...guestAllergies.map((item) => `<p class="alerts-value">Guest allergy: ${escapeHtml(item)}</p>`),
     data.guestNotes?.dietary.length
       ? `<p class="alerts-value">Dietary: ${data.guestNotes.dietary.map((item) => escapeHtml(item)).join(' · ')}</p>`
       : '',

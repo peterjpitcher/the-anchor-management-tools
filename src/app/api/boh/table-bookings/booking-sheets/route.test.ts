@@ -656,7 +656,7 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
     })
 
     // BK-058: the kitchen sheet follows each guest's Christmas tier.
-    it('prints each seat tier, a 1 course seat as choosing on the day, and flags a withdrawn dish', async () => {
+    it('prints each seat tier, an empty 1 course seat as not chosen, and flags a withdrawn dish', async () => {
       preorderState.enabled = true
       preorderState.covers = [
         coverRow({ id: 'c1', ordinal: 1 }),
@@ -684,7 +684,9 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
         courses: Array<{ itemName: string; withdrawn?: boolean }>
       }>
       expect(covers.map((cover) => cover.tierLabel)).toEqual(['3 courses', '2 courses', '1 course'])
-      expect(covers[2].choosesOnTheDay).toBe(true)
+      // 1 course guests choose their main ahead since the food link release (D4): no special case.
+      expect(covers[2].choosesOnTheDay).toBeUndefined()
+      expect(covers[2].courses).toEqual([])
       expect(covers[0].courses[0].withdrawn).toBeUndefined()
       expect(covers[1].courses[0]).toEqual(expect.objectContaining({ itemName: 'Withdrawn main', withdrawn: true }))
       expect(sheet.christmasCourses).toBe('1 x 3 courses, 1 x 2 courses, 2 x 1 course')
@@ -738,6 +740,82 @@ describe('GET /api/boh/table-bookings/booking-sheets', () => {
       const preorder = lastSheets()[0].preorder
       expect(preorder?.allergies).toEqual(['Nuts', 'Shellfish'])
       expect(preorder?.covers[0].dietaryNote).toBe('No dairy please')
+    })
+
+    // Spec section 3.5: a booking that needs a pre-order prints its food page before anyone chooses.
+    it('prints a food page for a booking that needs a pre-order even when nothing is chosen', async () => {
+      preorderState.enabled = true
+      queryResult.data = [
+        makeRow({
+          id: 'b1',
+          party_size: 3,
+          booking_type: 'christmas',
+          booking_period_answer: true,
+          booking_period_requires_preorder: true,
+          christmas_course_counts: [0, 0, 1],
+        }),
+        // Declined the seasonal offer: owes nobody a choice, so no food page.
+        makeRow({
+          id: 'b2',
+          booking_reference: 'ANC-002',
+          booking_time: '20:00',
+          booking_period_answer: false,
+          booking_period_requires_preorder: true,
+        }),
+      ]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const sheets = lastSheets() as Array<Sheet & { christmasCourses?: string }>
+      const covers = sheets[0].preorder?.covers as Array<{
+        seatLabel: string
+        tierLabel?: string
+        allergyLabel?: string
+        courses: unknown[]
+      }>
+      expect(covers.map((cover) => cover.seatLabel)).toEqual(['Seat 1', 'Seat 2', 'Seat 3'])
+      expect(covers.map((cover) => cover.tierLabel)).toEqual(['Not chosen yet', 'Not chosen yet', '1 course'])
+      expect(covers.every((cover) => cover.courses.length === 0)).toBe(true)
+      expect(covers.every((cover) => cover.allergyLabel === 'Not answered, ask before serving')).toBe(true)
+      expect(sheets[0].christmasCourses).toBe('1 x 1 course, 2 not chosen yet')
+      expect(sheets[1].preorder).toBeUndefined()
+    })
+
+    it('fills the seats nobody has saved yet around the ones that have been', async () => {
+      preorderState.enabled = true
+      preorderState.covers = [coverRow({ id: 'c2', ordinal: 2, guest_name: 'Sam' })]
+      preorderState.selections = [selectionRow({ cover_id: 'c2' })]
+      queryResult.data = [
+        makeRow({ id: 'b1', party_size: 3, booking_period_answer: true, booking_period_requires_preorder: true }),
+      ]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const covers = lastSheets()[0].preorder?.covers ?? []
+      expect(covers.map((cover) => cover.seatLabel)).toEqual(['Seat 1', 'Seat 2 · Sam', 'Seat 3'])
+      expect(covers.map((cover) => cover.courses.length)).toEqual([0, 1, 0])
+    })
+
+    // Spec section 3.5: a guest's own allergy raises the booking's allergy on both pages.
+    it("carries a guest's own allergy to the food page and the booking page", async () => {
+      preorderState.enabled = true
+      preorderState.covers = [
+        coverRow({ id: 'c1', ordinal: 1, guest_name: 'Sam', has_allergies: true, allergy_detail: 'Peanuts' }),
+        coverRow({ id: 'c2', ordinal: 2, has_allergies: false }),
+      ]
+      queryResult.data = [makeRow({ id: 'b1', party_size: 2 })]
+
+      await GET(makeRequest('2026-07-16'))
+
+      const sheet = lastSheets()[0] as unknown as {
+        guestNotes?: { allergies: string[]; guestAllergies?: string[] }
+        preorder?: { guestAllergies?: string[]; covers: Array<{ allergyLabel?: string; hasAllergy?: boolean }> }
+      }
+      expect(sheet.preorder?.guestAllergies).toEqual(['Seat 1, Sam: Peanuts'])
+      expect(sheet.preorder?.covers.map((cover) => cover.allergyLabel)).toEqual(['Yes: Peanuts', 'None'])
+      expect(sheet.preorder?.covers[0].hasAllergy).toBe(true)
+      expect(sheet.guestNotes?.guestAllergies).toEqual(['Seat 1, Sam: Peanuts'])
+      expect(sheet.guestNotes?.allergies).toEqual([])
     })
 
     it('treats a null allergy column as an empty list rather than dropping the block', async () => {
