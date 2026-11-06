@@ -743,6 +743,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean
+          is_child_option: boolean
           name: string
           period_id: string
           price_gbp: number | null
@@ -758,6 +759,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_child_option?: boolean
           name: string
           period_id: string
           price_gbp?: number | null
@@ -773,6 +775,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean
+          is_child_option?: boolean
           name?: string
           period_id?: string
           price_gbp?: number | null
@@ -921,28 +924,49 @@ export type Database = {
       }
       booking_preorder_covers: {
         Row: {
+          allergy_detail: string | null
           created_at: string
           dietary_note: string | null
           guest_name: string | null
+          has_allergies: boolean | null
           id: string
+          invite_email: string | null
+          invite_reminded_at: string | null
+          invite_sent_at: string | null
+          last_saved_at: string | null
+          last_saved_by: string | null
           ordinal: number
           table_booking_id: string
           updated_at: string
         }
         Insert: {
+          allergy_detail?: string | null
           created_at?: string
           dietary_note?: string | null
           guest_name?: string | null
+          has_allergies?: boolean | null
           id?: string
+          invite_email?: string | null
+          invite_reminded_at?: string | null
+          invite_sent_at?: string | null
+          last_saved_at?: string | null
+          last_saved_by?: string | null
           ordinal: number
           table_booking_id: string
           updated_at?: string
         }
         Update: {
+          allergy_detail?: string | null
           created_at?: string
           dietary_note?: string | null
           guest_name?: string | null
+          has_allergies?: boolean | null
           id?: string
+          invite_email?: string | null
+          invite_reminded_at?: string | null
+          invite_sent_at?: string | null
+          last_saved_at?: string | null
+          last_saved_by?: string | null
           ordinal?: number
           table_booking_id?: string
           updated_at?: string
@@ -966,24 +990,34 @@ export type Database = {
       }
       booking_preorder_reminders: {
         Row: {
+          cover_id: string | null
           id: string
           kind: string
           sent_at: string
           table_booking_id: string
         }
         Insert: {
+          cover_id?: string | null
           id?: string
           kind: string
           sent_at?: string
           table_booking_id: string
         }
         Update: {
+          cover_id?: string | null
           id?: string
           kind?: string
           sent_at?: string
           table_booking_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "booking_preorder_reminders_cover_id_fkey"
+            columns: ["cover_id"]
+            isOneToOne: false
+            referencedRelation: "booking_preorder_covers"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "booking_preorder_reminders_table_booking_id_fkey"
             columns: ["table_booking_id"]
@@ -6362,6 +6396,7 @@ export type Database = {
           expires_at: string
           hashed_token: string
           id: string
+          preorder_cover_id: string | null
           private_booking_id: string | null
           table_booking_id: string | null
           waitlist_offer_id: string | null
@@ -6376,6 +6411,7 @@ export type Database = {
           expires_at: string
           hashed_token: string
           id?: string
+          preorder_cover_id?: string | null
           private_booking_id?: string | null
           table_booking_id?: string | null
           waitlist_offer_id?: string | null
@@ -6390,6 +6426,7 @@ export type Database = {
           expires_at?: string
           hashed_token?: string
           id?: string
+          preorder_cover_id?: string | null
           private_booking_id?: string | null
           table_booking_id?: string | null
           waitlist_offer_id?: string | null
@@ -6436,6 +6473,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "reminder_timing_debug"
             referencedColumns: ["booking_id"]
+          },
+          {
+            foreignKeyName: "guest_tokens_preorder_cover_id_fkey"
+            columns: ["preorder_cover_id"]
+            isOneToOne: false
+            referencedRelation: "booking_preorder_covers"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "guest_tokens_private_booking_id_fkey"
@@ -24934,6 +24978,15 @@ export type Database = {
           p_archive: boolean
           p_id: string
           p_is_active: boolean
+        }
+        Returns: Json
+      }
+      set_christmas_seat_course_v01: {
+        Args: {
+          p_course_count: number
+          p_ordinal: number
+          p_staff_override?: boolean
+          p_table_booking_id: string
         }
         Returns: Json
       }
