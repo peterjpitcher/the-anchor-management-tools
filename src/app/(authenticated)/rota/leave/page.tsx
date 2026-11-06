@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { Alert, Card, Empty, PageLayout, Section } from '@/ds';
 import { createClient } from '@/lib/supabase/server';
 import { getLeaveRequests, getHolidayUsage } from '@/app/actions/leave';
+import { getRotaSettings } from '@/app/actions/rota-settings';
 import LeaveManagerClient from './LeaveManagerClient';
 import { getRotaNavItems } from '../_shared/nav';
 import { displayName } from '@/lib/employees/display-name';
@@ -22,13 +23,14 @@ export default async function LeaveManagementPage() {
   const supabase = await createClient();
 
   // Fetch requests and employees in parallel
-  const [requestsResult, { data: employees, error: employeesError }, navItems] = await Promise.all([
+  const [requestsResult, { data: employees, error: employeesError }, navItems, rotaSettings] = await Promise.all([
     getLeaveRequests(),
     supabase
       .from('employees')
       .select('employee_id, first_name, last_name, preferred_name')
       .order('first_name'),
     getRotaNavItems(),
+    getRotaSettings(),
   ]);
 
   // A failed load shows the error, never an empty list.
@@ -86,6 +88,10 @@ export default async function LeaveManagementPage() {
             canApprove={canApprove}
             canEdit={canEdit}
             usageMap={usageMap}
+            holidayYearStart={{
+              holidayYearStartMonth: rotaSettings.holidayYearStartMonth,
+              holidayYearStartDay: rotaSettings.holidayYearStartDay,
+            }}
           />
         )}
       </Section>
