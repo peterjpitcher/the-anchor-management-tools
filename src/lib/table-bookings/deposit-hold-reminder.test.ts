@@ -310,3 +310,29 @@ describe('reminder wording renders', () => {
     expect(text).not.toContain('your booking time')
   })
 })
+
+describe('Christmas reminder wording renders (R11, the flag on since 6 November 2026)', () => {
+  it('a Christmas hold names the per-person deposit and its refund terms, with nothing broken', () => {
+    const email = buildTableBookingDepositReminderEmail({
+      firstName: 'Sam',
+      bookingReference: 'TB-XMAS9',
+      bookingDate: '2026-12-12',
+      bookingTime: '19:00:00',
+      startDateTime: '2026-12-12T19:00:00.000Z',
+      partySize: 8,
+      depositLabel: '£80.00',
+      paymentLink: 'https://l.the-anchor.pub/pay1',
+      payByIso: '2026-12-03T19:00:00.000Z',
+      isChristmas: true,
+      perPersonGbp: 10,
+      refundCutoffDays: 7,
+    })
+    assertCleanRender(email)
+    expect(email.subject).toBe('Your deposit is due by Thursday 3 December 2026 at 7pm')
+    expect(email.text).toContain("There's a £10 per person deposit, which comes off your bill.")
+    expect(email.text).toContain(
+      'Cancel up to and including 7 days before your booking date and the deposit is refunded in full. Fewer than 7 days before, it is not refunded.'
+    )
+    expect(email.text).not.toContain('Groups of 15 or more')
+  })
+})

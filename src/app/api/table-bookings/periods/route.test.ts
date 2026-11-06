@@ -26,6 +26,8 @@ const state = {
   settingsRow: { value: { value: true } } as Record<string, unknown> | null,
   settingsError: null as unknown,
   coursePolicy: null as unknown,
+  /** The table_booking_max_party_online row, as stored. */
+  partyLimitRow: { value: { value: 20 } } as Record<string, unknown> | null,
 }
 
 /** Every filter the route applies, so the test can prove the live-only query was really built. */
@@ -34,9 +36,11 @@ const calls = {
   periodFilters: [] as string[],
 }
 
-function chainFor(table: string, resolve: () => QueryResult) {
+function chainFor(table: string, resolve: (filters: unknown[][]) => QueryResult) {
   const chain: Record<string, unknown> = {}
+  const filters: unknown[][] = []
   const record = (name: string) => (...args: unknown[]) => {
+    filters.push(args)
     if (table === 'booking_periods') {
       calls.periodFilters.push(`${name}(${args.map((a) => String(a)).join(',')})`)
     }
@@ -47,9 +51,9 @@ function chainFor(table: string, resolve: () => QueryResult) {
   chain.lte = vi.fn(record('lte'))
   chain.gte = vi.fn(record('gte'))
   chain.order = vi.fn(record('order'))
-  chain.maybeSingle = vi.fn(() => Promise.resolve(resolve()))
+  chain.maybeSingle = vi.fn(() => Promise.resolve(resolve(filters)))
   // The menu query is awaited directly with no maybeSingle, so the chain must be thenable.
-  chain.then = (onFulfilled: (v: QueryResult) => unknown) => Promise.resolve(resolve()).then(onFulfilled)
+  chain.then = (onFulfilled: (v: QueryResult) => unknown) => Promise.resolve(resolve(filters)).then(onFulfilled)
   return chain
 }
 
@@ -66,7 +70,11 @@ vi.mock('@/lib/supabase/admin', () => ({
           if (table === 'booking_period_menu_items') {
             return chainFor(table, () => ({ data: state.menu, error: state.menuError }))
           }
-          return chainFor(table, () => ({ data: state.settingsRow, error: state.settingsError }))
+          return chainFor(table, (filters) =>
+            filters.some((args) => args[1] === 'table_booking_max_party_online')
+              ? { data: state.partyLimitRow, error: null }
+              : { data: state.settingsRow, error: state.settingsError }
+          )
         }),
       }
     }),
@@ -145,6 +153,7 @@ beforeEach(() => {
   state.menuError = null
   state.settingsRow = { value: { value: true } }
   state.settingsError = null
+  state.partyLimitRow = { value: { value: 20 } }
 })
 
 describe('GET /api/table-bookings/periods', () => {
@@ -210,6 +219,23 @@ describe('GET /api/table-bookings/periods', () => {
       },
     ])
     expect(json.data.deposit).toBeNull()
+  })
+
+  it('gives the online party limit beside the period limit, which for Christmas is the staff one', async () => {
+    state.period = { ...CHRISTMAS_ROW, max_party_size: 60, min_notice_hours: 192 }
+    const json = await (await GET(makeRequest('?date=2026-12-05'))).json()
+
+    expect(json.data.period.max_party_size).toBe(60)
+    expect(json.data.period.max_party_size_online).toBe(20)
+    expect(json.data.period.min_notice_hours).toBe(192)
+  })
+
+  it('reads the online limit from the setting, and falls back to the default the database uses', async () => {
+    state.partyLimitRow = { value: { value: 18 } }
+    expect((await (await GET(makeRequest('?date=2026-12-05'))).json()).data.period.max_party_size_online).toBe(18)
+
+    state.partyLimitRow = null
+    expect((await (await GET(makeRequest('?date=2026-12-05'))).json()).data.period.max_party_size_online).toBe(20)
   })
 
   it('THE TIE: a party of 16 is quoted GBP 160 once, never GBP 320', async () => {

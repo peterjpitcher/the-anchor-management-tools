@@ -253,7 +253,7 @@ describe('pre-order reminder email renders', () => {
     // which was false for every cover on two or three courses.
     expect(email.text).toContain('Every guest on three courses needs a starter, a main and a dessert chosen.')
     expect(email.text).toContain('Every guest on two courses needs a main and one other course chosen.')
-    expect(email.text).toContain('Guests on one course have nothing to pre-order.')
+    expect(email.text).toContain('Every guest on one course needs a main chosen.')
     expect(email.text).not.toContain('A starter and a dessert are optional')
     expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
     expect(email.text).toContain('Party size: 6 people')

@@ -2,14 +2,16 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
-import { getTablePaymentPreviewByRawToken } from '@/lib/table-bookings/bookings'
+import { getTablePaymentPreviewByRawToken, loadChristmasFoodDeadline } from '@/lib/table-bookings/bookings'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import { formatBookingMomentForEmail } from '@/lib/table-bookings/guest-emails'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
-import { TablePaymentClient } from './TablePaymentClient'
-import { TablePaymentSuccessPanel } from './TablePaymentSuccessPanel'
+import { TablePaymentClient, type TablePaymentCaptureResult } from './TablePaymentClient'
+import { TablePaymentSuccessPanel, type TablePaymentSuccessDetails } from './TablePaymentSuccessPanel'
 import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit'
 import {
   extractPayPalOrderAmountGbp,
@@ -148,19 +150,40 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const { data: booking } = await supabase
     .from('table_bookings')
-    .select('payment_status, paypal_deposit_order_id, is_outside_seating')
+    .select('payment_status, paypal_deposit_order_id, is_outside_seating, booking_period_id')
     .eq('id', preview.tableBookingId)
     .single()
 
   const isOutsideSeating = Boolean(booking?.is_outside_seating)
+  const isChristmas = isChristmasBookingType(preview.bookingType)
+
+  // A Christmas organiser is told the deadline for everyone's food on the success screen (spec
+  // section 2 step 2), worded in London time here. Left out when the period cannot be read.
+  let foodDeadlineLabel: string | null = null
+  if (isChristmas) {
+    const deadline = await loadChristmasFoodDeadline(supabase, {
+      id: preview.tableBookingId,
+      booking_date: preview.bookingDate,
+      booking_period_id: (booking?.booking_period_id as string | null | undefined) ?? null,
+    })
+    foodDeadlineLabel = deadline.closesAtIso ? formatBookingMomentForEmail(null, null, deadline.closesAtIso) : null
+  }
 
   // Computed once and used twice: rendered directly when the deposit is already
-  // settled, and handed to the client as its `success` prop so a capture that
-  // completes in the browser lands on the identical screen (spec F11).
-  const successContent = <TablePaymentSuccessPanel guestFirstName={guestFirstName} />
+  // settled, and handed to the client as its `success` facts so a capture that
+  // completes in the browser lands on the same panel (spec F11), naming the
+  // channel the confirmation went by.
+  const successDetails: TablePaymentSuccessDetails = {
+    guestFirstName,
+    christmas: isChristmas ? { foodDeadlineLabel } : null,
+  }
 
   if (booking?.payment_status === 'completed') {
-    return <GuestShell>{successContent}</GuestShell>
+    return (
+      <GuestShell>
+        <TablePaymentSuccessPanel {...successDetails} confirmation="earlier" />
+      </GuestShell>
+    )
   }
 
   // Create or reuse a PayPal order (only reuse if still valid on PayPal's side).
@@ -268,7 +291,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   // deposit capture (captureTableDeposit, BK-129); only the guest's wording is decided here.
   const bookingIdForCapture = preview.tableBookingId
   const expectedCurrencyForCapture = preview.currency
-  async function captureDeposit(captureOrderId: string): Promise<{ success: boolean; error?: string }> {
+  async function captureDeposit(captureOrderId: string): Promise<TablePaymentCaptureResult> {
     'use server'
     const result = await captureTableDeposit(createAdminClient(), {
       bookingId: bookingIdForCapture,
@@ -277,7 +300,15 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
       createdVia: 'guest_table_payment',
       currency: expectedCurrencyForCapture,
     })
-    if (result.ok) return { success: true }
+    if (result.ok) {
+      // The channel that actually reached the guest, so the screen never says "text" for an email.
+      // A deposit recorded by an earlier trigger claims no channel; a send that failed asks the
+      // guest to call (the sender has already logged and audited it for us).
+      return {
+        success: true,
+        confirmation: result.alreadyRecorded ? 'earlier' : (result.confirmationChannel ?? 'not_sent'),
+      }
+    }
     return { success: false, error: guestCaptureMessage(result) }
   }
 
@@ -300,7 +331,8 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         captureAction={captureDeposit}
         isOutsideSeating={isOutsideSeating}
         greeting={formatGuestGreeting(guestFirstName, 'your booking and deposit details are below.')}
-        success={successContent}
+        success={successDetails}
+        isChristmas={isChristmas}
       />
     </GuestShell>
   )

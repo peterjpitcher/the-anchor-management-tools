@@ -53,6 +53,7 @@ import {
   releaseIdempotencyClaim,
 } from '@/lib/api/idempotency'
 import { withBookingContactEmail } from '@/lib/bookings/contact-email'
+import { extendTablePaymentTokensToHold } from '@/lib/table-bookings/payment-link'
 
 // The texts' words now live in guest-texts.ts, shared with the bounce fallback. Re-exported so
 // existing importers keep working.
@@ -857,6 +858,45 @@ type DepositConfirmedBooking = {
   christmas_course_counts: number[] | null
   deposit_amount: number | string | null
   deposit_amount_locked: number | string | null
+  // Read for the Christmas version (D3): the food deadline and the deposit terms it restates.
+  booking_type?: string | null
+  booking_period_id?: string | null
+  deposit_refund_cutoff_days?: number | null
+  deposit_basis?: string | null
+  deposit_rate?: number | string | null
+}
+
+/**
+ * When a Christmas organiser's food choices close: noon London, the period's preorder_cutoff_days
+ * before the booking (getPreorderCutoff, the same rule that locks the food page). Nulls when the
+ * period cannot be read, so the message leaves the deadline out rather than guessing it.
+ */
+export async function loadChristmasFoodDeadline(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: Pick<DepositConfirmedBooking, 'id' | 'booking_date' | 'booking_period_id'>
+): Promise<{ closesAtIso: string | null; cutoffDays: number | null }> {
+  if (!booking.booking_period_id || !booking.booking_date) return { closesAtIso: null, cutoffDays: null }
+  try {
+    const { data, error } = await supabase
+      .from('booking_periods')
+      .select('preorder_cutoff_days')
+      .eq('id', booking.booking_period_id)
+      .maybeSingle()
+    const days = Number((data as { preorder_cutoff_days?: number | null } | null)?.preorder_cutoff_days)
+    if (error || !data || !Number.isInteger(days) || days < 0) {
+      logger.warn('Could not read the Christmas food deadline for a deposit confirmation', {
+        metadata: { tableBookingId: booking.id, error: error?.message ?? 'no cutoff on the period' },
+      })
+      return { closesAtIso: null, cutoffDays: null }
+    }
+    const cutoff = getPreorderCutoff({ bookingDate: booking.booking_date.slice(0, 10), preorderCutoffDays: days })
+    return { closesAtIso: cutoff.closesAt ? cutoff.closesAt.toISOString() : null, cutoffDays: days }
+  } catch (error) {
+    logger.warn('Could not read the Christmas food deadline for a deposit confirmation', {
+      metadata: { tableBookingId: booking.id, error: error instanceof Error ? error.message : String(error) },
+    })
+    return { closesAtIso: null, cutoffDays: null }
+  }
 }
 
 /**
@@ -926,7 +966,10 @@ async function sendTableBookingDepositConfirmedEmailFirst(
   try {
     const claim = await claimIdempotencyKey(supabase, claimKey, claimHash, DEPOSIT_CONFIRMED_CLAIM_TTL_HOURS)
     if (claim.state !== 'claimed') {
-      return { status: 'already_sent', channel: null, fallbackUsed: false, error: null }
+      // A settled claim records the channel that went, so the payment page can still name it.
+      const recorded = claim.state === 'replay' ? (claim.response as { channel?: unknown } | null)?.channel : null
+      const channel = recorded === 'email' || recorded === 'sms' || recorded === 'whatsapp' ? recorded : null
+      return { status: 'already_sent', channel, fallbackUsed: false, error: null }
     }
     claimed = true
   } catch (error) {
@@ -1020,9 +1063,22 @@ async function sendTableBookingDepositConfirmedEmailFirst(
       manageLinkForm = 'none'
     }
 
-    const smsBody = buildDepositConfirmedText({ booking, firstName, manageLink })
-
     const depositPaid = Number(booking.deposit_amount_locked ?? booking.deposit_amount)
+
+    // A Christmas booking's confirmation leads with choosing everyone's food (D3), so it carries
+    // the deadline and restates the deposit terms (D12). The manage link opens the food page.
+    const isChristmas = isChristmasBookingType(booking.booking_type)
+    const foodDeadline = isChristmas
+      ? await loadChristmasFoodDeadline(supabase, booking)
+      : { closesAtIso: null, cutoffDays: null }
+
+    const smsBody = buildDepositConfirmedText({
+      booking,
+      firstName,
+      manageLink,
+      foodDeadlineIso: foodDeadline.closesAtIso,
+    })
+
     const email = buildTableBookingDepositConfirmedEmail({
       firstName,
       bookingReference: booking.booking_reference,
@@ -1035,6 +1091,17 @@ async function sendTableBookingDepositConfirmedEmailFirst(
       christmasCourseSummary: christmasCourseSummary || null,
       depositPaid: Number.isFinite(depositPaid) && depositPaid > 0 ? depositPaid : null,
       manageLink,
+      christmas: isChristmas
+        ? {
+            foodDeadlineIso: foodDeadline.closesAtIso,
+            preorderCutoffDays: foodDeadline.cutoffDays,
+            perPersonGbp:
+              Number.isFinite(depositPaid) && depositPaid > 0
+                ? depositPerPersonForBooking(booking, depositPaid, partySize)
+                : null,
+            refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
+          }
+        : null,
     })
 
     const outcome = await notifyTableBookingGuestEmailFirst({
@@ -1074,6 +1141,23 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   supabase: SupabaseClient<any, 'public', any>,
   tableBookingId: string
 ): Promise<SmsSafetyMeta> {
+  return (await sendTableBookingDepositConfirmation(supabase, tableBookingId)).meta
+}
+
+/** The deposit confirmation, and which channel reached the guest (null when none is known to). */
+export type TableBookingDepositConfirmationResult = {
+  meta: SmsSafetyMeta
+  channel: 'email' | 'sms' | null
+}
+
+/**
+ * Sends the deposit confirmation and says which channel reached the guest, so the payment page
+ * names the channel it actually went by and never says "text" for an email (R11).
+ */
+export async function sendTableBookingDepositConfirmation(
+  supabase: SupabaseClient<any, 'public', any>,
+  tableBookingId: string
+): Promise<TableBookingDepositConfirmationResult> {
   const { data: booking, error: bookingError } = await supabase
     .from('table_bookings')
     .select('*')
@@ -1085,7 +1169,7 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   }
 
   if (!booking || booking.status !== 'confirmed' || !booking.customer_id) {
-    return null
+    return { meta: null, channel: null }
   }
 
   // Email first, the text as the fallback (BK-129: the text-only path behind the messaging flag
@@ -1093,9 +1177,13 @@ export async function sendTableBookingConfirmedAfterDepositSmsIfAllowed(
   const outcome = await sendTableBookingDepositConfirmedEmailFirst(supabase, booking as DepositConfirmedBooking)
   const delivered = outcome.status === 'sent' || outcome.status === 'already_sent'
   return {
-    success: delivered,
-    code: outcome.status === 'sent' ? null : outcome.status,
-    logFailure: false,
+    meta: {
+      success: delivered,
+      code: outcome.status === 'sent' ? null : outcome.status,
+      logFailure: false,
+    },
+    // WhatsApp is not a channel this message uses; it is reported as a text would be.
+    channel: delivered && outcome.channel ? (outcome.channel === 'email' ? 'email' : 'sms') : null,
   }
 }
 
@@ -1671,6 +1759,15 @@ export async function alignTablePaymentHoldToScheduledSend(
     )
   } else if (holdSyncResult.value === 0) {
     alignmentFailures.push('booking_holds_update_no_rows')
+  }
+
+  // The hold now runs to 24 hours after the delayed text goes, so the payment link in that text
+  // must too. Only when the booking's hold actually moved.
+  if (bookingSyncResult.status === 'fulfilled' && bookingSyncResult.value) {
+    await extendTablePaymentTokensToHold(supabase, {
+      tableBookingId: input.tableBookingId,
+      holdExpiresAtIso: expiresAt,
+    })
   }
 
   if (alignmentFailures.length > 0) {

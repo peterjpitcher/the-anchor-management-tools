@@ -19,7 +19,7 @@ import { GUEST } from '@/lib/brand/palette'
 import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDate } from '@/lib/dateUtils'
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { depositTermsLines } from '@/lib/table-bookings/deposit-terms'
+import { depositPurposeLine, depositRefundLine, depositTermsLines } from '@/lib/table-bookings/deposit-terms'
 
 export type TableBookingEmail = {
   subject: string
@@ -251,7 +251,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
 /**
  * What is still owed on a seasonal pre-order, from the course each guest is on.
  *
- * `isCoverComplete` is the authority: a one-course seat has nothing to choose, a two-course seat
+ * `isCoverComplete` is the authority: a one-course seat needs a main (D4), a two-course seat
  * needs a main and one other course, a three-course seat needs all three. The old wording, "a
  * starter and a dessert are optional", was true only of the one-course tier and was sent to
  * bookings that the same sweep was chasing precisely because a course was missing.
@@ -271,7 +271,8 @@ export function describePreorderCourseRequirement(courseCounts?: number[] | null
     lines.push('Every guest on two courses needs a main and one other course chosen.')
   }
   if (tiers.some((count) => count === 1)) {
-    lines.push('Guests on one course have nothing to pre-order.')
+    // Owner decision D4 (6 November 2026): 1 course is a main, chosen in advance like the rest.
+    lines.push('Every guest on one course needs a main chosen.')
   }
   return lines
 }
@@ -385,6 +386,11 @@ export function buildTableBookingDepositConfirmedEmail(
     /** Pounds, as locked at capture. Left out when unknown. */
     depositPaid?: number | null
     manageLink?: string | null
+    /**
+     * Set for a Christmas booking (owner decision D3, 6 November 2026): the email thanks the
+     * organiser for the booking and the deposit, then leads with choosing everyone's food.
+     */
+    christmas?: ChristmasDepositFacts | null
   }
 ): TableBookingEmail {
   const isOutside = Boolean(input.isOutsideSeating)
@@ -392,6 +398,10 @@ export function buildTableBookingDepositConfirmedEmail(
   const party = partySizeLabel(input.partySize)
   const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
   const highChairs = Math.max(0, Math.floor(Number(input.highChairCount ?? 0)) || 0)
+
+  if (input.christmas) {
+    return buildChristmasDepositConfirmedEmail({ ...input, christmas: input.christmas, party, moment, highChairs })
+  }
 
   return renderTableBookingEmail({
     subject: isOutside
@@ -412,6 +422,76 @@ export function buildTableBookingDepositConfirmedEmail(
     ],
     closing: input.christmasCourseSummary ? [input.christmasCourseSummary] : [],
     cta: input.manageLink ? { label: 'Manage your booking', url: input.manageLink } : undefined,
+    beforeContact: ['If you need to change anything, let us know.'],
+  })
+}
+
+/** What the Christmas deposit-received email needs beyond the booking facts. */
+export type ChristmasDepositFacts = {
+  /** When everyone's choices close (noon London, getPreorderCutoff), as an ISO instant. */
+  foodDeadlineIso: string | null
+  /** The period's preorder_cutoff_days, for the deadline when the instant is unknown. */
+  preorderCutoffDays: number | null
+  /** What the deposit was per person (GBP 10 for Christmas 2026), from the booking. */
+  perPersonGbp: number | null
+  /** The booking's own deposit_refund_cutoff_days, the promise it was sold on (D12). */
+  refundCutoffDays: number | null
+}
+
+/**
+ * The Christmas deposit-received email (spec section 2 step 2, D3). Thanks for the booking and the
+ * deposit, then "Choose everyone's food" with the organiser's manage link, the deadline and one line
+ * on reminders, then the deposit facts as D12 states them. Every sentence that needs a figure is
+ * left out rather than guessed when the figure is unknown.
+ */
+function buildChristmasDepositConfirmedEmail(
+  input: BookingFacts & {
+    depositPaid?: number | null
+    manageLink?: string | null
+    christmas: ChristmasDepositFacts
+    party: string | null
+    moment: string | null
+    highChairs: number
+  }
+): TableBookingEmail {
+  const deadline = input.christmas.foodDeadlineIso
+    ? formatBookingMomentForEmail(null, null, input.christmas.foodDeadlineIso)
+    : null
+  const cutoffDays = Number(input.christmas.preorderCutoffDays)
+  const deadlineLine = deadline
+    ? `Everyone's choices need to be in by ${deadline}.`
+    : Number.isInteger(cutoffDays) && cutoffDays > 0
+      ? `Everyone's choices need to be in by noon, ${cutoffDays} days before your booking.`
+      : null
+  const manageLink = input.manageLink?.trim() || null
+  const refund = depositRefundLine({ isChristmas: true, refundCutoffDays: input.christmas.refundCutoffDays })
+
+  return renderTableBookingEmail({
+    subject: "Thanks for booking Christmas at The Anchor: now choose everyone's food",
+    preheader: deadline ? `Choose everyone's food by ${deadline}` : "Your Christmas table is booked. Now choose everyone's food",
+    heading: "Choose everyone's food",
+    opening: [
+      `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
+        `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`,
+      "Next, choose everyone's food. Each guest needs a name, their allergies, their number of courses and their dishes. " +
+        'You can save part-way and come back, or send a guest their own link to choose.',
+      ...(deadlineLine ? [deadlineLine] : []),
+    ],
+    details: [
+      ...bookingDetailRows(input),
+      { label: 'Deposit paid', value: formatPounds(input.depositPaid) },
+      { label: 'High chair reserved', value: input.highChairs > 0 ? `x${input.highChairs}` : null },
+    ],
+    // The button sits straight after the booking details, ahead of the deposit terms.
+    cta: manageLink ? { label: "Choose everyone's food", url: manageLink } : undefined,
+    afterCta: [
+      ...(manageLink
+        ? []
+        : [`We couldn't add your food link to this email. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll send it.`]),
+      "We'll remind you if anyone's choices are still missing as the deadline gets close.",
+      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+      ...(refund ? [refund] : []),
+    ],
     beforeContact: ['If you need to change anything, let us know.'],
   })
 }
