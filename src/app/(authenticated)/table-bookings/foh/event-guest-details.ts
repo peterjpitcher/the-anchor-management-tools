@@ -59,7 +59,10 @@ export function fohEventBookingExtras(input: {
         .map((type) => ({ ticket_type_id: type.id, quantity: Number.parseInt(input.quantities?.[type.id] ?? '', 10) }))
         .filter((line) => Number.isFinite(line.quantity) && line.quantity > 0)
     : undefined
-  const rows = staffGuestRowsForSubmit(resizeStaffGuestRows(input.guestRows ?? [], seats))
+  // Guest details go only with an event that asks for each guest; every other event takes no names.
+  const rows = input.option?.guest_details_required === true
+    ? staffGuestRowsForSubmit(resizeStaffGuestRows(input.guestRows ?? [], seats))
+    : []
   const anyGiven = rows.some((row) => row.name || row.phone || Object.keys(row.answers).length > 0)
   return {
     ok: true,
