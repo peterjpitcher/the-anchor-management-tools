@@ -127,7 +127,7 @@ Data flow: server state via Supabase and the Next.js cache (`unstable_cache`, `r
 - UK bank-holiday dates: `buildConfirmedUKDates()` in `src/app/actions/calendar-notes.ts`.
 - Heavy server libraries are listed in `serverExternalPackages` (`exceljs`, `pdfkit`, `puppeteer`, `googleapis`, `officeparser`, `pdf-lib` and their transitive proxy packages) so they are not bundled.
 - The Supabase Storage public bucket host is allow-listed under `images.remotePatterns`.
-- Audit log: `logAuditEvent(params)` in `src/app/actions/audit.ts` writes to `audit_logs`; keep writers aligned with its columns (see `tasks/lessons.md`).
+- Audit log: `logAuditEvent(params)` in `src/app/actions/audit.ts` writes to `audit_logs`; keep writers aligned with its columns (see Known gotchas in `CLAUDE.md`).
 
 ## 9. Scripts and one-off operations
 

@@ -38,6 +38,10 @@ npx tsx scripts/security/assert-anon-surface.ts   # after any migration adding a
 
 Operational scripts in `scripts/` are dry-run by default; a mutation only happens when the matching `RUN_<NAME>_MUTATION=true` flag is set (helpers in `src/lib/script-mutation-safety.ts` and the `src/lib/*-safety.ts` files). Keep that pattern for any new script.
 
+Builds: a cold `next build` outruns Node's default heap on this machine and dies in the type-check phase, so run it locally as `NODE_OPTIONS=--max-old-space-size=8192 npm run build` (deliberately not in the `build` script, which Vercel also runs). Before calling a build green ahead of a deploy, run it uncached (`rm -rf .next` and the `*.tsbuildinfo` files first): incremental caches have carried a pre-edit clean result forward and Vercel then failed on a real type error a subagent had already flagged. Capture the exit code before piping output anywhere (`npm run build > build.log 2>&1; echo $?`): `$?` after a pipe belongs to `tail`, and an out-of-memory build once read as a pass. Never run a production build against the `.next` folder of a running dev server, and stop duplicate dev servers before moving that folder aside.
+
+Deploying: this app auto-deploys `main` on Vercel; the website (`OJ-The-Anchor.pub`) was a manual production deploy by the owner (recorded 12 June 2026), so a push there is not a release. Either way, "live" means the `deploy-verify` skill has shown a new Ready deployment at the pushed commit.
+
 ## Architecture in brief
 
 - `src/app/(authenticated)/` holds the staff pages; the layout calls `supabase.auth.getUser()` and `src/middleware.ts` guards everything outside its `PUBLIC_PATH_PREFIXES` list. Other groups: `(staff-portal)/portal`, `(timeclock)` (public kiosk), `(employee-onboarding)`, `(event-kiosk)`, `(feedback)`, `(dev)/guest-preview`.
@@ -57,6 +61,19 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 - **Signatures and agreements go through the shared signing feature** (`src/lib/signing/`). Anything a person must sign, accept or acknowledge (staff, customer, client or supplier) is a kind in `src/lib/signing/kinds.ts`: it is sent with `createSigningRequest`, shown on the record with `SignaturePanel` (`src/components/features/signing/`), and signed at `/sign/<token>`, in the staff portal or in person on a venue device. Never build a one-off agree box, a hand-set "signed" flag or a new signed-at column. A new document type means a new kind in the registry, a completion hook, a template (or a generator) and its tests; `tests/guards/signing.test.ts` fails on a kind that is incomplete and on any signature field outside the feature. Signed copies and the evidence trail (`signing_events`, append-only) are never edited or deleted; a change means a new version, which replaces the old one once it is signed. New template wording ships switched off and cannot be sent until the owner has filled every `[[TO CONFIRM: ...]]` gap and switched it on in Settings, Signing templates. Exceptions: table booking deposits and event tickets (paying is the agreement) and anything that needs a witness. Owner decision, 12 October 2026. One further exception: a private booking contract the customer accepted on paper or in writing is recorded by staff through `recordContractAcceptedAnotherWay` (`src/app/actions/signing-bookings.ts`), with a note of where the evidence is kept, and in no other way (owner decision, 13 October 2026).
 - Contracts must be generated for private bookings. Booking amendments, cancellations and deletions must track payment state correctly.
 - Customer-facing language must reflect current policies, not legacy ones. Brand and operational facts (hours, menu, prices, banned claims) are owned by the website repo's `docs/SSOT.md`; check it before writing customer copy or templates.
+- **Menu, dish and event names are a load-bearing interface.** The website matches dishes by regex on the name (the fish and chips page, its structured data and the gluten guards all broke when "Fish & Chips" was renamed in the database on 28 July 2026, and the half portion became the headline product). Before renaming anything customer-facing in the database: grep both repositories for the old name and for matchers over `item.name`; deploy the consuming code first, then change the data; then re-fetch the live pages and their JSON-LD. Match on an id or a shape rather than a display string where you can.
+- An event's capacity comes from its live record and booking snapshot, never from a report or a genre example.
+- OJ Projects: a client's recurring charges (OJ Projects, Clients, View, Recurring Charges) are not recurring invoice templates; check which one a question is about before giving instructions.
+- Mileage: no reimbursement for 2024 onwards had been paid as of 15 September 2026, and drivers are included in the first report (owner decisions, 15 September 2026). Keep any percentage-based historical allocation separate from verified journey-level driver attribution.
+
+## Customer-facing copy
+
+- Verify the day of the week programmatically before any message that names one; 32 SMS went out on 20 April 2026 saying Thursday for a Friday.
+- Never hang an exception off a day. Say what each day is ("from midday Tuesday to Sunday and from 4pm on Mondays"), and do not paraphrase in prose an hours table in the same email. `findVenueClosureClaims` (`src/lib/email/marketing/venueClosureClaims.ts`) warns in the campaign UI and refuses at `scheduleCampaign`; it is deliberately not in `validateMarketingContent`, which re-runs before every send and would kill a campaign approved last month.
+- Accuracy is the floor. A marketing paragraph gives the reader something to feel and a picture, not a stock-take of our nights and sittings. Operational facts go in a table and the warmth in the prose beside it; times, prices and hours are never warmed. After fact-checking, read the copy once as a hurried reader will take it.
+- The Anchor is a Greene King tenanted pub; never describe it as independent. Use neutral venue wording unless ownership is relevant.
+- The venue does have gluten-free options: keep platform-controlled dietary attributes such as OpenTable's `Gluten-free Options`. In our own copy say NGCI with the cross-contamination caveat (the website's `docs/SSOT.md`). Never remove a venue capability on a wording distinction alone.
+- Before calling two scheduled sends a clash, read the rule that decides it: round-ups carry `ignores_frequency_cap`, so they neither block nor are blocked, and the SMS promotion limits count only `PROMOTIONAL_SMS_TEMPLATE_KEYS`. Say which rule you checked.
 
 ## Integrations and external services
 
@@ -76,7 +93,7 @@ Operational scripts in `scripts/` are dry-run by default; a mutation only happen
 
 Email transport: **one provider per send, and no fallback.** `sendEmail` picks Graph or Resend once and stays with it; if that provider fails, the send fails, and nothing retries on the other. `EMAIL_PROVIDER` (`graph` or `resend`) wins; if unset, Resend is used when both `RESEND_API_KEY` and `EMAIL_FROM_ADDRESS` are set, otherwise Graph. A caller may pin a provider per send: marketing pins Resend, because it needs idempotency keys and delivery webhooks that Graph does not give us. `sendEmail(options)` in `src/lib/email/emailService.ts` takes one options object.
 
-Invoices, receipts and quotes go out as Orange Jelly Limited, never as the venue (owner decision, 28 August 2026). `src/lib/email/invoice-sender.ts` resolves that identity; see `INVOICE_EMAIL_FROM_ADDRESS` in `.env.example`.
+Invoices, receipts and quotes go out as Orange Jelly Limited, never as the venue (owner decision, 28 August 2026). `src/lib/email/invoice-sender.ts` resolves that identity; see `INVOICE_EMAIL_FROM_ADDRESS` in `.env.example`. A route test of that mailbox goes to one outside address with no copies and says which copy to press Reply on; the app's permission can send but not read, so report the reply address as unchecked rather than implied. A test email shows only what a real customer in that position would get, or labels the optional part.
 
 SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly and daily limits, and quiet hours 21:00 to 09:00 London. Kill switches are read at send time and are off unless set to `true`:
 
@@ -101,6 +118,7 @@ Never bypass these to get a message out. Treat every local run as production-cap
 - `/api` is public at the middleware level, so every route handler does its own auth: session, API key (`src/lib/api/auth.ts`, hashed keys in `api_keys` with per-key rate limits), cron bearer, webhook signature, or a signed token. Public endpoints must write with the admin client: the private-booking enquiry endpoint went dead when a route kept using the session client after anon EXECUTE was revoked (commits `80257c0f`, `df47a5ca`).
 - Public pages are the `PUBLIC_PATH_PREFIXES` list in `src/middleware.ts` (`/table-booking`, `/parking/guest`, `/timeclock`, `/invoice-portal`, `/recruitment/book`, `/sign`, `/g`, `/r`, `/m`, `/legacy-link` and others). Scope a new public page to its own prefix so the staff pages beside it stay protected.
 - Turnstile verification is skipped when `TURNSTILE_SECRET_KEY` is unset (dev and test), so production must always have it. Our own outages must never be reported to the customer as a failed bot check (commit `78553a9d`).
+- A `CREATE OR REPLACE` of a SECURITY DEFINER function restates `SECURITY DEFINER`, `SET search_path` and its grants, derived from `pg_get_functiondef()`, not from an older migration file; a bare replace silently cleared the pin twice here (`20260817150000`, then `20260913101708`, restored by `20260913110102`) and nothing failed. After applying, the proconfig-null count in the workspace Supabase rule must return 0. A revoke from `anon, authenticated` leaves a grant made to PUBLIC in place: check with `has_table_privilege` and revoke from `public` first.
 - The CSP in `next.config.mjs` allows only PayPal and Supabase as third parties; a new external script or connection needs a CSP change or it is blocked silently.
 
 ## Database and migrations
@@ -109,6 +127,7 @@ Never bypass these to get a message out. Treat every local run as production-cap
 - Anything destined for production goes through the `prod-migrate` skill; drafting and reviewing are separate from applying, and applying needs the owner's explicit go-ahead every time.
 - Query the live schema and check dependent views before touching a table (workspace rule); views freeze their column lists.
 - Regenerate `src/types/database.generated.ts` in the same change as a migration (`npx supabase gen types typescript --project-id tfcasgxopxegwrabvwat --schema public`). The guard `tests/guards/query-columns.test.ts` checks every column a `.from('<table>')` query filters on, selects or writes against that file, so a column the table lacks fails the suite instead of returning a 400 in production, and so do stale types.
+- The Postgres traps that have bitten this repo are listed in the workspace rule `.claude/rules/supabase.md`: `db push --dry-run` runs nothing (validate inside `BEGIN ... ROLLBACK`; a column named `window` passed the dry run and would have failed the push), `CREATE OR REPLACE` clears `search_path`, PUBLIC grants survive a revoke from named roles, functions do not block a DROP, `RETURN QUERY` needs casts, and a CHECK passes on NULL. Smoke-test every new function with a real `select` after applying.
 
 ## Known gotchas (each has bitten us)
 
@@ -119,8 +138,21 @@ Never bypass these to get a message out. Treat every local run as production-cap
 - **Production webpack cache is disabled** in `next.config.mjs` because builds intermittently emitted server chunks with stale paths. Do not re-enable it for speed.
 - **Assets read from `public/` at runtime** need an `outputFileTracingIncludes` entry in `next.config.mjs` (the recruitment PDFs do this for the logo) or the serverless bundle ships without them.
 - **Vitest runs in `Europe/London`.** Assertions built from host-local dates pass in London and fail elsewhere; build them with `dateUtils`.
-- **`tasks/lessons.md`** holds the rest (verify the day of the week before any customer message, serialise provider errors field by field, keep audit-log writers aligned with `audit_logs`, grep `tests/` too when deleting a module). Read it at session start.
+- **Views freeze their columns.** `private_bookings_with_details` has no `invoice_id`; mock rows hid it and detail-only smoke checks missed the list failure. Read invoice identity from the payments base table, and after a deploy check list pages, filters and messages as well as detail pages.
+- **`rota_shifts` inflates a naive no-show count.** `status='sick'`, `status='cancelled'` and open shifts (`is_open_shift=true`, `employee_id` NULL) are not people who failed to turn up; filter to `status='scheduled' AND is_open_shift=false AND employee_id IS NOT NULL`. A figure that contradicts the owner's knowledge of his own business means the query is wrong: re-run a subagent's aggregate yourself before presenting it.
+- **Multi-state RPC wrappers gate on `state`, never on payload presence.** The `customer_conflict` response carries the existing `booking_id`, and a null-check on it mutated a live booking on the first live table booking. Test the "customer already holds an active booking" path before shipping any booking flow; it is the commonest real retry.
+- **A reconcile generator that deliberately leaves some items out of its desired set** (floating checklist tasks with an open instance) must skip them in its retract step too, or a re-run deletes live data. Never call a job safe to retry until a literal second run has been traced.
+- **Component tests race auto-selection.** Wait for the component's own selection to land (`waitFor` on the loader call) before clicking something that changes it; anchor async assertions with `findBy*`, and scope an absence assertion inside the container that must be open. Raising a `waitFor` timeout hides the race.
+- **Serialise provider errors field by field** (`code`, `message`, `details`, `hint` for Supabase; the enumerable fields for PayPal and Twilio). `JSON.stringify(error)` hides them.
+- **Audit-log writers:** before touching `audit_logs` columns, grep every `from('audit_logs').insert(` and update them in the same change.
+- **Deleting a module:** grep `src/`, `scripts/` and `tests/` (a test is an importer) and run `npm test`; `tsc --noEmit` skips the tests tree.
+- **A styling pass that swaps a raw control for a DS component** gets a render test against the HEAD version: behaviour changes hide in that swap. Register every new token name in `cn()` (`extendTailwindMerge` in `src/lib/utils.ts`) or tailwind-merge drops it. Sidebar and brand decisions are in `docs/standards/UI_UX.md`.
 - **Test against reality.** Do not assume code is correct because it exists; trace the actual logic, and check Supabase logs, Vercel deployment logs and the browser console before diagnosing.
+- **`tasks/lessons.md`** holds corrections from the last month or so. Read it at session start; a lesson that has held for a month moves into this file or `docs/standards/` and leaves it.
+
+## Specs and reviews
+
+When the owner answers a specification review, fold the decisions into one self-contained handoff; never a review plus a separate addendum. Finding-level review checks each claim in isolation and misses one section contradicting another, so before calling a spec buildable, walk one object (an instance, a missed task, a rollback) through the whole document and check every section agrees about it.
 
 ## Receipt operations
 
