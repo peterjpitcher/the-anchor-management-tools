@@ -77,7 +77,7 @@ describe('table booking confirmation email renders', () => {
     expect(email.text).toContain("We need everyone's food choices before your booking.")
     expect(email.text).toContain('Every guest on three courses needs a starter, a main and a dessert chosen.')
     expect(email.text).toContain('Every guest on two courses needs a main and one other course chosen.')
-    expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+    expect(email.text).toContain("Everyone's food choices are needed by noon, 7 days before your booking.")
     expect(email.text).toContain('For this booking that is Saturday 28 November 2026 at 12pm.')
     // The button is named for the job, as the text is.
     expect(email.text).toContain('Choose your food: https://l.the-anchor.pub/food1')
@@ -246,7 +246,7 @@ describe('pre-order chase email renders', () => {
     expect(email.text).toContain(`Date: ${expectedLongDate(bookingDate)}`)
     expect(email.text).toContain(`Time: ${time}`)
     expect(email.text).not.toContain('A starter and a dessert are optional')
-    expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+    expect(email.text).toContain("Everyone's food choices are needed by noon, 7 days before your booking.")
   })
 })
 

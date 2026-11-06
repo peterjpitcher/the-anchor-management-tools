@@ -291,7 +291,7 @@ export function describePreorderDeadline(input: {
   const lines: string[] = []
 
   if (Number.isFinite(days) && days > 0) {
-    lines.push(`Two and three courses need everyone's choices ${days} days before your booking.`)
+    lines.push(`Everyone's food choices are needed by noon, ${days} days before your booking.`)
   }
   if (closesAt) {
     lines.push(`For this booking that is ${closesAt}.`)

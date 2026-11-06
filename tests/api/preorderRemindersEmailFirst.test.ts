@@ -255,7 +255,7 @@ describe('pre-order reminder email renders', () => {
     expect(email.text).toContain('Every guest on two courses needs a main and one other course chosen.')
     expect(email.text).toContain('Every guest on one course needs a main chosen.')
     expect(email.text).not.toContain('A starter and a dessert are optional')
-    expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+    expect(email.text).toContain("Everyone's food choices are needed by noon, 7 days before your booking.")
     expect(email.text).toContain('Party size: 6 people')
     expect(email.text).toContain('Prefer to do it over the telephone? Ring us on 01753 682707.')
     expect(email.html).toContain('href="https://l.the-anchor.pub/food1"')

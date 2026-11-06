@@ -170,7 +170,7 @@ describe('the booking notice channels', () => {
     // The text already said "Choose your food"; the email now says it too, and says by when.
     expect(notice.sms?.body).toContain('Choose your food:')
     expect(notice.email?.text).toContain('Choose your food: https://l.the-anchor.pub/m1')
-    expect(notice.email?.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+    expect(notice.email?.text).toContain("Everyone's food choices are needed by noon, 7 days before your booking.")
     expect(notice.email?.text).toContain('Every guest on three courses needs a starter, a main and a dessert chosen.')
   })
 
