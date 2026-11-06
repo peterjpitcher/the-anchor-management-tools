@@ -23,16 +23,19 @@ export default async function FeedbackLandingPage({ searchParams }: FeedbackLand
       <GuestIntro
         script="Stanwell Moor Village"
         title="How was your visit with us?"
-        lead="Good or bad, we'd like to hear about it. It only takes a moment."
+        lead="We read everything. You can leave a public Google review, or send feedback straight to the team."
       />
 
+      {/* Two equal choices for every guest: same variant, same size, and no
+          sentiment question first, so the page never steers anyone towards or
+          away from Google (Google's policy bans selectively asking for reviews). */}
       <div className="flex w-full flex-col gap-3">
-        <GuestButton as="a" href={GOOGLE_REVIEW_URL} variant="primary" size="lg" fullWidth>
+        <GuestButton as="a" href={GOOGLE_REVIEW_URL} variant="outline" size="lg" fullWidth>
           Leave a Google review
         </GuestButton>
 
         <GuestButton as="link" href={tellUsHref} variant="outline" size="lg" fullWidth>
-          Tell us privately instead
+          Send us private feedback
         </GuestButton>
       </div>
     </GuestShell>

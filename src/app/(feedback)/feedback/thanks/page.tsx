@@ -1,7 +1,7 @@
 import {
   GUEST_SCRIPT_CLASS,
-  GuestButton,
   GuestIntro,
+  GuestLink,
   GuestShell,
   GuestStatusMark,
 } from '@/components/features/guest'
@@ -18,12 +18,13 @@ export default function FeedbackThanksPage() {
 
       <GuestIntro
         title="Thank you"
-        lead="The team will look into this. If you left your details and ticked the box, we'll be in touch. You can also leave a Google review if you'd like."
+        lead="The team will look into this. If you left your details and ticked the box, we'll be in touch."
       />
 
-      <GuestButton as="a" href={GOOGLE_REVIEW_URL} variant="outline" size="lg" fullWidth>
-        Leave a Google review
-      </GuestButton>
+      {/* Someone who chose the private form is still offered the public review. */}
+      <p className="text-center font-anchor-body text-guest-body text-guest-text-muted">
+        <GuestLink href={GOOGLE_REVIEW_URL}>You&apos;re also welcome to leave a public Google review</GuestLink>
+      </p>
 
       {/* The locality line, as on /feedback. Nowhere else uses the script. */}
       <p className={GUEST_SCRIPT_CLASS}>Where everyone&apos;s welcome</p>

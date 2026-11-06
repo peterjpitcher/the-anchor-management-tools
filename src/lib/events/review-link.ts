@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-// Public review funnel short link — asks "How was your visit?" then routes happy
-// guests to Google and unhappy guests to a private feedback form. All review asks
-// point here so we catch problems before they become public reviews.
+// Public feedback page short link. It offers every guest the same two choices,
+// leave a Google review or send private feedback, without asking how the visit
+// went first. Every review ask points here, never straight at Google.
 export const FEEDBACK_FUNNEL_URL = 'https://l.the-anchor.pub/feedback'
 
 const FALLBACK_REVIEW_URL = FEEDBACK_FUNNEL_URL
@@ -29,8 +29,9 @@ function pickStringValue(value: unknown): string | null {
 
 // Single source of truth for the review-ask destination used in SMS and
 // redirects. Despite the legacy setting name, `system_settings.google_review_link`
-// currently points at the feedback funnel above — do not "correct" it back to a
-// Google URL, or the funnel is silently bypassed for every consumer.
+// currently points at the feedback page above. Do not "correct" it to a Google
+// URL: every review ask must go through that page, which offers private feedback
+// alongside Google.
 export async function getGoogleReviewLink(
   supabase: SupabaseClient<any, 'public', any>
 ): Promise<string> {
