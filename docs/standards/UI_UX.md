@@ -35,6 +35,15 @@ The FOH manager iPad kiosk (`/table-bookings/foh` signed in as the manager kiosk
 - Settings tiles come from `buildSettingsTileGroups` in `settings/_shared/tiles.ts`. A tile shows only when the user has the same permission its page checks, so no tile leads to the Unauthorised page; a new tile names that permission there.
 - Back navigation: `backButton` on every page below its section's top level: detail pages and their tabs, new and edit pages, sub-areas with their own tab row (Private Bookings Settings), and the pages you drill into from Settings. It is labelled "Back to <Parent>" and points at the direct parent. No back button on a section's top-level pages, whether or not they have a tab row. No breadcrumbs anywhere. **(guard)**
 
+### Sidebar and brand (owner decisions, 19 and 20 September 2026)
+
+- The application is Orange Jelly's. The complete Orange Jelly logo fills the expanded sidebar width (`src/ds/shell/Sidebar.tsx`) and the application titles are Orange Jelly's. Never pair the icon with The Anchor name; venue names stay on operational records and guest content.
+- Orange is the dominant application colour, not an active accent on a dark rail. Navigation text and icons are white wherever their background is orange; dark foregrounds only on the pale selected rows and badges.
+- The sidebar expands on hover and collapses on mouse-out. No pin control, no navigation search and no shortcut customisation: the standard menu, in the production group order. A pin preference saved by an earlier build must not hold it open.
+- Collapsed rail: icons centred, with room to breathe. Expanded: icon-and-label rows left aligned. Numeric badges need an explicit display rule when expanded, because restoring hidden labels with `display: revert` overrides the badge flex layout too. Check both states visually before reporting an alignment fix.
+- Dense record screens (private bookings) do not stack a padded Section around a padded Card; section headings sit close to their cards.
+- After a branch switch, check the stylesheet the dev server actually serves in a signed-in browser: a new shell has rendered against stale CSS while the Vite fixture passed.
+
 ### Header actions
 
 - Page-level actions go in `headerActions`: `size="sm"`, secondary actions first, the primary action last. The main "New X" button is always here, never in the body.
