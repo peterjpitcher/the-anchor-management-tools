@@ -13,6 +13,7 @@ import type { RotaSettings } from '@/app/actions/rota-settings';
 import {
   countAllowanceDays,
   countRequestDays,
+  formatHolidayYear,
   getHolidayYear,
 } from '@/lib/leave/working-days';
 import type { EmployeeLeaveDay } from '@/app/actions/leave';
@@ -45,10 +46,6 @@ function formatDate(iso: string) {
   return formatDateInLondon(iso, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
-function yearLabel(year: number) {
-  return `${year}/${String(year + 1).slice(2)}`;
-}
-
 export default function EmployeeHolidaysTab({
   employeeId,
   canCreateLeave,
@@ -61,6 +58,7 @@ export default function EmployeeHolidaysTab({
 }: EmployeeHolidaysTabProps) {
   const { holidayYearStartMonth, holidayYearStartDay, defaultHolidayDays } = rotaSettings;
   const allowance = paySettings?.holiday_allowance_days ?? defaultHolidayDays;
+  const yearLabel = (year: number) => formatHolidayYear(year, holidayYearStartMonth, holidayYearStartDay);
 
   const currentYear = getHolidayYear(getTodayIsoDate(), holidayYearStartMonth, holidayYearStartDay);
   const [selectedYear, setSelectedYear] = useState(currentYear);

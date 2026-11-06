@@ -86,6 +86,7 @@ describe('the rota leave manager', () => {
         canApprove
         canEdit
         usageMap={{}}
+        holidayYearStart={{ holidayYearStartMonth: 1, holidayYearStartDay: 1 }}
       />,
     )
     // The list opens on pending requests; these are approved.

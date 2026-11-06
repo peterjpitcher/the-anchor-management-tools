@@ -95,3 +95,17 @@ export function getHolidayYearBounds(
 
   return { startDate, endDate };
 }
+
+/**
+ * How a holiday year is named on screen. A year that starts on 1 January is a calendar year,
+ * so it reads "2026"; any other start spans two calendar years and reads "2026/27". The
+ * number passed in is always the calendar year the holiday year starts in.
+ */
+export function formatHolidayYear(
+  holidayYear: number,
+  startMonth: number,
+  startDay: number,
+): string {
+  if (startMonth === 1 && startDay === 1) return String(holidayYear);
+  return `${holidayYear}/${String(holidayYear + 1).slice(2)}`;
+}

@@ -28,7 +28,7 @@ const request = {
   updated_at: '2026-06-24T09:00:00.000Z',
 }
 
-function renderManager() {
+function renderManager(holidayYearStart = { holidayYearStartMonth: 1, holidayYearStartDay: 1 }) {
   return render(
     <LeaveManagerClient
       initialRequests={[request]}
@@ -36,6 +36,7 @@ function renderManager() {
       canApprove
       canEdit
       usageMap={{ [`${request.employee_id}:2026`]: { count: 4, allowance: 28 } }}
+      holidayYearStart={holidayYearStart}
     />,
   )
 }
@@ -84,6 +85,23 @@ describe('LeaveManagerClient A-045', () => {
 
     expect(screen.getByText('24 Jun 2026')).toBeInTheDocument()
     expect(screen.queryByText(/Invalid Date/)).not.toBeInTheDocument()
+  })
+
+  it('names a 1 January holiday year by its single year', () => {
+    renderManager()
+
+    fireEvent.click(screen.getByText('Alex Rowe'))
+
+    expect(screen.getByText('Allowance used (2026)')).toBeInTheDocument()
+    expect(screen.queryByText(/2026\/27/)).not.toBeInTheDocument()
+  })
+
+  it('names a holiday year that crosses new year by both years', () => {
+    renderManager({ holidayYearStartMonth: 4, holidayYearStartDay: 6 })
+
+    fireEvent.click(screen.getByText('Alex Rowe'))
+
+    expect(screen.getByText('Allowance used (2026/27)')).toBeInTheDocument()
   })
 
   it('words the status filter exactly as the status badges', () => {
