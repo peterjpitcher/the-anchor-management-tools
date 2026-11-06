@@ -72,7 +72,7 @@ vi.mock('@/lib/table-bookings/preorder', async (importOriginal) => {
   return {
     PREORDER_BOOKER_REMINDER_DAYS: 10,
     isPreorderEnabled: vi.fn(async () => true),
-    decidePreorderChases: vi.fn(() => ['booker_reminder']),
+    decideLegacyPreorderChases: vi.fn(() => ['booker_reminder']),
     describePreorderGaps: vi.fn(() => '2 main courses'),
     loadPreorderOrder: vi.fn(async (_db: unknown, tableBookingId: string) => ({
       tableBookingId,

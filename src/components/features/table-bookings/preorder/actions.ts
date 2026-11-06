@@ -115,7 +115,7 @@ export async function saveSeasonalPreorderCovers(
     }
 
     for (const cover of covers) {
-      await savePreorderCover(gate.admin, cover)
+      await savePreorderCover(gate.admin, { ...cover, actor: { savedBy: 'staff' }, tableBookingId })
     }
 
     await logAuditEvent({

@@ -355,6 +355,8 @@ async function persistPreorderSafe(
     for (const [index, entry] of entries.entries()) {
       await savePreorderCover(supabase, {
         coverId: covers[index].id,
+        // The booking-time payload is the organiser's own choices, sent with their booking.
+        actor: { savedBy: 'organiser' },
         guestName: entry.guest_name ?? null,
         dietaryNote: entry.dietary_note ?? null,
         // Every course is named on every seat so that an omitted course is

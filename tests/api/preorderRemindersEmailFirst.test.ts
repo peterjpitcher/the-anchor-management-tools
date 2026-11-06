@@ -35,7 +35,7 @@ vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
 vi.mock('@/lib/table-bookings/preorder', () => ({
   PREORDER_BOOKER_REMINDER_DAYS: 10,
   isPreorderEnabled: vi.fn(async () => true),
-  decidePreorderChases: vi.fn(() => ['booker_reminder']),
+  decideLegacyPreorderChases: vi.fn(() => ['booker_reminder']),
   describePreorderGaps: vi.fn(() => '2 main courses'),
   getPreorderCompleteness: vi.fn(() => ({ complete: false })),
   getPreorderCutoff: vi.fn(() => ({ closed: false })),
@@ -264,8 +264,8 @@ describe('pre-order reminder email renders', () => {
 // tells them to record what the guest says on the booking rather than only to take it by phone.
 describe('pre-order manager escalation', () => {
   it('tells the manager to record the choices on the booking, where they are marked as late', async () => {
-    const { decidePreorderChases } = await import('@/lib/table-bookings/preorder')
-    vi.mocked(decidePreorderChases).mockReturnValueOnce(['manager_escalation'])
+    const { decideLegacyPreorderChases } = await import('@/lib/table-bookings/preorder')
+    vi.mocked(decideLegacyPreorderChases).mockReturnValueOnce(['manager_escalation'])
     buildDb()
 
     const payload = await runSweep()

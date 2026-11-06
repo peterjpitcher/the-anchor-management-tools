@@ -6,12 +6,13 @@
  * reminder and the period's cutoff has come round. An incomplete order never cancels a booking. It
  * becomes a telephone call, which is exactly how the pub handles it today.
  *
- * WHICH CHASES ARE DUE IS NOT DECIDED HERE. `decidePreorderChases` in the shared library owns it,
+ * WHICH CHASES ARE DUE IS NOT DECIDED HERE. `decideLegacyPreorderChases` in the shared library owns
+ * it (the old two-step rule; the reminder ladder in `decidePreorderChases` replaces it in a later change),
  * including the rule that stops the manager escalation riding along with the booker's first reminder.
  * This route reads the ledger, asks, and sends.
  *
- * THE LEDGER IS THE IDEMPOTENCY. `booking_preorder_reminders` has a unique constraint on
- * (table_booking_id, kind), so the row is claimed BEFORE anything is sent and a duplicate key means
+ * THE LEDGER IS THE IDEMPOTENCY. `booking_preorder_reminders` has a unique index on
+ * (table_booking_id, kind) for booking-level rows, so the row is claimed BEFORE anything is sent and a duplicate key means
  * somebody already chased. There is deliberately no second mechanism: two crons racing, or one cron
  * running twice, both lose the race at the database and send nothing.
  *
@@ -35,7 +36,7 @@ import { jobQueue } from '@/lib/unified-job-queue'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { buildGuestShortLink } from '@/lib/guest/guest-short-link'
 import {
-  decidePreorderChases,
+  decideLegacyPreorderChases,
   describePreorderGaps,
   getPreorderCompleteness,
   getPreorderCutoff,
@@ -308,7 +309,7 @@ export async function GET(request: NextRequest) {
         closesAtIso: cutoff.closesAt ? cutoff.closesAt.toISOString() : null,
       }
 
-      const due: PreorderReminderKind[] = decidePreorderChases({
+      const due: PreorderReminderKind[] = decideLegacyPreorderChases({
         daysUntilBooking: days,
         cutoffDays,
         bookerReminderSentOn: sentOn.get(`${booking.id}:booker_reminder`) ?? null,

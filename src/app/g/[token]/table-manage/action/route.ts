@@ -383,7 +383,7 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
       // save because of it would lose the choices the guest did make.
       if (!cover) continue
 
-      const input: SavePreorderCoverInput = { coverId: cover.id }
+      const input: SavePreorderCoverInput = { coverId: cover.id, actor: { savedBy: 'organiser' } }
       let changed = false
 
       const nameField = formData.get(`seat_${ordinal}_name`)

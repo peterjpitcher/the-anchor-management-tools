@@ -197,9 +197,9 @@ describe('PreorderSection', () => {
           partySize: 4,
           courseCounts: [3, 2, 1, 3],
           covers: [
-            cover({ id: 'cover-1', ordinal: 1, guestName: null, courseCount: 3, selections: [selection({ course: 'main' })] }),
-            cover({ id: 'cover-2', ordinal: 2, guestName: null, courseCount: 2, selections: [selection({ course: 'main' })] }),
-            cover({ id: 'cover-3', ordinal: 3, guestName: null, courseCount: 1, selections: [] }),
+            cover({ id: 'cover-1', ordinal: 1, guestName: 'Fixture guest 1', hasAllergies: false, courseCount: 3, selections: [selection({ course: 'main' })] }),
+            cover({ id: 'cover-2', ordinal: 2, guestName: 'Fixture guest 2', hasAllergies: false, courseCount: 2, selections: [selection({ course: 'main' })] }),
+            cover({ id: 'cover-3', ordinal: 3, guestName: 'Fixture guest 3', hasAllergies: false, courseCount: 1, selections: [selection({ course: 'main' })] }),
             // Seat 4 has no cover row yet: its tier still comes from the booking.
           ],
         },
@@ -250,7 +250,7 @@ describe('PreorderSection', () => {
       expect(
         screen.getByText(
           'Still to choose: Seat 1 needs a starter and a dessert. Seat 2 needs a starter or a dessert. ' +
-            'Seat 4 needs a starter, a main and a dessert.'
+            'Seat 4 needs a name, their allergies, a starter, a main and a dessert.'
         )
       ).toBeInTheDocument()
     })

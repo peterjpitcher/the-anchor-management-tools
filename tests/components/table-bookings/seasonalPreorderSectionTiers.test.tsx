@@ -29,7 +29,9 @@ function seat(ordinal: number, courseCount: 1 | 2 | 3 | null, selections: Preord
     id: `cover-${ordinal}`,
     tableBookingId: 'booking-1',
     ordinal,
-    guestName: null,
+    // Named, with the allergy question answered, so the badges are about courses alone.
+    guestName: `Fixture guest ${ordinal}`,
+    hasAllergies: false,
     dietaryNote: null,
     courseCount,
     selections: selections.map((entry) => ({ ...entry, coverId: `cover-${ordinal}` })),
@@ -93,7 +95,9 @@ describe('SeasonalPreorderSection with Christmas tiers', () => {
 
     expect(
       screen.getByText(
-        'Seat 1 (3 courses) needs a starter and a dessert. Seat 2 (2 courses) needs a starter or a dessert.',
+        // A 1 course seat now owes its main too (D4); the card's own 1 course copy is rebuilt separately.
+        'Seat 1 (3 courses) needs a starter and a dessert. Seat 2 (2 courses) needs a starter or a dessert. ' +
+          'Seat 3 (1 course) needs a main.',
       ),
     ).toBeInTheDocument()
   })

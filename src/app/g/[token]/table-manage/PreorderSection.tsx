@@ -32,7 +32,7 @@ import {
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderAddonSummary,
   type PreorderCourse,
-  type PreorderCourseCount,
+  type PreorderSeatCourseCount,
   type PreorderCover,
 } from '@/types/preorders'
 import { PREORDER_SEAT_BLOCK_CLASS } from './formStyles'
@@ -124,14 +124,14 @@ function addonCountPhrase(count: number): string {
  * What a seat on this tier chooses, shown under the seat's title. Null for a seat with no tier
  * recorded, which keeps the booking's old wording.
  */
-function tierInstruction(courseCount: PreorderCourseCount | null): string | null {
+function tierInstruction(courseCount: PreorderSeatCourseCount | null): string | null {
   if (courseCount === 3) return '3 courses: choose a starter, a main and a dessert.'
   if (courseCount === 2) return '2 courses: choose a main, plus a starter or a dessert.'
   return null
 }
 
 /** The label above one course's dropdown. Only an untiered seat calls a course optional. */
-function courseLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+function courseLabel(course: PreorderCourse, courseCount: PreorderSeatCourseCount | null): string {
   if (courseCount !== null || course === 'main') return PREORDER_COURSE_LABELS[course]
   return `${PREORDER_COURSE_LABELS[course]} (optional)`
 }
@@ -141,7 +141,7 @@ function courseLabel(course: PreorderCourse, courseCount: PreorderCourseCount | 
  * 2 course seat leaves one of the starter and the dessert empty, so "None, thank you" is the right
  * answer for that one.
  */
-function emptyOptionLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+function emptyOptionLabel(course: PreorderCourse, courseCount: PreorderSeatCourseCount | null): string {
   if (course === 'main' || courseCount === 3) return 'Please choose'
   return 'None, thank you'
 }

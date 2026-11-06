@@ -791,8 +791,8 @@ export function buildTableBookingCancelledEmail(
 /** One seat on the booker's copy of their choices. Seat numbers only: no names, no dietary notes. */
 export type PreorderChoicesCopySeat = {
   ordinal: number
-  /** The seat's Christmas tier, or null when the booking recorded none. */
-  courseCount: 1 | 2 | 3 | null
+  /** The seat's Christmas tier, 0 when not chosen yet, or null when the booking recorded none. */
+  courseCount: 0 | 1 | 2 | 3 | null
   /** In menu order. `withdrawn` marks a dish since taken off the menu. */
   courses: Array<{ courseLabel: string; itemName: string; withdrawn?: boolean }>
   addons: string[]

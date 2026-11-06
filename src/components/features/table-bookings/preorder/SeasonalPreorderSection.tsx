@@ -63,7 +63,7 @@ import {
   PREORDER_COURSE_LABELS,
   PREORDER_SELECTION_COURSE_LABELS,
   type PreorderCourse,
-  type PreorderCourseCount,
+  type PreorderSeatCourseCount,
   type PreorderCover,
   type PreorderOrder,
   type PreorderSelectionCourse,
@@ -168,9 +168,20 @@ function toDraftCover(cover: PreorderCover): DraftCover {
  * What the seat still needs, judged on what is typed rather than what is saved, so the badge moves as
  * staff pick. Null when the seat has everything its tier pays for.
  */
-function draftMissingCourses(draft: DraftCover, courseCount: PreorderCourseCount | null): string | null {
+function draftMissingCourses(
+  draft: DraftCover,
+  cover: Pick<PreorderCover, 'hasAllergies' | 'allergyDetail'>,
+  courseCount: PreorderSeatCourseCount | null,
+): string | null {
   const selections = PREORDER_COURSES.filter((course) => Boolean(draft.choices[course])).map((course) => ({ course }))
-  return describeCoverMissingCourses({ selections, courseCount })
+  // The name as typed; the allergy answer as saved, since this screen does not edit it yet.
+  return describeCoverMissingCourses({
+    selections,
+    courseCount,
+    guestName: draft.guestName,
+    hasAllergies: cover.hasAllergies ?? null,
+    allergyDetail: cover.allergyDetail ?? null,
+  })
 }
 
 /** The card's subtitle: the tier rule when the booking recorded tiers, the old rule when it did not. */
@@ -569,7 +580,7 @@ export default function SeasonalPreorderSection({
                   </li>
                 )
               }
-              const missing = draftMissingCourses(coverDraft, courseCount)
+              const missing = draftMissingCourses(coverDraft, cover, courseCount)
               // A 2 course seat with a starter AND a dessert: the save refuses it, so say so here first.
               const tooManyOthers =
                 courseCount === 2 && Boolean(coverDraft.choices.starter) && Boolean(coverDraft.choices.dessert)
@@ -688,7 +699,7 @@ export default function SeasonalPreorderSection({
  * The label for one course on a seat of this tier. 3 courses needs all three; 2 courses needs a main
  * and one of the other two; a seat with no tier keeps the old rule of a main with the rest optional.
  */
-function courseSelectLabel(course: PreorderCourse, courseCount: PreorderCourseCount | null): string {
+function courseSelectLabel(course: PreorderCourse, courseCount: PreorderSeatCourseCount | null): string {
   if (course === 'main' || courseCount === 3) return `${PREORDER_COURSE_LABELS[course]} (required)`
   if (courseCount === 2) return course === 'starter' ? 'Starter (or a dessert)' : 'Dessert (or a starter)'
   return `${PREORDER_COURSE_LABELS[course]} (optional)`
@@ -709,7 +720,7 @@ function CourseSelect({
   onChange,
 }: {
   course: PreorderCourse
-  courseCount: PreorderCourseCount | null
+  courseCount: PreorderSeatCourseCount | null
   /** A 2 course seat holding a starter and a dessert: both are marked, because one must go. */
   tooManyOthers: boolean
   value: string

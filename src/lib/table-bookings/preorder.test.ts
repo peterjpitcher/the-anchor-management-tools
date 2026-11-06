@@ -68,6 +68,11 @@ function cover(ordinal: number, selections: PreorderSelection[]): PreorderCover 
   }
 }
 
+/** A seat with its name and the allergy question answered, so a test can look at the courses alone. */
+function ready<T extends PreorderCover>(seat: T): T {
+  return { ...seat, guestName: `Guest ${seat.ordinal}`, hasAllergies: false }
+}
+
 describe('isCoverComplete', () => {
   it('counts a cover with only a main as complete', () => {
     expect(isCoverComplete(cover(1, [selection('main', 'Roast turkey')]))).toBe(true)
@@ -92,19 +97,22 @@ describe('isCoverComplete', () => {
 })
 
 describe('snapshotted Christmas course completeness', () => {
-  it('exempts one course but preserves old missing-tier records', () => {
-    expect(isCoverComplete({ ...cover(1, []), courseCount: 1 })).toBe(true)
+  it('asks a 1 course seat for its main, and keeps the main-only rule on old records', () => {
+    const main = selection('main', 'Fixture main')
+    expect(isCoverComplete({ ...ready(cover(1, [])), courseCount: 1 })).toBe(false)
+    expect(isCoverComplete({ ...ready(cover(1, [main])), courseCount: 1 })).toBe(true)
     expect(isCoverComplete({ ...cover(1, []), courseCount: null })).toBe(false)
+    expect(isCoverComplete({ ...cover(1, [main]), courseCount: null })).toBe(true)
   })
   it('requires the exact chosen number of courses, including a main', () => {
     const main = selection('main', 'Fixture main')
     const starter = selection('starter', 'Fixture starter')
     const dessert = selection('dessert', 'Fixture dessert')
-    expect(isCoverComplete({ ...cover(1, [main]), courseCount: 2 })).toBe(false)
-    expect(isCoverComplete({ ...cover(1, [main, starter]), courseCount: 2 })).toBe(true)
-    expect(isCoverComplete({ ...cover(1, [starter, dessert]), courseCount: 2 })).toBe(false)
-    expect(isCoverComplete({ ...cover(1, [main, starter]), courseCount: 3 })).toBe(false)
-    expect(isCoverComplete({ ...cover(1, [main, starter, dessert]), courseCount: 3 })).toBe(true)
+    expect(isCoverComplete({ ...ready(cover(1, [main])), courseCount: 2 })).toBe(false)
+    expect(isCoverComplete({ ...ready(cover(1, [main, starter])), courseCount: 2 })).toBe(true)
+    expect(isCoverComplete({ ...ready(cover(1, [starter, dessert])), courseCount: 2 })).toBe(false)
+    expect(isCoverComplete({ ...ready(cover(1, [main, starter])), courseCount: 3 })).toBe(false)
+    expect(isCoverComplete({ ...ready(cover(1, [main, starter, dessert])), courseCount: 3 })).toBe(true)
   })
 })
 
@@ -546,32 +554,40 @@ describe('add-on money', () => {
 /**
  * BK-055: the forms, the alerts and the save follow each guest's Christmas tier. 3 courses owes a
  * starter, a main and a dessert; 2 courses owes a main plus a starter or a dessert, and never both;
- * 1 course owes nothing. A booking with no tiers recorded keeps the old main-only rule.
+ * 1 course owes a main (D4). A booking with no tiers recorded keeps the old main-only rule. The
+ * name and allergy parts of the wording are covered in preorder-food-link.test.ts.
  */
 describe('Christmas course tiers', () => {
   const starter = selection('starter', 'Fixture starter')
   const main = selection('main', 'Fixture main')
   const dessert = selection('dessert', 'Fixture dessert')
 
+  const named = { guestName: 'Fixture guest', hasAllergies: false }
+
   it('says what a 3 course seat still needs', () => {
-    expect(describeCoverMissingCourses({ selections: [main], courseCount: 3 })).toBe('a starter and a dessert')
-    expect(describeCoverMissingCourses({ selections: [starter, main], courseCount: 3 })).toBe('a dessert')
-    expect(describeCoverMissingCourses({ selections: [], courseCount: 3 })).toBe('a starter, a main and a dessert')
-    expect(describeCoverMissingCourses({ selections: [starter, main, dessert], courseCount: 3 })).toBeNull()
+    expect(describeCoverMissingCourses({ ...named, selections: [main], courseCount: 3 })).toBe('a starter and a dessert')
+    expect(describeCoverMissingCourses({ ...named, selections: [starter, main], courseCount: 3 })).toBe('a dessert')
+    expect(describeCoverMissingCourses({ ...named, selections: [], courseCount: 3 })).toBe(
+      'a starter, a main and a dessert',
+    )
+    expect(describeCoverMissingCourses({ ...named, selections: [starter, main, dessert], courseCount: 3 })).toBeNull()
   })
 
   it('says what a 2 course seat still needs, and flags a starter and a dessert together', () => {
-    expect(describeCoverMissingCourses({ selections: [main], courseCount: 2 })).toBe('a starter or a dessert')
-    expect(describeCoverMissingCourses({ selections: [dessert], courseCount: 2 })).toBe('a main')
-    expect(describeCoverMissingCourses({ selections: [], courseCount: 2 })).toBe('a main, plus a starter or a dessert')
-    expect(describeCoverMissingCourses({ selections: [main, dessert], courseCount: 2 })).toBeNull()
-    expect(describeCoverMissingCourses({ selections: [starter, main, dessert], courseCount: 2 })).toBe(
+    expect(describeCoverMissingCourses({ ...named, selections: [main], courseCount: 2 })).toBe('a starter or a dessert')
+    expect(describeCoverMissingCourses({ ...named, selections: [dessert], courseCount: 2 })).toBe('a main')
+    expect(describeCoverMissingCourses({ ...named, selections: [], courseCount: 2 })).toBe(
+      'a main, plus a starter or a dessert',
+    )
+    expect(describeCoverMissingCourses({ ...named, selections: [main, dessert], courseCount: 2 })).toBeNull()
+    expect(describeCoverMissingCourses({ ...named, selections: [starter, main, dessert], courseCount: 2 })).toBe(
       'only one of the starter and the dessert',
     )
   })
 
-  it('owes nothing on 1 course, and keeps the main-only rule with no tier', () => {
-    expect(describeCoverMissingCourses({ selections: [], courseCount: 1 })).toBeNull()
+  it('asks a 1 course seat for a main, and keeps the main-only rule with no tier', () => {
+    expect(describeCoverMissingCourses({ ...named, selections: [], courseCount: 1 })).toBe('a main')
+    expect(describeCoverMissingCourses({ ...named, selections: [main], courseCount: 1 })).toBeNull()
     expect(describeCoverMissingCourses({ selections: [], courseCount: null })).toBe('a main')
     expect(describeCoverMissingCourses({ selections: [main], courseCount: null })).toBeNull()
   })
@@ -580,7 +596,7 @@ describe('Christmas course tiers', () => {
     const order = {
       partySize: 4,
       courseCounts: [3, 2, 1, 3] as Array<1 | 2 | 3>,
-      covers: [cover(1, [main, starter]), cover(2, [main]), cover(3, [])],
+      covers: [ready(cover(1, [main, starter])), ready(cover(2, [main])), ready(cover(3, [main]))],
     }
 
     const completeness = getPreorderCompleteness(order)
@@ -590,18 +606,22 @@ describe('Christmas course tiers', () => {
     expect(completeness.seatsWithoutCover).toEqual([4])
     expect(describePreorderGaps(completeness)).toBe(
       'Seat 1 (3 courses) needs a dessert. Seat 2 (2 courses) needs a starter or a dessert. ' +
-        'Seat 4 (3 courses) needs a starter, a main and a dessert.',
+        'Seat 4 (3 courses) needs a name, their allergies, a starter, a main and a dessert.',
     )
   })
 
-  it('treats a booking as complete when every seat has its tier, 1 course seats included', () => {
+  it('treats a booking as complete only when every seat has its line, 1 course seats included', () => {
     const order = {
       partySize: 3,
       courseCounts: [3, 2, 1] as Array<1 | 2 | 3>,
-      covers: [cover(1, [starter, main, dessert]), cover(2, [main, dessert])],
+      covers: [ready(cover(1, [starter, main, dessert])), ready(cover(2, [main, dessert]))],
     }
 
-    expect(getPreorderCompleteness(order).complete).toBe(true)
+    // Seat 3 on 1 course still needs its line: a name, their allergies and a main (D4).
+    expect(getPreorderCompleteness(order).complete).toBe(false)
+    expect(
+      getPreorderCompleteness({ ...order, covers: [...order.covers, ready(cover(3, [main]))] }).complete,
+    ).toBe(true)
   })
 })
 
@@ -643,6 +663,7 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
 
     const save = savePreorderCover(fake as never, {
       coverId: 'cover-2',
+      actor: { savedBy: 'organiser' },
       guestName: 'Changed name',
       selections: [{ course: 'dessert', menuItemId: 'dessert-1' }],
     })
@@ -662,6 +683,7 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
 
     await savePreorderCover(fake as never, {
       coverId: 'cover-2',
+      actor: { savedBy: 'organiser' },
       selections: [
         { course: 'starter', menuItemId: null },
         { course: 'dessert', menuItemId: 'dessert-1' },
@@ -676,6 +698,7 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
 
     await savePreorderCover(fake as never, {
       coverId: 'cover-2',
+      actor: { savedBy: 'organiser' },
       selections: [
         { course: 'starter', menuItemId: 'starter-1' },
         { course: 'main', menuItemId: 'main-1' },
@@ -686,13 +709,24 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
     expect(heldCourses(fake)).toEqual(['dessert', 'main', 'starter'])
   })
 
-  it('refuses any course on a 1 course seat', async () => {
+  it('takes a main on a 1 course seat and refuses a starter there', async () => {
     const fake = db([3, 1, 3, 3], [])
 
+    await savePreorderCover(fake as never, {
+      coverId: 'cover-2',
+      actor: { savedBy: 'organiser' },
+      selections: [{ course: 'main', menuItemId: 'main-1' }],
+    })
+    expect(heldCourses(fake)).toEqual(['main'])
+
     await expect(
-      savePreorderCover(fake as never, { coverId: 'cover-2', selections: [{ course: 'main', menuItemId: 'main-1' }] }),
-    ).rejects.toThrow('Seat 2 is on 1 course, so there is nothing to choose in advance.')
-    expect(heldCourses(fake)).toEqual([])
+      savePreorderCover(fake as never, {
+        coverId: 'cover-2',
+        actor: { savedBy: 'organiser' },
+        selections: [{ course: 'starter', menuItemId: 'starter-1' }],
+      }),
+    ).rejects.toThrow('Seat 2 is on 1 course, so choose a main only.')
+    expect(heldCourses(fake)).toEqual(['main'])
   })
 
   it('keeps the old rule on a booking with no tiers: three courses are allowed', async () => {
@@ -700,6 +734,7 @@ describe('savePreorderCover follows the seat tier (BK-055)', () => {
 
     await savePreorderCover(fake as never, {
       coverId: 'cover-2',
+      actor: { savedBy: 'organiser' },
       selections: [
         { course: 'starter', menuItemId: 'starter-1' },
         { course: 'dessert', menuItemId: 'dessert-1' },

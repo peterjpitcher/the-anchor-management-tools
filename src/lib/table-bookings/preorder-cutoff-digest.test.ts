@@ -49,15 +49,18 @@ function day() {
         },
       ],
       booking_preorder_covers: [
-        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1, guest_name: NAME, dietary_note: NOTE, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
-        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2, guest_name: null, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
-        { id: 'c-3', table_booking_id: 'b-1', ordinal: 3, guest_name: null, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
-        { id: 'c-4', table_booking_id: 'b-1', ordinal: 4, guest_name: null, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        { id: 'c-1', table_booking_id: 'b-1', ordinal: 1, guest_name: NAME, has_allergies: false, dietary_note: NOTE, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        { id: 'c-2', table_booking_id: 'b-1', ordinal: 2, guest_name: NAME, has_allergies: false, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        { id: 'c-3', table_booking_id: 'b-1', ordinal: 3, guest_name: NAME, has_allergies: false, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        { id: 'c-4', table_booking_id: 'b-1', ordinal: 4, guest_name: NAME, has_allergies: false, dietary_note: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
       ],
       booking_preorder_selections: [
         { id: 's-1', cover_id: 'c-1', course: 'starter', menu_item_id: 'i-starter', item_name: 'Fixture starter', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
         { id: 's-2', cover_id: 'c-1', course: 'main', menu_item_id: 'i-main', item_name: 'Fixture main', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
         { id: 's-3', cover_id: 'c-2', course: 'main', menu_item_id: 'i-main', item_name: 'Fixture main', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        // Seats 3 and 4 are on 1 course, which is a main chosen in advance (D4).
+        { id: 's-4', cover_id: 'c-3', course: 'main', menu_item_id: 'i-main', item_name: 'Fixture main', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
+        { id: 's-5', cover_id: 'c-4', course: 'main', menu_item_id: 'i-main', item_name: 'Fixture main', price_gbp: null, created_at: '2026-10-20T10:00:00Z', updated_at: '2026-10-20T10:00:00Z' },
       ],
       booking_period_menu_items: [
         { id: 'i-starter', is_active: true },
@@ -110,7 +113,7 @@ describe('sendPreorderCutoffDigests', () => {
     expect(kitchen.to).toBe(PREORDER_MANAGER_EMAIL)
     expect(kitchen.subject).toBe(`Kitchen order: food choices for ${formatDateFull('2026-11-10')}`)
     expect(kitchen.text).toContain('Christmas guests: 8 (1 on 3 courses, 1 on 2 courses, 6 on 1 course choosing on the day).')
-    expect(kitchen.text).toContain('Main: Fixture main x2')
+    expect(kitchen.text).toContain('Main: Fixture main x4')
     expect(kitchen.text).toContain('Starter: Fixture starter x1')
     // b-1 is incomplete: seat 1 owes a dessert, seat 2 a starter or a dessert.
     expect(kitchen.text).toContain('TB-FIX1 (party of 4): Seat 1 (3 courses) needs a dessert. Seat 2 (2 courses) needs a starter or a dessert.')
@@ -183,7 +186,7 @@ describe('sendPreorderCutoffDigests', () => {
 
     expect(late.kitchenEmails).toBe(1)
     const [christmasKitchen] = sentEmails().filter((email) => email.to === PREORDER_MANAGER_EMAIL)
-    expect(christmasKitchen.text).toContain('Main: Fixture main x2')
+    expect(christmasKitchen.text).toContain('Main: Fixture main x4')
     expect(christmasKitchen.text).not.toContain('Tasting main')
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ idempotencyKey: 'preorder:choices-copy:b-1' }))
   })

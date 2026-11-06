@@ -8,16 +8,16 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { decidePreorderChases, getPreorderCutoff } from './preorder'
+import { decideLegacyPreorderChases, getPreorderCutoff } from './preorder'
 import { getPreorderCutoff as getPreorderCutoffFromStaffScreen } from '@/components/features/table-bookings/preorder/cutoff'
 import { resolvePreorderCutoff } from '@/app/g/[token]/table-manage/preorder-data'
 
 const TODAY = '2026-12-17'
 
-describe('decidePreorderChases', () => {
+describe('decideLegacyPreorderChases', () => {
   it('asks the booker ten days out, three days before a 7-day cutoff locks the form', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 10,
         cutoffDays: 7,
         bookerReminderSentOn: null,
@@ -30,7 +30,7 @@ describe('decidePreorderChases', () => {
 
   it('tells the manager on the next sweep, once the booker has had a day to act', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 6,
         cutoffDays: 7,
         bookerReminderSentOn: '2026-12-16',
@@ -43,7 +43,7 @@ describe('decidePreorderChases', () => {
 
   it('does not escalate on a second run of the same day as the reminder', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 7,
         cutoffDays: 7,
         bookerReminderSentOn: TODAY,
@@ -58,7 +58,7 @@ describe('decidePreorderChases', () => {
     // Booked two days out with a seven-day cutoff. The "choose here" link would open a form that
     // refuses every choice, so the booker is left alone and the manager is told on this sweep.
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 2,
         cutoffDays: 7,
         bookerReminderSentOn: null,
@@ -71,7 +71,7 @@ describe('decidePreorderChases', () => {
 
   it('never texts the booker on the cutoff day once noon has passed, which is when this cron runs', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 7,
         cutoffDays: 7,
         bookerReminderSentOn: null,
@@ -84,7 +84,7 @@ describe('decidePreorderChases', () => {
 
   it('still escalates the day after a reminder that went out while the form was open', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 1,
         cutoffDays: 7,
         bookerReminderSentOn: TODAY,
@@ -97,7 +97,7 @@ describe('decidePreorderChases', () => {
 
   it('tells only the manager on the day of the booking', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 0,
         cutoffDays: 7,
         bookerReminderSentOn: null,
@@ -110,7 +110,7 @@ describe('decidePreorderChases', () => {
 
   it('asks the booker when the reminder and the cutoff fall on the same sweep, and holds the manager back', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 7,
         cutoffDays: 7,
         bookerReminderSentOn: null,
@@ -124,7 +124,7 @@ describe('decidePreorderChases', () => {
   it('holds the escalation back when the cutoff is longer than the reminder window', () => {
     // A fourteen-day cutoff would otherwise reach the manager before the guest had been asked at all.
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 12,
         cutoffDays: 14,
         bookerReminderSentOn: null,
@@ -137,7 +137,7 @@ describe('decidePreorderChases', () => {
 
   it('never escalates a booking with no seasonal period', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 1,
         cutoffDays: null,
         bookerReminderSentOn: '2026-12-10',
@@ -150,7 +150,7 @@ describe('decidePreorderChases', () => {
 
   it('chases nothing once both have gone', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 1,
         cutoffDays: 7,
         bookerReminderSentOn: '2026-12-10',
@@ -163,7 +163,7 @@ describe('decidePreorderChases', () => {
 
   it('stays quiet until the booking is inside the reminder window', () => {
     expect(
-      decidePreorderChases({
+      decideLegacyPreorderChases({
         daysUntilBooking: 11,
         cutoffDays: 7,
         bookerReminderSentOn: null,
