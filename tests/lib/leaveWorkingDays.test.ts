@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   countAllowanceDays,
   countRequestDays,
+  formatHolidayYear,
   getHolidayYear,
   getHolidayYearBounds,
   getLeaveDates,
@@ -74,6 +75,18 @@ describe('getHolidayYearBounds', () => {
       startDate: '2026-04-06',
       endDate: '2027-04-05',
     })
+  })
+})
+
+describe('formatHolidayYear', () => {
+  it('names a 1 January holiday year by its single calendar year', () => {
+    expect(formatHolidayYear(2026, 1, 1)).toBe('2026')
+  })
+
+  it('names a holiday year that crosses new year by both years', () => {
+    expect(formatHolidayYear(2026, 4, 6)).toBe('2026/27')
+    expect(formatHolidayYear(2026, 1, 2)).toBe('2026/27')
+    expect(formatHolidayYear(2099, 9, 1)).toBe('2099/00')
   })
 })
 

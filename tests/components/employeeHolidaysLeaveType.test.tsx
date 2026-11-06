@@ -80,3 +80,35 @@ describe('EmployeeHolidaysTab leave types', () => {
     expect(document.getElementById('book-note')).toHaveAttribute('maxlength', '500')
   })
 })
+
+describe('EmployeeHolidaysTab holiday year name', () => {
+  function renderWithYearStart(holidayYearStartMonth: number, holidayYearStartDay: number) {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-06-15T10:00:00Z'))
+    return render(
+      <EmployeeHolidaysTab
+        employeeId={EMPLOYEE_ID}
+        canCreateLeave={false}
+        leaveRequests={[]}
+        leaveDays={[]}
+        paySettings={null}
+        rotaSettings={{ ...ROTA_SETTINGS, holidayYearStartMonth, holidayYearStartDay }}
+      />,
+    )
+  }
+
+  it('names a 1 January holiday year by its single year', () => {
+    renderWithYearStart(1, 1)
+
+    // The allowance summary and the request list heading both name the year.
+    expect(screen.getAllByText('Holiday year 2026')).toHaveLength(2)
+    expect(screen.queryByText(/2026\/27/)).not.toBeInTheDocument()
+  })
+
+  it('names a holiday year that crosses new year by both years', () => {
+    renderWithYearStart(4, 6)
+
+    // The allowance summary and the request list heading both name the year.
+    expect(screen.getAllByText('Holiday year 2026/27')).toHaveLength(2)
+  })
+})

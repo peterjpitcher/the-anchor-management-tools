@@ -96,3 +96,7 @@ Branch `fix/leaver-followups`, from `main` at `5913d75e6` (PR 303 merged). Follo
   37 / 25.
 - Rollback: `supabase/rollbacks/20261105163417_restamp_leave_request_holiday_year.sql` puts the 23
   back by id, only where they still hold the new year.
+
+## Holiday year labels (6 November)
+
+The owner said yes to the follow-up. The holiday year runs 1 January to 31 December, but three screens named it "2026/27": the employee Holidays tab, the rota leave page and the staff portal holiday page. All three now use one helper, `formatHolidayYear` in `src/lib/leave/working-days.ts`, which reads "2026" when the year starts on 1 January and keeps "2026/27" for any other start, so the label still makes sense if the setting ever changes. The rota leave page now reads the rota settings to know the start date. No data or database change.
