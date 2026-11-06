@@ -2087,7 +2087,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               label="New party size"
               type="number"
               min={1}
-              max={20}
+              // A staff Christmas booking can be up to christmas_staff_max_party (60, A3).
+              max={booking.booking_type === 'christmas' ? 60 : 20}
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
             />

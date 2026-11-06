@@ -10,11 +10,16 @@ const COURSE_OPTIONS = [
   { value: '3', label: '3 courses' },
 ]
 
+// Owner decision 6 November 2026: every guest, on any number of courses, chooses their food on the
+// booking's food page by the pre-order deadline, so a guest joining starts on "Choose courses".
 const COURSES_HELP =
-  'Guests on one course have nothing to pre-order. Two or three courses need food choices by the pre-order deadline.'
+  "Every guest's courses and food are chosen on the food page by the pre-order deadline. Anyone joining starts on Choose courses."
+
+/** The largest Christmas party staff can book (christmas_staff_max_party, default 60, A3). */
+const CHRISTMAS_STAFF_MAX_PARTY = 60
 
 const LATE_HELP =
-  'The pre-order deadline has passed, so this is saved as a late change. Guests can leave, or join on 1 course, but nobody can move up to more courses.'
+  'The pre-order deadline has passed, so this is saved as a late change. Guests can leave or join, but nobody can move up to more courses here. A manager can change courses in the seat editor.'
 
 const LATE_MANAGER_ONLY =
   'The pre-order deadline has passed, so only a manager can change the numbers or courses on this booking now.'
@@ -102,20 +107,20 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
     return () => controller.abort()
   }, [bookingId, onChange])
 
-  const size = Math.min(20, Math.max(0, partySize || 0))
+  const size = Math.min(CHRISTMAS_STAFF_MAX_PARTY, Math.max(0, partySize || 0))
   const late = loaded?.deadline === 'closed'
   const recordedCount = loaded?.recorded.length ?? 0
   const shrinking = Boolean(loaded) && !loaded?.firstTime && size < recordedCount
   const needLeaving = shrinking ? recordedCount - size : 0
   const addedCount = loaded ? (loaded.firstTime ? size : Math.max(0, size - recordedCount)) : 0
-  const newSeatTier = (index: number) => addedTiers[index] ?? (late ? 1 : 0)
+  const newSeatTier = (index: number) => addedTiers[index] ?? 0
 
   useEffect(() => {
     if (!loaded) return
     const added = Array.from({ length: addedCount }, (_, index) => newSeatTier(index))
     // Recording tiers for the first time is all or nothing: half a list would be refused.
     if (loaded.firstTime) {
-      onChange(added.some((count) => count < 1 || count > 3) ? undefined : { courseCounts: added, removedSeats: [], expectedCourseCounts: [] })
+      onChange(added.some((count) => count < 0 || count > 3) ? undefined : { courseCounts: added, removedSeats: [], expectedCourseCounts: [] })
       return
     }
     if (shrinking) {
@@ -154,10 +159,15 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
     const name = loaded.seatNames[seat - 1]
     return name ? `Guest ${seat} (${name})` : `Guest ${seat}`
   }
-  // After the deadline a guest who stays can keep their tier or move down; a new guest is on 1 course.
-  const optionsUpTo = (max: number) => COURSE_OPTIONS.filter((option) => Number(option.value) >= 1 && Number(option.value) <= max)
-  const keptOptions = (seat: number) => (late ? optionsUpTo(loaded.recorded[seat - 1] ?? 1) : COURSE_OPTIONS)
-  const newOptions = late ? optionsUpTo(1) : COURSE_OPTIONS
+  // After the deadline a guest who stays can keep their tier or move down (never back to "Choose
+  // courses" once they have one). A guest joining always starts on "Choose courses" (0): the
+  // database gives every joiner 0 whatever is sent, and their courses are chosen on the food page.
+  const keptOptions = (seat: number) => {
+    if (!late) return COURSE_OPTIONS
+    const recorded = loaded.recorded[seat - 1] ?? 0
+    return COURSE_OPTIONS.filter((option) => Number(option.value) <= recorded && (recorded === 0 || Number(option.value) >= 1))
+  }
+  const newOptions = COURSE_OPTIONS.filter((option) => option.value === '0')
   const help = loaded.firstTime
     ? FIRST_TIME_HELP
     : late
