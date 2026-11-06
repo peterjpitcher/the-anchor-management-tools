@@ -20,6 +20,7 @@ import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDat
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { depositPurposeLine, depositRefundLine, depositTermsLines } from '@/lib/table-bookings/deposit-terms'
+import { CHRISTMAS_FOOD_DEADLINE_PASSED_LINE, isChristmasFoodDeadlinePassed } from '@/lib/table-bookings/christmas'
 
 export type TableBookingEmail = {
   subject: string
@@ -436,6 +437,8 @@ export type ChristmasDepositFacts = {
   perPersonGbp: number | null
   /** The booking's own deposit_refund_cutoff_days, the promise it was sold on (D12). */
   refundCutoffDays: number | null
+  /** When the email is sent. Defaults to now; a deadline at or before it has passed. */
+  now?: Date | null
 }
 
 /**
@@ -465,14 +468,39 @@ function buildChristmasDepositConfirmedEmail(
       : null
   const manageLink = input.manageLink?.trim() || null
   const refund = depositRefundLine({ isChristmas: true, refundCutoffDays: input.christmas.refundCutoffDays })
+  const thanks =
+    `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
+    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`
+
+  // The deposit can land after the food form has locked (a booking taken with the minimum notice
+  // has its cutoff inside the 24 hour deposit hold). Then the food block would promise a form the
+  // organiser can no longer use, so it gives the phone number instead.
+  if (isChristmasFoodDeadlinePassed(input.christmas.foodDeadlineIso, input.christmas.now ?? new Date())) {
+    return renderTableBookingEmail({
+      subject: 'Thanks for booking Christmas at The Anchor: your table is confirmed',
+      preheader: 'Your Christmas table is booked',
+      heading: 'Your deposit is received',
+      opening: [thanks, CHRISTMAS_FOOD_DEADLINE_PASSED_LINE],
+      details: [
+        ...bookingDetailRows(input),
+        { label: 'Deposit paid', value: formatPounds(input.depositPaid) },
+        { label: 'High chair reserved', value: input.highChairs > 0 ? `x${input.highChairs}` : null },
+      ],
+      cta: manageLink ? { label: 'Manage your booking', url: manageLink } : undefined,
+      afterCta: [
+        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+        ...(refund ? [refund] : []),
+      ],
+      beforeContact: ['If you need to change anything, let us know.'],
+    })
+  }
 
   return renderTableBookingEmail({
     subject: "Thanks for booking Christmas at The Anchor: now choose everyone's food",
     preheader: deadline ? `Choose everyone's food by ${deadline}` : "Your Christmas table is booked. Now choose everyone's food",
     heading: "Choose everyone's food",
     opening: [
-      `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
-        `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`,
+      thanks,
       "Next, choose everyone's food. Each guest needs a name, their allergies, their number of courses and their dishes. " +
         'You can save part-way and come back, or send a guest their own link to choose.',
       ...(deadlineLine ? [deadlineLine] : []),

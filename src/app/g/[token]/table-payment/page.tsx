@@ -3,7 +3,7 @@ import { headers } from 'next/headers'
 import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { formatGuestGreeting, getCustomerFirstNameById } from '@/lib/guest/names'
 import { getTablePaymentPreviewByRawToken, loadChristmasFoodDeadline } from '@/lib/table-bookings/bookings'
-import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import { isChristmasBookingType, isChristmasFoodDeadlinePassed } from '@/lib/table-bookings/christmas'
 import { formatBookingMomentForEmail } from '@/lib/table-bookings/guest-emails'
 import { tablePaymentBlockedReasonMessage } from '@/lib/table-bookings/table-payment-blocked-reason'
 import { GuestBlockedState, GuestShell } from '@/components/features/guest'
@@ -159,7 +159,10 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
 
   // A Christmas organiser is told the deadline for everyone's food on the success screen (spec
   // section 2 step 2), worded in London time here. Left out when the period cannot be read.
+  // When the deadline has already passed (the deposit hold can outlast it), the screen gives the
+  // phone number instead of the food form.
   let foodDeadlineLabel: string | null = null
+  let foodDeadlinePassed = false
   if (isChristmas) {
     const deadline = await loadChristmasFoodDeadline(supabase, {
       id: preview.tableBookingId,
@@ -167,6 +170,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
       booking_period_id: (booking?.booking_period_id as string | null | undefined) ?? null,
     })
     foodDeadlineLabel = deadline.closesAtIso ? formatBookingMomentForEmail(null, null, deadline.closesAtIso) : null
+    foodDeadlinePassed = isChristmasFoodDeadlinePassed(deadline.closesAtIso)
   }
 
   // Computed once and used twice: rendered directly when the deposit is already
@@ -175,7 +179,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   // channel the confirmation went by.
   const successDetails: TablePaymentSuccessDetails = {
     guestFirstName,
-    christmas: isChristmas ? { foodDeadlineLabel } : null,
+    christmas: isChristmas ? { foodDeadlineLabel, foodDeadlinePassed } : null,
   }
 
   if (booking?.payment_status === 'completed') {

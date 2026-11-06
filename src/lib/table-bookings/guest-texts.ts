@@ -13,7 +13,11 @@
 
 import { formatDateWithTimeForSms } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
-import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_FOOD_DEADLINE_PASSED_LINE,
+  isChristmasBookingType,
+  isChristmasFoodDeadlinePassed,
+} from '@/lib/table-bookings/christmas'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
@@ -243,6 +247,8 @@ export function buildDepositConfirmedText(input: {
   manageLink: string | null
   /** Christmas only: when everyone's choices close, as an ISO instant. Left out when unknown. */
   foodDeadlineIso?: string | null
+  /** When the text is sent. Defaults to now; a deadline at or before it has passed. */
+  now?: Date
 }): string {
   // The same test the sender uses for the email, so the text and the email always agree.
   if (isChristmasBookingType(input.booking.booking_type)) return buildChristmasDepositConfirmedText(input)
@@ -268,6 +274,7 @@ function buildChristmasDepositConfirmedText(input: {
   firstName: string
   manageLink: string | null
   foodDeadlineIso?: string | null
+  now?: Date
 }): string {
   const partySize = Math.max(1, Number(input.booking.party_size ?? 1))
   const seatWord = partySize === 1 ? 'person' : 'people'
@@ -275,13 +282,18 @@ function buildChristmasDepositConfirmedText(input: {
   const deadline = input.foodDeadlineIso && Number.isFinite(Date.parse(input.foodDeadlineIso))
     ? formatLondonDateTime(input.foodDeadlineIso)
     : null
-  const food = input.manageLink
+  // The deposit can land after the food form has locked: then the text gives the phone number
+  // rather than a form the organiser can no longer use. The manage link still goes, for the booking.
+  const deadlinePassed = isChristmasFoodDeadlinePassed(input.foodDeadlineIso, input.now ?? new Date())
+  const food = deadlinePassed
+    ? `${CHRISTMAS_FOOD_DEADLINE_PASSED_LINE}${input.manageLink ? ` Your booking: ${input.manageLink}` : ''}`
+    : input.manageLink
     ? `Choose everyone's food${deadline ? ` by ${deadline}` : ''}: ${input.manageLink}`
     : `Call us on ${GUEST_CONTACT.phoneDisplay} for your link to choose everyone's food${deadline ? ` by ${deadline}` : ''}.`
   const body =
     `The Anchor: ${input.firstName}, thanks for booking Christmas with us and for your deposit. ` +
-    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed. ${food} ` +
-    "We'll remind you if anyone's choices are missing."
+    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed. ${food}` +
+    (deadlinePassed ? '' : " We'll remind you if anyone's choices are missing.")
   return ensureReplyInstruction(body, supportPhone())
 }
 

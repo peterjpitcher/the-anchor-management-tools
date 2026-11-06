@@ -52,6 +52,8 @@ const READY_PREVIEW: Record<string, unknown> = {
 
 const previewRow = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
 const throttle = vi.hoisted(() => ({ allowed: true }))
+// Noon London, 7 days before a Saturday 12 December 2026 booking.
+const foodDeadline = vi.hoisted(() => ({ closesAtIso: '2026-12-05T12:00:00.000Z' }))
 
 const supabaseStub = {
   from(table: string) {
@@ -79,8 +81,7 @@ vi.mock('@/lib/guest/token-throttle', () => ({
 }))
 vi.mock('@/lib/table-bookings/bookings', () => ({
   getTablePaymentPreviewByRawToken: async () => previewRow.current,
-  // Noon London, 7 days before a Saturday 12 December 2026 booking.
-  loadChristmasFoodDeadline: async () => ({ closesAtIso: '2026-12-05T12:00:00.000Z', cutoffDays: 7 }),
+  loadChristmasFoodDeadline: async () => ({ closesAtIso: foodDeadline.closesAtIso, cutoffDays: 7 }),
 }))
 vi.mock('@/lib/paypal', () => ({
   createSimplePayPalOrder: vi.fn(),
@@ -112,6 +113,7 @@ beforeEach(() => {
   paypal.props = null
   previewRow.current = { ...READY_PREVIEW }
   throttle.allowed = true
+  foodDeadline.closesAtIso = '2026-12-05T12:00:00.000Z'
 })
 
 async function renderPage(
@@ -151,6 +153,26 @@ describe('table-payment success, server-completed path', () => {
     expect(
       screen.getByText("Everyone's choices need to be in by Saturday 5 December 2026 at 12pm.")
     ).toBeInTheDocument()
+  })
+})
+
+describe('table-payment success, Christmas deadline already passed', () => {
+  it('gives the phone number instead of the food form when the deadline passed before the page rendered', async () => {
+    previewRow.current = { ...READY_PREVIEW, bookingType: 'christmas', bookingDate: '2026-12-12' }
+    // A minute ago: the deposit hold outlasted the food deadline.
+    foodDeadline.closesAtIso = new Date(Date.now() - 60_000).toISOString()
+
+    await renderPage()
+
+    expectSuccessPresentation()
+    expect(
+      screen.getByText(
+        "Thanks for booking Christmas with us. The deadline to choose food online has passed for this booking. Call us on 01753 682707 and we'll take everyone's choices with you."
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { level: 2 })).not.toBeInTheDocument()
+    expect(screen.queryByText(/need to be in by/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/link to choose everyone.s food/)).not.toBeInTheDocument()
   })
 })
 

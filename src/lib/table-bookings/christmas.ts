@@ -25,7 +25,28 @@
  * the application layer needs to route deposits correctly.
  */
 
+import { GUEST_CONTACT } from '@/lib/guest-contact'
+
 export const CHRISTMAS_BOOKING_TYPE = 'christmas'
+
+/**
+ * What a Christmas organiser reads in place of "choose everyone's food" when the food deadline
+ * has already passed by the time their deposit lands. A booking taken with exactly the minimum
+ * notice for the food link has a cutoff a few hours later, and the deposit hold lasts 24 hours,
+ * so the deposit can arrive after the form has locked.
+ */
+export const CHRISTMAS_FOOD_DEADLINE_PASSED_LINE =
+  `The deadline to choose food online has passed for this booking. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll take everyone's choices with you.`
+
+/**
+ * True when the food deadline (an ISO instant, from getPreorderCutoff) is at or before `now`.
+ * An unknown or unreadable deadline answers false, so the message keeps its usual wording.
+ */
+export function isChristmasFoodDeadlinePassed(closesAtIso: string | null | undefined, now: Date = new Date()): boolean {
+  if (!closesAtIso) return false
+  const closesAt = Date.parse(closesAtIso)
+  return Number.isFinite(closesAt) && closesAt <= now.getTime()
+}
 
 /**
  * Minimum party size for a Christmas booking. The database enforces it in three places: the

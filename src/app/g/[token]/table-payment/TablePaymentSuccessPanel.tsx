@@ -5,6 +5,7 @@ import { GuestIntro } from '@/components/features/guest/GuestIntro'
 import { GuestStatusMark } from '@/components/features/guest/GuestStatusMark'
 import { GUEST_H2_CLASS, GUEST_MESSAGE_CLASS, GUEST_MUTED_CLASS } from '@/components/features/guest/styles'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { CHRISTMAS_FOOD_DEADLINE_PASSED_LINE } from '@/lib/table-bookings/christmas'
 import { formatGuestGreeting } from '@/lib/guest/names'
 
 /**
@@ -24,7 +25,11 @@ export type TablePaymentSuccessDetails = {
    * Set for a Christmas booking (spec section 2 step 2, D3): the screen leads with choosing
    * everyone's food and shows the deadline, already worded in London time on the server.
    */
-  christmas?: { foodDeadlineLabel: string | null } | null
+  christmas?: {
+    foodDeadlineLabel: string | null
+    /** The deadline had already passed when the page rendered, so the guest is asked to call. */
+    foodDeadlinePassed?: boolean
+  } | null
 }
 
 type TablePaymentSuccessPanelProps = TablePaymentSuccessDetails & {
@@ -95,7 +100,13 @@ export function TablePaymentSuccessPanel({
 
           <p className={GUEST_MESSAGE_CLASS}>{confirmationSentence(confirmation)}</p>
 
-          {christmas && (
+          {christmas?.foodDeadlinePassed && (
+            <p className={GUEST_MESSAGE_CLASS}>
+              Thanks for booking Christmas with us. {CHRISTMAS_FOOD_DEADLINE_PASSED_LINE}
+            </p>
+          )}
+
+          {christmas && !christmas.foodDeadlinePassed && (
             <>
               <h2 className={GUEST_H2_CLASS}>Choose everyone&apos;s food</h2>
               <p className={GUEST_MESSAGE_CLASS}>

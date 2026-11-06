@@ -9,6 +9,7 @@ import { getSmartFirstName } from '@/lib/sms/bulk'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
 import { logger } from '@/lib/logger'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 import { AuditService } from '@/services/audit'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import {
@@ -16,7 +17,7 @@ import {
   getCanonicalDeposit,
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
 } from './deposit'
-import { isChristmasBookingType } from './christmas'
+import { isChristmasBookingType, isChristmasFoodDeadlinePassed } from './christmas'
 import {
   GUEST_CHANNEL_COLUMNS,
   notifyTableBookingGuestEmailFirst,
@@ -900,6 +901,34 @@ export async function loadChristmasFoodDeadline(
 }
 
 /**
+ * Tells the manager that a Christmas deposit landed after the food deadline, so the organiser was
+ * asked to call with everyone's choices. Once per booking (alertMoneyNeedsAPerson keys it), and it
+ * names the booking reference only, never the guest. Never throws: the confirmation still goes.
+ */
+async function alertChristmasFoodDeadlinePassedAtDeposit(
+  supabase: SupabaseClient<any, 'public', any>,
+  booking: Pick<DepositConfirmedBooking, 'id' | 'booking_reference'>
+): Promise<void> {
+  try {
+    await alertMoneyNeedsAPerson(supabase, {
+      domain: 'table_bookings',
+      bookingId: booking.id,
+      kind: 'christmas_food_deadline_passed_at_deposit',
+      subjectTag: 'BOOKING ACTION NEEDED',
+      title: 'A Christmas deposit arrived after the food deadline',
+      summary:
+        "This Christmas booking's deposit was paid after the deadline to choose food online, so the organiser cannot use the food form. Their confirmation asks them to call with everyone's choices. If they have not called, ring them and take the choices.",
+      context: { 'Booking reference': booking.booking_reference ?? 'unknown' },
+    })
+  } catch (error) {
+    logger.error('Could not raise the Christmas food deadline alert', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { tableBookingId: booking.id },
+    })
+  }
+}
+
+/**
  * True only when the email log positively shows this message went to this booking. A failed
  * lookup answers false: better one duplicate than a guest who paid and heard nothing.
  */
@@ -1072,11 +1101,20 @@ async function sendTableBookingDepositConfirmedEmailFirst(
       ? await loadChristmasFoodDeadline(supabase, booking)
       : { closesAtIso: null, cutoffDays: null }
 
+    // The deposit can land after the food form has locked (a booking taken with the minimum notice
+    // has its cutoff inside the 24 hour deposit hold). The guest is told to call, and so is the
+    // manager, so someone takes the choices by phone.
+    const sentAt = new Date()
+    if (isChristmas && isChristmasFoodDeadlinePassed(foodDeadline.closesAtIso, sentAt)) {
+      await alertChristmasFoodDeadlinePassedAtDeposit(supabase, booking)
+    }
+
     const smsBody = buildDepositConfirmedText({
       booking,
       firstName,
       manageLink,
       foodDeadlineIso: foodDeadline.closesAtIso,
+      now: sentAt,
     })
 
     const email = buildTableBookingDepositConfirmedEmail({
@@ -1100,6 +1138,7 @@ async function sendTableBookingDepositConfirmedEmailFirst(
                 ? depositPerPersonForBooking(booking, depositPaid, partySize)
                 : null,
             refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
+            now: sentAt,
           }
         : null,
     })

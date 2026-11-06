@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The deposit confirmation under the messaging flag table_deposit_confirmed_email_first.
@@ -21,6 +21,7 @@ vi.mock('@/lib/twilio', () => ({
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/services/audit', () => ({ AuditService: { logAuditEvent: vi.fn() } }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn() }))
+vi.mock('@/lib/money-alerts', () => ({ alertMoneyNeedsAPerson: vi.fn(async () => ({ sent: true, duplicate: false })) }))
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 
 // Like the real minter: every call makes a new token, so every trigger builds a different link.
@@ -71,6 +72,7 @@ import { isCustomerSmsSendAllowed, sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AuditService } from '@/services/audit'
 import { releaseIdempotencyClaim } from '@/lib/api/idempotency'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
 import { sendTableBookingConfirmedAfterDepositSmsIfAllowed, sendTableBookingDepositConfirmation } from './bookings'
 import { buildTableBookingDepositConfirmedEmail } from './guest-emails'
 import { buildDepositConfirmedText } from './guest-texts'
@@ -371,6 +373,111 @@ describe('Christmas deposit received (owner decision D3)', () => {
     expect(email.subject).toBe('Deposit received: your table at The Anchor is confirmed')
     expect(String(email.text)).not.toContain("everyone's food")
     expect(db.queries.some((query) => query.table === 'booking_periods')).toBe(false)
+  })
+})
+
+describe('Christmas deposit received after the food deadline', () => {
+  const PASSED_LINE =
+    "The deadline to choose food online has passed for this booking. Call us on 01753 682707 and we'll take everyone's choices with you."
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('swaps the food block for the phone number and tells the manager, by booking reference only', async () => {
+    // An hour after noon London on Saturday 5 December 2026, the deadline for a 12 December booking.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T13:00:00.000Z'))
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    expect(result.channel).toBe('email')
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    assertCleanRender(email as never)
+    const text = String(email.text)
+    expect(email.subject).toBe('Thanks for booking Christmas at The Anchor: your table is confirmed')
+    expect(text).toContain(PASSED_LINE)
+    expect(text).not.toContain("Choose everyone's food")
+    expect(text).not.toContain('need to be in by')
+    expect(text).not.toContain("We'll remind you")
+    expect(text).toContain('Manage your booking: https://l.the-anchor.pub/token-1')
+    expect(text).toContain("There's a £10 per person deposit, which comes off your bill.")
+
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+    const alert = vi.mocked(alertMoneyNeedsAPerson).mock.calls[0][1]
+    expect(alert).toEqual(
+      expect.objectContaining({
+        domain: 'table_bookings',
+        bookingId: CHRISTMAS_BOOKING.id,
+        kind: 'christmas_food_deadline_passed_at_deposit',
+        context: { 'Booking reference': 'TB-XMAS1' },
+      })
+    )
+    // No guest data in the alert.
+    expect(JSON.stringify(alert)).not.toMatch(/Pat|pat@example\.com|7700900999/)
+  })
+
+  it('says the same in the text when there is no usable email', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T13:00:00.000Z'))
+    const db = buildDb({ ...PAT, email: null }, { booking: CHRISTMAS_BOOKING })
+
+    await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    const [, body] = vi.mocked(sendSMS).mock.calls[0]
+    assertCleanText(body)
+    expect(body).toContain(PASSED_LINE)
+    expect(body).not.toContain("Choose everyone's food")
+    expect(body).not.toContain("We'll remind you")
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the food block and raises nothing while the deadline is still ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T11:59:00.000Z'))
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    const text = String(vi.mocked(sendEmail).mock.calls[0][0].text)
+    expect(text).toContain("Everyone's choices need to be in by Saturday 5 December 2026 at 12pm.")
+    expect(text).not.toContain(PASSED_LINE)
+    expect(alertMoneyNeedsAPerson).not.toHaveBeenCalled()
+  })
+
+  it('renders both builders from an explicit send time', () => {
+    const passedAt = new Date('2026-12-05T12:00:00.000Z')
+    const email = buildTableBookingDepositConfirmedEmail({
+      firstName: 'Pat',
+      bookingReference: 'TB-XMAS1',
+      bookingDate: '2026-12-12',
+      bookingTime: '19:00:00',
+      partySize: 8,
+      depositPaid: 80,
+      manageLink: null,
+      christmas: {
+        foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+        preorderCutoffDays: 7,
+        perPersonGbp: 10,
+        refundCutoffDays: 7,
+        now: passedAt,
+      },
+    })
+    assertCleanRender(email)
+    expect(email.text).toContain(PASSED_LINE)
+    expect(email.text).not.toContain("We couldn't add your food link")
+    expect(email.html).not.toContain('href=""')
+
+    const body = buildDepositConfirmedText({
+      booking: { ...CHRISTMAS_BOOKING },
+      firstName: 'Pat',
+      manageLink: 'https://l.the-anchor.pub/abc',
+      foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+      now: passedAt,
+    })
+    assertCleanText(body)
+    expect(body).toContain(`${PASSED_LINE} Your booking: https://l.the-anchor.pub/abc`)
   })
 })
 
