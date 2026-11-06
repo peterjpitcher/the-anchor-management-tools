@@ -323,6 +323,10 @@ describe("the organiser's food page", () => {
     const sent = await organiser({ action: 'copy' })
     expect(sent.status).toBe(200)
     expect(mocks.sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: 'organiser@example.test', commType: 'table_booking_preorder_copy' }))
+    // Before the cutoff the copy says choices can still change, never that they have closed.
+    const copyText = JSON.stringify(mocks.sendEmail.mock.calls[0][0])
+    expect(copyText).toContain('You can change them until noon on Friday 4 December 2026.')
+    expect(copyText).not.toContain('Choices have now closed')
 
     mocks.sendEmail.mockClear()
     mocks.isMessagingFlagOn.mockResolvedValue(false)

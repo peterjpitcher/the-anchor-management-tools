@@ -20,7 +20,7 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { buildTableBookingPreorderChoicesEmail } from '@/lib/table-bookings/guest-emails'
 import { getPreorderCompleteness, getPreorderCutoff } from '@/lib/table-bookings/preorder'
 import { toChoicesCopySeats } from '@/lib/table-bookings/preorder-cutoff-digest'
-import { buildPreorderGuestInviteEmail } from '@/lib/table-bookings/preorder-food-link-emails'
+import { buildPreorderGuestInviteEmail, formatPreorderCutoffForGuest } from '@/lib/table-bookings/preorder-food-link-emails'
 import { createPreorderGuestToken } from '@/lib/table-bookings/preorder-guest-token'
 import { PREORDER_ADDON_GUEST_NOTE, PREORDER_INVITE_EMAIL_MAX_LENGTH, type PreorderCover, type PreorderOrder } from '@/types/preorders'
 import { canResendInvite, type FoodInviteLedger } from './food-data'
@@ -197,7 +197,11 @@ export async function sendFoodChoicesCopy(
       }
     }
 
+    // Before the cutoff the copy says choices can still change, not that they have closed.
+    const cutoff = getPreorderCutoff({ bookingDate: order.bookingDate, preorderCutoffDays: order.preorderCutoffDays })
+    const stillOpenUntil = cutoff.closesAt && !cutoff.closed ? formatPreorderCutoffForGuest(cutoff.closesAt) : null
     const message = buildTableBookingPreorderChoicesEmail({
+      stillOpenUntil,
       firstName: getSmartFirstName(organiser.first_name),
       bookingReference: order.bookingReference,
       bookingDate: order.bookingDate,
