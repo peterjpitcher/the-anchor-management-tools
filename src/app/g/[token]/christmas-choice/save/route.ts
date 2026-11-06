@@ -15,8 +15,9 @@ import { loadGuestChoiceContext } from '../guest-data'
 /**
  * One guest saving their own Christmas dinner from the link they were sent (D5).
  *
- * The seat comes from the token, never from the request: a seat number or id in the body is only
- * checked against it, and a body naming any other seat is refused outright. The save goes through
+ * The seat comes from the token, never from the request: a cover id in the body is only checked
+ * against it, and a body naming any other seat is refused outright. The posted seat number is
+ * ignored, because seat numbers close up when a guest leaves. The save goes through
  * `savePreorderCover` as `{ savedBy: 'guest', coverId }`, which refuses another seat a second time.
  * Refused after the cutoff (D8).
  */
@@ -64,7 +65,11 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     }
     const { order, cover } = guest
 
-    if ((payload.coverId && payload.coverId !== cover.id) || payload.ordinal !== cover.ordinal) {
+    // The seat is the token's cover, found by id on the token's own booking, at whatever number it
+    // has now. The posted seat number is not trusted: when another guest leaves, the seats close up,
+    // and a page opened before that still posts the old number for the right guest. A posted cover
+    // id that is not the token's (another seat, or a seat on another booking) is still refused.
+    if (payload.coverId && payload.coverId !== cover.id) {
       logger.warn('Guest food link tried to save a seat it is not scoped to', {
         metadata: { tableBookingId: order.tableBookingId },
       })
@@ -77,7 +82,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ to
     const outcome = await saveFoodSeat(supabase, {
       order,
       cover,
-      payload,
+      payload: { ...payload, ordinal: cover.ordinal },
       actor: { savedBy: 'guest', coverId: cover.id },
       source: 'guest_choice_link',
     })

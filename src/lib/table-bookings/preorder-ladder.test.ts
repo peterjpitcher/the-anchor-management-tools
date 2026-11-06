@@ -26,7 +26,7 @@ vi.mock('@/app/actions/audit', () => ({ logAuditEvent: vi.fn() }))
 import { createFakeSupabase, type FakeSupabase } from '../../../tests/helpers/fakeSupabase'
 import { assertCleanGsmText, assertCleanRender } from '../../../tests/mocks/emailRenderChecks'
 import { PREORDER_MANAGER_EMAIL } from './preorder-alerts'
-import { purgeGuestInviteEmails, runPreorderLadder, type LadderBooking, type LadderLedgerRow } from './preorder-ladder'
+import { PURGED_GUEST_ADDRESS, purgeGuestInviteEmails, runPreorderLadder, type LadderBooking, type LadderLedgerRow } from './preorder-ladder'
 
 /**
  * The reminder ladder as the cron runs it (D6, D7): which messages go at which run, that the ledger
@@ -428,5 +428,37 @@ describe('purgeGuestInviteEmails', () => {
     expect(cleared).toBe(1)
     expect(db.tables.booking_preorder_covers.find((row) => row.id === 'c-past')?.invite_email).toBeNull()
     expect(db.tables.booking_preorder_covers.find((row) => row.id === 'c-2')?.invite_email).toBe(GUEST_EMAIL)
+  })
+
+  it("removes the guest's address from the log of their invite and reminder on the same past bookings only", async () => {
+    const db = seed()
+    db.tables.table_bookings.push({ id: 'b-past', booking_date: '2026-11-30' })
+    db.tables.booking_preorder_covers.push(cover('c-past', 1, { table_booking_id: 'b-past', invite_email: 'old@example.com' }))
+    db.tables.email_messages = [
+      { id: 'm-invite', table_booking_id: 'b-past', comm_type: 'table_booking_preorder_guest_invite', to_address: 'old@example.com' },
+      { id: 'm-reminder', table_booking_id: 'b-past', comm_type: 'table_booking_preorder_guest_reminder', to_address: 'old@example.com' },
+      // The organiser's own messages on the same booking keep their address.
+      { id: 'm-organiser', table_booking_id: 'b-past', comm_type: 'table_booking_preorder_reminder', to_address: 'organiser@example.com' },
+      // A booking still to come keeps its guest's address.
+      { id: 'm-future', table_booking_id: BOOKING.id, comm_type: 'table_booking_preorder_guest_invite', to_address: GUEST_EMAIL },
+    ]
+
+    await purgeGuestInviteEmails(db as never, '2026-12-01')
+
+    const address = (id: string) => db.tables.email_messages.find((row) => row.id === id)?.to_address
+    expect(address('m-invite')).toBe(PURGED_GUEST_ADDRESS)
+    expect(address('m-reminder')).toBe(PURGED_GUEST_ADDRESS)
+    expect(address('m-organiser')).toBe('organiser@example.com')
+    expect(address('m-future')).toBe(GUEST_EMAIL)
+  })
+
+  it('leaves the seats for the next run when the log cannot be updated', async () => {
+    const db = seed()
+    db.tables.table_bookings.push({ id: 'b-past', booking_date: '2026-11-30' })
+    db.tables.booking_preorder_covers.push(cover('c-past', 1, { table_booking_id: 'b-past', invite_email: 'old@example.com' }))
+    db.failures.push({ table: 'email_messages', op: 'update', error: { message: 'timeout' } })
+
+    await expect(purgeGuestInviteEmails(db as never, '2026-12-01')).rejects.toBeTruthy()
+    expect(db.tables.booking_preorder_covers.find((row) => row.id === 'c-past')?.invite_email).toBe('old@example.com')
   })
 })

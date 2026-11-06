@@ -38,6 +38,8 @@ export const PREORDER_TEXT_STAGES: ReadonlySet<PreorderOrganiserStage> = new Set
 export const PREORDER_ORGANISER_TEMPLATE_KEY = 'table_booking_preorder_reminder'
 /** The template key of the one reminder a guest gets about their own seat. */
 export const PREORDER_GUEST_REMINDER_TEMPLATE_KEY = 'table_booking_preorder_guest_reminder'
+/** The comm type a guest's own food link is logged under, when the organiser's page sends it. */
+export const PREORDER_GUEST_INVITE_COMM_TYPE = 'table_booking_preorder_guest_invite'
 
 /** How many guests a text names before it says "and N more". A text is not the place for a list. */
 const TEXT_NAME_LIMIT = 3

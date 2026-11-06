@@ -20,8 +20,10 @@ import { getSmartFirstName } from '@/lib/sms/name-utils'
 import { buildTableBookingPreorderChoicesEmail } from '@/lib/table-bookings/guest-emails'
 import { getPreorderCompleteness, getPreorderCutoff } from '@/lib/table-bookings/preorder'
 import { toChoicesCopySeats } from '@/lib/table-bookings/preorder-cutoff-digest'
+import { PREORDER_GUEST_INVITE_COMM_TYPE } from '@/lib/table-bookings/preorder-reminder-messages'
 import { buildPreorderGuestInviteEmail, formatPreorderCutoffForGuest } from '@/lib/table-bookings/preorder-food-link-emails'
-import { createPreorderGuestToken } from '@/lib/table-bookings/preorder-guest-token'
+import { hashGuestToken } from '@/lib/guest/tokens'
+import { createPreorderGuestToken, PREORDER_GUEST_TOKEN_ACTION_TYPE } from '@/lib/table-bookings/preorder-guest-token'
 import { PREORDER_ADDON_GUEST_NOTE, PREORDER_INVITE_EMAIL_MAX_LENGTH, type PreorderCover, type PreorderOrder } from '@/types/preorders'
 import { canResendInvite, type FoodInviteLedger } from './food-data'
 
@@ -98,6 +100,7 @@ export async function sendFoodGuestInvite(
     }
   }
 
+  let newTokenHash: string
   try {
     const booking = await loadBookingFacts(supabase, order.tableBookingId)
     if (!booking?.customer_id) return { ok: false, error: SEND_FAILED }
@@ -110,6 +113,7 @@ export async function sendFoodGuestInvite(
       expiresAt: cutoff.closesAt.toISOString(),
       appBaseUrl: getAppUrl(),
     })
+    newTokenHash = hashGuestToken(token.rawToken)
 
     const message = buildPreorderGuestInviteEmail({
       guestName: cover.guestName,
@@ -129,7 +133,7 @@ export async function sendFoodGuestInvite(
       // The guest is not the booking's customer, so the message is filed against the booking only.
       customerId: null,
       tableBookingId: order.tableBookingId,
-      commType: 'table_booking_preorder_guest_invite',
+      commType: PREORDER_GUEST_INVITE_COMM_TYPE,
       // The link is the guest's key to their seat; the stored copy of the email must not carry it.
       logRedactions: [token.rawToken],
     })
@@ -151,6 +155,26 @@ export async function sendFoodGuestInvite(
   // The email has gone. A failure to record it is ours to fix, so it is logged as an error, and the
   // organiser is still told it went, because it did.
   const sentAt = now.toISOString()
+
+  // Only the link just sent may change this seat. Every earlier guest link for it is spent, so a
+  // mistyped or reassigned address cannot keep editing the seat. This runs after the send, not
+  // before, so a send that fails really does leave nothing changed, as the organiser is told.
+  // (The cron's guest reminder goes to the same address and leaves the earlier link alone.)
+  const { error: revokeError } = await supabase
+    .from('guest_tokens')
+    .update({ consumed_at: sentAt })
+    .eq('action_type', PREORDER_GUEST_TOKEN_ACTION_TYPE)
+    .eq('table_booking_id', order.tableBookingId)
+    .eq('preorder_cover_id', cover.id)
+    .is('consumed_at', null)
+    .neq('hashed_token', newTokenHash)
+  if (revokeError) {
+    logger.error("Christmas food link invite sent but the seat's earlier links were not revoked", {
+      error: new Error(revokeError.message),
+      metadata: { tableBookingId: order.tableBookingId, ordinal: cover.ordinal },
+    })
+  }
+
   const { error: coverError } = await supabase
     .from('booking_preorder_covers')
     .update({ invite_email: email, invite_sent_at: sentAt })

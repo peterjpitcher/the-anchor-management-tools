@@ -41,6 +41,7 @@ vi.mock('@/lib/table-bookings/preorder', async () => {
   }
 })
 vi.mock('@/lib/table-bookings/preorder-guest-token', () => ({
+  PREORDER_GUEST_TOKEN_ACTION_TYPE: 'preorder_guest',
   resolvePreorderGuestToken: mocks.resolvePreorderGuestToken,
   createPreorderGuestToken: mocks.createPreorderGuestToken,
 }))
@@ -53,6 +54,7 @@ vi.mock('@/lib/env', () => ({ getAppUrl: () => 'https://management.example.test'
 import { POST as organiserPost } from '@/app/g/[token]/table-manage/food/route'
 import { POST as guestPost } from '@/app/g/[token]/christmas-choice/save/route'
 import { PreorderSaveScopeError } from '@/lib/table-bookings/preorder'
+import { hashGuestToken } from '@/lib/guest/tokens'
 
 const BOOKING = '00000000-0000-4000-8000-000000000001'
 const COVER_1 = '00000000-0000-4000-8000-0000000000c1'
@@ -85,13 +87,18 @@ function order(over: Record<string, unknown> = {}) {
   }
 }
 
-/** A chainable stand-in for the Supabase client, recording every write. */
+/** A chainable stand-in for the Supabase client, recording every write and its filters. */
 function fakeDb(tables: Record<string, unknown>) {
   const writes: Array<{ table: string; op: string; values: unknown }> = []
+  const filters: Array<{ table: string; method: string; args: unknown[] }> = []
   const from = (table: string) => {
     const builder: Record<string, unknown> = {}
-    const chain = () => builder
-    for (const method of ['select', 'eq', 'in', 'order', 'not']) builder[method] = chain
+    for (const method of ['select', 'eq', 'in', 'order', 'not', 'is', 'neq']) {
+      builder[method] = (...args: unknown[]) => {
+        filters.push({ table, method, args })
+        return builder
+      }
+    }
     builder.maybeSingle = async () => ({ data: tables[table] ?? null, error: null })
     builder.update = (values: unknown) => {
       writes.push({ table, op: 'update', values })
@@ -105,7 +112,7 @@ function fakeDb(tables: Record<string, unknown>) {
       resolve({ data: Array.isArray(tables[table]) ? tables[table] : [], error: null })
     return builder
   }
-  return { client: { from }, writes }
+  return { client: { from }, writes, filters }
 }
 
 function jsonRequest(url: string, body: unknown) {
@@ -170,15 +177,38 @@ describe("the guest's own link", () => {
     expect(mocks.savePreorderCover.mock.calls[0][1]).not.toHaveProperty('inviteEmail')
   })
 
-  it("refuses another guest's seat, by number or by id, and saves nothing", async () => {
-    const byId = await guest({ seat: seatPayload({ ordinal: 2, coverId: COVER_1 }) })
-    const byNumber = await guest({ seat: seatPayload({ ordinal: 1, coverId: null }) })
+  it("refuses another guest's seat by id, and saves nothing", async () => {
+    const response = await guest({ seat: seatPayload({ ordinal: 2, coverId: COVER_1 }) })
 
-    for (const response of [byId, byNumber]) {
-      expect(response.status).toBe(403)
-      expect(await response.json()).toEqual({ success: false, error: 'This link is for one guest only, so it cannot change anyone else.' })
-    }
+    expect(response.status).toBe(403)
+    expect(await response.json()).toEqual({ success: false, error: 'This link is for one guest only, so it cannot change anyone else.' })
     expect(mocks.savePreorderCover).not.toHaveBeenCalled()
+  })
+
+  it('refuses a seat on another booking, even with the right number', async () => {
+    const otherBookingsCover = '00000000-0000-4000-8000-0000000000e9'
+    const response = await guest({ seat: seatPayload({ ordinal: 2, coverId: otherBookingsCover }) })
+
+    expect(response.status).toBe(403)
+    expect(mocks.savePreorderCover).not.toHaveBeenCalled()
+  })
+
+  it('saves the right guest after the seats close up, whatever number the page still posts', async () => {
+    // Seat 1 left, so the token's guest (COVER_2) is now seat 1. Their page still says seat 2.
+    mocks.loadPreorderOrder.mockResolvedValue(order({ partySize: 1, courseCounts: [0], covers: [cover(COVER_2, 1)] }))
+    mocks.savePreorderCover.mockResolvedValue(cover(COVER_2, 1))
+
+    const stale = await guest({ seat: seatPayload({ ordinal: 2, coverId: COVER_2 }) })
+    const noId = await guest({ seat: seatPayload({ ordinal: 2, coverId: null }) })
+
+    for (const response of [stale, noId]) {
+      expect(response.status).toBe(200)
+      expect((await response.json()).success).toBe(true)
+    }
+    expect(mocks.savePreorderCover).toHaveBeenCalledTimes(2)
+    for (const [, input] of mocks.savePreorderCover.mock.calls) {
+      expect(input).toEqual(expect.objectContaining({ coverId: COVER_2, tableBookingId: BOOKING, actor: { savedBy: 'guest', coverId: COVER_2 } }))
+    }
   })
 
   it('refuses a manage link, or any token that is not a guest food link', async () => {
@@ -271,9 +301,31 @@ describe("the organiser's food page", () => {
     expect(email.text).toContain('Fixture asked us to send you this link')
     expect(email.text).not.toContain('Organiser')
     expect(db.writes).toEqual([
+      { table: 'guest_tokens', op: 'update', values: { consumed_at: '2026-11-20T10:00:00.000Z' } },
       { table: 'booking_preorder_covers', op: 'update', values: { invite_email: 'guest@example.test', invite_sent_at: '2026-11-20T10:00:00.000Z' } },
       { table: 'booking_preorder_reminders', op: 'insert', values: { table_booking_id: BOOKING, kind: 'guest_invite', cover_id: COVER_1, sent_at: '2026-11-20T10:00:00.000Z' } },
     ])
+  })
+
+  it("revokes the seat's earlier guest links once the new one has gone, and only that seat's", async () => {
+    const response = await organiser({ action: 'invite', ordinal: 1, coverId: COVER_1, email: 'guest@example.test' })
+
+    expect(response.status).toBe(200)
+    const revoke = db.filters.filter((filter) => filter.table === 'guest_tokens').map(({ method, args }) => [method, ...args])
+    expect(revoke).toEqual([
+      ['eq', 'action_type', 'preorder_guest'],
+      ['eq', 'table_booking_id', BOOKING],
+      ['eq', 'preorder_cover_id', COVER_1],
+      ['is', 'consumed_at', null],
+      // The link just sent stays live: its hash is excluded.
+      ['neq', 'hashed_token', hashGuestToken('raw-guest-token')],
+    ])
+  })
+
+  it('revokes nothing when the new link did not send', async () => {
+    mocks.sendEmail.mockResolvedValue({ success: false, error: 'provider down' })
+    await organiser({ action: 'invite', ordinal: 1, coverId: COVER_1, email: 'guest@example.test' })
+    expect(db.writes.filter((write) => write.table === 'guest_tokens')).toEqual([])
   })
 
   it('tells the organiser when the email does not send, and records nothing as sent', async () => {
@@ -308,8 +360,8 @@ describe("the organiser's food page", () => {
 
     mocks.loadPreorderOrder.mockResolvedValue(order({ covers: [cover(COVER_1, 1, { inviteSentAt: first }), cover(COVER_2, 2)] }))
     expect((await organiser({ action: 'invite', ordinal: 1, coverId: COVER_1, email: 'guest@example.test' })).status).toBe(200)
-    // The resend moves the seat's time, not the ledger's first row.
-    expect(db.writes.map((write) => write.table)).toEqual(['booking_preorder_covers'])
+    // The resend spends the first link and moves the seat's time, not the ledger's first row.
+    expect(db.writes.map((write) => write.table)).toEqual(['guest_tokens', 'booking_preorder_covers'])
 
     mocks.sendEmail.mockClear()
     mocks.loadPreorderOrder.mockResolvedValue(order({ covers: [cover(COVER_1, 1, { inviteSentAt: '2026-11-20T10:00:00.000Z' }), cover(COVER_2, 2)] }))

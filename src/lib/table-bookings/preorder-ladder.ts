@@ -51,6 +51,7 @@ import {
 import { PREORDER_MANAGER_EMAIL } from '@/lib/table-bookings/preorder-alerts'
 import { createPreorderGuestToken } from '@/lib/table-bookings/preorder-guest-token'
 import {
+  PREORDER_GUEST_INVITE_COMM_TYPE,
   PREORDER_GUEST_REMINDER_TEMPLATE_KEY,
   PREORDER_ORGANISER_TEMPLATE_KEY,
   PREORDER_TEXT_STAGES,
@@ -712,9 +713,20 @@ export async function runPreorderLadder(
 const PURGE_BATCH = 500
 
 /**
+ * What a guest's address becomes in the email log once their booking has passed. The column is
+ * NOT NULL, so it is overwritten rather than cleared.
+ */
+export const PURGED_GUEST_ADDRESS = '[guest address removed]'
+
+/** The two emails that go to a guest's own address rather than the organiser's. */
+const GUEST_ADDRESS_COMM_TYPES = [PREORDER_GUEST_INVITE_COMM_TYPE, PREORDER_GUEST_REMINDER_TEMPLATE_KEY]
+
+/**
  * Clear the guests' own email addresses from seats whose booking date has passed (A4: used only for
- * their food link and one reminder, and cleared after the booking). Bounded to one batch a run; any
- * left over go on the next run. Returns how many seats were cleared. Throws on a database error.
+ * their food link and one reminder, and cleared after the booking), and from the email log rows of
+ * those two emails on the same bookings. Bounded to one batch of seats a run; any left over go on
+ * the next run. The log goes first, so a failure there leaves the seats for the next run to find
+ * again. Returns how many seats were cleared. Throws on a database error.
  */
 export async function purgeGuestInviteEmails(supabase: Db, todayIso: string): Promise<number> {
   const { data: coverRows, error: coverError } = await supabase
@@ -738,6 +750,14 @@ export async function purgeGuestInviteEmails(supabase: Db, todayIso: string): Pr
   const past = new Set(((bookingRows ?? []) as Array<{ id: string }>).map((row) => row.id))
   const ids = covers.filter((cover) => past.has(cover.table_booking_id)).map((cover) => cover.id)
   if (ids.length === 0) return 0
+
+  const { error: logError } = await supabase
+    .from('email_messages')
+    .update({ to_address: PURGED_GUEST_ADDRESS })
+    .in('table_booking_id', Array.from(past))
+    .in('comm_type', GUEST_ADDRESS_COMM_TYPES)
+    .neq('to_address', PURGED_GUEST_ADDRESS)
+  if (logError) throw logError
 
   const { error: updateError } = await supabase.from('booking_preorder_covers').update({ invite_email: null }).in('id', ids)
   if (updateError) throw updateError
