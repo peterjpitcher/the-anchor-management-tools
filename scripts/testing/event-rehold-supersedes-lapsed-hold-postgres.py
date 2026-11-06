@@ -4,9 +4,10 @@
 20261106112933_event_rehold_supersedes_lapsed_hold. Builds create_event_booking_v05 exactly as
 production holds it on 6 November 2026 (md5(prosrc) checked) from the event bookable rules chain
 (tests/database/event-physical-capacity/setup.sql, 20260921074304, 20261026212246, 20261027132945,
-20261027133013, 20261029091454), adds the tables the new passage reads (event_check_ins,
-event_payment_exceptions, the payment columns) and production's unique index
-idx_bookings_customer_event_active_unique.
+20261027133013, 20261029091454) and confirm_event_paypal_payment_v01 from 20261026212408 (also
+checked against production), adds the tables the new passages read (event_check_ins,
+event_payment_exceptions with its open-exception index, the payment columns) and production's
+unique index idx_bookings_customer_event_active_unique.
 
 Against production's body it shows the defect: a guest whose own hold has run out is refused as
 customer_conflict. After the migration: the lapsed hold gives way (expired, payment hold released,
@@ -14,13 +15,24 @@ table booking cancelled, an uncaptured PayPal order written off) and a new hold 
 create_event_booking_v06 with a 15-minute hold; a hold still running, a confirmed booking, a
 checked-in guest, a PayPal capture PayPal is holding, a payment that went through and an open payment
 exception are all still refused exactly as before; another guest's lapsed hold is untouched; seats
-are never oversold. It checks the body changes by three passages only, a rolled-back run changes
-nothing, a second run is a no-op, a moved-on definition is refused, SECURITY DEFINER, search_path and
-service-role only access are kept, and the rollback restores production's definition exactly.
+are never oversold.
+
+A PayPal capture already under way when the hold gives way: against production's
+confirm_event_paypal_payment_v01 it breaks the unique index (the defect); after the migration it
+goes to manual review as booking_expired_after_capture with the payment recorded against the old
+booking, which stays expired beside the untouched new hold, and a retry (as the webhook makes) opens
+no second exception. A paid new hold is treated the same way. An expired booking within 10 minutes
+with no other live booking for the guest and event is put back and confirmed exactly as before.
+
+It checks each body changes only in its passages, a rolled-back run changes nothing, a second run is
+a no-op, a moved-on definition of either function is refused, SECURITY DEFINER, search_path and
+service-role only access are kept for both, and the rollback restores production's definitions
+exactly.
 """
 import difflib
 import os
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 
@@ -32,11 +44,15 @@ RELEASE_3 = ROOT / 'supabase/migrations/20261026212246_private_hire_occupies_spa
 ROOM_WINDOW = ROOT / 'supabase/migrations/20261027132945_private_hire_room_window_and_diner_clashes.sql'
 WHOLE_PUB = ROOT / 'supabase/migrations/20261027133013_whole_pub_hire_stops_ticket_sales.sql'
 BOOKABLE = ROOT / 'supabase/migrations/20261029091454_event_bookable_rules.sql'
+LATE_PAYMENT = ROOT / 'supabase/migrations/20261026212408_event_late_payment_capacity_check.sql'
 MIGRATION = ROOT / 'supabase/migrations/20261106112933_event_rehold_supersedes_lapsed_hold.sql'
 ROLLBACK = ROOT / 'supabase/rollbacks/20261106112933_event_rehold_supersedes_lapsed_hold.sql'
 LIVE_PROSRC = '7ee06c16846fa8a22e57382a6ad37db5'
 LIVE_DEFINITION = '583e6a10e772ab1f5b608cb6c102b5be'
 SIGNATURE = 'create_event_booking_v05(uuid,uuid,integer,text,text)'
+CONFIRM_LIVE_PROSRC = 'b4383073beac5fb260d712695782d86b'
+CONFIRM_LIVE_DEFINITION = '07f7ec5d7433bc1560e5bad4b108edd7'
+CONFIRM = 'confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text)'
 
 EXTRA = """
 ALTER DATABASE postgres SET timezone TO 'UTC';
@@ -57,8 +73,11 @@ CREATE TABLE public.event_check_ins(id uuid PRIMARY KEY DEFAULT gen_random_uuid(
 CREATE TABLE public.event_payment_exceptions(id uuid PRIMARY KEY DEFAULT gen_random_uuid(), event_booking_id uuid NOT NULL,
  payment_id uuid, reason text NOT NULL, status text NOT NULL DEFAULT 'open', metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
  created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now());
+CREATE UNIQUE INDEX event_payment_exceptions_open_booking_reason_idx ON public.event_payment_exceptions
+ USING btree (event_booking_id, reason) WHERE (status = 'open'::text);
 ALTER TABLE public.payments ADD COLUMN event_booking_id uuid, ADD COLUMN charge_type text,
- ADD COLUMN payment_provider text, ADD COLUMN paypal_order_id text, ADD COLUMN paypal_capture_id text,
+ ADD COLUMN payment_provider text, ADD COLUMN payment_method text, ADD COLUMN paypal_order_id text,
+ ADD COLUMN paypal_capture_id text, ADD COLUMN currency text NOT NULL DEFAULT 'GBP',
  ADD COLUMN metadata jsonb NOT NULL DEFAULT '{}'::jsonb, ADD COLUMN created_at timestamptz NOT NULL DEFAULT now(),
  ADD COLUMN updated_at timestamptz;
 ALTER TABLE public.payments ALTER COLUMN id SET DEFAULT gen_random_uuid();
@@ -97,11 +116,12 @@ def main():
         def check(expression, label): sql("SELECT fixture_assert(" + expression + ",'" + label.replace("'", "''") + "');")
 
         def definition():
-            return sql(f"SELECT md5(pg_get_functiondef(p.oid))||':'||coalesce(p.proacl::text,'')||':'||p.prosecdef||':'||array_to_string(p.proconfig,',') "
-                       f"FROM pg_proc p WHERE p.oid='{SIGNATURE}'::regprocedure;")
+            """Both functions: whole definition, grants, SECURITY DEFINER and settings."""
+            return sql(f"SELECT string_agg(md5(pg_get_functiondef(p.oid))||':'||coalesce(p.proacl::text,'')||':'||p.prosecdef||':'||array_to_string(p.proconfig,','), ' ' ORDER BY p.proname) "
+                       f"FROM pg_proc p WHERE p.oid IN ('{SIGNATURE}'::regprocedure, '{CONFIRM}'::regprocedure);")
 
-        def functiondef(): return sql(f"SELECT pg_get_functiondef('{SIGNATURE}'::regprocedure);")
-        def prosrc_md5(): return sql(f"SELECT md5(prosrc) FROM pg_proc WHERE oid='{SIGNATURE}'::regprocedure;")
+        def functiondef(signature=SIGNATURE): return sql(f"SELECT pg_get_functiondef('{signature}'::regprocedure);")
+        def prosrc_md5(signature=SIGNATURE): return sql(f"SELECT md5(prosrc) FROM pg_proc WHERE oid='{signature}'::regprocedure;")
         def new_id(): return sql("SELECT gen_random_uuid();")
 
         days = iter(range(1, 200))
@@ -142,6 +162,36 @@ def main():
         def live_rows(event_id, customer):
             return f"(SELECT count(*) FROM bookings WHERE event_id='{event_id}' AND customer_id='{customer}' AND status IN ('pending_payment','confirmed'))"
 
+        def order_of(payment_id): return sql(f"SELECT paypal_order_id FROM payments WHERE id='{payment_id}';")
+
+        def confirm(label, booking, order_id, capture, source='paypal_capture'):
+            sql(f"INSERT INTO fixture_results SELECT '{label}', confirm_event_paypal_payment_v01('{booking}','{order_id}','{capture}',20,'GBP','{source}');")
+
+        def expired_beside_new_hold():
+            """A booking the guest's new hold replaced a minute ago, as the hold job or v05 leaves it."""
+            event_id = night(); customer = new_id()
+            old = held(event_id, customer, status='expired', hold="now() - interval '3 minutes'")
+            sql(f"UPDATE bookings SET expired_at = now() - interval '1 minute' WHERE id='{old}';")
+            order = payment(old, 'failed', metadata='{"abandoned_reason":"event_booking_rehold_superseded"}')
+            held(event_id, customer, hold="now() + interval '14 minutes'")
+            return old, order
+
+        def revive(label):
+            """An expired booking within 10 minutes, with no other live booking for the guest and event
+            (the guest has one for another night, another guest has one for this night), is paid."""
+            event_id = night(); customer = new_id()
+            expired = held(event_id, customer, status='expired', hold="now() - interval '3 minutes'")
+            sql(f"UPDATE bookings SET expired_at = now() - interval '2 minutes' WHERE id='{expired}';")
+            order = payment(expired, 'pending')
+            held(night(), customer, hold="now() + interval '10 minutes'")
+            held(event_id, new_id(), hold="now() + interval '10 minutes'")
+            confirm(label, expired, order_of(order), f'CAPTURE-{label}')
+            check(f"{result(label, 'state')} = 'confirmed' AND {booking_status(expired)} = 'confirmed' "
+                  f"AND (SELECT hold_expires_at IS NULL AND expired_at IS NULL FROM bookings WHERE id='{expired}') "
+                  f"AND {payment_status(order)} = 'succeeded' AND (SELECT paypal_capture_id FROM payments WHERE id='{order}') = 'CAPTURE-{label}' "
+                  f"AND NOT EXISTS (SELECT 1 FROM event_payment_exceptions WHERE event_booking_id='{expired}')",
+                  f'{label}: an expired booking within 10 minutes and no other live booking for the guest and event is put back and confirmed')
+
         def refused_as_before(label, event_id, customer, booking, status='pending_payment'):
             book(label, event_id, customer)
             check(f"{result(label, 'state')} = 'blocked' AND {result(label, 'reason')} = 'customer_conflict' "
@@ -157,13 +207,18 @@ def main():
             sql(function_block(ROOM_WINDOW, 'private_booking_occupied_window'))
             sql(WHOLE_PUB.read_text())
             sql(BOOKABLE.read_text())
+            sql(LATE_PAYMENT.read_text())
             sql(PRODUCTION_SHAPE)
             check(f"(SELECT md5(prosrc) FROM pg_proc WHERE oid='{SIGNATURE}'::regprocedure) = '{LIVE_PROSRC}'",
                   'create_event_booking_v05 starts as production holds it on 6 November 2026')
             check(f"md5(pg_get_functiondef('{SIGNATURE}'::regprocedure)) = '{LIVE_DEFINITION}'",
                   'and its whole definition matches production byte for byte')
+            check(f"(SELECT md5(prosrc) FROM pg_proc WHERE oid='{CONFIRM}'::regprocedure) = '{CONFIRM_LIVE_PROSRC}' "
+                  f"AND md5(pg_get_functiondef('{CONFIRM}'::regprocedure)) = '{CONFIRM_LIVE_DEFINITION}'",
+                  'confirm_event_paypal_payment_v01 starts as production holds it, byte for byte')
             before = definition()
             before_text = functiondef()
+            before_confirm_text = functiondef(CONFIRM)
 
             # The defect, against production's body.
             event_id = night(); customer = new_id(); lapsed = held(event_id, customer)
@@ -171,15 +226,25 @@ def main():
             check(f"{result('baseline', 'state')} = 'blocked' AND {result('baseline', 'reason')} = 'customer_conflict' "
                   f"AND {booking_status(lapsed)} = 'pending_payment'",
                   'baseline: a guest whose own hold has run out is refused as customer_conflict')
+            old, _ = expired_beside_new_hold()
+            race = sql_error(f"SELECT confirm_event_paypal_payment_v01('{old}','ORDER-BASE','CAPTURE-BASE',20,'GBP','paypal_capture');")
+            if 'idx_bookings_customer_event_active_unique' not in race:
+                raise RuntimeError(f'FAIL baseline: the capture race did not break the unique index: {race!r}')
+            print('PASS baseline: a capture on a booking just replaced by a new hold breaks idx_bookings_customer_event_active_unique')
+            revive('revive_before')
 
             sql('BEGIN;\n' + MIGRATION.read_text() + '\nROLLBACK;')
-            if definition() != before: raise RuntimeError('FAIL a rolled-back run changed the function')
-            print('PASS a rolled-back run leaves the function as it was')
+            if definition() != before: raise RuntimeError('FAIL a rolled-back run changed a function')
+            print('PASS a rolled-back run leaves both functions as they were')
 
             sql(MIGRATION.read_text())
-            guard_md5 = MIGRATION.read_text().split("IF v_src NOT IN ('", 1)[1].split("'", 3)[2]
-            check(f"(SELECT md5(prosrc) FROM pg_proc WHERE oid='{SIGNATURE}'::regprocedure) = '{guard_md5}'",
-                  "the new body is the one the migration's guard accepts on a second run")
+            guards = {name: re.search(rf"IF {name} NOT IN \('([0-9a-f]{{32}})', '([0-9a-f]{{32}})'\)", MIGRATION.read_text()).groups()
+                      for name in ('v_booking_src', 'v_confirm_src')}
+            if guards['v_booking_src'][0] != LIVE_PROSRC or guards['v_confirm_src'][0] != CONFIRM_LIVE_PROSRC:
+                raise RuntimeError(f"FAIL the guard does not name production's bodies: {guards}")
+            check(f"(SELECT md5(prosrc) FROM pg_proc WHERE oid='{SIGNATURE}'::regprocedure) = '{guards['v_booking_src'][1]}' "
+                  f"AND (SELECT md5(prosrc) FROM pg_proc WHERE oid='{CONFIRM}'::regprocedure) = '{guards['v_confirm_src'][1]}'",
+                  "both new bodies are the ones the migration's guard accepts on a second run")
             old_lines = before_text.splitlines()
             hunks = [op for op in difflib.SequenceMatcher(None, old_lines, functiondef().splitlines(), autojunk=False).get_opcodes() if op[0] != 'equal']
             removed = [line for _, i1, i2, _, _ in hunks for line in old_lines[i1:i2]]
@@ -198,6 +263,12 @@ def main():
             if not removed or any(line not in allowed for line in removed) or len(removed) > len(allowed):
                 raise RuntimeError(f'FAIL the body changed outside its passages: {removed}')
             print(f'PASS the body changes in {len(hunks)} places only: the declarations, the duplicate check and the close of the answer')
+            confirm_old = before_confirm_text.splitlines()
+            confirm_hunks = [op for op in difflib.SequenceMatcher(None, confirm_old, functiondef(CONFIRM).splitlines(), autojunk=False).get_opcodes() if op[0] != 'equal']
+            confirm_removed = [line for _, i1, i2, _, _ in confirm_hunks for line in confirm_old[i1:i2]]
+            if len(confirm_hunks) != 1 or confirm_removed != ["    IF v_booking.expired_at IS NULL OR v_booking.expired_at < v_now - INTERVAL '10 minutes' THEN"]:
+                raise RuntimeError(f'FAIL confirm_event_paypal_payment_v01 changed outside its expired branch: {confirm_hunks} {confirm_removed}')
+            print('PASS confirm_event_paypal_payment_v01 changes in one place only: the test that keeps an expired booking expired')
 
             # The lapsed hold gives way, and a new hold is made.
             event_id = night(); customer = new_id(); lapsed = held(event_id, customer)
@@ -308,20 +379,79 @@ def main():
                   f"AND {live_rows(event_id, customer)} = 0",
                   'a re-hold for more seats than remain is refused, and the lapsed hold it replaced stays expired')
 
+            # A capture already under way when the hold gave way (the capture step read the pending
+            # row before the write-off): PayPal takes the money, then confirms the old booking.
+            event_id = night(); customer = new_id(); lapsed = held(event_id, customer)
+            order = payment(lapsed, 'pending'); order_id = order_of(order)
+            book('race_rehold', event_id, customer)
+            replacement = sql(f"SELECT {result('race_rehold', 'booking_id')};")
+            check(f"{result('race_rehold', 'superseded_booking_id')} = '{lapsed}' AND {payment_status(order)} = 'failed'",
+                  'race: the lapsed hold gives way and its order is written off')
+            replacement_row = f"(SELECT md5(row_to_json(b)::text) FROM bookings b WHERE id='{replacement}')"
+            replacement_before = sql(f"SELECT {replacement_row};")
+            replacement_hold = f"(SELECT md5(string_agg(row_to_json(h)::text, ',')) FROM booking_holds h WHERE event_booking_id='{replacement}')"
+            replacement_hold_before = sql(f"SELECT {replacement_hold};")
+            confirm('race_confirm', lapsed, order_id, 'CAPTURE-RACE')
+            check(f"{result('race_confirm', 'state')} = 'manual_review' AND {result('race_confirm', 'reason')} = 'booking_expired_after_capture' "
+                  f"AND {result('race_confirm', 'booking_id')} = '{lapsed}' AND {result('race_confirm', 'payment_id')} = '{order}'",
+                  'race: the capture on the old hold goes to manual review as booking_expired_after_capture, with no error')
+            check(f"{payment_status(order)} = 'succeeded' AND (SELECT paypal_capture_id FROM payments WHERE id='{order}') = 'CAPTURE-RACE' "
+                  f"AND (SELECT count(*) FROM payments WHERE event_booking_id='{lapsed}') = 1",
+                  'race: the written-off payment row now records the money as succeeded with its capture id')
+            check(f"(SELECT count(*) FROM event_payment_exceptions WHERE event_booking_id='{lapsed}' AND status = 'open') = 1 "
+                  f"AND (SELECT reason FROM event_payment_exceptions WHERE event_booking_id='{lapsed}') = 'booking_expired_after_capture' "
+                  f"AND (SELECT payment_id FROM event_payment_exceptions WHERE event_booking_id='{lapsed}') = '{order}'",
+                  'race: one open payment exception names the old booking and the payment, for staff to refund')
+            check(f"{booking_status(lapsed)} = 'expired' AND (SELECT expired_at IS NOT NULL FROM bookings WHERE id='{lapsed}') "
+                  f"AND {replacement_row} = '{replacement_before}' AND {replacement_hold} = '{replacement_hold_before}' "
+                  f"AND {hold_status(replacement)} = 'active' AND {live_rows(event_id, customer)} = 1",
+                  'race: the old booking stays expired and the new hold and its payment hold are untouched')
+            confirm('race_retry', lapsed, order_id, 'CAPTURE-RACE', source='paypal_webhook')
+            check(f"{result('race_retry', 'state')} = 'manual_review' AND {result('race_retry', 'reason')} = 'booking_expired_after_capture' "
+                  f"AND (SELECT count(*) FROM event_payment_exceptions WHERE event_booking_id='{lapsed}') = 1 "
+                  f"AND (SELECT count(*) FROM payments WHERE event_booking_id='{lapsed}') = 1 "
+                  f"AND {booking_status(lapsed)} = 'expired' AND {replacement_row} = '{replacement_before}'",
+                  'race: a retry, as the PayPal webhook makes, gives the same answer and opens no second exception or payment')
+
+            # The new hold was paid before the old capture lands: the same manual review.
+            event_id = night(); customer = new_id(); lapsed = held(event_id, customer)
+            order = payment(lapsed, 'pending'); order_id = order_of(order)
+            book('paid_rehold', event_id, customer)
+            replacement = sql(f"SELECT {result('paid_rehold', 'booking_id')};")
+            sql(f"UPDATE bookings SET status = 'confirmed', hold_expires_at = NULL WHERE id='{replacement}';")
+            confirm('paid_race', lapsed, order_id, 'CAPTURE-PAID-RACE')
+            check(f"{result('paid_race', 'state')} = 'manual_review' AND {result('paid_race', 'reason')} = 'booking_expired_after_capture' "
+                  f"AND {booking_status(lapsed)} = 'expired' AND {booking_status(replacement)} = 'confirmed' AND {payment_status(order)} = 'succeeded'",
+                  'race: a capture on the old hold after the new one was paid also goes to manual review')
+
+            # No other live booking for the guest and event: exactly as before.
+            revive('revive_after')
+            check(f"(SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys((SELECT result FROM fixture_results WHERE label='revive_after')) k) "
+                  f"= (SELECT array_agg(k ORDER BY k) FROM jsonb_object_keys((SELECT result FROM fixture_results WHERE label='revive_before')) k) "
+                  f"AND ((SELECT result FROM fixture_results WHERE label='revive_after') - 'booking_id' - 'customer_id' - 'event_id' - 'event_name' - 'payment_id') "
+                  f"= ((SELECT result FROM fixture_results WHERE label='revive_before') - 'booking_id' - 'customer_id' - 'event_id' - 'event_name' - 'payment_id')",
+                  'revive: the answer has the same shape and values as production gives today')
+
             after = definition()
             sql(MIGRATION.read_text())
-            if definition() != after: raise RuntimeError('FAIL a second run changed the function')
+            if definition() != after: raise RuntimeError('FAIL a second run changed a function')
             print('PASS a second run is a no-op')
             check(f"(SELECT p.prosecdef AND p.proconfig = ARRAY['search_path=public'] FROM pg_proc p WHERE p.oid='{SIGNATURE}'::regprocedure) "
                   f"AND has_function_privilege('service_role','{SIGNATURE}','EXECUTE') "
                   f"AND NOT has_function_privilege('authenticated','{SIGNATURE}','EXECUTE') "
                   f"AND NOT has_function_privilege('anon','{SIGNATURE}','EXECUTE')",
                   'create_event_booking_v05 keeps SECURITY DEFINER, its search_path and service-role only access')
+            check(f"(SELECT p.prosecdef AND p.proconfig = ARRAY['search_path=public'] FROM pg_proc p WHERE p.oid='{CONFIRM}'::regprocedure) "
+                  f"AND has_function_privilege('service_role','{CONFIRM}','EXECUTE') "
+                  f"AND NOT has_function_privilege('authenticated','{CONFIRM}','EXECUTE') "
+                  f"AND NOT has_function_privilege('anon','{CONFIRM}','EXECUTE')",
+                  'confirm_event_paypal_payment_v01 keeps SECURITY DEFINER, its search_path and service-role only access')
 
             sql(ROLLBACK.read_text())
-            if definition() != before or functiondef() != before_text or prosrc_md5() != LIVE_PROSRC:
-                raise RuntimeError('FAIL rollback did not restore the definition')
-            print("PASS rollback restores production's definition exactly, grants and settings included")
+            if (definition() != before or functiondef() != before_text or prosrc_md5() != LIVE_PROSRC
+                    or functiondef(CONFIRM) != before_confirm_text or prosrc_md5(CONFIRM) != CONFIRM_LIVE_PROSRC):
+                raise RuntimeError('FAIL rollback did not restore the definitions')
+            print("PASS rollback restores production's definitions of both functions exactly, grants and settings included")
             sql(ROLLBACK.read_text())
             if definition() != before: raise RuntimeError('FAIL a second rollback changed something')
             print('PASS a second rollback is a no-op')
@@ -329,14 +459,27 @@ def main():
             book('rolled_back', event_id, customer)
             check(f"{result('rolled_back', 'reason')} = 'customer_conflict' AND {booking_status(lapsed)} = 'pending_payment'",
                   'after the rollback a lapsed hold is refused again, as production does today')
+            old, _ = expired_beside_new_hold()
+            race = sql_error(f"SELECT confirm_event_paypal_payment_v01('{old}','ORDER-BACK','CAPTURE-BACK',20,'GBP','paypal_capture');")
+            if 'idx_bookings_customer_event_active_unique' not in race:
+                raise RuntimeError(f'FAIL after the rollback the capture race did not behave as production: {race!r}')
+            print('PASS after the rollback a capture beside a new hold breaks the unique index again, as production does today')
 
             moved_on = sql_error(
                 "BEGIN;\n"
                 f"DO $$ BEGIN EXECUTE replace(pg_get_functiondef('{SIGNATURE}'::regprocedure), "
                 "'-- BK-089: a postponed night has no date to book.', '-- BK-089: a postponed night cannot be booked.'); END $$;\n"
                 + MIGRATION.read_text() + "\nROLLBACK;")
-            if 'has moved on' not in moved_on: raise RuntimeError(f'FAIL a moved-on definition was not refused: {moved_on!r}')
-            print('PASS a definition that has moved on makes the migration fail instead of overwriting it')
+            if 'create_event_booking_v05 has moved on' not in moved_on: raise RuntimeError(f'FAIL a moved-on definition was not refused: {moved_on!r}')
+            print('PASS a create_event_booking_v05 that has moved on makes the migration fail instead of overwriting it')
+            moved_on = sql_error(
+                "BEGIN;\n"
+                f"DO $$ BEGIN EXECUTE replace(pg_get_functiondef('{CONFIRM}'::regprocedure), "
+                "'-- No limit (NULL) means the event cannot fill.', '-- No limit (NULL) means the event never fills.'); END $$;\n"
+                + MIGRATION.read_text() + "\nROLLBACK;")
+            if 'confirm_event_paypal_payment_v01 has moved on' not in moved_on:
+                raise RuntimeError(f'FAIL a moved-on confirm_event_paypal_payment_v01 was not refused: {moved_on!r}')
+            print('PASS a confirm_event_paypal_payment_v01 that has moved on makes the migration fail instead of overwriting it')
         finally:
             subprocess.run([str(PG / 'pg_ctl'), '-D', str(cluster), '-m', 'immediate', '-w', 'stop'], check=True, capture_output=True)
 

@@ -9,48 +9,76 @@
 -- which it does only 10 minutes after hold_expires_at, every 5 minutes. Capacity already ignores a
 -- lapsed hold (is_active_event_booking_for_capacity_v01, is_booking_live): the check is the block.
 --
--- Now the guest's own lapsed hold for the event gives way to the new one in the same transaction,
--- before capacity is read, when nothing is still being paid or decided on it: the guest is not
--- checked in, no payment exception is open, and its only payment rows are declined or written-off
--- ones and PayPal orders nobody captured. It is expired with its payment hold and its table booking
--- is cancelled ('event_booking_rehold_superseded'), as the hold job does, with no message. Its
--- uncaptured PayPal order is written off (payments.status 'failed', abandoned_reason in metadata),
--- as api/cron/event-paypal-reconciliation does after a day. That write-off is what makes this
--- safe: both capture paths accept an expired booking for 10 minutes after expired_at, and
--- confirm_event_paypal_payment_v01 then puts it back to pending_payment, which beside the new hold
--- breaks the unique index after PayPal has taken the money. captureEventPayPalOrderFromPreview
--- refuses a failed row before it asks PayPal to capture. A confirmed booking, a hold still running,
--- a checked-in guest or a payment in flight is refused as customer_conflict exactly as before. A
--- successful answer carries superseded_booking_id when a hold gave way; nothing reads it yet.
+-- create_event_booking_v05: the guest's own lapsed hold for the event now gives way to the new one
+-- in the same transaction, before capacity is read, when nothing is still being paid or decided on
+-- it: the guest is not checked in, no payment exception is open, and its only payment rows are
+-- declined or written-off ones and PayPal orders nobody captured. It is expired with its payment
+-- hold and its table booking is cancelled ('event_booking_rehold_superseded'), as the hold job
+-- does, with no message. Its uncaptured PayPal order is written off (payments.status 'failed',
+-- abandoned_reason in metadata), as api/cron/event-paypal-reconciliation does after a day, so
+-- captureEventPayPalOrderFromPreview refuses a capture started on the old hold from then on before
+-- it asks PayPal. A confirmed booking, a hold still running, a checked-in guest or a payment in
+-- flight is refused as customer_conflict exactly as before. A successful answer carries
+-- superseded_booking_id when a hold gave way; nothing reads it yet.
+--
+-- confirm_event_paypal_payment_v01: the write-off does not stop a capture already under way when
+-- the hold gives way (the capture step read the pending row first). Both capture paths accept an
+-- expired booking for 10 minutes after expired_at, and this function then put the booking back to
+-- pending_payment, which beside the new hold broke idx_bookings_customer_event_active_unique after
+-- PayPal had taken the money; the capture step only logged it, and the webhook and reconciliation
+-- retries failed the same way. Now an expired booking is not put back while the same guest has
+-- another booking for the event that is pending_payment or confirmed: the payment row is recorded
+-- as before (matched by order or capture id, so a written-off row becomes succeeded with the
+-- capture id), a booking_expired_after_capture exception is opened and the answer is
+-- manual_review, which both callers send to staff. The same applies to a booking the hold job
+-- expired before the guest booked again. With no such booking an expired booking within 10 minutes
+-- is put back and confirmed exactly as before. Nothing else in the function changes.
 --
 -- Live data this changes: none when applied. Checked on 6 November 2026: no booking is
 -- pending_payment.
 --
--- Built from production's pg_get_functiondef on 6 November 2026 (md5 583e6a10e772ab1f5b608cb6c102b5be,
--- md5(prosrc) 7ee06c16846fa8a22e57382a6ad37db5); only the passages described above change. The
--- guard refuses to replace any other body, so a definition that has moved on fails loudly instead
--- of being overwritten, and a second run is a no-op. Production's grants are restated: service_role
--- only, no anon or authenticated access, so no anon grant is issued.
+-- Both functions are built from production's pg_get_functiondef on 6 November 2026:
+-- create_event_booking_v05 (md5 583e6a10e772ab1f5b608cb6c102b5be, md5(prosrc)
+-- 7ee06c16846fa8a22e57382a6ad37db5) and confirm_event_paypal_payment_v01 (md5
+-- 07f7ec5d7433bc1560e5bad4b108edd7, md5(prosrc) b4383073beac5fb260d712695782d86b); only the
+-- passages described above change. The guard refuses to replace any other body, so a definition
+-- that has moved on fails loudly instead of being overwritten, and a second run is a no-op.
+-- Production's grants are restated for both: service_role only, no anon or authenticated access,
+-- so no anon grant is issued.
 --
 -- Rollback: supabase/rollbacks/20261106112933_event_rehold_supersedes_lapsed_hold.sql. Tested by
 -- scripts/testing/event-rehold-supersedes-lapsed-hold-postgres.py.
 
 DO $guard$
 DECLARE
-  v_src text;
+  v_booking_src text;
+  v_confirm_src text;
 BEGIN
   SELECT md5(p.prosrc)
-  INTO v_src
+  INTO v_booking_src
   FROM pg_proc p
   WHERE p.oid = to_regprocedure('public.create_event_booking_v05(uuid,uuid,integer,text,text)');
 
-  IF v_src IS NULL THEN
+  SELECT md5(p.prosrc)
+  INTO v_confirm_src
+  FROM pg_proc p
+  WHERE p.oid = to_regprocedure('public.confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text)');
+
+  IF v_booking_src IS NULL THEN
     RAISE EXCEPTION 'event_rehold_supersedes_lapsed_hold: create_event_booking_v05 is missing';
   END IF;
 
-  -- Production's body on 6 November 2026, or this migration's own (a second run).
-  IF v_src NOT IN ('7ee06c16846fa8a22e57382a6ad37db5', '2efe354d3ec9ee1cf0fe84b71f1f50e3') THEN
-    RAISE EXCEPTION 'event_rehold_supersedes_lapsed_hold: create_event_booking_v05 has moved on (md5(prosrc) %); rebuild this migration from the live definition', v_src;
+  IF v_confirm_src IS NULL THEN
+    RAISE EXCEPTION 'event_rehold_supersedes_lapsed_hold: confirm_event_paypal_payment_v01 is missing';
+  END IF;
+
+  -- Production's bodies on 6 November 2026, or this migration's own (a second run).
+  IF v_booking_src NOT IN ('7ee06c16846fa8a22e57382a6ad37db5', 'b7a32755d11ae1d0462bd292ee8d1e74') THEN
+    RAISE EXCEPTION 'event_rehold_supersedes_lapsed_hold: create_event_booking_v05 has moved on (md5(prosrc) %); rebuild this migration from the live definition', v_booking_src;
+  END IF;
+
+  IF v_confirm_src NOT IN ('b4383073beac5fb260d712695782d86b', '150d23fd2333edc403b5dd2241690fa2') THEN
+    RAISE EXCEPTION 'event_rehold_supersedes_lapsed_hold: confirm_event_paypal_payment_v01 has moved on (md5(prosrc) %); rebuild this migration from the live definition', v_confirm_src;
   END IF;
 END
 $guard$;
@@ -189,11 +217,13 @@ BEGIN
     -- payment is recorded beyond a PayPal order nobody captured (BK-019: a capture PayPal is
     -- holding, or a payment that went through, keeps the hold). It is expired, released and its
     -- table booking cancelled as the hold job would, but with no message: the guest is booking
-    -- again now. An uncaptured order is written off as the PayPal reconciliation does for an
-    -- abandoned checkout, so the capture step refuses it before asking PayPal: a PayPal window
-    -- left open on the old hold cannot take money for it, and confirm_event_paypal_payment_v01
-    -- never puts the old booking back beside the new one. Anything else, a confirmed booking or a
-    -- hold still running included, is refused exactly as before.
+    -- again now. Its uncaptured order is written off as the PayPal reconciliation does for an
+    -- abandoned checkout, so a capture started on the old hold from now on is refused before
+    -- PayPal is asked. A capture already under way can still take the money: then
+    -- confirm_event_paypal_payment_v01 finds this new booking, leaves the old one expired,
+    -- records the payment against it and opens a booking_expired_after_capture exception, so it
+    -- lands in manual review for staff to refund. Anything else, a confirmed booking or a hold
+    -- still running included, is refused exactly as before.
     IF v_existing_active.status = 'pending_payment'
        AND v_existing_active.hold_expires_at IS NOT NULL
        AND v_existing_active.hold_expires_at <= now()
@@ -456,3 +486,419 @@ $function$;
 -- Production's grants on 6 November 2026, restated: service_role only.
 REVOKE ALL ON FUNCTION public.create_event_booking_v05(uuid,uuid,integer,text,text) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_event_booking_v05(uuid,uuid,integer,text,text) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.confirm_event_paypal_payment_v01(p_event_booking_id uuid, p_paypal_order_id text, p_paypal_capture_id text, p_amount numeric, p_currency text DEFAULT 'GBP'::text, p_source text DEFAULT 'paypal_capture'::text)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_booking RECORD;
+  v_event RECORD;
+  v_payment_id uuid;
+  v_now timestamptz := now();
+  v_table_result jsonb := NULL;
+  v_table_state text := NULL;
+  v_table_reason text := NULL;
+  v_exception_reason text := NULL;
+  v_event_status text;
+  v_capacity RECORD;
+  v_own_seats integer;
+BEGIN
+  SELECT
+    b.id,
+    b.customer_id,
+    b.event_id,
+    b.status,
+    b.seats,
+    b.expired_at,
+    b.hold_expires_at,
+    b.event_seating_type
+  INTO v_booking
+  FROM public.bookings b
+  WHERE b.id = p_event_booking_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('state', 'blocked', 'reason', 'booking_not_found');
+  END IF;
+
+  SELECT e.id, e.name, e.booking_mode
+  INTO v_event
+  FROM public.events e
+  WHERE e.id = v_booking.event_id;
+
+  UPDATE public.payments
+  SET
+    status = 'succeeded',
+    payment_provider = 'paypal',
+    payment_method = 'paypal',
+    paypal_order_id = COALESCE(NULLIF(TRIM(p_paypal_order_id), ''), paypal_order_id),
+    paypal_capture_id = COALESCE(NULLIF(TRIM(p_paypal_capture_id), ''), paypal_capture_id),
+    amount = COALESCE(p_amount, amount),
+    currency = COALESCE(NULLIF(TRIM(p_currency), ''), currency),
+    metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object(
+      'confirmed_at', v_now,
+      'source', COALESCE(NULLIF(TRIM(p_source), ''), 'paypal_capture')
+    ),
+    updated_at = v_now
+  WHERE event_booking_id = p_event_booking_id
+    AND charge_type = 'prepaid_event'
+    AND (
+      paypal_capture_id = NULLIF(TRIM(p_paypal_capture_id), '')
+      OR paypal_order_id = NULLIF(TRIM(p_paypal_order_id), '')
+    )
+  RETURNING id INTO v_payment_id;
+
+  IF NOT FOUND THEN
+    INSERT INTO public.payments (
+      event_booking_id,
+      charge_type,
+      payment_provider,
+      payment_method,
+      paypal_order_id,
+      paypal_capture_id,
+      amount,
+      currency,
+      status,
+      metadata,
+      created_at,
+      updated_at
+    ) VALUES (
+      p_event_booking_id,
+      'prepaid_event',
+      'paypal',
+      'paypal',
+      NULLIF(TRIM(p_paypal_order_id), ''),
+      NULLIF(TRIM(p_paypal_capture_id), ''),
+      COALESCE(p_amount, 0),
+      COALESCE(NULLIF(TRIM(p_currency), ''), 'GBP'),
+      'succeeded',
+      jsonb_build_object(
+        'confirmed_at', v_now,
+        'source', COALESCE(NULLIF(TRIM(p_source), ''), 'paypal_capture')
+      ),
+      v_now,
+      v_now
+    )
+    RETURNING id INTO v_payment_id;
+  END IF;
+
+  IF v_booking.status = 'confirmed' THEN
+    RETURN jsonb_build_object(
+      'state', 'already_confirmed',
+      'booking_id', v_booking.id,
+      'customer_id', v_booking.customer_id,
+      'event_id', v_booking.event_id,
+      'event_name', COALESCE(v_event.name, 'Event booking'),
+      'seats', COALESCE(v_booking.seats, 1),
+      'payment_id', v_payment_id
+    );
+  END IF;
+
+  IF v_booking.status = 'expired' THEN
+    -- 6 November 2026: an expired booking is not put back while the same guest has another
+    -- booking for the event held or confirmed (a hold that replaced it through "Hold them again",
+    -- or one made after the hold job expired it). Beside that booking it would break
+    -- idx_bookings_customer_event_active_unique after PayPal has taken the money, and every retry
+    -- would fail the same way. The payment is recorded above; it goes to manual review instead.
+    IF v_booking.expired_at IS NULL OR v_booking.expired_at < v_now - INTERVAL '10 minutes'
+       OR EXISTS (
+         SELECT 1
+         FROM public.bookings other_booking
+         WHERE other_booking.customer_id = v_booking.customer_id
+           AND other_booking.event_id = v_booking.event_id
+           AND other_booking.id <> v_booking.id
+           AND other_booking.status IN ('pending_payment', 'confirmed')
+       ) THEN
+      v_exception_reason := 'booking_expired_after_capture';
+    ELSE
+      UPDATE public.bookings
+      SET status = 'pending_payment', expired_at = NULL, updated_at = v_now
+      WHERE id = v_booking.id;
+      v_booking.status := 'pending_payment';
+    END IF;
+  END IF;
+
+  IF v_booking.status = 'pending_payment'
+     AND v_booking.hold_expires_at IS NOT NULL
+     AND v_booking.hold_expires_at < v_now - INTERVAL '10 minutes' THEN
+    v_exception_reason := 'booking_expired_after_capture';
+  END IF;
+
+  IF v_exception_reason IS NULL AND v_booking.status = 'pending_payment' THEN
+    IF COALESCE(v_event.booking_mode, 'table') IN ('table', 'mixed') THEN
+      BEGIN
+        v_table_result := public.create_event_table_reservation_v05(
+          v_booking.event_id,
+          v_booking.id,
+          v_booking.customer_id,
+          COALESCE(v_booking.seats, 1),
+          'paypal_capture',
+          'Payment confirmed'
+        );
+        v_table_state := COALESCE(v_table_result->>'state', NULL);
+        v_table_reason := COALESCE(v_table_result->>'reason', NULL);
+        IF v_table_state IS NOT NULL AND v_table_state <> 'confirmed' THEN
+          v_exception_reason := 'table_unavailable_after_capture';
+        END IF;
+      EXCEPTION
+        WHEN OTHERS THEN
+          v_exception_reason := 'table_unavailable_after_capture';
+          v_table_state := 'blocked';
+          v_table_reason := 'no_table';
+      END;
+    ELSIF v_event.booking_mode = 'communal' THEN
+      -- Shared seating holds seats, never a whole table. Lock the event row (as
+      -- the table step did, so other bookings and seat changes for this event wait)
+      -- and, for seated guests, every table in the order
+      -- allocate_event_communal_seats_v01 takes them, so nothing can claim these
+      -- seats while the payment is decided. A cancelled or draft event goes to
+      -- review, as the table step sent it. Then judge the hold by the clock, not the
+      -- transaction start: seats under a live hold counted against capacity all
+      -- along, but once it lapses another guest may have taken them, so the event's
+      -- limits and the physical seats are checked again. If Postgres cancels this
+      -- check to break a deadlock with another booking (a joined-table booking can
+      -- lock tables in a different order), the other side finishes and the check
+      -- is retried rather than sending a paid booking to review.
+      FOR v_attempt IN 1..3 LOOP
+        v_exception_reason := NULL;
+        v_table_result := NULL;
+        v_table_state := NULL;
+        v_table_reason := NULL;
+        BEGIN
+          SELECT e.event_status
+          INTO v_event_status
+          FROM public.events e
+          WHERE e.id = v_booking.event_id
+          FOR UPDATE;
+
+          IF COALESCE(v_event_status, 'scheduled') IN ('cancelled', 'draft') THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'not_bookable';
+          ELSE
+            IF v_booking.event_seating_type = 'seated' THEN
+              PERFORM 1
+              FROM public.tables t
+              WHERE (COALESCE(t.is_bookable, true) AND t.capacity > 0)
+                OR t.id IN (
+                  SELECT a.table_id
+                  FROM public.event_communal_seat_allocations a
+                  WHERE a.event_booking_id = v_booking.id
+                )
+              ORDER BY t.bar_priority ASC, t.capacity ASC,
+                COALESCE(NULLIF(regexp_replace(t.table_number, '\D', '', 'g'), '')::integer, 9999), t.id
+              FOR UPDATE OF t;
+            END IF;
+
+            IF v_booking.hold_expires_at <= clock_timestamp()
+              OR (
+                v_booking.event_seating_type = 'seated'
+                AND COALESCE((
+                  SELECT SUM(a.seats)
+                  FROM public.event_communal_seat_allocations a
+                  WHERE a.event_booking_id = v_booking.id
+                ), 0) <> COALESCE(v_booking.seats, 1)
+              ) THEN
+              SELECT s.seated_remaining, s.standing_remaining, s.total_remaining
+              INTO v_capacity
+              FROM public.get_event_capacity_snapshot_v05(ARRAY[v_booking.event_id]) s;
+
+              -- The snapshot judges holds by the transaction start, so it may still
+              -- count this booking; add its own seats back in that case.
+              v_own_seats := CASE
+                WHEN public.is_active_event_booking_for_capacity_v01(v_booking.status, v_booking.hold_expires_at)
+                  THEN COALESCE(v_booking.seats, 1)
+                ELSE 0
+              END;
+
+              IF COALESCE(LEAST(
+                   CASE WHEN v_booking.event_seating_type = 'standing'
+                     THEN v_capacity.standing_remaining
+                     ELSE v_capacity.seated_remaining
+                   END,
+                   v_capacity.total_remaining
+                 ), 0) + v_own_seats < COALESCE(v_booking.seats, 1) THEN
+                v_exception_reason := 'capacity_unavailable_after_capture';
+                v_table_state := 'blocked';
+                v_table_reason := 'event_full';
+              ELSIF v_booking.event_seating_type = 'seated' THEN
+                v_table_result := public.reallocate_event_communal_booking_v01(
+                  v_booking.id,
+                  COALESCE(v_booking.seats, 1)
+                );
+                v_table_state := COALESCE(v_table_result->>'state', 'blocked');
+                v_table_reason := COALESCE(v_table_result->>'reason', NULL);
+                IF v_table_state <> 'confirmed' THEN
+                  v_exception_reason := 'capacity_unavailable_after_capture';
+                END IF;
+              END IF;
+            END IF;
+          END IF;
+          EXIT;
+        EXCEPTION
+          WHEN deadlock_detected OR lock_not_available THEN
+            IF v_attempt = 3 THEN
+              v_exception_reason := 'capacity_unavailable_after_capture';
+              v_table_state := 'blocked';
+              v_table_reason := 'seat_check_' || SQLSTATE;
+            END IF;
+          WHEN OTHERS THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'seat_check_' || SQLSTATE;
+            EXIT;
+        END;
+      END LOOP;
+    ELSE
+      -- 'general' events (and any other mode) place no table and no seats, only the event's
+      -- own limit. Lock the event row, as the table and shared-seating steps do, so a booking
+      -- for this event waits while the payment is decided. Seats under a live hold counted
+      -- against the limit all along; once the hold has lapsed by the clock another guest may
+      -- have taken them, so the limit is checked again and a payment that no longer fits goes
+      -- to manual review as capacity_unavailable_after_capture (BK-020). A deadlock with
+      -- another booking is retried rather than sending a paid booking to review.
+      FOR v_attempt IN 1..3 LOOP
+        v_exception_reason := NULL;
+        v_table_state := NULL;
+        v_table_reason := NULL;
+        BEGIN
+          PERFORM 1
+          FROM public.events e
+          WHERE e.id = v_booking.event_id
+          FOR UPDATE;
+
+          IF v_booking.hold_expires_at IS NOT NULL
+             AND v_booking.hold_expires_at <= clock_timestamp() THEN
+            SELECT s.total_remaining
+            INTO v_capacity
+            FROM public.get_event_capacity_snapshot_v05(ARRAY[v_booking.event_id]) s;
+
+            -- The snapshot judges holds by the transaction start, so it may still
+            -- count this booking; add its own seats back in that case.
+            v_own_seats := CASE
+              WHEN public.is_active_event_booking_for_capacity_v01(v_booking.status, v_booking.hold_expires_at)
+                THEN COALESCE(v_booking.seats, 1)
+              ELSE 0
+            END;
+
+            -- No limit (NULL) means the event cannot fill.
+            IF v_capacity.total_remaining IS NOT NULL
+               AND v_capacity.total_remaining + v_own_seats < COALESCE(v_booking.seats, 1) THEN
+              v_exception_reason := 'capacity_unavailable_after_capture';
+              v_table_state := 'blocked';
+              v_table_reason := 'event_full';
+            END IF;
+          END IF;
+          EXIT;
+        EXCEPTION
+          WHEN deadlock_detected OR lock_not_available THEN
+            IF v_attempt = 3 THEN
+              v_exception_reason := 'capacity_unavailable_after_capture';
+              v_table_state := 'blocked';
+              v_table_reason := 'seat_check_' || SQLSTATE;
+            END IF;
+          WHEN OTHERS THEN
+            v_exception_reason := 'capacity_unavailable_after_capture';
+            v_table_state := 'blocked';
+            v_table_reason := 'seat_check_' || SQLSTATE;
+            EXIT;
+        END;
+      END LOOP;
+    END IF;
+  END IF;
+
+  IF v_exception_reason IS NOT NULL THEN
+    INSERT INTO public.event_payment_exceptions (
+      event_booking_id,
+      payment_id,
+      reason,
+      metadata,
+      created_at,
+      updated_at
+    ) VALUES (
+      v_booking.id,
+      v_payment_id,
+      v_exception_reason,
+      jsonb_build_object(
+        'paypal_order_id', NULLIF(TRIM(p_paypal_order_id), ''),
+        'paypal_capture_id', NULLIF(TRIM(p_paypal_capture_id), ''),
+        'amount', p_amount,
+        'currency', p_currency,
+        'table_state', v_table_state,
+        'table_reason', v_table_reason
+      ),
+      v_now,
+      v_now
+    )
+    ON CONFLICT (event_booking_id, reason) WHERE status = 'open'
+    DO UPDATE SET
+      payment_id = EXCLUDED.payment_id,
+      metadata = public.event_payment_exceptions.metadata || EXCLUDED.metadata,
+      updated_at = v_now;
+
+    RETURN jsonb_build_object(
+      'state', 'manual_review',
+      'reason', v_exception_reason,
+      'booking_id', v_booking.id,
+      'customer_id', v_booking.customer_id,
+      'event_id', v_booking.event_id,
+      'event_name', COALESCE(v_event.name, 'Event booking'),
+      'seats', COALESCE(v_booking.seats, 1),
+      'payment_id', v_payment_id,
+      'table_state', v_table_state,
+      'table_reason', v_table_reason
+    );
+  END IF;
+
+  IF v_booking.status = 'pending_payment' THEN
+    UPDATE public.bookings
+    SET
+      status = 'confirmed',
+      hold_expires_at = NULL,
+      updated_at = v_now
+    WHERE id = v_booking.id;
+
+    UPDATE public.booking_holds
+    SET
+      status = 'consumed',
+      consumed_at = v_now,
+      updated_at = v_now
+    WHERE event_booking_id = v_booking.id
+      AND hold_type = 'payment_hold'
+      AND status = 'active';
+
+    UPDATE public.guest_tokens
+    SET consumed_at = v_now
+    WHERE event_booking_id = v_booking.id
+      AND action_type = 'payment'
+      AND consumed_at IS NULL;
+
+    RETURN jsonb_build_object(
+      'state', 'confirmed',
+      'booking_id', v_booking.id,
+      'customer_id', v_booking.customer_id,
+      'event_id', v_booking.event_id,
+      'event_name', COALESCE(v_event.name, 'Event booking'),
+      'seats', COALESCE(v_booking.seats, 1),
+      'payment_id', v_payment_id,
+      'table_state', v_table_state,
+      'table_reason', v_table_reason,
+      'table_booking_id', COALESCE(v_table_result->>'table_booking_id', NULL)
+    );
+  END IF;
+
+  RETURN jsonb_build_object(
+    'state', 'blocked',
+    'reason', 'booking_not_pending_payment',
+    'booking_id', v_booking.id,
+    'payment_id', v_payment_id
+  );
+END;
+$function$;
+
+-- Production's grants on 6 November 2026, restated: service_role only.
+REVOKE ALL ON FUNCTION public.confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.confirm_event_paypal_payment_v01(uuid,text,text,numeric,text,text) TO service_role;
