@@ -117,3 +117,35 @@ outputs/
 # Tool caches that keep showing up as untracked noise
 .playwright-cli/
 __pycache__/
+
+# ---- Workspace ignore baseline (November 2026): rules missing above ----
+# Build and test output
+dist/
+.turbo/
+blob-report/
+playwright/.cache/
+.eslintcache
+
+# Environment and secrets (templates stay tracked)
+.env.*
+!.env.example
+!.env.*.example
+*.key
+*.p12
+*.pfx
+
+# Logs and editor or OS noise
+*.log
+*.swp
+*.swo
+Thumbs.db
+.idea/
+
+# Local private data: never committed. Traffic figures, Search Console or
+# Keyword Planner exports, client numbers and contact lists live in private/
+# (or a raw/ folder beside a task). Reports cite the numbers by summary only.
+private/
+**/raw/
+
+# Claude Code settings backups (may hold tokens)
+tasks/claude-audit-backups/
