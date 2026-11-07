@@ -113,9 +113,10 @@ describe('print stylesheet', () => {
     expect(foh).toContain('Ask a manager if you need a printed copy.')
   })
 
-  it('leaves printing alone for people who can download', () => {
+  it('prints the sheet alone, without the page around it, for people who can download', () => {
     const boh = renderBookingOnePager(model, { allowPrint: true })
-    expect(boh).not.toContain('@media print')
+    expect(boh).not.toContain('.bs-sheet{ display:none')
+    expect(boh).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }')
     expect(boh).not.toContain('bs-print-refusal">')
   })
 })

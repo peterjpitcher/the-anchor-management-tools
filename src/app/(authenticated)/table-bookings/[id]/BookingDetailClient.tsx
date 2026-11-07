@@ -1029,6 +1029,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
       <Button size="sm" variant="secondary" onClick={() => router.push(`/table-bookings/${booking.id}/sheet`)}>Booking sheet</Button>
+      {/* Opens the sheet and its print window in one go, for printing the pre-order on a laptop. */}
+      <Button size="sm" variant="secondary" onClick={() => router.push(`/table-bookings/${booking.id}/sheet?print=1`)}>Print sheet</Button>
       {!bookingClosed && !eventLink && (
         <Button
           size="sm"

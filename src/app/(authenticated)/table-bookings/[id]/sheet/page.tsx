@@ -7,11 +7,13 @@ import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { canDownloadBookingSheet, type BookingSheetModel } from '@/lib/table-bookings/booking-sheet'
 import { loadBookingSheetModel } from '@/lib/table-bookings/booking-sheet-load'
 import { renderBookingOnePager } from '@/lib/table-booking-one-pager-template'
+import { PrintSheetButton } from './PrintSheetButton'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface Props {
   params: Promise<{ id: string }>
+  searchParams?: Promise<{ print?: string | string[] }>
 }
 
 /**
@@ -21,10 +23,12 @@ interface Props {
  * unlike the booking detail page, does not send FOH-only users away. Only people the PDF route
  * serves (`requireBohTableBookingPermission`) see Download PDF, and for everyone else the print
  * stylesheet hides the sheet, so front of house gets no paper copy. The route refuses them too:
- * hiding the button is never the only check.
+ * hiding the button is never the only check. The same people get Print, for a laptop (owner
+ * request, 7 November 2026), and `?print=1` opens the print window as soon as the sheet loads.
  */
-export default async function BookingSheetPage({ params }: Props) {
+export default async function BookingSheetPage({ params, searchParams }: Props) {
   const { id } = await params
+  const query = searchParams ? await searchParams : {}
 
   const [viewStatus, permissionsResult] = await Promise.all([
     getPermissionStatus('table_bookings', 'view'),
@@ -62,10 +66,14 @@ export default async function BookingSheetPage({ params }: Props) {
   }
   if (!model) notFound()
 
+  const autoPrint = query.print === '1'
   const headerActions = canDownload ? (
-    <LinkButton href={`/api/boh/table-bookings/booking-sheets/${id}`} download variant="secondary" size="sm">
-      Download PDF
-    </LinkButton>
+    <>
+      <PrintSheetButton autoPrint={autoPrint} />
+      <LinkButton href={`/api/boh/table-bookings/booking-sheets/${id}`} download variant="secondary" size="sm">
+        Download PDF
+      </LinkButton>
+    </>
   ) : undefined
 
   return (
