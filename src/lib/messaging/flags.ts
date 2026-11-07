@@ -67,6 +67,11 @@ export const MESSAGING_FLAG_KEYS = [
   // waitlist booking saved with details to follow (BK-011, owner decision D5, 27 October 2026).
   // New guest wording, so it stays off until the owner has read it and switches it on.
   'event_guest_details_request',
+  // A PAUSE switch, unlike the rest: while it is true, a website event hold is NOT emailed its
+  // payment link (event checkout spec, Piece 4.1, owner approval 7 November 2026). Missing or
+  // false means the email goes, so it is on by default with no migration
+  // (src/lib/events/website-hold-payment-email.ts).
+  'event_hold_payment_link_email_paused',
   'bounce_sms_fallback',
   'staff_message_email_option',
 ] as const

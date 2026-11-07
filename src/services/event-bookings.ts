@@ -13,6 +13,7 @@ import {
   formatEventTextWhen,
 } from '@/lib/events/event-guest-texts'
 import { sendEventMessageEmailFirst } from '@/lib/events/event-guest-notify'
+import { sendWebsiteHoldPaymentLinkEmail } from '@/lib/events/website-hold-payment-email'
 import { requestMissingGuestDetails } from '@/lib/events/guest-details-request'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
@@ -1012,9 +1013,29 @@ export class EventBookingService {
           }),
         })
       } else if (resolvedState === 'pending_payment' && source === 'brand_site' && skipPendingPaymentSms) {
-        // BK-084: the guest is looking at the PayPal buttons. A second pay link only confuses
-        // them, and one held by quiet hours arrives after they have paid or the hold has gone. A
-        // lapsed hold is still covered by the hold-released message.
+        // BK-084: the guest is looking at the PayPal buttons, so no TEXT: one held by quiet hours
+        // arrives after they have paid or the hold has gone. A lapsed hold is still covered by the
+        // hold-released message.
+        // Event checkout spec, Piece 4.1 (owner approval, 7 November 2026): the payment link goes
+        // by EMAIL straight away, once, so a guest who reloads or switches apps mid-payment has a
+        // way back within the 15-minute hold. It never fails the booking and never sets
+        // confirmationEmailed: it is a payment link, not a confirmation, and the website's
+        // response must not change.
+        if (bookingMessageId && nextStepUrl) {
+          const heldBookingId = bookingMessageId
+          const paymentLink = nextStepUrl
+          tasks.push({
+            label: 'message:event_hold_payment_link_email',
+            promise: sendWebsiteHoldPaymentLinkEmail(supabase, {
+              bookingId: heldBookingId,
+              eventId,
+              customerId,
+              paymentLink,
+              holdExpiresAt: rpcResult.hold_expires_at ?? null,
+              contactEmail: contactEmail ?? null,
+            }),
+          })
+        }
       } else if (resolvedState === 'pending_payment' && bookingMessageId) {
         // BK-142: a phone, bar or text booking's payment link, email first (owner decision D14).
         const pendingBookingId = bookingMessageId

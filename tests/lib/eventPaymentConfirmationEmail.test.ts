@@ -407,6 +407,32 @@ describe('event guest emails', () => {
       assertCleanRender(sent)
       expect(sent.text).toContain(`We can hold them until ${expectedLongDate('2026-11-01')} at 12:15am.`)
     })
+
+    // Event checkout spec, Piece 4.1: the same email now goes the moment a website hold is made,
+    // and a website hold lasts 15 minutes, so its end time is a minute past the hour, not a
+    // round one. It must read as the exact London time, with the amount and link, nothing missing.
+    it('reads a 15-minute website hold to the minute, in London time, in GMT', async () => {
+      const result = await sendEventPaymentLinkEmail(
+        buildSupabase({ event: TASTING_EVENT, booking: { seats: 2, status: 'pending_payment' } }) as any,
+        {
+          bookingId: '3f2a9c1b-0d44-4a1e-9d3f-2b6c8a1e4f70',
+          paymentLink: 'https://management.orangejelly.co.uk/g/pay-token/event-payment',
+          // 20:42 UTC on 7 November is 8:42pm in London (GMT).
+          holdExpiresAt: '2026-11-07T20:42:00.000Z',
+        }
+      )
+
+      expect(result).toEqual({ success: true, messageId: 'email-1' })
+      const sent = lastSend()
+      assertCleanRender(sent)
+      expect(sent.subject).toContain('Complete your payment')
+      expect(sent.text).toContain('2 tickets are held for Tinsel and Tipples Christmas Tasting Night')
+      expect(sent.text).toContain('Total to pay: £80.00.')
+      expect(sent.text).toContain(`We can hold them until ${expectedLongDate('2026-11-07')} at 8:42pm.`)
+      expect(sent.text).toContain('Pay securely here: ')
+      expect(sent.html).toContain('Pay securely')
+      expect(sent.commType).toBe('event_payment_link')
+    })
   })
 
   describe('payment confirmation', () => {
