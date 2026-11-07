@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal';
 import { logAuditEvent } from '@/app/actions/audit';
 import { logger } from '@/lib/logger';
+import { loadPayPalPayerPrefill } from '@/lib/payments/paypal-payer-prefill';
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit';
 import {
   extractPayPalOrderAmountGbp,
@@ -31,7 +32,7 @@ export async function POST(
       // amounts and waivers. Spec §7.3, §8.3.
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, party_size, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
+        .select('id, customer_id, contact_email, party_size, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
         .eq('id', bookingId)
         .single();
 
@@ -155,6 +156,13 @@ export async function POST(
         });
       }
 
+      // Fill PayPal's pay screen in with the guest's own details. A failed read gives null and
+      // the order is made without prefill, as before.
+      const payer = await loadPayPalPayerPrefill(supabase, {
+        customerId: booking.customer_id ?? null,
+        contactEmail: booking.contact_email ?? null,
+      });
+
       let paypalOrder: { orderId: string };
       try {
         paypalOrder = await createInlinePayPalOrder({
@@ -167,6 +175,7 @@ export async function POST(
           // made first, so a deposit re-priced after a party-size change (D20) would otherwise
           // get the old order back and the capture would be refused as the wrong amount.
           requestId: `tb-deposit-${bookingId}-${Math.round(depositAmount * 100)}`,
+          payer,
         });
       } catch (err) {
         return NextResponse.json(

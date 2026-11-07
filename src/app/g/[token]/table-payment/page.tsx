@@ -10,6 +10,7 @@ import { GuestBlockedState, GuestShell } from '@/components/features/guest'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { createInlinePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { logAuditEvent } from '@/app/actions/audit'
+import { loadPayPalPayerPrefill } from '@/lib/payments/paypal-payer-prefill'
 import { TablePaymentClient, type TablePaymentCaptureResult } from './TablePaymentClient'
 import { TablePaymentSuccessPanel, type TablePaymentSuccessDetails } from './TablePaymentSuccessPanel'
 import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit'
@@ -150,7 +151,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const guestFirstName = await getCustomerFirstNameById(supabase, preview.customerId)
   const { data: booking } = await supabase
     .from('table_bookings')
-    .select('payment_status, paypal_deposit_order_id, is_outside_seating, booking_period_id')
+    .select('payment_status, paypal_deposit_order_id, is_outside_seating, booking_period_id, contact_email')
     .eq('id', preview.tableBookingId)
     .single()
 
@@ -214,6 +215,13 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   }
 
   if (needsNewOrder) {
+    // Fill PayPal's pay screen in with the guest's own details. A failed read gives null and the
+    // order is made without prefill, as before.
+    const payer = await loadPayPalPayerPrefill(supabase, {
+      customerId: preview.customerId,
+      contactEmail: (booking?.contact_email as string | null | undefined) ?? null,
+    })
+
     let paypalOrder: { orderId: string }
     try {
       // Inline, NOT createSimplePayPalOrder. This order is handed to
@@ -233,6 +241,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         // made first, so a deposit re-priced after a party-size change (D20) would otherwise
         // get the old order back and the capture would be refused as the wrong amount.
         requestId: `tb-deposit-${preview.tableBookingId}-${Math.round(preview.totalAmount * 100)}`,
+        payer,
       })
     } catch {
       return (

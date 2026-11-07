@@ -128,6 +128,9 @@ export function EventPayPalPaymentClient({
           currency,
           intent: 'capture',
           environment: paypalEnvironment === 'sandbox' ? 'sandbox' : 'production',
+          // UK card form: without a locale PayPal follows the browser language, and a US-English
+          // browser was shown State, ZIP code and a +1 phone (proved in sandbox, 7 November 2026).
+          locale: 'en_GB',
         }}
       >
         {/*
