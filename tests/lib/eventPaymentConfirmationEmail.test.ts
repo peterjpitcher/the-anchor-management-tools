@@ -947,6 +947,51 @@ describe('event guest emails', () => {
       expect(sent.text).toContain("call us on 01753 682707 and we'll check what's left")
     })
 
+    describe('the one-tap rebook link (event checkout spec, Piece 4.2)', () => {
+      const REBOOK_URL = 'https://www.the-anchor.pub/events/tasting-night-21-november?rebook=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde#event-booking'
+
+      it('renders cleanly with the rebook link as the button and the plain-text link', async () => {
+        const result = await sendEventPaymentExpiredEmail(
+          buildSupabase({ event: { ...TASTING_EVENT, booking_url: null, slug: 'tasting-night-21-november' } }) as any,
+          { bookingId: BOOKING_ID, rebookLinkUrl: REBOOK_URL },
+        )
+
+        expect(result).toEqual({ success: true, messageId: 'email-1' })
+        const sent = lastSend()
+        assertCleanRender(sent)
+        expect(sent.subject).toBe(`Held places released: Tinsel and Tipples Christmas Tasting Night, ${expectedLongDate('2026-11-20').replace(/ \d{4}$/, '')}`)
+        expect(sent.text).toContain("We've released the 2 places we were holding for Tinsel and Tipples Christmas Tasting Night")
+        expect(sent.text).toContain("we've saved your details. Tap below and your booking is ready to finish. Places aren't held")
+        expect(sent.text).toContain(`Book again here: ${REBOOK_URL}`)
+        expect(sent.html).toContain(`href="${REBOOK_URL}"`)
+        expect(sent.html).toContain('>Book again</a>')
+        expect(sent.metadata).toMatchObject({ template_key: 'event_payment_expired_email', rebook_link: true })
+        // The token travels only in the link: never in the stored metadata.
+        expect(JSON.stringify(sent.metadata)).not.toContain('rebook=')
+      })
+
+      it('uses the rebook link over the event booking link', async () => {
+        await sendEventPaymentExpiredEmail(buildSupabase() as any, { bookingId: BOOKING_ID, rebookLinkUrl: REBOOK_URL })
+        const sent = lastSend()
+        assertCleanRender(sent)
+        expect(sent.text).toContain(`Book again here: ${REBOOK_URL}`)
+        expect(sent.text).not.toContain('https://www.the-anchor.pub/events/quiz-night')
+      })
+
+      it('keeps the old email exactly when no rebook link is given', async () => {
+        for (const rebookLinkUrl of [undefined, null, '   ']) {
+          vi.mocked(sendEmail).mockClear()
+          await sendEventPaymentExpiredEmail(buildSupabase() as any, { bookingId: BOOKING_ID, rebookLinkUrl })
+          const sent = lastSend()
+          assertCleanRender(sent)
+          expect(sent.text).toContain("If you'd still like to come, you can book again while tickets are available.")
+          expect(sent.text).toContain('Book again here: https://www.the-anchor.pub/events/quiz-night')
+          expect(sent.text).not.toContain('saved your details')
+          expect(sent.metadata).toMatchObject({ rebook_link: false })
+        }
+      })
+    })
+
     it('defers, sending nothing, when the email log cannot be read', async () => {
       for (const send of [
         () => sendEventPaymentConfirmationEmail(buildSupabase({ emailLogError: true }) as any, { bookingId: BOOKING_ID, amount: 30, currency: 'GBP' }),

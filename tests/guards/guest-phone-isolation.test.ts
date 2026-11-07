@@ -9,8 +9,9 @@ import { join, relative } from 'node:path'
  * table.
  *
  * Guest phones live in bookings.attendees[].phone. Only the guest details modules, the staff
- * editor, the booker's manage link, the door list, the guest answers export and the retention
- * job may read them. This guard fails when any messaging, marketing or customer module reads a
+ * editor, the booker's manage link, the door list, the guest answers export, the retention job
+ * and the rebook link exchange (src/lib/events/rebook-link.ts, which hands them back to the booker
+ * who typed them, to refill the website form) may read them. This guard fails when any messaging, marketing or customer module reads a
  * guest's phone, or when any file passes one to ensureCustomerForPhone or sendSMS.
  */
 const ROOT = process.cwd()

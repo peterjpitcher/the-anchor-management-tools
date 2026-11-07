@@ -63,6 +63,11 @@ export const MESSAGING_FLAG_KEYS = [
   // on its own (BK-047, owner decision D19, 26 October 2026). It reuses the staff refund notice's
   // words, but no staff click sends it, so it stays off until the owner switches it on.
   'table_late_deposit_refund_notice',
+  // A PAUSE switch, unlike most: while it is true, the places-released email for a lapsed website
+  // event hold links to the plain event page instead of the one-tap rebook link (event checkout
+  // spec, Piece 4.2, owner approval 7 November 2026). Missing or false means the rebook link goes,
+  // so it is on by default with no migration (src/lib/events/rebook-link.ts).
+  'event_rebook_link_paused',
   // The booker's link to add guest names, answers and mobiles after a phone, bar, text or
   // waitlist booking saved with details to follow (BK-011, owner decision D5, 27 October 2026).
   // New guest wording, so it stays off until the owner has read it and switches it on.

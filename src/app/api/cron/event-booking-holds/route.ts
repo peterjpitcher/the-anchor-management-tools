@@ -13,6 +13,7 @@ import { resolvePublicEventLink } from '@/lib/events/public-event-link'
 import { resolveEventStartIso } from '@/lib/events/event-when'
 import { findEventBookingsAwaitingPaymentDecision } from '@/lib/events/payment-awaiting-decision'
 import { withCronRun } from '@/lib/cron/run-recorder'
+import { prepareHoldReleasedRebookLink } from '@/lib/events/rebook-link'
 
 // The 15-second project default is too tight for a run that expires a backlog (BK-212).
 export const maxDuration = 60
@@ -99,6 +100,8 @@ async function expireEventBookingHolds(request: NextRequest) {
       keptCheckedIn: 0,
       expiredPaymentHolds: 0,
       cancelledEventTableBookings: 0,
+      rebookLinksIssued: 0,
+      releasedMessagesSkipped: 0,
       expiredWaitlistOffers: 0,
       expiredWaitlistEntries: 0,
       expiredWaitlistHolds: 0,
@@ -136,6 +139,7 @@ async function expireEventBookingHolds(request: NextRequest) {
     // A walk-in's hold may lapse, but they are never sent a "seats released" message: they were
     // never sent a payment link either (BK-032).
     const walkInIds = new Set((pendingRows || []).filter((row: any) => row.source === 'walk-in').map((row: any) => row.id))
+    const sourceById = new Map<string, string | null>((pendingRows || []).map((row: any) => [row.id, row.source ?? null]))
 
     const lapsedIds = candidateIds.filter((id: string) => !checkedInIds.has(id))
     // A booking whose payment PayPal is still deciding is not "unpaid": leave it, and send the
@@ -193,11 +197,24 @@ async function expireEventBookingHolds(request: NextRequest) {
       for (const expiredBookingId of expiredBookingIds) {
         if (walkInIds.has(expiredBookingId)) continue
         try {
+          // A website hold gets the one-tap rebook link in its email (Piece 4.2). The link's token
+          // is the once-per-booking claim, written before anything is sent; a guest who has paid
+          // or booked again since gets no message. Never throws: a fault sends today's email.
+          const rebook = await prepareHoldReleasedRebookLink(supabase, {
+            bookingId: expiredBookingId,
+            source: sourceById.get(expiredBookingId) ?? null,
+          })
+          if (!rebook.send) {
+            result.releasedMessagesSkipped += 1
+            continue
+          }
+          if (rebook.rebookUrl) result.rebookLinksIssued += 1
           await sendEventMessageEmailFirst({
             templateKey: 'event_hold_expired',
             bookingId: expiredBookingId,
             eventId: (expiredBookings || []).find((row: any) => row.id === expiredBookingId)?.event_id ?? null,
-            email: () => sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId }),
+            email: () => sendEventPaymentExpiredEmail(supabase, { bookingId: expiredBookingId, rebookLinkUrl: rebook.rebookUrl }),
+            // The text keeps the plain event link: a shortened link would store the token in the clear.
             text: () => sendEventHoldReleasedText(supabase, expiredBookingId),
           })
         } catch (messageError) {
