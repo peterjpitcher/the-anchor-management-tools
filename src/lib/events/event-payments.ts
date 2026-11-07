@@ -11,6 +11,7 @@ import {
   isPayPalOrderNotFoundError,
 } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
+import { loadPayPalPayerPrefill } from '@/lib/payments/paypal-payer-prefill'
 import { logger } from '@/lib/logger'
 import { EVENT_CAPTURE_PENDING_STATUS, isEventCapturePendingPayment } from '@/lib/events/payment-awaiting-decision'
 import { ensureReplyInstruction } from '@/lib/sms/support'
@@ -58,6 +59,8 @@ export type EventPaymentPreviewResult =
     currency: string
     holdExpiresAt: string
     tokenHash: string
+    /** The email the guest gave for this booking, used to prefill PayPal. */
+    contactEmail?: string | null
   }
   | {
     state: 'blocked'
@@ -297,7 +300,7 @@ export async function getEventPaymentPreviewByRawToken(
 
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked')
+    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked, contact_email')
     .eq('id', token.event_booking_id)
     .maybeSingle()
 
@@ -374,7 +377,8 @@ export async function getEventPaymentPreviewByRawToken(
     totalAmount,
     currency: 'GBP',
     holdExpiresAt: holdExpiry.toISOString(),
-    tokenHash
+    tokenHash,
+    contactEmail: booking.contact_email ?? null
   }
 }
 
@@ -398,7 +402,7 @@ async function getEventPaymentPreviewByBookingId(
 ): Promise<EventPaymentPreviewResult> {
   const { data: booking, error: bookingError } = await supabase
     .from('bookings')
-    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked')
+    .select('id, customer_id, event_id, seats, status, hold_expires_at, expired_at, ticket_price_locked, contact_email')
     .eq('id', input.bookingId)
     .maybeSingle()
 
@@ -459,7 +463,8 @@ async function getEventPaymentPreviewByBookingId(
     totalAmount,
     currency: 'GBP',
     holdExpiresAt: holdExpiry.toISOString(),
-    tokenHash: ''
+    tokenHash: '',
+    contactEmail: booking.contact_email ?? null
   }
 }
 
@@ -529,6 +534,13 @@ async function createEventPayPalOrderFromPreview(
     holdExpiresAt: preview.holdExpiresAt,
   })
 
+  // Fill PayPal's pay screen in with the guest's own details (spec Piece 2). A failed read gives
+  // null and the order is made without prefill, as before.
+  const payer = await loadPayPalPayerPrefill(supabase, {
+    customerId: preview.customerId,
+    contactEmail: preview.contactEmail ?? null,
+  })
+
   const paypalOrder = await createInlinePayPalOrder({
     customId: `event_booking:${preview.bookingId}`,
     reference: 'event_booking',
@@ -536,6 +548,7 @@ async function createEventPayPalOrderFromPreview(
     amount: preview.totalAmount,
     currency: preview.currency,
     requestId,
+    payer,
   })
 
   const nowIso = new Date().toISOString()

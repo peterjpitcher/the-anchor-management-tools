@@ -42,6 +42,12 @@ vi.mock('@/lib/paypal', () => ({
   getPayPalOrder: mockGetPayPalOrder,
 }));
 
+const { mockLoadPayer } = vi.hoisted(() => ({ mockLoadPayer: vi.fn() }));
+
+vi.mock('@/lib/payments/paypal-payer-prefill', () => ({
+  loadPayPalPayerPrefill: mockLoadPayer,
+}));
+
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn().mockResolvedValue(undefined),
 }));
@@ -117,6 +123,24 @@ describe('POST /api/external/table-bookings/[id]/paypal/create-order', () => {
         amount: 40,
       }),
     );
+  });
+
+  it('passes the guest to PayPal so its pay screen is prefilled', async () => {
+    const booking = makeBooking({ customer_id: 'customer-1', contact_email: 'booking@example.com' });
+    mockBookingFetch(booking);
+    mockUpdateSuccess();
+    const payer = { firstName: 'Sam', lastName: 'Taylor', email: 'booking@example.com', mobileE164: '+447700900123' };
+    mockLoadPayer.mockResolvedValueOnce(payer);
+    mockCreateSimplePayPalOrder.mockResolvedValueOnce({ orderId: 'PAYPAL-ORDER-123' });
+
+    const res = await callRoute('booking-uuid-1');
+
+    expect(res.status).toBe(200);
+    expect(mockLoadPayer).toHaveBeenCalledWith(expect.anything(), {
+      customerId: 'customer-1',
+      contactEmail: 'booking@example.com',
+    });
+    expect(mockCreateSimplePayPalOrder).toHaveBeenCalledWith(expect.objectContaining({ payer }));
   });
 
   it('returns existing orderId without calling PayPal if paypal_deposit_order_id already set and amount matches canonical (idempotent)', async () => {

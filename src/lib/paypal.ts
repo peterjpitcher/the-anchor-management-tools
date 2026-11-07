@@ -314,6 +314,17 @@ export async function createSimplePayPalOrder(options: PayPalOrderOptions) {
   });
 }
 
+/**
+ * The guest's own details, used only to fill in PayPal's pay screen for them. Every field is
+ * optional: whatever is missing or unusable is simply left out and PayPal asks for it instead.
+ */
+export interface PayPalPayerPrefill {
+  firstName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  mobileE164?: string | null;
+}
+
 export interface InlinePayPalOrderOptions {
   customId: string;
   reference: string;
@@ -321,18 +332,81 @@ export interface InlinePayPalOrderOptions {
   amount: number;
   currency?: string;
   requestId?: string;
+  payer?: PayPalPayerPrefill | null;
+}
+
+type PayPalPrefillPaymentSource = {
+  paypal: {
+    name?: { given_name: string; surname: string };
+    email_address?: string;
+    phone?: { phone_type: 'MOBILE'; phone_number: { national_number: string } };
+    address: { country_code: 'GB' };
+    experience_context: { shipping_preference: 'NO_SHIPPING' };
+  };
+};
+
+// PayPal's own limits for these fields (Orders v2): names up to 140 characters, email up to 254.
+const PAYPAL_NAME_MAX = 140;
+const PAYPAL_EMAIL_MAX = 254;
+const SIMPLE_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// A UK number in E.164: +44 then the national number without its leading 0 (9 or 10 digits).
+const UK_E164 = /^\+44(\d{9,10})$/;
+
+function cleanText(value: string | null | undefined, max: number): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  return trimmed.slice(0, max);
 }
 
 /**
- * Creates a PayPal order for use with inline/popup PayPal buttons.
- * Unlike createSimplePayPalOrder, this does NOT set payment_source with redirect URLs —
- * those cause the popup to immediately close by triggering the redirect flow.
+ * Builds the `payment_source.paypal` block that prefills PayPal's pay screen, including its
+ * inline "Debit or Credit Card" form (proved in PayPal's sandbox, 7 November 2026): name and
+ * email arrive filled in, and country GB cuts the billing address down to a postcode.
+ *
+ * Returns null when there is nothing usable, so the order payload stays exactly as it was.
+ *
+ * Deliberately has no return_url or cancel_url: with those, PayPal treats the order as a
+ * redirect checkout and the popup the inline buttons open closes itself at once. The top-level
+ * `payer` field is deprecated and broke the card button, so it is never used.
  */
-export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions) {
-  const accessToken = await getAccessToken();
-  const { baseUrl } = getPayPalConfig();
+export function buildPayPalPrefillPaymentSource(
+  payer: PayPalPayerPrefill | null | undefined,
+): PayPalPrefillPaymentSource | null {
+  if (!payer) return null;
 
-  const payload = {
+  const givenName = cleanText(payer.firstName, PAYPAL_NAME_MAX);
+  const surname = cleanText(payer.lastName, PAYPAL_NAME_MAX);
+  const emailCandidate = cleanText(payer.email, PAYPAL_EMAIL_MAX + 1);
+  const email = emailCandidate && emailCandidate.length <= PAYPAL_EMAIL_MAX && SIMPLE_EMAIL.test(emailCandidate)
+    ? emailCandidate
+    : null;
+  const phoneMatch = typeof payer.mobileE164 === 'string' ? UK_E164.exec(payer.mobileE164.trim()) : null;
+  const nationalNumber = phoneMatch ? phoneMatch[1] : null;
+
+  const hasName = Boolean(givenName && surname);
+  if (!hasName && !email && !nationalNumber) return null;
+
+  return {
+    paypal: {
+      ...(hasName ? { name: { given_name: givenName as string, surname: surname as string } } : {}),
+      ...(email ? { email_address: email } : {}),
+      ...(nationalNumber
+        ? { phone: { phone_type: 'MOBILE' as const, phone_number: { national_number: nationalNumber } } }
+        : {}),
+      address: { country_code: 'GB' },
+      experience_context: { shipping_preference: 'NO_SHIPPING' },
+    },
+  };
+}
+
+/**
+ * The JSON body for an inline order. Exported so the exact payload can be tested without
+ * calling PayPal.
+ */
+export function buildInlinePayPalOrderPayload(options: InlinePayPalOrderOptions) {
+  const paymentSource = buildPayPalPrefillPaymentSource(options.payer);
+  return {
     intent: 'CAPTURE',
     purchase_units: [
       {
@@ -345,7 +419,22 @@ export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions)
         },
       },
     ],
+    ...(paymentSource ? { payment_source: paymentSource } : {}),
   };
+}
+
+/**
+ * Creates a PayPal order for use with inline/popup PayPal buttons.
+ * Unlike createSimplePayPalOrder, this does NOT set payment_source with redirect URLs:
+ * those cause the popup to immediately close by triggering the redirect flow. The only
+ * payment_source it may carry is the guest prefill, which has no URLs (see
+ * buildPayPalPrefillPaymentSource).
+ */
+export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions) {
+  const accessToken = await getAccessToken();
+  const { baseUrl } = getPayPalConfig();
+
+  const payload = buildInlinePayPalOrderPayload(options);
 
   const requestId = options.requestId || `inline-${options.customId}`;
 

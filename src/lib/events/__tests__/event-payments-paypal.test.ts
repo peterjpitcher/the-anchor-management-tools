@@ -113,6 +113,7 @@ function database(options: {
   payment?: Record<string, unknown> | null
   recheckPayment?: Record<string, unknown> | null
   confirm?: Result
+  customer?: Record<string, unknown> | null
 } = {}) {
   const payment = options.payment === undefined
     ? { id: 'payment-1', paypal_order_id: ORDER, paypal_capture_id: null, amount: 80, currency: 'GBP', status: 'pending' }
@@ -122,6 +123,7 @@ function database(options: {
     (call) => {
       if (call.table === 'bookings') return { data: bookingRow(options.booking), error: null }
       if (call.table === 'events') return { data: eventRow, error: null }
+      if (call.table === 'customers') return { data: options.customer ?? null, error: null }
       if (call.table === 'guest_tokens') {
         return { data: { id: 'token-1', customer_id: CUSTOMER, event_booking_id: BOOKING, expires_at: new Date(Date.now() + 60_000).toISOString(), consumed_at: null }, error: null }
       }
@@ -167,6 +169,36 @@ describe('creating the PayPal order for an event booking', () => {
     const update = db.calls.find((call) => call.table === 'payments' && call.action === 'update')
     expect(update?.payload).toMatchObject({ paypal_order_id: 'ORDER-2', amount: 80, status: 'pending' })
     expect(filterValue(update!, 'id')).toBe('payment-1')
+  })
+
+  it('prefills PayPal with the guest, preferring the email given for this booking', async () => {
+    const db = database({
+      payment: null,
+      booking: { contact_email: 'booking@example.com' },
+      customer: { first_name: 'Sam', last_name: 'Taylor', email: 'record@example.com', mobile_e164: '+447700900123', is_placeholder: false },
+    })
+    paypal.createInlinePayPalOrder.mockResolvedValueOnce({ orderId: 'ORDER-2' })
+
+    await createEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING })
+
+    const customerRead = db.calls.find((call) => call.table === 'customers')
+    expect(filterValue(customerRead!, 'id')).toBe(CUSTOMER)
+    expect(paypal.createInlinePayPalOrder).toHaveBeenCalledWith(expect.objectContaining({
+      payer: { firstName: 'Sam', lastName: 'Taylor', email: 'booking@example.com', mobileE164: '+447700900123' },
+    }))
+  })
+
+  it('makes the order without prefill for a placeholder customer', async () => {
+    const db = database({
+      payment: null,
+      customer: { first_name: 'Walk', last_name: 'In', email: null, mobile_e164: null, is_placeholder: true },
+    })
+    paypal.createInlinePayPalOrder.mockResolvedValueOnce({ orderId: 'ORDER-2' })
+
+    const result = await createEventPayPalOrderByBookingId(db.client, { bookingId: BOOKING })
+
+    expect(result).toMatchObject({ state: 'created', orderId: 'ORDER-2' })
+    expect(paypal.createInlinePayPalOrder).toHaveBeenCalledWith(expect.objectContaining({ payer: null }))
   })
 
   it('refuses a booking whose payment has already been captured', async () => {
