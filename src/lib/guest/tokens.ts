@@ -13,6 +13,7 @@ type GuestTokenActionType =
   | 'booking_confirm'
   | 'email_capture'
   | 'preorder_guest'
+  | 'event_rebook'
 
 export type CreateGuestTokenInput = {
   customerId: string

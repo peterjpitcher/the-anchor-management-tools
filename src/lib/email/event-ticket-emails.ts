@@ -1083,6 +1083,12 @@ export async function sendEventPaymentExpiredEmail(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
     bookingId: string
+    /**
+     * The one-tap rebook link for a lapsed website hold (Piece 4.2, src/lib/events/rebook-link.ts):
+     * the event page with a token that fills the booking form in. Without it, the email links to
+     * the event's page or booking link as before.
+     */
+    rebookLinkUrl?: string | null
   }
 ): Promise<EventEmailResult> {
   const context = await loadEventTicketEmailContext(supabase, input.bookingId)
@@ -1095,14 +1101,17 @@ export async function sendEventPaymentExpiredEmail(
   // BK-173: a way back in. Every event has a website page, so the email links to it (or to the
   // event's own booking link) rather than only saying to phone. Calm and exact (BK-171, D15).
   const places = describeEventPlaces({ seats: context.seats, seatingType: context.seatingType, bookingMode: context.bookingMode })
-  const rebookUrl = context.rebookUrl
+  const oneTapLink = typeof input.rebookLinkUrl === 'string' && input.rebookLinkUrl.trim() ? input.rebookLinkUrl.trim() : null
+  const rebookUrl = oneTapLink ?? context.rebookUrl
   const heading = 'Your held places have been released'
   const body = [
     `Hi ${context.firstName},`,
     `We've released the ${places} we were holding for ${context.eventName}${whenSuffix(context)}, as payment wasn't made in time.`,
-    rebookUrl
-      ? "If you'd still like to come, you can book again while tickets are available."
-      : `If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay} and we'll check what's left.`,
+    oneTapLink
+      ? "If you'd still like to come, we've saved your details. Tap below and your booking is ready to finish. Places aren't held, so book while tickets are available."
+      : rebookUrl
+        ? "If you'd still like to come, you can book again while tickets are available."
+        : `If you'd still like to come, call us on ${GUEST_CONTACT.phoneDisplay} and we'll check what's left.`,
   ]
 
   return sendEmail({
@@ -1126,6 +1135,8 @@ export async function sendEventPaymentExpiredEmail(
     eventBookingId: context.bookingId,
     metadata: {
       template_key: 'event_payment_expired_email',
+      // Counts the one-tap rebook emails. The link itself is never stored: it carries the token.
+      rebook_link: oneTapLink !== null,
     },
   })
 }
