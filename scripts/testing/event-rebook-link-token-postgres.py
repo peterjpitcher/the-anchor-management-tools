@@ -14,7 +14,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
-MIGRATION = ROOT / 'supabase/migrations/20261107150000_event_rebook_link_token.sql'
+MIGRATION = ROOT / 'supabase/migrations/20261107140942_event_rebook_link_token.sql'
 
 SETUP = r"""
 CREATE ROLE anon NOLOGIN;
