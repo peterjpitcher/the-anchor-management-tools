@@ -35,7 +35,7 @@ vi.mock('@/lib/table-bookings/preorder-cutoff-digest', () => ({
 vi.mock('@/lib/table-bookings/preorder', () => ({
   PREORDER_BOOKER_REMINDER_DAYS: 10,
   isPreorderEnabled: vi.fn(async () => true),
-  decidePreorderChases: vi.fn(() => ['booker_reminder']),
+  decideLegacyPreorderChases: vi.fn(() => ['booker_reminder']),
   describePreorderGaps: vi.fn(() => '2 main courses'),
   getPreorderCompleteness: vi.fn(() => ({ complete: false })),
   getPreorderCutoff: vi.fn(() => ({ closed: false })),
@@ -64,8 +64,10 @@ const BOOKING = {
   customer_id: 'cust-7',
   booking_period_id: 'period-xmas',
   booking_period_name: 'Christmas 2026',
-  // Four on one course, one on two and one on three: what is still owed depends on the tier.
-  christmas_course_counts: [1, 1, 1, 1, 2, 3],
+  // No tier per guest: an older booking, so it stays on the first release's rule. A booking with
+  // tiers is on the reminder ladder instead (preorderRemindersLadderRoute.test.ts).
+  christmas_course_counts: null,
+  created_at: '2026-11-01T10:00:00.000Z',
 }
 
 const ALEX = {
@@ -251,9 +253,9 @@ describe('pre-order reminder email renders', () => {
     // which was false for every cover on two or three courses.
     expect(email.text).toContain('Every guest on three courses needs a starter, a main and a dessert chosen.')
     expect(email.text).toContain('Every guest on two courses needs a main and one other course chosen.')
-    expect(email.text).toContain('Guests on one course have nothing to pre-order.')
+    expect(email.text).toContain('Every guest on one course needs a main chosen.')
     expect(email.text).not.toContain('A starter and a dessert are optional')
-    expect(email.text).toContain("Two and three courses need everyone's choices 7 days before your booking.")
+    expect(email.text).toContain("Everyone's food choices are needed by noon, 7 days before your booking.")
     expect(email.text).toContain('Party size: 6 people')
     expect(email.text).toContain('Prefer to do it over the telephone? Ring us on 01753 682707.')
     expect(email.html).toContain('href="https://l.the-anchor.pub/food1"')
@@ -264,8 +266,8 @@ describe('pre-order reminder email renders', () => {
 // tells them to record what the guest says on the booking rather than only to take it by phone.
 describe('pre-order manager escalation', () => {
   it('tells the manager to record the choices on the booking, where they are marked as late', async () => {
-    const { decidePreorderChases } = await import('@/lib/table-bookings/preorder')
-    vi.mocked(decidePreorderChases).mockReturnValueOnce(['manager_escalation'])
+    const { decideLegacyPreorderChases } = await import('@/lib/table-bookings/preorder')
+    vi.mocked(decideLegacyPreorderChases).mockReturnValueOnce(['manager_escalation'])
     buildDb()
 
     const payload = await runSweep()

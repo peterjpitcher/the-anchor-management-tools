@@ -295,7 +295,7 @@
     },
     {
       "path": "/api/cron/preorder-reminders",
-      "schedule": "0 12 * * *"
+      "schedule": "0 9,12 * * *"
     },
     {
       "path": "/api/cron/event-guest-details-reminders",

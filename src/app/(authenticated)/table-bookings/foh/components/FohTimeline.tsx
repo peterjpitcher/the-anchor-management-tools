@@ -66,12 +66,14 @@ type FohTimelineProps = {
 // tokens as Badge so the colours stay consistent with BOH/detail views.
 function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
   const highChairs = booking.high_chair_count ?? 0
-  // Allergy in red when the allergy field is filled in or a note mentions an allergen, otherwise
-  // Note when the booking carries one (BK-052): allergies have mostly arrived in the notes.
+  // Allergy in red when the allergy field is filled in, a note mentions an allergen or a guest's seat
+  // records one, otherwise Note when the booking carries one (BK-052): allergies have mostly arrived
+  // in the notes.
   const noteMarker = bookingNoteMarker({
     allergies: booking.allergies,
     dietaryRequirements: booking.dietary_requirements,
     notes: booking.special_requirements,
+    guestAllergies: booking.guest_allergies,
   })
   // The guest tapped 'confirm' on the day-before text (BK-094).
   const guestConfirmed = Boolean(booking.guest_confirmed_at)

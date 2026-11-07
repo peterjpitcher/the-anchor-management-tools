@@ -53,7 +53,16 @@ export type TableDepositCaptureFailureCode =
   | 'CAPTURED_BOOKING_UPDATE_FAILED'
 
 export type CaptureTableDepositResult =
-  | { ok: true; alreadyRecorded: boolean }
+  | {
+      ok: true
+      alreadyRecorded: boolean
+      /**
+       * The channel the deposit confirmation reached the guest by, or null when none is known to
+       * have (a send that failed, or a deposit already recorded by an earlier trigger). The payment
+       * page names it, and never claims a text went when it was an email (R11).
+       */
+      confirmationChannel: 'email' | 'sms' | null
+    }
   | { ok: false; code: 'NOT_PAYABLE'; blockReason: PayPalDepositCaptureBlockReason }
   | { ok: false; code: Exclude<TableDepositCaptureFailureCode, 'NOT_PAYABLE'> }
 
@@ -110,7 +119,7 @@ export async function captureTableDeposit(
 
     // Already recorded: a retry, or the webhook got there first.
     if (booking.payment_status === 'completed' && booking.paypal_deposit_capture_id) {
-      return { ok: true, alreadyRecorded: true }
+      return { ok: true, alreadyRecorded: true, confirmationChannel: null }
     }
 
     if (booking.paypal_deposit_order_id !== orderId) {
@@ -313,13 +322,13 @@ export async function captureTableDeposit(
       additional_info: { orderId, transactionId: captureId, bookingId, lockedAmountGbp: capturedAmountGbp, source },
     })
 
-    await sendTableBookingDepositCapturedNotifications(supabase, {
+    const { confirmationChannel } = await sendTableBookingDepositCapturedNotifications(supabase, {
       tableBookingId: bookingId,
       customerId: booking.customer_id,
       createdVia: input.createdVia,
     })
 
-    return { ok: true, alreadyRecorded: false }
+    return { ok: true, alreadyRecorded: false, confirmationChannel }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (moneyTaken) {

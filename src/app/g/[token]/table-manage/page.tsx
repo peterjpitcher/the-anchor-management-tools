@@ -33,6 +33,9 @@ import { loadBookerPreorderView, type BookerPreorderView } from './preorder-data
 import { PreorderSection } from './PreorderSection'
 import { loadGuestChristmasParty, type GuestChristmasParty } from './christmas-party-data'
 import { ChristmasPartySection } from './ChristmasPartySection'
+import { ChristmasFoodSection, type ChristmasFoodSectionProps } from './ChristmasFoodSection'
+import { buildFoodMenu, buildFoodSeatViews, loadChristmasTierPrices, loadFoodInviteLedger, type FoodInviteLedger } from './food-data'
+import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from '@/lib/table-bookings/christmas'
 
 /** Names the flow at the top of the page, per the approved kicker list. */
@@ -278,6 +281,40 @@ export default async function TableManageBookingPage({
     }
   }
 
+  // A booking with a course list (every Christmas booking since the food link release) gets the
+  // food page: a line per guest, the menu panel and the guest links (spec section 2, step 3). Each
+  // extra it needs fails on its own, so a missing price list or ledger never hides the food page.
+  let food: ChristmasFoodSectionProps | null = null
+  if (preorderView?.order.courseCounts && preview.table_booking_id) {
+    const tableBookingId = preview.table_booking_id
+    const view = preorderView
+    const [prices, ledger, copyEnabled] = await Promise.all([
+      loadChristmasTierPrices(supabase, view.order.bookingDate).catch((error: unknown) => {
+        logger.error('Guest food page could not load the Christmas prices', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { tableBookingId },
+        })
+        return null
+      }),
+      loadFoodInviteLedger(supabase, tableBookingId).catch((error: unknown): FoodInviteLedger => {
+        logger.error('Guest food page could not load the guest invite ledger', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { tableBookingId },
+        })
+        return new Map()
+      }),
+      isMessagingFlagOn('table_preorder_choices_copy').catch(() => false),
+    ])
+    food = {
+      seats: buildFoodSeatViews(view.order, ledger),
+      menu: buildFoodMenu(view),
+      prices,
+      cutoff: view.cutoff,
+      endpoint: `${manageUrl}/food`,
+      copyEnabled,
+    }
+  }
+
   // Christmas numbers change through their own form (BK-053, D21), never the plain party-size box.
   const isChristmas = isChristmasBookingType(preview.booking_type ?? null)
   let christmasParty: GuestChristmasParty | null = null
@@ -410,12 +447,13 @@ export default async function TableManageBookingPage({
         </GuestAlert>
       )}
 
-      {preorderView && (
+      {food && <ChristmasFoodSection {...food} />}
+
+      {preorderView && !food && (
         <PreorderSection
           {...preorderView}
           actionUrl={actionUrl}
           errorSeat={Number.isFinite(errorSeat) && errorSeat > 0 ? errorSeat : null}
-          errorReason={query.reason === 'courses' ? 'courses' : null}
         />
       )}
 

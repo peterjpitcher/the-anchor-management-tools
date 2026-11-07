@@ -1028,6 +1028,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
   // floor on a touch screen, like the rest of the page. See the note in FohScheduleClient.
   const headerActions = canManage ? (
     <div className="flex flex-wrap items-center justify-end gap-2" data-touch-targets>
+      <Button size="sm" variant="secondary" onClick={() => router.push(`/table-bookings/${booking.id}/sheet`)}>Booking sheet</Button>
       {!bookingClosed && !eventLink && (
         <Button
           size="sm"
@@ -2086,7 +2087,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               label="New party size"
               type="number"
               min={1}
-              max={20}
+              // A staff Christmas booking can be up to christmas_staff_max_party (60, A3).
+              max={booking.booking_type === 'christmas' ? 60 : 20}
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
             />

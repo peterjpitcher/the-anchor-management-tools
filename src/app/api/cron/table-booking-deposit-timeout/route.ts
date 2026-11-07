@@ -90,7 +90,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'DB error' }, { status: 500 })
     }
 
-    // The one reminder per hold, before the cancellations, behind its flag (off by default).
+    // The one reminder per hold, before the cancellations, behind its flag (on since 6 November
+    // 2026). Switching the flag off is the kill switch; isMessagingFlagOn reads a missing flag as off.
     let reminders: DepositReminderRunResult | null = null
     if (await isMessagingFlagOn('table_deposit_hold_reminder')) {
       try {

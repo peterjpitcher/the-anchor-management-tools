@@ -4,21 +4,21 @@ import { logger } from '@/lib/logger'
 /**
  * Inside the Christmas pre-order deadline only the 1 course tier can be booked (owner decision,
  * 10 September 2026; website docs/SSOT.md §7). Two and three courses need menu choices by noon seven
- * days before, so a booking made after that can only be one course, which needs no pre-order.
+ * days before, so a booking made after that is one course for every guest.
  *
- * The website's booking form already obeys this: it sends a course for every guest, and
- * `create_table_booking_christmas_v01` refuses two or three courses once the deadline has passed.
- * Two ways in still arrive with no courses at all: a booking staff take at the bar or on the phone,
- * and an older public client. Those were stored with no courses, which the pre-order screens read as
- * "every guest owes a main", so a party booked three days out was chased for choices that the
- * locked form could no longer take.
+ * Since the food link release (owner decisions D1 and D4, 6 November 2026) 1 course is a main
+ * chosen in advance like every other tier, and a Christmas booking is stored with a 0 ("not chosen
+ * yet") per guest, which the `table_bookings` trigger writes when a booking arrives with no list.
+ * A booking made inside the deadline, which only staff can take now (D2), would sit on those zeros
+ * for ever: the organiser's form has already locked, and the kitchen order would count every guest
+ * as not chosen when the only tier on offer is 1 course.
  *
  * This records such a booking as one course for every guest, and only once the deadline has passed.
- * Before it, the booking keeps its existing policy, because the booker can still pre-order. The
+ * Before it, the booking keeps its zeros, because the organiser chooses on the food page. The
  * deadline comes from `christmas_course_policy_v01`, the same database function the booking
  * functions ask, so there is one rule rather than two. The update only ever touches a Christmas
- * booking that has no courses recorded; the database trigger on `table_bookings` then clears
- * `booking_period_requires_preorder`, which is what keeps the reminder cron away.
+ * booking with nothing chosen yet: no list (an older booking) or a list of zeros. Staff then record
+ * each guest's main on the booking, as they can after the cutoff (D8).
  */
 export type OneCourseOutcome = 'recorded' | 'not_needed' | 'failed'
 
@@ -26,6 +26,15 @@ export type OneCourseOutcome = 'recorded' | 'not_needed' | 'failed'
 export function oneCourseForEveryone(partySize: number): number[] {
   return Array.from({ length: Math.max(0, Math.trunc(partySize)) }, () => 1)
 }
+
+/**
+ * PostgREST filter for "no tier chosen for anyone yet": no list at all (an older booking), or a list
+ * whose every seat is 0 (`cd` is Postgres's `<@`, contained by, so every element is in {0}). A new
+ * Christmas booking starts on zeros, so `is null` alone stopped matching it once the food link
+ * migration had run, and these writes silently matched nothing. A list with any real tier is never
+ * matched, so a guest's own choices are never overwritten.
+ */
+export const NOTHING_CHOSEN_YET = 'christmas_course_counts.is.null,christmas_course_counts.cd.{0}'
 
 type CoursePolicy = { multiple_courses_available?: boolean } | null
 
@@ -57,7 +66,7 @@ export async function recordOneCourseInsideCutoff(
     .update({ christmas_course_counts: oneCourseForEveryone(partySize) })
     .eq('id', booking.id)
     .eq('booking_type', 'christmas')
-    .is('christmas_course_counts', null)
+    .or(NOTHING_CHOSEN_YET)
     .select('id')
 
   if (updateError) {
@@ -96,10 +105,10 @@ export async function getChristmasCourseAvailability(
 /**
  * Record the course tiers staff chose for each guest on a Christmas booking they have just taken
  * (BK-057). Staff bookings go through `create_table_booking_staff_v06`, which takes no tiers, so
- * they are written straight after it. The `table_bookings` trigger checks them (one per guest, each
- * 1 to 3, still before the deadline when any guest is on 2 or 3) and sets
- * `booking_period_requires_preorder` from them. Only a Christmas booking with no tiers yet is
- * touched, so a retry can never overwrite tiers recorded since.
+ * they are written straight after it, over the zeros the trigger gave the new booking. The
+ * `table_bookings` trigger checks them (one per guest, each 0 to 3, still before the deadline when
+ * any guest is on 2 or 3) and sets `booking_period_requires_preorder`. Only a Christmas booking with
+ * nothing chosen yet is touched, so a retry can never overwrite tiers recorded since.
  *
  * A failure is logged as an error rather than thrown: the booking already exists and staff can set
  * the tiers from the booking page, which the caller tells them to do.
@@ -114,12 +123,12 @@ export async function recordChristmasCourseCounts(
     .update({ christmas_course_counts: courseCounts })
     .eq('id', booking.id)
     .eq('booking_type', 'christmas')
-    .is('christmas_course_counts', null)
+    .or(NOTHING_CHOSEN_YET)
     .select('id')
 
   if (error || (updated?.length ?? 0) === 0) {
     logger.error('Could not record the Christmas courses staff chose for a new booking', {
-      error: new Error(error?.message ?? 'No Christmas booking without courses matched'),
+      error: new Error(error?.message ?? 'No Christmas booking with nothing chosen yet matched'),
       metadata: { tableBookingId: booking.id, bookingDate: booking.bookingDate },
     })
     return 'failed'

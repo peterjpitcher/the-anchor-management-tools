@@ -39,10 +39,20 @@ import {
   CHRISTMAS_MAX_PARTY_SIZE,
   CHRISTMAS_MIN_PARTY_SIZE,
   extractChristmasRuleErrorMessage,
+  isChristmasBookingType,
   isChristmasPurpose,
 } from '@/lib/table-bookings/christmas'
+import {
+  christmasRefusalMessage,
+  classifyChristmasBlockedReason,
+  classifyChristmasRuleError,
+  noticeHoursFromRuleMessage,
+  type ChristmasRefusalCode,
+} from '@/lib/table-bookings/christmas-refusals'
+import { loadBookingPeriodContext } from '@/lib/table-bookings/period-lookup'
+import type { BookingPeriod } from '@/lib/table-bookings/periods'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
-import { PARTY_SIZE_INPUT_CEILING } from '@/lib/table-bookings/party-limit'
+import { PARTY_SIZE_INPUT_CEILING, readTableBookingPartyLimit } from '@/lib/table-bookings/party-limit'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
@@ -238,6 +248,13 @@ type TableBookingResponseData = {
   // True only when a confirmation is known to have gone. False means the website
   // must not tell the guest a message was sent.
   notification_sent: boolean
+  /**
+   * True when the booking's guests choose their food afterwards, on the food page. Every Christmas
+   * booking does (owner decisions D1 and D15, 6 November 2026), whatever its course counts: the
+   * course snapshot trigger stores it so, and create_table_booking_christmas_v01 still answers false
+   * for a party all on 1 course, so the route reports what is stored. Null on a blocked answer.
+   */
+  requires_preorder: boolean | null
   // Granted high-chair count (may be below the requested count when inventory
   // is short) and whether the booking holds an outside table instead of indoor.
   high_chairs_granted: number | null
@@ -259,7 +276,9 @@ type TableBookingResponseData = {
     /**
      * Why, as a code the website can branch on (BK-059). Added after `saved`, so an older reader
      * still has the flag. `late_one_course` is not a failure: the booking was made after the
-     * Christmas pre-order deadline, so every guest is on 1 course, chosen on the day.
+     * Christmas pre-order deadline, so every guest is on 1 course. Every guest still chooses their
+     * dish in advance on the food page (owner decision D4, 6 November 2026); the dishes sent with this
+     * request are just not saved here.
      */
     reason: 'saved' | 'late_one_course' | 'too_many_choices' | 'save_failed'
   } | null
@@ -294,6 +313,11 @@ function buildCommittedTableBookingResponse(
       fallback_payment_url: null,
       notification_channel: null,
       notification_sent: false,
+      requires_preorder: isChristmasBookingType(bookingResult.booking_type)
+        ? true
+        : typeof bookingResult.booking_period_requires_preorder === 'boolean'
+          ? bookingResult.booking_period_requires_preorder
+          : null,
       high_chairs_granted:
         typeof bookingResult.high_chairs_granted === 'number' ? bookingResult.high_chairs_granted : null,
       is_outside_seating:
@@ -355,6 +379,8 @@ async function persistPreorderSafe(
     for (const [index, entry] of entries.entries()) {
       await savePreorderCover(supabase, {
         coverId: covers[index].id,
+        // The booking-time payload is the organiser's own choices, sent with their booking.
+        actor: { savedBy: 'organiser' },
         guestName: entry.guest_name ?? null,
         dietaryNote: entry.dietary_note ?? null,
         // Every course is named on every seat so that an omitted course is
@@ -579,6 +605,61 @@ export async function POST(request: NextRequest) {
 
     const bookingTime = payload.time.length === 5 ? `${payload.time}:00` : payload.time
 
+    const supabase = createAdminClient()
+
+    // Is this a Christmas booking? Either the legacy purpose, or the guest accepted the live period
+    // for the date and that period is the Christmas one. Read once here: it decides whether an email
+    // is needed, and it words the refusals below with the period's own notice and party minimum.
+    // Advisory only, like the period answer itself: the database re-reads the period and decides
+    // every rule and every penny. A failed read is logged and the booking carries on, because the
+    // database still refuses whatever it must.
+    let christmasPeriod: BookingPeriod | null = null
+    if (payload.booking_period_answer === true || isChristmasPurpose(payload.purpose)) {
+      try {
+        const context = await loadBookingPeriodContext(supabase, payload.date)
+        if (context.period?.periodKind === 'christmas') christmasPeriod = context.period
+      } catch (periodError) {
+        logger.warn('Could not read the seasonal period before a public table booking', {
+          metadata: {
+            bookingDate: payload.date,
+            error: periodError instanceof Error ? periodError.message : String(periodError),
+          },
+        })
+      }
+    }
+    const isChristmasRequest = isChristmasPurpose(payload.purpose) || christmasPeriod !== null
+
+    // A Christmas booking needs an email address, because the food link goes by email (D3, spec
+    // section 3.6). Only the new shape, with no course counts, is held to it: the website still live
+    // today sends counts and treats email as optional, and it must keep taking bookings until it is
+    // replaced. Asked before the idempotency claim, like every other validation answer.
+    if (isChristmasRequest && !payload.christmas_course_counts && !payload.email) {
+      return createErrorResponse(
+        christmasRefusalMessage('CHRISTMAS_EMAIL_REQUIRED'),
+        'CHRISTMAS_EMAIL_REQUIRED',
+        400
+      )
+    }
+
+    // A Christmas refusal as the guest reads it: always status 400 with the phone number, never a
+    // success status, so the website cannot mistake it for a booking (spec section 3.6).
+    const christmasRefusal = async (code: ChristmasRefusalCode, ruleMessage?: string | null) => {
+      const onlinePartyLimit =
+        code === 'CHRISTMAS_PARTY_TOO_LARGE' ? await readTableBookingPartyLimit(supabase) : null
+      logger.info('Public Christmas table booking refused', {
+        metadata: { code, bookingDate: payload.date, partySize: payload.party_size },
+      })
+      return createErrorResponse(
+        christmasRefusalMessage(code, {
+          minNoticeHours: christmasPeriod?.minNoticeHours ?? noticeHoursFromRuleMessage(ruleMessage),
+          minPartySize: christmasPeriod?.minPartySize ?? CHRISTMAS_MIN_PARTY_SIZE,
+          onlinePartyLimit,
+        }),
+        code,
+        400
+      )
+    }
+
     const requestHash = computeTableBookingRequestHash({
       phone: normalizedPhone,
       first_name: payload.first_name,
@@ -611,7 +692,6 @@ export async function POST(request: NextRequest) {
     // retry's labels are ignored and the first request's labels stay on the booking's event.
     const attribution = buildTableBookingAttribution(payload)
 
-    const supabase = createAdminClient()
     const idempotencyState = replayOnly
       ? await lookupIdempotencyKey(supabase, idempotencyKey, requestHash)
       : await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
@@ -732,6 +812,13 @@ export async function POST(request: NextRequest) {
           // them verbatim as a 400 rather than a generic 500.
           const christmasRuleMessage = extractChristmasRuleErrorMessage(rpcError)
           if (christmasRuleMessage) {
+            // The four refusals a guest can act on get a code and a sentence with the phone number.
+            // Anything else (a malformed course list from an old client) keeps its own words.
+            const refusalCode = classifyChristmasRuleError(christmasRuleMessage, {
+              partySize: payload.party_size,
+              minPartySize: christmasPeriod?.minPartySize ?? null,
+            })
+            if (refusalCode) return christmasRefusal(refusalCode, christmasRuleMessage)
             return createErrorResponse(christmasRuleMessage, 'VALIDATION_ERROR', 400)
           }
           logger.error('create_table_booking_public_v06 RPC failed', {
@@ -748,6 +835,20 @@ export async function POST(request: NextRequest) {
       } else {
         bookingResult = (rpcResultRaw ?? {}) as TableBookingRpcResult
       }
+
+      // The new website shape books Christmas as an accepted period with purpose food, which the
+      // database refuses with a blocked answer rather than an exception. The ones a guest can act on
+      // become the same coded 400s; a full slot or no table stays the ordinary blocked answer.
+      if (isChristmasRequest && bookingResult.state === 'blocked') {
+        const refusalCode = classifyChristmasBlockedReason(bookingResult.reason ?? null, {
+          bookingDate: payload.date,
+          bookingTime,
+          minNoticeHours: christmasPeriod?.minNoticeHours ?? null,
+          now: new Date(),
+        })
+        if (refusalCode) return christmasRefusal(refusalCode)
+      }
+
       mutationCommitted = Boolean(bookingResult.table_booking_id)
 
       // The booking exists from here on. Note it on the claim, so a retry after this function
@@ -878,7 +979,7 @@ export async function POST(request: NextRequest) {
           requested_covers: payload.preorder?.length ?? 0,
           saved_covers: 0,
           saved: false,
-          error: 'The pre-order deadline for this date has passed, so every guest is booked for one course, chosen on the day.',
+          error: 'The deadline to choose food for this date has passed, so every guest is booked for 1 course. Call us on 01753 682707 and we\'ll help with everyone\'s food.',
           reason: 'late_one_course'
         }
       } else if (bookingResult.table_booking_id && (payload.preorder?.length ?? 0) > 0
@@ -919,6 +1020,17 @@ export async function POST(request: NextRequest) {
             error: preorderResult.error ?? 'Unknown error'
           })
         }
+      }
+
+      // Every Christmas booking's guests choose their food on the food page (D1, D15), so it requires
+      // a pre-order whatever its courses. The course snapshot trigger stores exactly that, but
+      // create_table_booking_christmas_v01 still answers false for a party all on 1 course. Set after
+      // the dish write above, which keeps its older test, and before the confirmation is built.
+      if (
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') &&
+        (isChristmasBookingType(bookingResult.booking_type) || isChristmasRequest)
+      ) {
+        bookingResult = { ...bookingResult, booking_period_requires_preorder: true }
       }
 
       const appBaseUrl = getAppUrl()
@@ -1206,6 +1318,12 @@ export async function POST(request: NextRequest) {
           // confirmation that failed. `notification_sent` is the explicit answer.
           notification_channel: notificationSent ? notificationChannel : null,
           notification_sent: notificationSent,
+          requires_preorder:
+            responseState === 'blocked'
+              ? null
+              : typeof bookingResult.booking_period_requires_preorder === 'boolean'
+                ? bookingResult.booking_period_requires_preorder
+                : false,
           // Granted count comes straight from the RPC jsonb (the atomic grant),
           // not the requested figure. Null when the RPC did not return one
           // (e.g. blocked results) so the website can fall back gracefully.

@@ -175,6 +175,7 @@ describe('guest pre-order save route', () => {
     expect(new URL(response.headers.get('location') || '').searchParams.get('preorder')).toBe('saved')
     expect(mocks.savePreorderCover).toHaveBeenCalledWith(expect.anything(), {
       coverId: 'cover-1',
+      actor: { savedBy: 'organiser' },
       guestName: 'Sam',
       dietaryNote: 'No dairy',
     })

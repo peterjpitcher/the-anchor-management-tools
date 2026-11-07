@@ -7,7 +7,6 @@ import { logger } from '@/lib/logger'
 import {
   getChristmasCourseAvailability,
   recordChristmasCourseCounts,
-  recordOneCourseInsideCutoff,
 } from '@/lib/table-bookings/christmas-one-course'
 import { syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { sendTableBookingCreatedSmsIfAllowed } from '@/lib/table-bookings/bookings'
@@ -72,8 +71,6 @@ vi.mock('@/lib/table-bookings/period-lookup', () => ({
   expectedDepositForCreate: vi.fn(() => null),
 }))
 vi.mock('@/lib/table-bookings/christmas-one-course', () => ({
-  recordOneCourseInsideCutoff: vi.fn().mockResolvedValue('not_needed'),
-  oneCourseForEveryone: (partySize: number) => Array.from({ length: partySize }, () => 1),
   getChristmasCourseAvailability: vi.fn().mockResolvedValue('available'),
   recordChristmasCourseCounts: vi.fn().mockResolvedValue('recorded'),
 }))
@@ -580,72 +577,80 @@ describe('POST /api/foh/bookings: walk-ins are not sent a booking confirmation',
   })
 })
 
-describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline', () => {
+// Owner decision D1, 6 November 2026: a Christmas booking takes the table and the deposit only. The
+// table_bookings trigger starts every guest on 0 ("not chosen yet"), and the route sets up the seats.
+describe('POST /api/foh/bookings: a Christmas booking with no courses', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('asks for the booking to be recorded as one course, since this screen takes no courses', async () => {
-    const db = createSupabaseMock()
+  const christmasRpc = {
+    data: {
+      state: 'confirmed',
+      table_booking_id: 'booking-1',
+      booking_reference: 'TB-TEST',
+      booking_period_id: 'period-1',
+      booking_period_answer: true,
+      booking_period_requires_preorder: true,
+    },
+    error: null,
+  }
+  const christmasBody = {
+    customer_id: CUSTOMER_ID,
+    date: '2026-12-12',
+    time: '18:00',
+    party_size: 8,
+    purpose: 'christmas',
+    sunday_deposit_method: 'cash',
+  }
+
+  it('sets up a seat per guest for the food page and the staff editor', async () => {
+    const db = createSupabaseMock({ rpcResult: christmasRpc })
     mockAuthSuccess(db)
 
-    const res = await POST(
-      makeRequest({
-        customer_id: CUSTOMER_ID,
-        date: '2026-12-01',
-        time: '18:00',
-        party_size: 8,
-        purpose: 'christmas',
-        sunday_deposit_method: 'cash',
-      }),
-    )
+    const res = await POST(makeRequest(christmasBody))
 
     expect(res.status).toBe(201)
-    // The helper decides from the database's own deadline whether anything changes.
-    expect(recordOneCourseInsideCutoff).toHaveBeenCalledWith(db, {
-      id: 'booking-1',
-      bookingDate: '2026-12-01',
-      partySize: 8,
-    })
-  })
-
-  it('confirms a late booking as one course, never with a "choose your food" link', async () => {
-    vi.mocked(recordOneCourseInsideCutoff).mockResolvedValueOnce('recorded')
-    const db = createSupabaseMock({
-      rpcResult: {
-        data: {
-          state: 'confirmed',
-          table_booking_id: 'booking-1',
-          booking_reference: 'TB-TEST',
-          booking_period_id: 'period-1',
-          booking_period_answer: true,
-          booking_period_requires_preorder: true,
-        },
-        error: null,
-      },
-    })
-    mockAuthSuccess(db)
-
-    const res = await POST(
-      makeRequest({
-        customer_id: CUSTOMER_ID,
-        date: '2026-12-01',
-        time: '18:00',
-        party_size: 8,
-        purpose: 'christmas',
-        sunday_deposit_method: 'cash',
-      }),
-    )
-
-    expect(res.status).toBe(201)
+    expect(syncPreorderCovers).toHaveBeenCalledWith(db, 'booking-1')
+    expect(recordChristmasCourseCounts).not.toHaveBeenCalled()
+    // Before the deadline the confirmation leads to the food page.
     expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
       db,
       expect.objectContaining({
-        bookingResult: expect.objectContaining({
-          booking_period_requires_preorder: false,
-          christmas_course_counts: [1, 1, 1, 1, 1, 1, 1, 1],
-        }),
+        bookingResult: expect.objectContaining({ booking_period_requires_preorder: true }),
       }),
+    )
+  })
+
+  it('confirms a booking made inside the deadline without a "choose your food" link', async () => {
+    vi.mocked(getChristmasCourseAvailability).mockResolvedValueOnce('closed')
+    const db = createSupabaseMock({ rpcResult: christmasRpc })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest({ ...christmasBody, date: '2026-12-01' }))
+
+    expect(res.status).toBe(201)
+    expect(syncPreorderCovers).toHaveBeenCalledWith(db, 'booking-1')
+    expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
+      db,
+      expect.objectContaining({
+        bookingResult: expect.objectContaining({ booking_period_requires_preorder: false }),
+      }),
+    )
+  })
+
+  it('keeps the booking when the seats could not be set up', async () => {
+    vi.mocked(syncPreorderCovers).mockRejectedValueOnce(new Error('sync failed'))
+    const db = createSupabaseMock({ rpcResult: christmasRpc })
+    mockAuthSuccess(db)
+
+    const res = await POST(makeRequest(christmasBody))
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).data.state).toBe('confirmed')
+    expect(logger.warn).toHaveBeenCalledWith(
+      'Could not set up pre-order seats for a new staff Christmas booking',
+      expect.anything(),
     )
   })
 
@@ -658,7 +663,88 @@ describe('POST /api/foh/bookings: Christmas booked inside the pre-order deadline
     )
 
     expect(res.status).toBe(201)
-    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
+    expect(syncPreorderCovers).not.toHaveBeenCalled()
+  })
+})
+
+// A3, 6 November 2026: staff may book a Christmas party up to christmas_staff_max_party (60), the
+// seated Christmas capacity. Every other booking keeps the one limit (D30).
+describe('POST /api/foh/bookings: the staff Christmas party limit', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  const bookingFor = (partySize: number, purpose: 'christmas' | 'food') =>
+    makeRequest({
+      customer_id: CUSTOMER_ID,
+      date: '2026-12-12',
+      time: '18:00',
+      party_size: partySize,
+      purpose,
+      sunday_deposit_method: 'cash',
+    })
+
+  it.each([21, 40, 60])('books a Christmas party of %i', async (partySize) => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(bookingFor(partySize, 'christmas'))
+
+    expect(res.status).toBe(201)
+    expect(db.rpc).toHaveBeenCalledWith(
+      'create_table_booking_staff_v06',
+      expect.objectContaining({ p_party_size: partySize, p_booking_purpose: 'christmas', p_bypass_cutoff: true }),
+    )
+  })
+
+  it('refuses a Christmas party above the staff Christmas limit before anything is made', async () => {
+    const db = createSupabaseMock()
+    mockAuthSuccess(db)
+
+    const res = await POST(bookingFor(61, 'christmas'))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Christmas bookings are for up to 60 guests. A bigger group is a private booking.')
+    expect(db.rpc).not.toHaveBeenCalledWith('create_table_booking_staff_v06', expect.anything())
+  })
+
+  it('follows the Christmas setting when a manager changes it', async () => {
+    const db = createSupabaseMock({ fromResults: { system_settings: { data: { value: { value: 40 } }, error: null } } })
+    mockAuthSuccess(db)
+
+    const res = await POST(bookingFor(41, 'christmas'))
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toMatch(/up to 40 guests/)
+  })
+
+  it('leaves an ordinary booking above the normal limit to the booking function, which refuses it', async () => {
+    const db = createSupabaseMock({
+      rpcResult: { data: { state: 'blocked', reason: 'too_large_party' }, error: null },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(bookingFor(21, 'food'))
+    const body = await res.json()
+
+    expect(db.rpc).toHaveBeenCalledWith(
+      'create_table_booking_staff_v06',
+      expect.objectContaining({ p_party_size: 21, p_booking_purpose: 'food' }),
+    )
+    expect(body.data).toMatchObject({ state: 'blocked', table_booking_id: null })
+    expect(syncPreorderCovers).not.toHaveBeenCalled()
+  })
+
+  it('still refuses an ordinary management override above the normal limit', async () => {
+    const db = createSupabaseMock({ roleRows: [{ roles: { name: 'super_admin' } }] })
+    mockAuthSuccess(db)
+
+    const res = await POST(
+      makeRequest({ customer_id: CUSTOMER_ID, date: '2026-12-12', time: '18:00', party_size: 21, purpose: 'food', management_override: true }),
+    )
+
+    expect(res.status).toBe(400)
+    expect((await res.json()).error).toBe('Table bookings are for up to 20 guests. A bigger group is a private booking.')
   })
 })
 
@@ -691,8 +777,6 @@ describe('POST /api/foh/bookings: Christmas courses chosen by staff (BK-057)', (
       [3, 2, 1, 1],
     )
     expect(syncPreorderCovers).toHaveBeenCalledWith(db, 'booking-1')
-    // The older one-course fallback is for requests that send no courses.
-    expect(recordOneCourseInsideCutoff).not.toHaveBeenCalled()
     expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
       db,
       expect.objectContaining({
@@ -740,14 +824,14 @@ describe('POST /api/foh/bookings: Christmas courses chosen by staff (BK-057)', (
     expect(body.data.christmas_courses_saved).toBe(false)
   })
 
-  it('keeps the one-course fallback for an older screen that sends no courses', async () => {
+  it('sets up seats with no courses for a request that sends none', async () => {
     const db = createSupabaseMock()
     mockAuthSuccess(db)
 
     await POST(christmasRequest(undefined))
 
     expect(recordChristmasCourseCounts).not.toHaveBeenCalled()
-    expect(recordOneCourseInsideCutoff).toHaveBeenCalled()
+    expect(syncPreorderCovers).toHaveBeenCalledWith(db, 'booking-1')
   })
 })
 

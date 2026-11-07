@@ -244,13 +244,18 @@ async function runGuestChristmasPartyChange(request: NextRequest, token: string,
   const expectedRaw = formData.get('expected_courses')
   let expectedCourses: number[] | undefined
   if (typeof expectedRaw === 'string' && expectedRaw.trim() !== '') {
-    if (!/^[1-3](,[1-3]){0,19}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
+    // 0 is a guest whose number of courses is still to be chosen on the food page.
+    if (!/^[0-3](,[0-3]){0,19}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
     expectedCourses = expectedRaw.trim().split(',').map((value) => Number.parseInt(value, 10))
   }
+  // Anyone joining starts with their number of courses still to choose (the database gives them 0,
+  // whatever tier is sent) and chooses it on the food page, so the form asks only how many. The
+  // per-tier boxes of the earlier form are still read, so a page left open before the release works.
+  const joining = readJoinCount(formData, 'add_guests')
   const oneCourse = readJoinCount(formData, 'add_1')
   const twoCourses = readJoinCount(formData, 'add_2')
   const threeCourses = readJoinCount(formData, 'add_3')
-  if (oneCourse === null || twoCourses === null || threeCourses === null) {
+  if (joining === null || oneCourse === null || twoCourses === null || threeCourses === null) {
     return redirectWithStatus(request, token, 'christmas_size')
   }
 
@@ -259,7 +264,7 @@ async function runGuestChristmasPartyChange(request: NextRequest, token: string,
       rawToken: token,
       removedSeats,
       expectedCourses,
-      added: { oneCourse, twoCourses, threeCourses },
+      added: { oneCourse: oneCourse + joining, twoCourses, threeCourses },
       appBaseUrl: getAppUrl()
     })
 
@@ -383,7 +388,7 @@ async function runGuestPreorderSave(request: NextRequest, token: string, formDat
       // save because of it would lose the choices the guest did make.
       if (!cover) continue
 
-      const input: SavePreorderCoverInput = { coverId: cover.id }
+      const input: SavePreorderCoverInput = { coverId: cover.id, actor: { savedBy: 'organiser' } }
       let changed = false
 
       const nameField = formData.get(`seat_${ordinal}_name`)

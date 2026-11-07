@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { recordOneCourseInsideCutoff } from './christmas-one-course'
+import { NOTHING_CHOSEN_YET, recordChristmasCourseCounts, recordOneCourseInsideCutoff } from './christmas-one-course'
 
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn() } }))
 
@@ -36,6 +36,10 @@ function fakeSupabase(options: {
           record.filters.push(['is', column, value])
           return chain
         },
+        or(expression: string) {
+          record.filters.push(['or', expression, null])
+          return chain
+        },
         async select() {
           expect(table).toBe('table_bookings')
           calls.update.push(record)
@@ -62,11 +66,12 @@ describe('recordOneCourseInsideCutoff', () => {
     expect(calls.update).toEqual([
       {
         values: { christmas_course_counts: [1, 1, 1, 1, 1, 1] },
-        // Only a Christmas booking with nothing recorded yet: a guest's real choices are never overwritten.
+        // Only a Christmas booking with nothing chosen yet (no list, or the zeros a new booking starts
+        // with): a guest's real choices are never overwritten.
         filters: [
           ['eq', 'id', 'booking-1'],
           ['eq', 'booking_type', 'christmas'],
-          ['is', 'christmas_course_counts', null],
+          ['or', NOTHING_CHOSEN_YET, null],
         ],
       },
     ])
@@ -98,5 +103,36 @@ describe('recordOneCourseInsideCutoff', () => {
       updateError: { message: 'trigger said no' },
     })
     await expect(recordOneCourseInsideCutoff(updateFails.client, BOOKING)).resolves.toBe('failed')
+  })
+})
+
+describe('NOTHING_CHOSEN_YET', () => {
+  it('matches no list or a list of zeros, never a list with a real tier', () => {
+    // A new Christmas booking starts on zeros, so `is null` alone matched nothing after the food
+    // link migration. `cd.{0}` is "contained by {0}": every seat is 0.
+    expect(NOTHING_CHOSEN_YET).toBe('christmas_course_counts.is.null,christmas_course_counts.cd.{0}')
+  })
+})
+
+describe('recordChristmasCourseCounts', () => {
+  it('writes the tiers staff chose over the zeros the new booking started with', async () => {
+    const { client, calls } = fakeSupabase({ updatedRows: [{ id: 'booking-1' }] })
+
+    await expect(recordChristmasCourseCounts(client, BOOKING, [3, 2, 1, 1, 1, 1])).resolves.toBe('recorded')
+    expect(calls.update).toEqual([
+      {
+        values: { christmas_course_counts: [3, 2, 1, 1, 1, 1] },
+        filters: [
+          ['eq', 'id', 'booking-1'],
+          ['eq', 'booking_type', 'christmas'],
+          ['or', NOTHING_CHOSEN_YET, null],
+        ],
+      },
+    ])
+  })
+
+  it('reports a failure when nothing matched', async () => {
+    const { client } = fakeSupabase({ updatedRows: [] })
+    await expect(recordChristmasCourseCounts(client, BOOKING, [1, 1, 1, 1, 1, 1])).resolves.toBe('failed')
   })
 })

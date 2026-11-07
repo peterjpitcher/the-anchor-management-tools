@@ -6,6 +6,7 @@ import { createGuestToken } from '@/lib/guest/tokens'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
+import { extendTablePaymentTokensToHold } from '@/lib/table-bookings/payment-link'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -80,6 +81,11 @@ export async function GET(
       })
       return NextResponse.json({ error: 'The hold could not be re-opened. Please try again.' }, { status: 500 })
     }
+    // Links the guest already holds follow the re-opened hold, so an earlier message still works.
+    await extendTablePaymentTokensToHold(createAdminClient(), {
+      tableBookingId: id,
+      holdExpiresAtIso: linkExpiry.toISOString(),
+    })
     await logAuditEvent({
       user_id: auth.userId,
       operation_type: 'table_booking.deposit_hold_extended',

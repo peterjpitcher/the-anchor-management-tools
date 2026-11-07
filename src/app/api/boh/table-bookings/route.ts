@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { fromZonedTime } from 'date-fns-tz'
 import { getLondonDateIso, requireBohTableBookingPermission } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
+import { loadSeatAllergyBookingIds } from '@/lib/table-bookings/seat-allergies'
 import { getTableBookingVisualState } from '@/lib/table-bookings/ui'
 
 type BohViewMode = 'day' | 'week' | 'month'
@@ -330,6 +331,11 @@ export async function GET(request: NextRequest) {
     )
   )
 
+  // Guests whose own seat records an allergy raise the booking's Allergy marker (spec section 3.5).
+  // Service-role only, after the BOH permission check above. Never rejects: a failed read is logged
+  // and only loses that marker.
+  const seatAllergyIdsPromise = loadSeatAllergyBookingIds(bookingIds)
+
   // Run assignments and events queries in parallel (they only depend on bookingRows, not each other)
   const [assignmentsResult, eventsResult, depositReviewResult] = await Promise.all([
     bookingIds.length > 0
@@ -349,6 +355,8 @@ export async function GET(request: NextRequest) {
           .not('deposit_review_needed_at', 'is', null)
       : { data: [], error: null }
   ])
+
+  const seatAllergyIds = await seatAllergyIdsPromise
 
   const depositReviewIds = new Set<string>()
   if (depositReviewResult.error) {
@@ -503,6 +511,7 @@ export async function GET(request: NextRequest) {
         special_requirements: row.special_requirements || null,
         // For the Allergy and Note marker on the list (BK-052). Absent on the older fallback selects.
         allergies: Array.isArray(row.allergies) ? row.allergies : [],
+        guest_allergies: seatAllergyIds.has(row.id),
         dietary_requirements: Array.isArray(row.dietary_requirements) ? row.dietary_requirements : [],
         seated_at: row.seated_at || null,
         left_at: row.left_at || null,

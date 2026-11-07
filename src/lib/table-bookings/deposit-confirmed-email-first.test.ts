@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The deposit confirmation under the messaging flag table_deposit_confirmed_email_first.
@@ -21,6 +21,7 @@ vi.mock('@/lib/twilio', () => ({
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/services/audit', () => ({ AuditService: { logAuditEvent: vi.fn() } }))
 vi.mock('@/lib/cron/alerting', () => ({ reportCronFailure: vi.fn() }))
+vi.mock('@/lib/money-alerts', () => ({ alertMoneyNeedsAPerson: vi.fn(async () => ({ sent: true, duplicate: false })) }))
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }))
 
 // Like the real minter: every call makes a new token, so every trigger builds a different link.
@@ -71,8 +72,10 @@ import { isCustomerSmsSendAllowed, sendSMS } from '@/lib/twilio'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { AuditService } from '@/services/audit'
 import { releaseIdempotencyClaim } from '@/lib/api/idempotency'
-import { sendTableBookingConfirmedAfterDepositSmsIfAllowed } from './bookings'
+import { alertMoneyNeedsAPerson } from '@/lib/money-alerts'
+import { sendTableBookingConfirmedAfterDepositSmsIfAllowed, sendTableBookingDepositConfirmation } from './bookings'
 import { buildTableBookingDepositConfirmedEmail } from './guest-emails'
+import { buildDepositConfirmedText } from './guest-texts'
 import { argsOf, called, createRecordingSupabase } from '../../../tests/mocks/recordingSupabase'
 import { assertCleanRender, assertCleanText, expectedLongDate } from '../../../tests/mocks/emailRenderChecks'
 
@@ -108,10 +111,40 @@ const PAT = {
 /** Email rows the log would hold, by booking id, once an email has gone. */
 let loggedEmails = new Set<string>()
 
-function buildDb(customer: typeof PAT | Record<string, unknown> = PAT, options: { emailLookupFails?: boolean } = {}) {
+/**
+ * A Christmas 2026 booking taken with no courses (the food link): every seat on 0, the period's
+ * GBP 10 a head and its 7 day refund cutoff snapshotted onto the booking.
+ */
+const CHRISTMAS_BOOKING = {
+  ...BOOKING,
+  id: 'booking-xmas',
+  booking_reference: 'TB-XMAS1',
+  booking_date: '2026-12-12',
+  booking_time: '19:00:00',
+  start_datetime: '2026-12-12T19:00:00Z',
+  party_size: 8,
+  high_chair_count: 0,
+  christmas_course_counts: [0, 0, 0, 0, 0, 0, 0, 0],
+  deposit_amount: 80,
+  deposit_amount_locked: 80,
+  booking_type: 'christmas',
+  booking_period_id: 'period-xmas',
+  deposit_refund_cutoff_days: 7,
+  deposit_basis: 'per_head',
+  deposit_rate: 10,
+}
+
+function buildDb(
+  customer: typeof PAT | Record<string, unknown> = PAT,
+  options: { emailLookupFails?: boolean; booking?: Record<string, unknown>; periodFails?: boolean } = {}
+) {
   const db = createRecordingSupabase({
     tables: {
-      table_bookings: () => ({ data: BOOKING, error: null }),
+      table_bookings: () => ({ data: options.booking ?? BOOKING, error: null }),
+      booking_periods: () =>
+        options.periodFails
+          ? { data: null, error: { message: 'timeout', code: '57014' } }
+          : { data: { preorder_cutoff_days: 7 }, error: null },
       customers: () => ({ data: customer, error: null }),
       email_messages: (query) => {
         if (options.emailLookupFails) return { data: null, error: { message: 'timeout', code: '57014' } }
@@ -260,6 +293,226 @@ describe('deposit confirmation, email first', () => {
   })
 })
 
+describe('Christmas deposit received (owner decision D3)', () => {
+  it('thanks the organiser, leads with choosing everyone\'s food, and gives the noon deadline', async () => {
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    expect(result).toEqual({ meta: { success: true, code: null, logFailure: false }, channel: 'email' })
+    expect(sendSMS).not.toHaveBeenCalled()
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    assertCleanRender(email as never)
+    expect(email.subject).toBe("Thanks for booking Christmas at The Anchor: now choose everyone's food")
+    const text = String(email.text)
+    expect(text).toContain(
+      "Hi Pat, thanks for booking Christmas with us, and for your deposit. Your table for 8 people on Saturday 12 December 2026 at 7pm is confirmed."
+    )
+    // The food comes before the deposit terms, with the organiser's manage link as the button.
+    expect(text).toContain("Choose everyone's food: https://l.the-anchor.pub/token-1")
+    expect(text.indexOf("Choose everyone's food:")).toBeLessThan(text.indexOf('per person deposit'))
+    // Noon London, 7 days before (getPreorderCutoff).
+    expect(text).toContain("Everyone's choices need to be in by Saturday 5 December 2026 at 12pm.")
+    expect(text).toContain("We'll remind you if anyone's choices are still missing as the deadline gets close.")
+    // D12, from the booking's own terms.
+    expect(text).toContain("There's a £10 per person deposit, which comes off your bill.")
+    expect(text).toContain(
+      'Cancel up to and including 7 days before your booking date and the deposit is refunded in full. Fewer than 7 days before, it is not refunded.'
+    )
+    expect(text).toContain('Deposit paid: £80.00')
+    // Every seat is on 0, so there is no course summary to print.
+    expect(text).not.toContain('Christmas courses')
+    expect(String(email.html)).toContain('href="https://l.the-anchor.pub/token-1"')
+  })
+
+  it('texts the same lead only when there is no usable email, and reports the text channel', async () => {
+    const db = buildDb({ ...PAT, email: null }, { booking: CHRISTMAS_BOOKING })
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    expect(sendEmail).not.toHaveBeenCalled()
+    expect(result.channel).toBe('sms')
+    const [, body] = vi.mocked(sendSMS).mock.calls[0]
+    assertCleanText(body)
+    expect(body).toContain('The Anchor: Pat, thanks for booking Christmas with us and for your deposit.')
+    expect(body).toContain("Choose everyone's food by Sat 5 Dec, 12:00 pm: https://l.the-anchor.pub/token-1")
+    expect(body).not.toContain('Christmas courses')
+  })
+
+  it('leaves the deadline out rather than guessing it when the period cannot be read', async () => {
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING, periodFails: true })
+
+    await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    assertCleanRender(email as never)
+    expect(String(email.text)).not.toContain('need to be in by')
+    expect(String(email.text)).toContain("Choose everyone's food: https://l.the-anchor.pub/token-1")
+  })
+
+  it('reports no channel when nothing reached the guest, and raises it for staff', async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Resend 500' } as never)
+    vi.mocked(sendSMS).mockResolvedValue({ success: false, error: 'Twilio down' } as never)
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    expect(result.channel).toBeNull()
+    expect(vi.mocked(AuditService.logAuditEvent).mock.calls.at(-1)?.[0]).toEqual(
+      expect.objectContaining({ operation_type: 'table_booking.notification_failed', resource_id: CHRISTMAS_BOOKING.id })
+    )
+  })
+
+  it('keeps the ordinary wording for a booking that is not Christmas', async () => {
+    const db = buildDb()
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, BOOKING.id)
+
+    expect(result.channel).toBe('email')
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(email.subject).toBe('Deposit received: your table at The Anchor is confirmed')
+    expect(String(email.text)).not.toContain("everyone's food")
+    expect(db.queries.some((query) => query.table === 'booking_periods')).toBe(false)
+  })
+})
+
+describe('Christmas deposit received after the food deadline', () => {
+  const PASSED_LINE =
+    "The deadline to choose food online has passed for this booking. Call us on 01753 682707 and we'll take everyone's choices with you."
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('swaps the food block for the phone number and tells the manager, by booking reference only', async () => {
+    // An hour after noon London on Saturday 5 December 2026, the deadline for a 12 December booking.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T13:00:00.000Z'))
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    const result = await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    expect(result.channel).toBe('email')
+    const email = vi.mocked(sendEmail).mock.calls[0][0]
+    assertCleanRender(email as never)
+    const text = String(email.text)
+    expect(email.subject).toBe('Thanks for booking Christmas at The Anchor: your table is confirmed')
+    expect(text).toContain(PASSED_LINE)
+    expect(text).not.toContain("Choose everyone's food")
+    expect(text).not.toContain('need to be in by')
+    expect(text).not.toContain("We'll remind you")
+    expect(text).toContain('Manage your booking: https://l.the-anchor.pub/token-1')
+    expect(text).toContain("There's a £10 per person deposit, which comes off your bill.")
+
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+    const alert = vi.mocked(alertMoneyNeedsAPerson).mock.calls[0][1]
+    expect(alert).toEqual(
+      expect.objectContaining({
+        domain: 'table_bookings',
+        bookingId: CHRISTMAS_BOOKING.id,
+        kind: 'christmas_food_deadline_passed_at_deposit',
+        context: { 'Booking reference': 'TB-XMAS1' },
+      })
+    )
+    // No guest data in the alert.
+    expect(JSON.stringify(alert)).not.toMatch(/Pat|pat@example\.com|7700900999/)
+  })
+
+  it('says the same in the text when there is no usable email', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T13:00:00.000Z'))
+    const db = buildDb({ ...PAT, email: null }, { booking: CHRISTMAS_BOOKING })
+
+    await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    const [, body] = vi.mocked(sendSMS).mock.calls[0]
+    assertCleanText(body)
+    expect(body).toContain(PASSED_LINE)
+    expect(body).not.toContain("Choose everyone's food")
+    expect(body).not.toContain("We'll remind you")
+    expect(alertMoneyNeedsAPerson).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the food block and raises nothing while the deadline is still ahead', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-12-05T11:59:00.000Z'))
+    const db = buildDb(PAT, { booking: CHRISTMAS_BOOKING })
+
+    await sendTableBookingDepositConfirmation(db.client as never, CHRISTMAS_BOOKING.id)
+
+    const text = String(vi.mocked(sendEmail).mock.calls[0][0].text)
+    expect(text).toContain("Everyone's choices need to be in by Saturday 5 December 2026 at 12pm.")
+    expect(text).not.toContain(PASSED_LINE)
+    expect(alertMoneyNeedsAPerson).not.toHaveBeenCalled()
+  })
+
+  it('renders both builders from an explicit send time', () => {
+    const passedAt = new Date('2026-12-05T12:00:00.000Z')
+    const email = buildTableBookingDepositConfirmedEmail({
+      firstName: 'Pat',
+      bookingReference: 'TB-XMAS1',
+      bookingDate: '2026-12-12',
+      bookingTime: '19:00:00',
+      partySize: 8,
+      depositPaid: 80,
+      manageLink: null,
+      christmas: {
+        foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+        preorderCutoffDays: 7,
+        perPersonGbp: 10,
+        refundCutoffDays: 7,
+        now: passedAt,
+      },
+    })
+    assertCleanRender(email)
+    expect(email.text).toContain(PASSED_LINE)
+    expect(email.text).not.toContain("We couldn't add your food link")
+    expect(email.html).not.toContain('href=""')
+
+    const body = buildDepositConfirmedText({
+      booking: { ...CHRISTMAS_BOOKING },
+      firstName: 'Pat',
+      manageLink: 'https://l.the-anchor.pub/abc',
+      foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+      now: passedAt,
+    })
+    assertCleanText(body)
+    expect(body).toContain(`${PASSED_LINE} Your booking: https://l.the-anchor.pub/abc`)
+  })
+})
+
+describe('Christmas deposit received renders', () => {
+  it('without a food link, gives the phone number instead of an empty button', () => {
+    const email = buildTableBookingDepositConfirmedEmail({
+      firstName: 'Pat',
+      bookingReference: 'TB-XMAS1',
+      bookingDate: '2026-12-12',
+      bookingTime: '19:00:00',
+      partySize: 8,
+      depositPaid: 80,
+      manageLink: null,
+      christmas: { foodDeadlineIso: null, preorderCutoffDays: 7, perPersonGbp: 10, refundCutoffDays: 7 },
+    })
+
+    assertCleanRender(email)
+    expect(email.text).toContain("We couldn't add your food link to this email. Call us on 01753 682707 and we'll send it.")
+    expect(email.text).toContain("Everyone's choices need to be in by noon, 7 days before your booking.")
+    expect(email.html).not.toContain('href=""')
+  })
+
+  it('the text without a link gives the phone number', () => {
+    const body = buildDepositConfirmedText({
+      booking: { ...CHRISTMAS_BOOKING },
+      firstName: 'Pat',
+      manageLink: null,
+      foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+    })
+
+    assertCleanText(body)
+    expect(body).toContain("Call us on 01753 682707 for your link to choose everyone's food by Sat 5 Dec, 12:00 pm.")
+  })
+})
+
 // The text-only path behind table_deposit_confirmed_email_first is gone (BK-129): the message always
 // goes email first, so there is no flag-off case left to pin.
 
@@ -290,7 +543,7 @@ describe('deposit confirmation email renders', () => {
   })
 
   it('handles an outside Christmas booking on the day the clocks go back', () => {
-    const summary = 'Christmas courses: 2 x 3 courses, 1 x 1 course. Guests on one course have nothing to pre-order.'
+    const summary = 'Christmas courses: 2 x 3 courses, 1 x 1 course.'
     const email = buildTableBookingDepositConfirmedEmail({
       firstName: 'Pat',
       bookingReference: 'TB-XMAS',

@@ -19,7 +19,8 @@ import { GUEST } from '@/lib/brand/palette'
 import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDate } from '@/lib/dateUtils'
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { depositTermsLines } from '@/lib/table-bookings/deposit-terms'
+import { depositPurposeLine, depositRefundLine, depositTermsLines } from '@/lib/table-bookings/deposit-terms'
+import { CHRISTMAS_FOOD_DEADLINE_PASSED_LINE, isChristmasFoodDeadlinePassed } from '@/lib/table-bookings/christmas'
 
 export type TableBookingEmail = {
   subject: string
@@ -96,9 +97,9 @@ function partySizeLabel(partySize: number | null | undefined): string | null {
   return `${whole} ${whole === 1 ? 'person' : 'people'}`
 }
 
-type DetailRow = { label: string; value: string | null | undefined }
+export type DetailRow = { label: string; value: string | null | undefined }
 
-type EmailLayout = {
+export type EmailLayout = {
   subject: string
   /** The line the inbox shows next to the subject. Says what the email is about, not hello. */
   preheader: string
@@ -122,7 +123,7 @@ type EmailLayout = {
  * The contact block comes from `@/lib/email/guest-footer` rather than being written here, so a
  * booking email can never again say "reply to this email or call the pub" with no number in it.
  */
-function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
+export function renderTableBookingEmail(layout: EmailLayout): TableBookingEmail {
   const rows = layout.details.filter(
     (row): row is { label: string; value: string } => typeof row.value === 'string' && row.value.trim().length > 0
   )
@@ -251,7 +252,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
 /**
  * What is still owed on a seasonal pre-order, from the course each guest is on.
  *
- * `isCoverComplete` is the authority: a one-course seat has nothing to choose, a two-course seat
+ * `isCoverComplete` is the authority: a one-course seat needs a main (D4), a two-course seat
  * needs a main and one other course, a three-course seat needs all three. The old wording, "a
  * starter and a dessert are optional", was true only of the one-course tier and was sent to
  * bookings that the same sweep was chasing precisely because a course was missing.
@@ -271,7 +272,8 @@ export function describePreorderCourseRequirement(courseCounts?: number[] | null
     lines.push('Every guest on two courses needs a main and one other course chosen.')
   }
   if (tiers.some((count) => count === 1)) {
-    lines.push('Guests on one course have nothing to pre-order.')
+    // Owner decision D4 (6 November 2026): 1 course is a main, chosen in advance like the rest.
+    lines.push('Every guest on one course needs a main chosen.')
   }
   return lines
 }
@@ -290,7 +292,7 @@ export function describePreorderDeadline(input: {
   const lines: string[] = []
 
   if (Number.isFinite(days) && days > 0) {
-    lines.push(`Two and three courses need everyone's choices ${days} days before your booking.`)
+    lines.push(`Everyone's food choices are needed by noon, ${days} days before your booking.`)
   }
   if (closesAt) {
     lines.push(`For this booking that is ${closesAt}.`)
@@ -385,6 +387,11 @@ export function buildTableBookingDepositConfirmedEmail(
     /** Pounds, as locked at capture. Left out when unknown. */
     depositPaid?: number | null
     manageLink?: string | null
+    /**
+     * Set for a Christmas booking (owner decision D3, 6 November 2026): the email thanks the
+     * organiser for the booking and the deposit, then leads with choosing everyone's food.
+     */
+    christmas?: ChristmasDepositFacts | null
   }
 ): TableBookingEmail {
   const isOutside = Boolean(input.isOutsideSeating)
@@ -392,6 +399,10 @@ export function buildTableBookingDepositConfirmedEmail(
   const party = partySizeLabel(input.partySize)
   const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
   const highChairs = Math.max(0, Math.floor(Number(input.highChairCount ?? 0)) || 0)
+
+  if (input.christmas) {
+    return buildChristmasDepositConfirmedEmail({ ...input, christmas: input.christmas, party, moment, highChairs })
+  }
 
   return renderTableBookingEmail({
     subject: isOutside
@@ -412,6 +423,103 @@ export function buildTableBookingDepositConfirmedEmail(
     ],
     closing: input.christmasCourseSummary ? [input.christmasCourseSummary] : [],
     cta: input.manageLink ? { label: 'Manage your booking', url: input.manageLink } : undefined,
+    beforeContact: ['If you need to change anything, let us know.'],
+  })
+}
+
+/** What the Christmas deposit-received email needs beyond the booking facts. */
+export type ChristmasDepositFacts = {
+  /** When everyone's choices close (noon London, getPreorderCutoff), as an ISO instant. */
+  foodDeadlineIso: string | null
+  /** The period's preorder_cutoff_days, for the deadline when the instant is unknown. */
+  preorderCutoffDays: number | null
+  /** What the deposit was per person (GBP 10 for Christmas 2026), from the booking. */
+  perPersonGbp: number | null
+  /** The booking's own deposit_refund_cutoff_days, the promise it was sold on (D12). */
+  refundCutoffDays: number | null
+  /** When the email is sent. Defaults to now; a deadline at or before it has passed. */
+  now?: Date | null
+}
+
+/**
+ * The Christmas deposit-received email (spec section 2 step 2, D3). Thanks for the booking and the
+ * deposit, then "Choose everyone's food" with the organiser's manage link, the deadline and one line
+ * on reminders, then the deposit facts as D12 states them. Every sentence that needs a figure is
+ * left out rather than guessed when the figure is unknown.
+ */
+function buildChristmasDepositConfirmedEmail(
+  input: BookingFacts & {
+    depositPaid?: number | null
+    manageLink?: string | null
+    christmas: ChristmasDepositFacts
+    party: string | null
+    moment: string | null
+    highChairs: number
+  }
+): TableBookingEmail {
+  const deadline = input.christmas.foodDeadlineIso
+    ? formatBookingMomentForEmail(null, null, input.christmas.foodDeadlineIso)
+    : null
+  const cutoffDays = Number(input.christmas.preorderCutoffDays)
+  const deadlineLine = deadline
+    ? `Everyone's choices need to be in by ${deadline}.`
+    : Number.isInteger(cutoffDays) && cutoffDays > 0
+      ? `Everyone's choices need to be in by noon, ${cutoffDays} days before your booking.`
+      : null
+  const manageLink = input.manageLink?.trim() || null
+  const refund = depositRefundLine({ isChristmas: true, refundCutoffDays: input.christmas.refundCutoffDays })
+  const thanks =
+    `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
+    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`
+
+  // The deposit can land after the food form has locked (a booking taken with the minimum notice
+  // has its cutoff inside the 24 hour deposit hold). Then the food block would promise a form the
+  // organiser can no longer use, so it gives the phone number instead.
+  if (isChristmasFoodDeadlinePassed(input.christmas.foodDeadlineIso, input.christmas.now ?? new Date())) {
+    return renderTableBookingEmail({
+      subject: 'Thanks for booking Christmas at The Anchor: your table is confirmed',
+      preheader: 'Your Christmas table is booked',
+      heading: 'Your deposit is received',
+      opening: [thanks, CHRISTMAS_FOOD_DEADLINE_PASSED_LINE],
+      details: [
+        ...bookingDetailRows(input),
+        { label: 'Deposit paid', value: formatPounds(input.depositPaid) },
+        { label: 'High chair reserved', value: input.highChairs > 0 ? `x${input.highChairs}` : null },
+      ],
+      cta: manageLink ? { label: 'Manage your booking', url: manageLink } : undefined,
+      afterCta: [
+        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+        ...(refund ? [refund] : []),
+      ],
+      beforeContact: ['If you need to change anything, let us know.'],
+    })
+  }
+
+  return renderTableBookingEmail({
+    subject: "Thanks for booking Christmas at The Anchor: now choose everyone's food",
+    preheader: deadline ? `Choose everyone's food by ${deadline}` : "Your Christmas table is booked. Now choose everyone's food",
+    heading: "Choose everyone's food",
+    opening: [
+      thanks,
+      "Next, choose everyone's food. Each guest needs a name, their allergies, their number of courses and their dishes. " +
+        'You can save part-way and come back, or send a guest their own link to choose.',
+      ...(deadlineLine ? [deadlineLine] : []),
+    ],
+    details: [
+      ...bookingDetailRows(input),
+      { label: 'Deposit paid', value: formatPounds(input.depositPaid) },
+      { label: 'High chair reserved', value: input.highChairs > 0 ? `x${input.highChairs}` : null },
+    ],
+    // The button sits straight after the booking details, ahead of the deposit terms.
+    cta: manageLink ? { label: "Choose everyone's food", url: manageLink } : undefined,
+    afterCta: [
+      ...(manageLink
+        ? []
+        : [`We couldn't add your food link to this email. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll send it.`]),
+      "We'll remind you if anyone's choices are still missing as the deadline gets close.",
+      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+      ...(refund ? [refund] : []),
+    ],
     beforeContact: ['If you need to change anything, let us know.'],
   })
 }
@@ -791,16 +899,20 @@ export function buildTableBookingCancelledEmail(
 /** One seat on the booker's copy of their choices. Seat numbers only: no names, no dietary notes. */
 export type PreorderChoicesCopySeat = {
   ordinal: number
-  /** The seat's Christmas tier, or null when the booking recorded none. */
-  courseCount: 1 | 2 | 3 | null
+  /** The seat's Christmas tier, 0 when not chosen yet, or null when the booking recorded none. */
+  courseCount: 0 | 1 | 2 | 3 | null
   /** In menu order. `withdrawn` marks a dish since taken off the menu. */
   courses: Array<{ courseLabel: string; itemName: string; withdrawn?: boolean }>
   addons: string[]
 }
 
+/**
+ * One seat's line. Every tier chooses in advance since the food link release (owner decision D4,
+ * 6 November 2026): 1 course is a main, so its main is listed like any other course. A seat still
+ * on 0 has not chosen its number of courses, and says so.
+ */
 function describeCopySeat(seat: PreorderChoicesCopySeat): string {
   const tier = seat.courseCount ? `, ${seat.courseCount} course${seat.courseCount === 1 ? '' : 's'}` : ''
-  if (seat.courseCount === 1) return `Seat ${seat.ordinal}${tier}: chosen on the day.`
   if (seat.courses.length === 0) return `Seat ${seat.ordinal}${tier}: not chosen yet.`
   const courses = seat.courses
     .map(
@@ -809,12 +921,14 @@ function describeCopySeat(seat: PreorderChoicesCopySeat): string {
     )
     .join(' ')
   const addons = seat.addons.length > 0 ? ` Add-ons: ${seat.addons.join(', ')}.` : ''
-  return `Seat ${seat.ordinal}${tier}: ${courses}${addons}`
+  const unchosenTier = seat.courseCount === 0 ? ' Number of courses not chosen yet.' : ''
+  return `Seat ${seat.ordinal}${tier}: ${courses}${addons}${unchosenTier}`
 }
 
 /**
  * The booker's copy of their food choices, sent once when the pre-order closes (BK-149), so they
- * have a record of what everyone is having. Seat numbers and dishes only: names and dietary notes
+ * have a record of what everyone is having, or on request from the food page before then
+ * (`stillOpenUntil`). Seat numbers and dishes only: names and dietary notes
  * stay on staff screens (spec section 8). Sent only while the messaging flag
  * `table_preorder_choices_copy` is on.
  */
@@ -826,6 +940,11 @@ export function buildTableBookingPreorderChoicesEmail(
     complete: boolean
     /** The add-on money note, verbatim, when any seat has an add-on. */
     addonNote?: string | null
+    /**
+     * A ready-made London phrase for when choices close, such as "noon on Friday 4 December 2026",
+     * for a copy asked for before the cutoff. Absent means choices have closed.
+     */
+    stillOpenUntil?: string | null
   }
 ): TableBookingEmail {
   const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
@@ -843,7 +962,9 @@ export function buildTableBookingPreorderChoicesEmail(
     opening: [
       `Hi ${input.firstName}, here is a copy of the food choices for your booking at The Anchor` +
         `${moment ? ` on ${moment}` : ''}${reference}.`,
-      'Choices have now closed, and the kitchen orders from this list.',
+      input.stillOpenUntil?.trim()
+        ? `You can change them until ${input.stillOpenUntil.trim()}.`
+        : 'Choices have now closed, and the kitchen orders from this list.',
       ...(input.complete
         ? []
         : [`Some choices are still missing. Please ring us on ${GUEST_CONTACT.phoneDisplay} so we can add them.`]),

@@ -265,7 +265,7 @@ describe('POST /api/table-bookings — structured persistence', () => {
     })
     const body = await response.json()
     expect(body.data.preorder).toMatchObject({ saved: false, saved_covers: 0 })
-    expect(body.data.preorder.error).toMatch(/deadline for this date has passed/)
+    expect(body.data.preorder.error).toMatch(/deadline to choose food for this date has passed/)
     // The confirmation is built from the in-memory booking, which must now say one course each.
     expect(sendTableBookingCreatedSmsIfAllowed).toHaveBeenCalledWith(
       supabase,

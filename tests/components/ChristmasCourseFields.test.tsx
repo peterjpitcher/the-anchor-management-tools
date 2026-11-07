@@ -83,18 +83,14 @@ describe('ChristmasCourseFields on a Christmas booking with no courses recorded'
     )
   }
 
-  it('offers the controls, and sends nothing until every guest has a choice', async () => {
+  it('records every guest on Choose courses, to be chosen on the food page', async () => {
     installFirstTime(true)
     const onChange = vi.fn()
-    const user = userEvent.setup()
     render(<ChristmasCourseFields bookingId="b1" partySize={2} onChange={onChange} />)
 
     expect(await screen.findByText(/No courses are recorded for this Christmas booking yet/)).toBeInTheDocument()
-    await user.selectOptions(screen.getByLabelText('Guest 1'), '3')
-    expect(onChange).toHaveBeenLastCalledWith(undefined)
-
-    await user.selectOptions(screen.getByLabelText('Guest 2'), '1')
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [3, 1], removedSeats: [], expectedCourseCounts: [] }))
+    expect(screen.getByLabelText('Guest 1')).toHaveValue('0')
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [0, 0], removedSeats: [], expectedCourseCounts: [] }))
   })
 
   it('shows nothing on a booking that may not take courses', async () => {
@@ -108,7 +104,7 @@ describe('ChristmasCourseFields on a Christmas booking with no courses recorded'
 })
 
 // BK-054: a smaller party names who is not coming, so that guest's own dishes go; and after the
-// pre-order deadline (D21) a guest can only stay on their tier or move down, and anyone new is on 1.
+// pre-order deadline (D21) a guest can only stay on their tier or move down, and anyone new starts on 0.
 describe('ChristmasCourseFields when the party changes size', () => {
   it('asks who is not coming, and sends nothing until exactly that many are ticked', async () => {
     installFetch({ ok: true, counts: [3, 2, 1, 1, 1], names: [null, 'Dave', null, null, null] })
@@ -138,18 +134,27 @@ describe('ChristmasCourseFields when the party changes size', () => {
     await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [1, 1, 1, 1], removedSeats: [5], expectedCourseCounts: [1, 1, 1, 1, 1] }))
   })
 
-  it('after the deadline, puts a new guest on 1 course and lets nobody move up', async () => {
+  it('after the deadline, puts a new guest on Choose courses and lets nobody move up', async () => {
     installFetch({ ok: true, counts: [2, 1, 1, 1], deadline: 'closed', canChangeLate: true })
     const onChange = vi.fn()
     render(<ChristmasCourseFields bookingId="b1" partySize={5} onChange={onChange} />)
 
     expect(await screen.findByText(/saved as a late change/)).toBeInTheDocument()
     const newGuest = screen.getByLabelText('Guest 5')
-    expect(newGuest).toHaveValue('1')
-    expect(Array.from((newGuest as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
+    expect(newGuest).toHaveValue('0')
+    expect(Array.from((newGuest as HTMLSelectElement).options).map((option) => option.value)).toEqual(['0'])
     expect(Array.from((screen.getByLabelText('Guest 1') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1', '2'])
     expect(Array.from((screen.getByLabelText('Guest 2') as HTMLSelectElement).options).map((option) => option.value)).toEqual(['1'])
-    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 1, 1, 1, 1], removedSeats: [], expectedCourseCounts: [2, 1, 1, 1] }))
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith({ courseCounts: [2, 1, 1, 1, 0], removedSeats: [], expectedCourseCounts: [2, 1, 1, 1] }))
+  })
+
+  it('lets a party grow past 20 for a staff Christmas booking', async () => {
+    installFetch({ ok: true, counts: Array(20).fill(1) })
+    const onChange = vi.fn()
+    render(<ChristmasCourseFields bookingId="b1" partySize={24} onChange={onChange} />)
+
+    expect(await screen.findByLabelText('Guest 24')).toHaveValue('0')
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ courseCounts: [...Array(20).fill(1), 0, 0, 0, 0] })))
   })
 
   it('after the deadline, tells staff who are not managers that a manager has to make the change', async () => {

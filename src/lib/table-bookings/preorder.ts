@@ -10,12 +10,14 @@
  * These are library functions, not server actions: they throw on failure and the calling action turns
  * that into `{ error }`.
  *
- * THE COMPLETENESS RULE follows each guest's Christmas course tier (`christmas_course_counts`, SSOT
- * section 7): a 1 course guest owes nothing, a 2 course guest owes a main and one other course (a
- * starter or a dessert), and a 3 course guest owes a starter, a main and a dessert. A seat may not
- * hold more courses than its tier pays for, because the kitchen would cook a course nobody paid for.
- * A booking that recorded no tiers keeps the rule it was taken under, owner-confirmed 2026-08-04:
- * every cover needs a MAIN, and a starter and a dessert are optional.
+ * THE COMPLETENESS RULE (owner decision D4, 6 November 2026). On a booking with a course list, which
+ * is every Christmas booking since the food link release, each seat needs a name, an answer to the
+ * allergy question (with details when it is yes), its number of courses (`christmas_course_counts`,
+ * 0 meaning not chosen yet), a main, and on 2 courses one of a starter or a dessert, on 3 courses
+ * both. A seat may not hold more courses than its tier pays for, because the kitchen would cook a
+ * course nobody paid for, and a kids main is 1 course only. A booking that recorded no tiers keeps
+ * the rule it was taken under, owner-confirmed 2026-08-04: every cover needs a MAIN, and a starter
+ * and a dessert are optional.
  *
  * ADD-ONS, added 2026-08-04. An add-on is an optional extra a seat has ON TOP of its courses: the
  * farmhouse cheeseboard, which was mistakenly listed as a dessert and so cost the guest their pudding.
@@ -33,20 +35,32 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { isValidIsoDate, parseLondonDateTimeLocal } from '@/lib/dateUtils'
+import { isValidIsoDate, parseLondonDateTimeLocal, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import {
   PREORDER_ADDON_COURSE,
+  PREORDER_ALLERGY_DETAIL_MAX_LENGTH,
   PREORDER_COURSES,
+  PREORDER_DIETARY_NOTE_MAX_LENGTH,
+  PREORDER_GUEST_NAME_MAX_LENGTH,
+  PREORDER_INVITE_EMAIL_MAX_LENGTH,
+  PREORDER_MANAGER_STAGE,
+  PREORDER_SAVED_BY,
   PREORDER_SELECTION_COURSES,
   type PreorderAddonSummary,
+  type PreorderChaseChannel,
   type PreorderCourse,
   type PreorderCourseCount,
   type PreorderCover,
   type PreorderCoverAddonSummary,
   type PreorderCoverRow,
+  type PreorderLegacyReminderKind,
+  type PreorderManagerStage,
+  type PreorderMenuItemFacts,
   type PreorderOrder,
   type PreorderOrderAddonSummary,
-  type PreorderReminderKind,
+  type PreorderOrganiserStage,
+  type PreorderSavedBy,
+  type PreorderSeatCourseCount,
   type PreorderSelection,
   type PreorderSelectionCourse,
   type PreorderSelectionRow,
@@ -57,7 +71,9 @@ type Db = SupabaseClient<any, any, any>
 /** Bookings that are off the books entirely. Their choices must not reach a kitchen prep list. */
 const DEAD_BOOKING_STATUSES = ['cancelled', 'no_show'] as const
 
-const COVER_COLUMNS = 'id, table_booking_id, ordinal, guest_name, dietary_note, created_at, updated_at'
+const COVER_COLUMNS =
+  'id, table_booking_id, ordinal, guest_name, dietary_note, has_allergies, allergy_detail, invite_email, ' +
+  'invite_sent_at, invite_reminded_at, last_saved_by, last_saved_at, created_at, updated_at'
 const SELECTION_COLUMNS =
   'id, cover_id, course, menu_item_id, item_name, price_gbp, created_at, updated_at'
 
@@ -87,9 +103,13 @@ export function isPreorderAddon(
 // Mapping
 // ---------------------------------------------------------------------------
 
+function toPreorderSavedBy(value: string | null | undefined): PreorderSavedBy | null {
+  return (PREORDER_SAVED_BY as readonly string[]).includes(value ?? '') ? (value as PreorderSavedBy) : null
+}
+
 export function mapPreorderSelectionRow(
   row: PreorderSelectionRow,
-  options: { itemWithdrawn?: boolean } = {},
+  options: { itemWithdrawn?: boolean; isChildOption?: boolean } = {},
 ): PreorderSelection {
   if (!isPreorderSelectionCourse(row.course)) {
     // The database CHECK constraint makes this unreachable. If it ever fires, something has written
@@ -105,6 +125,7 @@ export function mapPreorderSelectionRow(
     itemName: row.item_name,
     priceGbp: toNullableNumber(row.price_gbp),
     itemWithdrawn: options.itemWithdrawn === true,
+    ...(options.isChildOption === undefined ? {} : { isChildOption: options.isChildOption }),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -120,6 +141,13 @@ export function mapPreorderCoverRow(
     ordinal: row.ordinal,
     guestName: row.guest_name ?? null,
     dietaryNote: row.dietary_note ?? null,
+    hasAllergies: typeof row.has_allergies === 'boolean' ? row.has_allergies : null,
+    allergyDetail: row.allergy_detail ?? null,
+    inviteEmail: row.invite_email ?? null,
+    inviteSentAt: row.invite_sent_at ?? null,
+    inviteRemindedAt: row.invite_reminded_at ?? null,
+    lastSavedBy: toPreorderSavedBy(row.last_saved_by),
+    lastSavedAt: row.last_saved_at ?? null,
     selections,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -130,34 +158,50 @@ export function mapPreorderCoverRow(
 // The completeness predicate
 // ---------------------------------------------------------------------------
 
-/** A recorded tier, or null for anything that is not 1, 2 or 3. */
+/** A recorded tier of 1, 2 or 3, or null for anything else (0 included). */
 export function toPreorderCourseCount(value: unknown): PreorderCourseCount | null {
   const parsed = typeof value === 'number' ? value : Number(value)
   return parsed === 1 || parsed === 2 || parsed === 3 ? parsed : null
 }
 
+/** A seat's tier as the booking may now hold it, 0 ("not chosen yet") to 3, or null for anything else. */
+export function toPreorderSeatCourseCount(value: unknown): PreorderSeatCourseCount | null {
+  if (value === null || value === undefined || value === '') return null
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return parsed === 0 ? 0 : toPreorderCourseCount(parsed)
+}
+
 /**
- * The tier recorded for one seat (1-based), or null when the booking recorded none. Read from the
- * order's own list first, because a seat can have no cover row yet and still owe its courses.
+ * The tier recorded for one seat (1-based): 0 to 3, or null when the booking recorded no list. Read
+ * from the order's own list first, because a seat can have no cover row yet and still owe its courses.
  */
 export function getSeatCourseCount(
   order: Pick<PreorderOrder, 'courseCounts' | 'covers'>,
   ordinal: number,
-): PreorderCourseCount | null {
+): PreorderSeatCourseCount | null {
   const fromOrder = order.courseCounts?.[ordinal - 1]
-  if (fromOrder !== undefined && fromOrder !== null) return toPreorderCourseCount(fromOrder)
+  if (fromOrder !== undefined && fromOrder !== null) return toPreorderSeatCourseCount(fromOrder)
   const cover = order.covers.find((entry) => entry.ordinal === ordinal)
-  return toPreorderCourseCount(cover?.courseCount ?? null)
+  return toPreorderSeatCourseCount(cover?.courseCount ?? null)
 }
 
-/** The single-choice courses a seat holds. Add-ons never count, so they cannot be in here. */
-/** Only the course of each choice matters to the tier rule, so a draft on screen can be judged too. */
-type CoursesHeld = {
+/**
+ * One seat as the completeness rule reads it: a saved cover, or a draft on screen. Only the course of
+ * each choice matters, so add-ons can sit in `selections` without changing the answer.
+ *
+ * `courseCount` is the seat's tier from the booking's list, 0 to 3. Null or absent means the booking
+ * has no list at all, an older booking that keeps the rule it was taken under (a main only), and the
+ * name and allergy fields are then not asked for.
+ */
+export type PreorderSeatDraft = {
   selections: ReadonlyArray<Pick<PreorderSelection, 'course'>>
-  courseCount?: PreorderCourseCount | null
+  courseCount?: PreorderSeatCourseCount | null
+  guestName?: string | null
+  hasAllergies?: boolean | null
+  allergyDetail?: string | null
 }
 
-function chosenCourses(cover: Pick<CoursesHeld, 'selections'>): Set<PreorderCourse> {
+function chosenCourses(cover: Pick<PreorderSeatDraft, 'selections'>): Set<PreorderCourse> {
   const chosen = new Set<PreorderCourse>()
   for (const selection of cover.selections) {
     if (isPreorderCourse(selection.course)) chosen.add(selection.course)
@@ -166,58 +210,77 @@ function chosenCourses(cover: Pick<CoursesHeld, 'selections'>): Set<PreorderCour
 }
 
 /**
- * The most starters and desserts together that a seat on this tier may hold. A 2 course seat is a
- * main and ONE other, so a starter and a dessert together is a course nobody has paid for.
+ * The most starters and desserts together that a seat on this tier may hold. Every tier has a main;
+ * a 2 course seat is a main and ONE other, so a starter and a dessert together is a course nobody has
+ * paid for, and a seat on 0 or 1 has neither.
  */
-function maxOtherCourses(courseCount: PreorderCourseCount | null | undefined): number {
-  if (courseCount === 1) return 0
+function maxOtherCourses(courseCount: PreorderSeatCourseCount | null | undefined): number {
+  if (courseCount === 0 || courseCount === 1) return 0
   if (courseCount === 2) return 1
   return 2
 }
 
-/**
- * What one seat still has to choose, as words that finish "Seat 2 needs ...", or null when nothing
- * is owed. Follows the seat's tier; a seat with no tier keeps the old rule of a main only.
- */
-export function describeCoverMissingCourses(cover: CoursesHeld): string | null {
-  const courseCount = toPreorderCourseCount(cover.courseCount ?? null)
-  if (courseCount === 1) return null
+/** "a, b and c". */
+function joinMissing(parts: string[]): string | null {
+  if (parts.length === 0) return null
+  if (parts.length === 1) return parts[0]
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`
+}
 
+/**
+ * What one seat still needs, as words that finish "Seat 2 needs ...", or null when nothing is owed.
+ * For example "a name, their allergies and a main".
+ *
+ * A seat on a booking with a course list (every Christmas booking since the food link release, owner
+ * decision D4 of 6 November 2026) needs, in this order: a name, an answer to the allergy question
+ * (with details when the answer is yes), its number of courses, a main, and on 2 courses one of a
+ * starter or a dessert, on 3 courses both. A seat on a booking with no list keeps the old rule: a
+ * main, nothing else. Add-ons never count either way.
+ */
+export function describeCoverMissingCourses(cover: PreorderSeatDraft): string | null {
+  const courseCount = toPreorderSeatCourseCount(cover.courseCount ?? null)
   const chosen = chosenCourses(cover)
   const hasMain = chosen.has('main')
 
   if (courseCount === null) return hasMain ? null : 'a main'
 
+  const missing: string[] = []
+  if (!cover.guestName || cover.guestName.trim() === '') missing.push('a name')
+  if (cover.hasAllergies === null || cover.hasAllergies === undefined) missing.push('their allergies')
+  else if (cover.hasAllergies && (!cover.allergyDetail || cover.allergyDetail.trim() === '')) {
+    missing.push('details of their allergies')
+  }
+  if (courseCount === 0) missing.push('their number of courses')
+
   if (courseCount === 2) {
     const others = (chosen.has('starter') ? 1 : 0) + (chosen.has('dessert') ? 1 : 0)
     if (others > 1) {
       // Only reachable from a save made before the tier was enforced. Say what to take off.
-      return hasMain ? 'only one of the starter and the dessert' : 'a main in place of the starter or the dessert'
+      missing.push(hasMain ? 'only one of the starter and the dessert' : 'a main in place of the starter or the dessert')
+    } else if (!hasMain && others === 0) missing.push('a main, plus a starter or a dessert')
+    else if (!hasMain) missing.push('a main')
+    else if (others === 0) missing.push('a starter or a dessert')
+  } else if (courseCount === 3) {
+    for (const course of ['starter', 'main', 'dessert'] as const) {
+      if (!chosen.has(course)) missing.push(`a ${course}`)
     }
-    if (!hasMain && others === 0) return 'a main, plus a starter or a dessert'
-    if (!hasMain) return 'a main'
-    if (others === 0) return 'a starter or a dessert'
-    return null
+  } else if (!hasMain) {
+    missing.push('a main')
   }
 
-  const missing = (['starter', 'main', 'dessert'] as const)
-    .filter((course) => !chosen.has(course))
-    .map((course) => `a ${course}`)
-  if (missing.length === 0) return null
-  if (missing.length === 1) return missing[0]
-  return `${missing.slice(0, -1).join(', ')} and ${missing[missing.length - 1]}`
+  return joinMissing(missing)
 }
 
 /**
- * A cover is complete when it holds exactly the courses its tier pays for, including a main: all
- * three on 3 courses, a main and one other on 2, nothing at all on 1. A cover with no tier recorded
- * keeps the rule it was booked under: a main, with a starter and a dessert optional.
+ * A seat is complete when `describeCoverMissingCourses` finds nothing missing: on a booking with a
+ * course list, a tier of 1 to 3, a name, the allergy question answered, a main and the other courses
+ * its tier pays for; on a booking without one, a main.
  *
  * Add-ons deliberately cannot reach this function's answer. A seat that has ticked the cheeseboard
  * and chosen no main is NOT complete, and a seat with its courses and no add-ons IS. Anything else
  * would mean the chase cron nagged a guest for not buying an extra.
  */
-export function isCoverComplete(cover: CoursesHeld): boolean {
+export function isCoverComplete(cover: PreorderSeatDraft): boolean {
   return describeCoverMissingCourses(cover) === null
 }
 
@@ -241,25 +304,25 @@ export function getCoverAddons(cover: Pick<PreorderCover, 'selections'>): Preord
 
 export type PreorderSeatGap = {
   ordinal: number
-  courseCount: PreorderCourseCount | null
-  /** Words that finish "Seat 2 needs ...", for example "a dessert". */
+  /** 0 to 3, or null on a booking with no course list. */
+  courseCount: PreorderSeatCourseCount | null
+  /** The name on the seat, so a reminder can say who is still missing. Null when none is given yet. */
+  guestName: string | null
+  /** Words that finish "Seat 2 needs ...", for example "a name, their allergies and a main". */
   missing: string
 }
 
 export type PreorderCompleteness = {
-  /** Every seat that owes a pre-order has a cover, and every cover holds the courses its tier pays for. */
+  /** Every seat has a cover, and every cover has everything `describeCoverMissingCourses` asks for. */
   complete: boolean
   partySize: number
   coverCount: number
   /**
-   * Seat numbers whose courses are not all chosen yet, following each seat's tier. Kept under its
-   * old name for its callers; with tiers it means "still owes a course", not only "has no main".
+   * Seat numbers that still owe something, in seat order. Kept under its old name for its callers;
+   * it means "still owes something", not only "has no main".
    */
   ordinalsMissingMain: number[]
-  /**
-   * The same seats, with their tier and what each still needs, in seat order. Includes a seat with
-   * no cover row yet, unless it is on 1 course, which owes nothing.
-   */
+  /** The same seats, with their tier, name and what each still needs, in seat order. */
   seatsIncomplete: PreorderSeatGap[]
   /** The seats in `seatsIncomplete` that have no cover row at all. */
   seatsWithoutCover: number[]
@@ -278,16 +341,22 @@ export function getPreorderCompleteness(
   const withTiers = { courseCounts: order.courseCounts ?? null, covers: order.covers }
   const coversByOrdinal = new Map(order.covers.map((cover) => [cover.ordinal, cover]))
 
-  // Every seat in the party, whether or not it has a cover row yet: a seat with no row owes every
-  // course its tier pays for, and saying which is more use than "no order started".
+  // Every seat in the party, whether or not it has a cover row yet: a seat with no row owes
+  // everything, and saying what is more use than "no order started".
   const seatsIncomplete: PreorderSeatGap[] = []
   const seatsWithoutCover: number[] = []
   for (let ordinal = 1; ordinal <= order.partySize; ordinal += 1) {
     const cover = coversByOrdinal.get(ordinal)
     const courseCount = getSeatCourseCount(withTiers, ordinal)
-    const missing = describeCoverMissingCourses({ selections: cover?.selections ?? [], courseCount })
+    const missing = describeCoverMissingCourses({
+      selections: cover?.selections ?? [],
+      courseCount,
+      guestName: cover?.guestName ?? null,
+      hasAllergies: cover?.hasAllergies ?? null,
+      allergyDetail: cover?.allergyDetail ?? null,
+    })
     if (missing === null) continue
-    seatsIncomplete.push({ ordinal, courseCount, missing })
+    seatsIncomplete.push({ ordinal, courseCount, guestName: cover?.guestName?.trim() || null, missing })
     if (!cover) seatsWithoutCover.push(ordinal)
   }
 
@@ -310,7 +379,7 @@ export function getPreorderCompleteness(
 }
 
 /** "3 courses", for a seat's tier. Empty when the booking recorded no tier. */
-export function describeCourseCount(courseCount: PreorderCourseCount | null | undefined): string {
+export function describeCourseCount(courseCount: PreorderSeatCourseCount | null | undefined): string {
   if (!courseCount) return ''
   return courseCount === 1 ? '1 course' : `${courseCount} courses`
 }
@@ -503,7 +572,202 @@ export function isCoverChangedAfterCutoff(
   return coverEdited || cover.selections.some((selection) => isChangedAfterCutoff(selection.createdAt, closesAt))
 }
 
+// ---------------------------------------------------------------------------
+// The reminder ladder (owner decisions D6 and D7, 6 November 2026)
+// ---------------------------------------------------------------------------
+
+/** One rung of the ladder, with when it falls due. */
+export type PreorderLadderStage = {
+  kind: PreorderOrganiserStage | PreorderManagerStage
+  audience: 'organiser' | 'manager'
+  channels: PreorderChaseChannel[]
+  dueAt: Date
+}
+
+/**
+ * When each rung falls due for a booking, earliest first, or an empty list when the booking has no
+ * cutoff (no seasonal period, or the period has gone).
+ *
+ *   booker_21d, booker_14d, booker_10d   12:00 London on the booking date less 21, 14 and 10 days, email
+ *   booker_day_before                    12:00 London on the day before the cutoff, email and text
+ *   booker_cutoff_morning                09:00 London on cutoff day, email and text
+ *   manager_day_before                   12:00 London on the day before the cutoff, email
+ *
+ * The cutoff day is the booking date less `preorderCutoffDays`, the date `getPreorderCutoff` locks
+ * the form at noon. The noon rungs are sent by the 12:00 cron and the 09:00 rung by the 09:00 cron,
+ * which is 9am London through the Christmas window (A5). Times are worked out with the project's
+ * date module on the London clock, so the answer does not move with the server's time zone.
+ */
+export function getPreorderLadderStages(input: {
+  bookingDate: string
+  preorderCutoffDays: number | null
+}): PreorderLadderStage[] {
+  const { bookingDate, preorderCutoffDays } = input
+  if (preorderCutoffDays === null || !Number.isInteger(preorderCutoffDays) || preorderCutoffDays < 0) return []
+  if (!isValidIsoDate(bookingDate)) return []
+  const cutoffDate = shiftIsoDate(bookingDate, -preorderCutoffDays)
+  if (!cutoffDate) return []
+
+  const at = (isoDate: string | null, time: string): Date | null =>
+    isoDate ? whenLondonClockReaches(isoDate, time) : null
+  const dayBeforeCutoff = shiftIsoDate(cutoffDate, -1)
+
+  const rungs: Array<[PreorderLadderStage['kind'], PreorderLadderStage['audience'], PreorderChaseChannel[], Date | null]> = [
+    ['booker_21d', 'organiser', ['email'], at(shiftIsoDate(bookingDate, -21), '12:00')],
+    ['booker_14d', 'organiser', ['email'], at(shiftIsoDate(bookingDate, -14), '12:00')],
+    ['booker_10d', 'organiser', ['email'], at(shiftIsoDate(bookingDate, -10), '12:00')],
+    ['booker_day_before', 'organiser', ['email', 'sms'], at(dayBeforeCutoff, '12:00')],
+    ['booker_cutoff_morning', 'organiser', ['email', 'sms'], at(cutoffDate, '09:00')],
+    ['manager_day_before', 'manager', ['email'], at(dayBeforeCutoff, '12:00')],
+  ]
+
+  return rungs
+    .filter((rung): rung is [PreorderLadderStage['kind'], PreorderLadderStage['audience'], PreorderChaseChannel[], Date] => rung[3] !== null)
+    .map(([kind, audience, channels, dueAt]) => ({ kind, audience, channels, dueAt }))
+    .sort((a, b) => a.dueAt.getTime() - b.dueAt.getTime())
+}
+
+/** A seat that may be owed a guest reminder: one the organiser sent a link for. */
+export type PreorderChaseSeat = {
+  coverId: string
+  ordinal: number
+  /** When the guest's invite went out (`invite_sent_at`), or null when they were never sent a link. */
+  inviteSentAt: string | Date | null
+  /** `isCoverComplete` for this seat. */
+  complete: boolean
+}
+
 export type PreorderChaseInput = {
+  /** The moment of the run. Injected so the ladder is a pure function. */
+  now: Date
+  /** The booking date, YYYY-MM-DD (London). */
+  bookingDate: string
+  /** The period's `preorder_cutoff_days`, or null when the booking has no seasonal period. */
+  preorderCutoffDays: number | null
+  /** When the booking was made. A rung that fell due before this is never sent. Null skips the check. */
+  bookingCreatedAt: string | Date | null
+  /** Whether the whole order is complete (`getPreorderCompleteness(order).complete`). */
+  complete: boolean
+  /** Ledger rows already claimed for this booking, of any kind. A guest row carries its seat. */
+  sent: ReadonlyArray<{ kind: string; coverId?: string | null }>
+  /** The seats, for the guest reminders. Omit when there are none to consider. */
+  seats?: ReadonlyArray<PreorderChaseSeat>
+}
+
+/** One message the run should claim in the ledger and send. */
+export type PreorderChase =
+  | { audience: 'organiser'; kind: PreorderOrganiserStage; channels: PreorderChaseChannel[]; dueAt: Date }
+  | { audience: 'manager'; kind: PreorderManagerStage; channels: PreorderChaseChannel[]; dueAt: Date }
+  | {
+      audience: 'guest'
+      kind: 'guest_reminder'
+      coverId: string
+      ordinal: number
+      channels: PreorderChaseChannel[]
+      dueAt: Date
+    }
+
+export type PreorderChaseDecision = {
+  /** What to send this run, organiser first, then the manager, then guests in seat order. */
+  due: PreorderChase[]
+  /** When the form locks (noon London on cutoff day), or null when nothing locks it. */
+  cutoffAt: Date | null
+  /** True once the form has locked: nothing more goes to the organiser or a guest. */
+  locked: boolean
+}
+
+function toTime(value: string | Date | null | undefined): number | null {
+  if (value === null || value === undefined) return null
+  const ms = value instanceof Date ? value.getTime() : Date.parse(value)
+  return Number.isFinite(ms) ? ms : null
+}
+
+/**
+ * Which chases a booking is due this run: the D6 ladder for the organiser, the D7 call list for the
+ * owner, and one reminder for each guest who was sent their own link.
+ *
+ * ORGANISER. While the order is incomplete and the form has not locked, the organiser is sent the
+ * LATEST rung that is due and has not been sent. Earlier rungs that were missed are skipped, never
+ * sent in a burst: a cron that was down for a week sends one message when it comes back, not three.
+ * A rung that fell due before the booking was made is skipped too, so a booking made 12 days out
+ * starts at the 10 day rung. Nothing goes to the organiser once the form locks or the order is
+ * complete.
+ *
+ * MANAGER. `manager_day_before`, once due, while anything is missing and the form has not locked,
+ * and not for a booking made after it fell due. Sent once.
+ *
+ * GUESTS. One `guest_reminder` per seat whose guest was sent a link before the day-before-the-cutoff
+ * rung fell due and whose seat is still incomplete, at that rung's time, until the form locks. Once
+ * per seat, whatever happens to the rest of the booking.
+ *
+ * The ledger (`booking_preorder_reminders`) is still the idempotency: the caller claims each kind
+ * (with the seat, for a guest) before sending, and a duplicate key means somebody already sent it.
+ * The legacy kinds (`booker_reminder`, `manager_escalation`) never count as a rung of this ladder.
+ */
+export function decidePreorderChases(input: PreorderChaseInput): PreorderChaseDecision {
+  const nowMs = input.now.getTime()
+  const cutoff = getPreorderCutoff({
+    bookingDate: input.bookingDate,
+    preorderCutoffDays: input.preorderCutoffDays,
+    now: input.now,
+  })
+  if (!cutoff.closesAt) return { due: [], cutoffAt: null, locked: false }
+  if (cutoff.closed) return { due: [], cutoffAt: cutoff.closesAt, locked: true }
+
+  const stages = getPreorderLadderStages(input)
+  const createdMs = toTime(input.bookingCreatedAt)
+  const sentKinds = new Set(input.sent.filter((row) => !row.coverId).map((row) => row.kind))
+  const isDue = (stage: PreorderLadderStage) =>
+    stage.dueAt.getTime() <= nowMs && (createdMs === null || stage.dueAt.getTime() >= createdMs)
+
+  const due: PreorderChase[] = []
+  if (!input.complete) {
+    const organiserDue = stages.filter((stage) => stage.audience === 'organiser' && isDue(stage))
+    const latest = organiserDue[organiserDue.length - 1]
+    if (latest && !sentKinds.has(latest.kind)) {
+      due.push({
+        audience: 'organiser',
+        kind: latest.kind as PreorderOrganiserStage,
+        channels: latest.channels,
+        dueAt: latest.dueAt,
+      })
+    }
+
+    const manager = stages.find((stage) => stage.kind === PREORDER_MANAGER_STAGE)
+    if (manager && isDue(manager) && !sentKinds.has(manager.kind)) {
+      due.push({ audience: 'manager', kind: PREORDER_MANAGER_STAGE, channels: manager.channels, dueAt: manager.dueAt })
+    }
+  }
+
+  const guestRung = stages.find((stage) => stage.kind === 'booker_day_before')
+  if (guestRung && guestRung.dueAt.getTime() <= nowMs) {
+    const remindedSeats = new Set(
+      input.sent.filter((row) => row.kind === 'guest_reminder' && row.coverId).map((row) => row.coverId as string),
+    )
+    const seats = [...(input.seats ?? [])].sort((a, b) => a.ordinal - b.ordinal)
+    for (const seat of seats) {
+      const invitedMs = toTime(seat.inviteSentAt)
+      if (seat.complete || invitedMs === null || invitedMs > guestRung.dueAt.getTime()) continue
+      if (remindedSeats.has(seat.coverId)) continue
+      due.push({
+        audience: 'guest',
+        kind: 'guest_reminder',
+        coverId: seat.coverId,
+        ordinal: seat.ordinal,
+        channels: ['email'],
+        dueAt: guestRung.dueAt,
+      })
+    }
+  }
+
+  return { due, cutoffAt: cutoff.closesAt, locked: false }
+}
+
+/**
+ * The first release's two-message chase, kept unchanged so the reminder cron keeps working until it
+ * is moved onto `decidePreorderChases`. Do not use it for anything new.
+ */
+export type LegacyPreorderChaseInput = {
   /** Whole days from today to the booking, on the London calendar. 0 means the booking is today. */
   daysUntilBooking: number
   /** The period's `preorder_cutoff_days`, or null when the booking has no seasonal period. */
@@ -536,6 +800,9 @@ export type PreorderChaseInput = {
  * the cutoff, the manager is told seven days out. Slipping an internal email by a day costs nothing;
  * asking a guest and dobbing them in simultaneously costs the pub's manners.
  *
+ * THE ESCALATION WAITS FOR THE FORM TO LOCK. While the organiser can still choose online, the
+ * manager is not asked to ring them, whichever sweep of the day this is.
+ *
  * A BOOKING WHOSE FORM HAS ALREADY LOCKED is never sent the booker reminder. The reminder says
  * "choose here" and links to the manage page, and once the cutoff has passed that page will not take
  * a choice, so the text only tells a guest to do something they cannot. That was the case for every
@@ -547,11 +814,11 @@ export type PreorderChaseInput = {
  * That is on purpose here too: a reminder that failed to send still counts as the booker's turn
  * having passed, so the manager is told the next day rather than the booking going quiet.
  */
-export function decidePreorderChases(input: PreorderChaseInput): PreorderReminderKind[] {
+export function decideLegacyPreorderChases(input: LegacyPreorderChaseInput): PreorderLegacyReminderKind[] {
   const { daysUntilBooking, cutoffDays, bookerReminderSentOn, managerEscalationSent, todayIso, preorderClosed } =
     input
 
-  const due: PreorderReminderKind[] = []
+  const due: PreorderLegacyReminderKind[] = []
 
   // "At or inside" rather than "exactly on", so one failed cron run does not lose the message for
   // good. The ledger is what stops it being sent twice.
@@ -564,7 +831,12 @@ export function decidePreorderChases(input: PreorderChaseInput): PreorderReminde
   // Locked before the booker was ever asked: waiting for their turn would mean waiting for ever.
   const bookerCannotAct = preorderClosed && bookerReminderSentOn === null
 
+  // Only once the form has locked. The cron used to run once, at 12:00 UTC, which is at or after
+  // noon London, so on the cutoff day the form had always locked by the time the manager was told.
+  // It now runs at 09:00 as well, while the form is still open until noon: the manager must not be
+  // asked to ring a booker who can still choose online, so the escalation waits for the locked run.
   if (
+    preorderClosed &&
     !managerEscalationSent &&
     cutoffDays !== null &&
     daysUntilBooking <= cutoffDays &&
@@ -585,20 +857,30 @@ export function decidePreorderChases(input: PreorderChaseInput): PreorderReminde
  * the nightly report need the same answer, and an item that is merely renamed is NOT withdrawn.
  */
 async function loadWithdrawnMenuItemIds(supabase: Db, menuItemIds: string[]): Promise<Set<string>> {
-  if (menuItemIds.length === 0) return new Set()
+  return (await loadMenuItemFlags(supabase, menuItemIds)).withdrawn
+}
+
+/** Which of these dishes are withdrawn, and which are kids mains, in one read. */
+async function loadMenuItemFlags(
+  supabase: Db,
+  menuItemIds: string[],
+): Promise<{ withdrawn: Set<string>; childOption: Set<string> }> {
+  const withdrawn = new Set<string>()
+  const childOption = new Set<string>()
+  if (menuItemIds.length === 0) return { withdrawn, childOption }
 
   const { data, error } = await supabase
     .from('booking_period_menu_items')
-    .select('id, is_active')
+    .select('id, is_active, is_child_option')
     .in('id', menuItemIds)
 
   if (error) throw error
 
-  const withdrawn = new Set<string>()
-  for (const row of (data ?? []) as Array<{ id: string; is_active: boolean }>) {
+  for (const row of (data ?? []) as Array<{ id: string; is_active: boolean; is_child_option?: boolean | null }>) {
     if (row.is_active === false) withdrawn.add(row.id)
+    if (row.is_child_option === true) childOption.add(row.id)
   }
-  return withdrawn
+  return { withdrawn, childOption }
 }
 
 async function loadCoversWithSelections(supabase: Db, tableBookingId: string): Promise<PreorderCover[]> {
@@ -624,14 +906,17 @@ async function loadCoversWithSelections(supabase: Db, tableBookingId: string): P
   if (selectionError) throw selectionError
 
   const selections = (selectionRows ?? []) as unknown as PreorderSelectionRow[]
-  const withdrawn = await loadWithdrawnMenuItemIds(
+  const flags = await loadMenuItemFlags(
     supabase,
     Array.from(new Set(selections.map((row) => row.menu_item_id))),
   )
 
   const byCover = new Map<string, PreorderSelection[]>()
   for (const row of selections) {
-    const mapped = mapPreorderSelectionRow(row, { itemWithdrawn: withdrawn.has(row.menu_item_id) })
+    const mapped = mapPreorderSelectionRow(row, {
+      itemWithdrawn: flags.withdrawn.has(row.menu_item_id),
+      isChildOption: flags.childOption.has(row.menu_item_id),
+    })
     const list = byCover.get(row.cover_id)
     if (list) list.push(mapped)
     else byCover.set(row.cover_id, [mapped])
@@ -681,16 +966,19 @@ export async function loadPreorderOrder(
     booking_period_name: string | null
     booking_period_answer: boolean | null
     booking_period_requires_preorder: boolean | null
-    christmas_course_counts?: Array<1 | 2 | 3> | null
+    christmas_course_counts?: number[] | null
   }
 
-  const [covers, preorderCutoffDays] = await Promise.all([
+  const [covers, preorderCutoffDays, menuItems] = await Promise.all([
     loadCoversWithSelections(supabase, tableBookingId),
     loadPreorderCutoffDays(supabase, booking.booking_period_id),
+    loadPeriodMenuItemFacts(supabase, booking.booking_period_id),
   ])
 
+  // 0 is "not chosen yet". Anything the database could not have written is read as not chosen too,
+  // so the seat is asked again rather than given a tier nobody picked.
   const courseCounts = Array.isArray(booking.christmas_course_counts)
-    ? booking.christmas_course_counts.map((count) => toPreorderCourseCount(count) ?? 1)
+    ? booking.christmas_course_counts.map((count) => toPreorderSeatCourseCount(count) ?? 0)
     : null
 
   return {
@@ -712,8 +1000,36 @@ export async function loadPreorderOrder(
     periodName: booking.booking_period_name ?? null,
     preorderCutoffDays,
     courseCounts,
+    menuItems,
     covers: covers.map((cover) => ({ ...cover, courseCount: courseCounts?.[cover.ordinal - 1] ?? null })),
   }
+}
+
+/** Every dish on the period's menu, withdrawn ones included, with whether each is a kids main. */
+async function loadPeriodMenuItemFacts(supabase: Db, periodId: string | null): Promise<PreorderMenuItemFacts[]> {
+  if (!periodId) return []
+
+  const { data, error } = await supabase
+    .from('booking_period_menu_items')
+    .select('id, course, name, is_active, is_child_option, sort_order')
+    .eq('period_id', periodId)
+    .order('sort_order', { ascending: true })
+
+  if (error) throw error
+
+  return ((data ?? []) as Array<{
+    id: string
+    course: string
+    name: string
+    is_active: boolean
+    is_child_option?: boolean | null
+  }>).map((row) => ({
+    id: row.id,
+    course: row.course,
+    name: row.name,
+    isActive: row.is_active !== false,
+    isChildOption: row.is_child_option === true,
+  }))
 }
 
 async function loadPreorderCutoffDays(supabase: Db, periodId: string | null): Promise<number | null> {
@@ -772,11 +1088,49 @@ export type PreorderSelectionInput = {
   menuItemId: string | null
 }
 
+/**
+ * Who is saving, which decides what the save may touch.
+ *
+ *   organiser  the booker, from their own food page;
+ *   guest      one guest, from the link sent to them. `coverId` is the seat that link is scoped to
+ *              (`resolvePreorderGuestToken`), and the save is refused for any other seat;
+ *   staff      the management app. Only a staff save sets the seat's tier through the deadline.
+ *
+ * Callers still decide whether the form is open (`getPreorderCutoff`): this function does not lock
+ * anyone out, because staff may save after the cutoff and the booking route saves at booking time.
+ */
+export type PreorderSaveActor =
+  | { savedBy: 'organiser' }
+  | { savedBy: 'staff' }
+  | { savedBy: 'guest'; coverId: string }
+
 export type SavePreorderCoverInput = {
   coverId: string
+  /** Who is saving. Recorded on the seat as `last_saved_by`, with `last_saved_at`. */
+  actor: PreorderSaveActor
+  /**
+   * The booking the caller has proven access to. When given, a seat on any other booking is refused,
+   * so a cover id from a request body cannot reach another party's seat.
+   */
+  tableBookingId?: string
   /** Omit to leave as it is. Pass null to clear. */
   guestName?: string | null
   dietaryNote?: string | null
+  /** Omit to leave as it is. Null is "not answered". False also clears `allergyDetail`. */
+  hasAllergies?: boolean | null
+  allergyDetail?: string | null
+  /**
+   * The guest's own address for their food link (A4). Organiser and staff only; a guest save that
+   * sends one is refused. Stored trimmed and in lower case.
+   */
+  inviteEmail?: string | null
+  /**
+   * The seat's tier, 0 to 3. Set through `set_christmas_seat_course_v01` before any dish is checked,
+   * so a guest choosing "2 courses" and a starter in one save is judged on 2 courses. Moving down
+   * clears the dishes the new tier does not have, in the database. Only for a booking with a course
+   * list; omit to leave the tier alone.
+   */
+  courseCount?: PreorderSeatCourseCount
   /** Only the courses named here are touched. Omit a course to leave it alone. */
   selections?: PreorderSelectionInput[]
   /**
@@ -791,21 +1145,50 @@ export type SavePreorderCoverInput = {
   addonMenuItemIds?: string[]
 }
 
+/** A save that reaches past what its actor may touch. Its message is safe to show to that person. */
+export class PreorderSaveScopeError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'PreorderSaveScopeError'
+  }
+}
+
+/** Loose shape check, the same one the email-capture page uses. */
+function isPlausibleInviteEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)
+}
+
 /**
- * Save one seat: its name, its dietary note and its courses.
+ * Save one seat: its name, allergies, dietary note, invite address, tier and courses.
  *
- * Both the staff screen and the booker's manage page write through here, so there is one rule and
- * one audit trail. Prices and dish names are SNAPSHOT from booking_period_menu_items at the moment
- * of choosing, so a later menu edit cannot rewrite what the guest picked or make the kitchen list
- * disagree with it.
+ * The organiser's page, a guest's own link and the staff screen all write through here, so there is
+ * one rule and one audit trail. Prices and dish names are SNAPSHOT from booking_period_menu_items at
+ * the moment of choosing, so a later menu edit cannot rewrite what the guest picked or make the
+ * kitchen list disagree with it.
  *
  * The item is validated against the booking's own period. Without that check a caller could snapshot
  * last year's turkey onto this year's booking, and nothing in the database would notice.
+ *
+ * Every save records who made it (`last_saved_by`) and when (`last_saved_at`), so the organiser's
+ * page can show "Chosen by Sam" and the kitchen sheet can tell a staff correction from a guest's own
+ * choice.
  */
 export async function savePreorderCover(
   supabase: Db,
   input: SavePreorderCoverInput,
 ): Promise<PreorderCover> {
+  const savedBy = input.actor?.savedBy
+  if (!(PREORDER_SAVED_BY as readonly string[]).includes(savedBy ?? '')) {
+    throw new Error('A pre-order save must say who is saving it.')
+  }
+  if (input.actor.savedBy === 'guest' && input.actor.coverId !== input.coverId) {
+    // A guest's link names one seat. Anything else is somebody else's dinner.
+    throw new PreorderSaveScopeError('This link is for one guest only, so it cannot change anyone else.')
+  }
+  if (input.actor.savedBy === 'guest' && input.inviteEmail !== undefined) {
+    throw new PreorderSaveScopeError('Only the organiser can change who is sent a link.')
+  }
+
   const { data: coverRow, error: coverError } = await supabase
     .from('booking_preorder_covers')
     .select(COVER_COLUMNS)
@@ -816,6 +1199,9 @@ export async function savePreorderCover(
   if (!coverRow) throw new Error('That seat no longer exists on this booking.')
 
   const cover = coverRow as unknown as PreorderCoverRow
+  if (input.tableBookingId !== undefined && cover.table_booking_id !== input.tableBookingId) {
+    throw new PreorderSaveScopeError('That seat is not on this booking. Refresh the page and try again.')
+  }
 
   const selections = input.selections ?? []
   for (const entry of selections) {
@@ -828,24 +1214,93 @@ export async function savePreorderCover(
     }
   }
 
+  // Checked before anything is written, so a refused save changes nothing on the seat.
+  let inviteEmail: string | null | undefined
+  if (input.inviteEmail !== undefined) {
+    inviteEmail = normaliseText(input.inviteEmail, PREORDER_INVITE_EMAIL_MAX_LENGTH + 1)?.toLowerCase() ?? null
+    if (inviteEmail !== null && (inviteEmail.length > PREORDER_INVITE_EMAIL_MAX_LENGTH || !isPlausibleInviteEmail(inviteEmail))) {
+      throw new PreorderSaveScopeError('That email address does not look right. Check it and try again.')
+    }
+  }
+  if (input.courseCount !== undefined && toPreorderSeatCourseCount(input.courseCount) === null) {
+    throw new Error('Choose 1, 2 or 3 courses.')
+  }
+
   const cleared = selections.filter((entry) => !entry.menuItemId).map((entry) => entry.course)
   const chosen = selections.filter(
     (entry): entry is PreorderSelectionInput & { menuItemId: string } => Boolean(entry.menuItemId),
   )
 
-  // Checked before anything is written, so a refused save changes nothing on the seat.
+  // Every dish is checked against the tier the seat will have after this save, BEFORE the tier is
+  // set and before any dish is deleted, so a refused save leaves the seat's tier and dishes exactly
+  // as they were. (A withdrawn dessert on a move from 2 to 3 courses used to leave the seat on 3
+  // courses with its starter or dessert cleared.)
+  const currentCourseCount = await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
+  const nextCourseCount =
+    input.courseCount !== undefined ? toPreorderSeatCourseCount(input.courseCount) : currentCourseCount
+  let items: Map<string, SnapshotMenuItem> = new Map()
   if (chosen.length > 0) {
-    await assertCoursesWithinTier(supabase, cover, cleared, chosen.map((entry) => entry.course))
+    items = await loadMenuItemsForSnapshot(
+      supabase,
+      cover.table_booking_id,
+      chosen.map((entry) => entry.menuItemId),
+    )
+    for (const entry of chosen) {
+      const item = items.get(entry.menuItemId)
+      // Not found here means it is not on this booking's own period.
+      if (!item) throw new Error('That dish is not on the menu for this booking.')
+      if (!item.isActive) throw new Error(`${item.name} has been taken off the menu. Please choose again.`)
+      if (item.course !== entry.course) {
+        throw new Error(`${item.name} is not a ${entry.course}.`)
+      }
+      // Kids mains are 1 course only (A1). The database refuses it too; this says why.
+      if (item.isChildOption && (nextCourseCount === 2 || nextCourseCount === 3)) {
+        throw new PreorderCourseLimitError(cover.ordinal, nextCourseCount, 'child_option')
+      }
+    }
+    await assertCoursesWithinTier(supabase, cover, {
+      from: currentCourseCount,
+      to: nextCourseCount,
+      cleared,
+      chosen: chosen.map((entry) => entry.course),
+    })
   }
 
-  const patch: Record<string, unknown> = {}
-  if (input.guestName !== undefined) patch.guest_name = normaliseText(input.guestName, 100)
-  if (input.dietaryNote !== undefined) patch.dietary_note = normaliseText(input.dietaryNote, 200)
-
-  if (Object.keys(patch).length > 0) {
-    const { error } = await supabase.from('booking_preorder_covers').update(patch).eq('id', cover.id)
+  // Then the tier, one seat at a time and atomically, so an organiser and a guest saving different
+  // seats never overwrite each other's tier. The database clears any dish the new tier does not have.
+  if (input.courseCount !== undefined) {
+    const { error } = await supabase.rpc('set_christmas_seat_course_v01', {
+      p_table_booking_id: cover.table_booking_id,
+      p_ordinal: cover.ordinal,
+      p_course_count: input.courseCount,
+      p_staff_override: input.actor.savedBy === 'staff',
+    })
     if (error) throw error
   }
+
+  const courseCount = input.courseCount !== undefined
+    ? await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
+    : currentCourseCount
+
+  const patch: Record<string, unknown> = {
+    last_saved_by: input.actor.savedBy,
+    last_saved_at: new Date().toISOString(),
+  }
+  if (input.guestName !== undefined) patch.guest_name = normaliseText(input.guestName, PREORDER_GUEST_NAME_MAX_LENGTH)
+  if (input.dietaryNote !== undefined) {
+    patch.dietary_note = normaliseText(input.dietaryNote, PREORDER_DIETARY_NOTE_MAX_LENGTH)
+  }
+  if (input.hasAllergies !== undefined) {
+    patch.has_allergies = input.hasAllergies
+    if (input.hasAllergies !== true) patch.allergy_detail = null
+  }
+  if (input.allergyDetail !== undefined && input.hasAllergies !== false && input.hasAllergies !== null) {
+    patch.allergy_detail = normaliseText(input.allergyDetail, PREORDER_ALLERGY_DETAIL_MAX_LENGTH)
+  }
+  if (inviteEmail !== undefined) patch.invite_email = inviteEmail
+
+  const { error: patchError } = await supabase.from('booking_preorder_covers').update(patch).eq('id', cover.id)
+  if (patchError) throw patchError
 
   if (selections.length > 0) {
     // Clear every course this call names, whether it is being cleared or replaced, then insert the
@@ -867,19 +1322,10 @@ export async function savePreorderCover(
     }
 
     if (chosen.length > 0) {
-      const items = await loadMenuItemsForSnapshot(
-        supabase,
-        cover.table_booking_id,
-        chosen.map((entry) => entry.menuItemId),
-      )
-
+      // Every item was checked above, before anything was written.
       const rows = chosen.map((entry) => {
         const item = items.get(entry.menuItemId)
         if (!item) throw new Error('That dish is not on the menu for this booking.')
-        if (!item.isActive) throw new Error(`${item.name} has been taken off the menu. Please choose again.`)
-        if (item.course !== entry.course) {
-          throw new Error(`${item.name} is not a ${entry.course}.`)
-        }
         return {
           cover_id: cover.id,
           course: entry.course,
@@ -901,35 +1347,46 @@ export async function savePreorderCover(
   const covers = await loadCoversWithSelections(supabase, cover.table_booking_id)
   const saved = covers.find((entry) => entry.id === cover.id)
   if (!saved) throw new Error('That seat no longer exists on this booking.')
-  return saved
+  return { ...saved, courseCount }
 }
 
 /**
- * A save that would give a seat more courses than its tier pays for. Its message is written for the
- * person saving, guest or staff, and names the seat and what its tier allows.
+ * A save that would give a seat more courses than its tier pays for, or a kids main on 2 or 3
+ * courses. Its message is written for the person saving, guest or staff, and names the seat and what
+ * its tier allows.
  */
 export class PreorderCourseLimitError extends Error {
   readonly ordinal: number
-  readonly courseCount: PreorderCourseCount
+  readonly courseCount: PreorderSeatCourseCount
+  readonly reason: 'too_many_courses' | 'child_option'
 
-  constructor(ordinal: number, courseCount: PreorderCourseCount) {
+  constructor(
+    ordinal: number,
+    courseCount: PreorderSeatCourseCount,
+    reason: 'too_many_courses' | 'child_option' = 'too_many_courses',
+  ) {
     super(
-      courseCount === 1
-        ? `Seat ${ordinal} is on 1 course, so there is nothing to choose in advance.`
-        : `Seat ${ordinal} is on 2 courses: choose a main, plus a starter or a dessert, not both.`,
+      reason === 'child_option'
+        ? `Kids Christmas dinners are 1 course only. Choose 1 course for seat ${ordinal}, or an adult main.`
+        : courseCount === 0
+          ? `Choose how many courses seat ${ordinal} is having before choosing a starter or a dessert.`
+          : courseCount === 1
+            ? `Seat ${ordinal} is on 1 course, so choose a main only.`
+            : `Seat ${ordinal} is on 2 courses: choose a main, plus a starter or a dessert, not both.`,
     )
     this.name = 'PreorderCourseLimitError'
     this.ordinal = ordinal
     this.courseCount = courseCount
+    this.reason = reason
   }
 }
 
-/** The tier this seat's booking recorded for it, or null when the booking recorded none. */
+/** The tier this seat's booking recorded for it, 0 to 3, or null when the booking recorded none. */
 async function loadSeatCourseCount(
   supabase: Db,
   tableBookingId: string,
   ordinal: number,
-): Promise<PreorderCourseCount | null> {
+): Promise<PreorderSeatCourseCount | null> {
   const { data, error } = await supabase
     .from('table_bookings')
     .select('christmas_course_counts')
@@ -938,23 +1395,32 @@ async function loadSeatCourseCount(
 
   if (error) throw error
   const counts = (data as { christmas_course_counts?: unknown } | null)?.christmas_course_counts
-  return Array.isArray(counts) ? toPreorderCourseCount(counts[ordinal - 1]) : null
+  return Array.isArray(counts) ? (toPreorderSeatCourseCount(counts[ordinal - 1]) ?? 0) : null
 }
 
 /**
- * Refuse a save that would leave the seat holding more courses than its tier: anything at all on 1
- * course, or a starter and a dessert together on 2. The database does not check this, and the
- * kitchen would otherwise cook a course the guest has not paid for. 3 courses and untiered seats
- * cannot go over: a seat holds at most one of each course.
+ * Refuse a save that would leave the seat holding more courses than its tier: a starter or a dessert
+ * on 0 or 1 course, or both together on 2. A main is allowed on every tier. The database refuses the
+ * first case too, and the kitchen would otherwise cook a course the guest has not paid for. 3 courses
+ * and untiered seats cannot go over: a seat holds at most one of each course.
+ *
+ * Runs before the tier is set, so it judges the seat as it WILL stand: when the tier changes, the
+ * database trigger (assert_christmas_course_snapshot_v01) first clears both the starter and the
+ * dessert if the new tier is 0 or 1 course, or if the seat holds more of them than the new tier
+ * allows. That clearing is mirrored here, then this save's own changes are applied on top.
  */
 async function assertCoursesWithinTier(
   supabase: Db,
   cover: PreorderCoverRow,
-  cleared: PreorderCourse[],
-  chosen: PreorderCourse[],
+  tier: {
+    from: PreorderSeatCourseCount | null
+    to: PreorderSeatCourseCount | null
+    cleared: PreorderCourse[]
+    chosen: PreorderCourse[]
+  },
 ): Promise<void> {
-  const courseCount = await loadSeatCourseCount(supabase, cover.table_booking_id, cover.ordinal)
-  if (courseCount !== 1 && courseCount !== 2) return
+  const courseCount = tier.to
+  if (courseCount === null || courseCount === 3) return
 
   const { data, error } = await supabase
     .from('booking_preorder_selections')
@@ -967,12 +1433,18 @@ async function assertCoursesWithinTier(
   for (const row of (data ?? []) as Array<{ course: string }>) {
     if (isPreorderCourse(row.course)) after.add(row.course)
   }
-  for (const course of cleared) after.delete(course)
-  for (const course of chosen) after.add(course)
+  if (tier.from !== courseCount) {
+    const others = (after.has('starter') ? 1 : 0) + (after.has('dessert') ? 1 : 0)
+    if (courseCount <= 1 || others > courseCount - 1) {
+      after.delete('starter')
+      after.delete('dessert')
+    }
+  }
+  for (const course of tier.cleared) after.delete(course)
+  for (const course of tier.chosen) after.add(course)
 
   const others = (after.has('starter') ? 1 : 0) + (after.has('dessert') ? 1 : 0)
-  const overTier = courseCount === 1 ? after.size > 0 : others > maxOtherCourses(courseCount)
-  if (overTier) throw new PreorderCourseLimitError(cover.ordinal, courseCount)
+  if (others > maxOtherCourses(courseCount)) throw new PreorderCourseLimitError(cover.ordinal, courseCount)
 }
 
 /**
@@ -1046,7 +1518,13 @@ function normaliseText(value: string | null, maxLength: number): string | null {
   return trimmed === '' ? null : trimmed.slice(0, maxLength)
 }
 
-type SnapshotMenuItem = { name: string; course: string; priceGbp: number | null; isActive: boolean }
+type SnapshotMenuItem = {
+  name: string
+  course: string
+  priceGbp: number | null
+  isActive: boolean
+  isChildOption: boolean
+}
 
 async function loadMenuItemsForSnapshot(
   supabase: Db,
@@ -1066,7 +1544,7 @@ async function loadMenuItemsForSnapshot(
 
   const { data, error } = await supabase
     .from('booking_period_menu_items')
-    .select('id, name, course, price_gbp, is_active')
+    .select('id, name, course, price_gbp, is_active, is_child_option')
     .eq('period_id', periodId)
     .in('id', Array.from(new Set(menuItemIds)))
 
@@ -1079,12 +1557,14 @@ async function loadMenuItemsForSnapshot(
     course: string
     price_gbp: number | string | null
     is_active: boolean
+    is_child_option?: boolean | null
   }>) {
     items.set(row.id, {
       name: row.name,
       course: row.course,
       priceGbp: toNullableNumber(row.price_gbp),
       isActive: row.is_active !== false,
+      isChildOption: row.is_child_option === true,
     })
   }
   return items
@@ -1193,6 +1673,11 @@ export type PreorderChristmasTierTotals = {
   threeCourses: number
   /** Guests on Christmas bookings that recorded no tiers (older staff bookings). */
   notRecorded: number
+  /**
+   * Guests whose seat is on 0, "not chosen yet": since the food link release every Christmas
+   * booking starts with a 0 per guest, and the guest chooses their courses on the food page.
+   */
+  notChosen: number
   /** Every guest on a Christmas booking that day. */
   guests: number
 }
@@ -1233,7 +1718,7 @@ export type PreorderDishTotals = {
 
 /** The shape to return when a date has nothing on it. One definition, so no caller invents its own. */
 export function emptyChristmasTierTotals(): PreorderChristmasTierTotals {
-  return { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, guests: 0 }
+  return { oneCourse: 0, twoCourses: 0, threeCourses: 0, notRecorded: 0, notChosen: 0, guests: 0 }
 }
 
 /** Tally each guest's tier across a day's Christmas bookings. */
@@ -1250,10 +1735,11 @@ export function summariseChristmasTiers(
       continue
     }
     for (const count of counts) {
-      const tier = toPreorderCourseCount(count)
+      const tier = toPreorderSeatCourseCount(count)
       if (tier === 1) totals.oneCourse += 1
       else if (tier === 2) totals.twoCourses += 1
       else if (tier === 3) totals.threeCourses += 1
+      else if (tier === 0) totals.notChosen += 1
       else totals.notRecorded += 1
       totals.guests += 1
     }

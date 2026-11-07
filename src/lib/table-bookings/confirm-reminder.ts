@@ -1,7 +1,7 @@
 /**
  * Deciding who gets a "are you still coming?" text, and what it says.
  *
- * Kept separate from the cron route for the same reason `decidePreorderChases` is: the
+ * Kept separate from the cron route for the same reason `decideLegacyPreorderChases` is: the
  * rule about who gets messaged is the part that can quietly harm a guest, and it should
  * be testable without a database, a clock or an SMS provider.
  *

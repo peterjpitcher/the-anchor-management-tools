@@ -49,10 +49,12 @@ export const MESSAGING_FLAG_KEYS = [
   'event_promo_intro_sms_no_email',
   'table_preorder_email_first',
   // The booker's copy of their food choices, emailed once when the pre-order closes (BK-149, 26
-  // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
+  // October 2026). Switched on by migration 20261106210000_christmas_food_link.sql (owner decision,
+  // 6 November 2026); switching it off again stops the copy.
   'table_preorder_choices_copy',
   // The one reminder before an unpaid table deposit hold runs out (BK-088, owner decision D16, 26
-  // October 2026). New guest wording, so it stays off until the owner has read it and switches it on.
+  // October 2026). Switched on by migration 20261106210000_christmas_food_link.sql (owner decision,
+  // 6 November 2026); switching it off again stops the reminder.
   'table_deposit_hold_reminder',
   // The amended-booking notice when staff change a table booking's party size (BK-091, 26 October
   // 2026). New guest wording for this trigger, so it stays off until the owner has read it.

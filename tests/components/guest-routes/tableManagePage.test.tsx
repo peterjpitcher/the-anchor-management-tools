@@ -47,6 +47,10 @@ vi.mock('@/app/g/[token]/table-manage/christmas-party-data', () => ({
   loadGuestChristmasParty: (...args: unknown[]) => loadGuestChristmasParty(...args),
 }))
 
+vi.mock('@/lib/messaging/flags', () => ({
+  isMessagingFlagOn: vi.fn(async () => true),
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: { warn: (...args: unknown[]) => warn(...args), error: vi.fn(), info: vi.fn() },
 }))
@@ -135,6 +139,45 @@ describe('table-manage page', () => {
     expect(warn).toHaveBeenCalledTimes(1)
   })
 
+  // Spec section 2, step 3: a booking with a course list gets the food page, a line per guest, and
+  // the page still renders when the price list cannot be read.
+  it('gives a Christmas booking with a course list the food page, even when its prices fail', async () => {
+    const stamp = { createdAt: '2026-11-01T10:00:00.000Z', updatedAt: '2026-11-01T10:00:00.000Z' }
+    loadBookerPreorderView.mockResolvedValue({
+      order: {
+        tableBookingId: 'booking-1',
+        bookingReference: 'TB-2026-0042',
+        bookingDate: '2026-12-24',
+        bookingTime: '18:30',
+        partySize: 2,
+        requiresPreorder: true,
+        hasGuestSeats: true,
+        bookingAllergies: [],
+        periodId: 'period-1',
+        periodName: 'Christmas',
+        preorderCutoffDays: 7,
+        courseCounts: [0, 1],
+        menuItems: [],
+        covers: [
+          { id: 'cover-1', tableBookingId: 'booking-1', ordinal: 1, guestName: null, dietaryNote: null, selections: [], ...stamp },
+          { id: 'cover-2', tableBookingId: 'booking-1', ordinal: 2, guestName: 'Dave', dietaryNote: null, selections: [], ...stamp },
+        ],
+      },
+      menuByCourse: { starter: [], main: [], dessert: [] },
+      addons: [],
+      cutoff: { at: new Date('2026-12-17T12:00:00.000Z'), editable: true },
+    })
+
+    await renderPage()
+
+    expect(screen.getByRole('heading', { name: "Choose everyone's food" })).toBeInTheDocument()
+    expect(screen.getByText('0 of 2 guests done')).toBeInTheDocument()
+    expect(screen.getByRole('group', { name: 'Guest 2: Dave' })).toBeInTheDocument()
+    expect(screen.getByText(/We couldn't load the prices just now/)).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Your food choices' })).not.toBeInTheDocument()
+    expect(screen.queryByText(/chosen on the day/)).not.toBeInTheDocument()
+  })
+
   it('leaves the booking itself fully manageable when the food choices fail', async () => {
     loadBookerPreorderView.mockRejectedValue(new Error('menu lookup failed'))
 
@@ -204,7 +247,7 @@ describe('table-manage page on a Christmas booking', () => {
 
   it('offers the numbers form, not the party-size box, before the deadline', async () => {
     loadGuestChristmasParty.mockResolvedValue({
-      courseCounts: [3, 2, 1, 1, 1],
+      courseCounts: [3, 2, 0, 1, 1],
       seatNames: [null, 'Dave', null, null, null],
       canChangeOnline: true,
       closesAt: new Date('2026-12-17T12:00:00.000Z'),
@@ -218,8 +261,11 @@ describe('table-manage page on a Christmas booking', () => {
     const dave = screen.getByRole('checkbox', { name: 'Guest 2 (Dave), 2 courses' })
     expect(dave).toHaveAttribute('name', 'remove_seat')
     expect(dave).toHaveAttribute('value', '2')
-    expect(screen.getByLabelText('On 1 course')).toHaveAttribute('name', 'add_1')
-    expect(screen.getByLabelText('On 3 courses')).toHaveAttribute('name', 'add_3')
+    // A guest still on 0 has not chosen their number of courses yet (D4), and is listed like anyone else.
+    expect(screen.getByRole('checkbox', { name: 'Guest 3, courses not chosen yet' })).toHaveAttribute('value', '3')
+    // Anyone joining chooses their courses on the food page, so the form only asks how many.
+    expect(screen.getByLabelText('How many more guests?')).toHaveAttribute('name', 'add_guests')
+    expect(screen.queryByLabelText('On 3 courses')).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Update numbers' }).closest('form')?.querySelector('input[name="action"]')).toHaveAttribute('value', 'christmas_party')
     // The notes box is still there.
     expect(screen.getByLabelText('Special requirements')).toBeInTheDocument()
