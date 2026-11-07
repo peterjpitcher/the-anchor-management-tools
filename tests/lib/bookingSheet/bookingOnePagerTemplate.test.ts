@@ -116,8 +116,15 @@ describe('print stylesheet', () => {
   it('prints the sheet alone, without the page around it, for people who can download', () => {
     const boh = renderBookingOnePager(model, { allowPrint: true })
     expect(boh).not.toContain('.bs-sheet{ display:none')
-    expect(boh).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }')
+    expect(boh).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; }')
     expect(boh).not.toContain('bs-print-refusal">')
+  })
+
+  it('fits the guest table to the paper rather than its on-screen 880px minimum', () => {
+    const boh = renderBookingOnePager(model, { allowPrint: true })
+    const printRules = boh.slice(boh.indexOf('@media print{ body *'))
+    expect(printRules).toContain('.bs-table-wrap{ overflow:visible; }')
+    expect(printRules).toContain('.bs-table{ min-width:0;')
   })
 })
 
