@@ -36,6 +36,7 @@ vi.mock('@/ds', () => ({
     </main>
   ),
   LinkButton: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+  Button: ({ children }: { children: React.ReactNode }) => <button type="button">{children}</button>,
   Alert: ({ children, title }: { children: React.ReactNode; title?: string }) => (
     <div role="alert">
       {title}
@@ -55,9 +56,11 @@ const BOH_STAFF = [
   { module_name: 'events', action: 'view' },
 ]
 
-async function render(): Promise<string> {
+async function render(search: { print?: string } = {}): Promise<string> {
   const { default: Page } = await import('@/app/(authenticated)/table-bookings/[id]/sheet/page')
-  return renderToStaticMarkup(await Page({ params: Promise.resolve({ id: BOOKING_ID }) }))
+  return renderToStaticMarkup(
+    await Page({ params: Promise.resolve({ id: BOOKING_ID }), searchParams: Promise.resolve(search) }),
+  )
 }
 
 beforeEach(() => {
@@ -74,8 +77,26 @@ describe('/table-bookings/[id]/sheet access (D14)', () => {
 
     expect(html).toContain('Seat 1, Guest One: Peanuts')
     expect(html).not.toContain('Download PDF')
+    expect(html).not.toContain('>Print<')
     expect(html).not.toContain('/api/boh/table-bookings/booking-sheets/')
     expect(html).toContain('@media print{ .bs-sheet{ display:none !important; }')
+  })
+
+  it('gives the FOH login no print even from a print link', async () => {
+    mocks.permissions.mockResolvedValue({ success: true, data: FOH_LOGIN })
+
+    const html = await render({ print: '1' })
+
+    expect(html).not.toContain('>Print<')
+    expect(html).toContain('@media print{ .bs-sheet{ display:none !important; }')
+  })
+
+  it('offers BOH staff a Print button beside the PDF', async () => {
+    mocks.permissions.mockResolvedValue({ success: true, data: BOH_STAFF })
+
+    const html = await render()
+
+    expect(html).toContain('<button type="button">Print</button>')
   })
 
   it('offers BOH staff the PDF download and leaves printing alone', async () => {
@@ -84,7 +105,9 @@ describe('/table-bookings/[id]/sheet access (D14)', () => {
     const html = await render()
 
     expect(html).toContain(`<a href="/api/boh/table-bookings/booking-sheets/${BOOKING_ID}">Download PDF</a>`)
-    expect(html).not.toContain('@media print')
+    // Printing is allowed: the only print rule keeps the sheet and drops the page around it.
+    expect(html).not.toContain('.bs-sheet{ display:none')
+    expect(html).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }')
   })
 
   it('offers no download when the permission list did not load', async () => {

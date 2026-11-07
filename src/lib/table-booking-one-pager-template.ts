@@ -92,7 +92,16 @@ export function bookingOnePagerStyles(options: Pick<BookingOnePagerOptions, 'all
     : `
 @media print{ .bs-sheet{ display:none !important; } .bs-print-refusal{ display:block !important; } }`
 
-  return `${base}${noPrint}`
+  // Printing the on-screen sheet from a laptop (owner request, 7 November 2026): the app shell
+  // already drops out of print, and this drops the page header and its buttons too, so the paper
+  // copy is the sheet alone. The PDF is rendered on its own, so it needs none of this.
+  const sheetOnly =
+    options.allowPrint && !options.forPdf
+      ? `
+@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }`
+      : ''
+
+  return `${base}${noPrint}${sheetOnly}`
 }
 
 function fact(label: string, value: string): string {
