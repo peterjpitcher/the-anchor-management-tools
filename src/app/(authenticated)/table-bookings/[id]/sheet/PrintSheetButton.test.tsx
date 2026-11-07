@@ -1,7 +1,7 @@
 import React from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { PrintSheetButton } from './PrintSheetButton'
+import { AutoPrintSheet, PrintSheetButton } from './PrintSheetButton'
 
 describe('PrintSheetButton', () => {
   let print: ReturnType<typeof vi.fn>
@@ -30,9 +30,20 @@ describe('PrintSheetButton', () => {
     expect(print).toHaveBeenCalledTimes(1)
   })
 
-  it('opens it once by itself for a print link, not again on re-render', () => {
-    const { rerender } = render(<PrintSheetButton autoPrint />)
-    rerender(<PrintSheetButton autoPrint />)
+  it('never prints by itself, however many times the header mounts it', () => {
+    render(
+      <>
+        <PrintSheetButton />
+        <PrintSheetButton />
+      </>,
+    )
+
+    expect(print).not.toHaveBeenCalled()
+  })
+
+  it('AutoPrintSheet opens the print window once, not again on re-render', () => {
+    const { rerender } = render(<AutoPrintSheet />)
+    rerender(<AutoPrintSheet />)
 
     expect(print).toHaveBeenCalledTimes(1)
   })

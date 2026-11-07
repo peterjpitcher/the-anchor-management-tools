@@ -94,11 +94,13 @@ export function bookingOnePagerStyles(options: Pick<BookingOnePagerOptions, 'all
 
   // Printing the on-screen sheet from a laptop (owner request, 7 November 2026): the app shell
   // already drops out of print, and this drops the page header and its buttons too, so the paper
-  // copy is the sheet alone. The PDF is rendered on its own, so it needs none of this.
+  // copy is the sheet alone. The guest table drops its on-screen minimum width and scroll box, or
+  // A4 portrait would cut its right-hand columns off. The PDF is rendered on its own, so it needs
+  // none of this.
   const sheetOnly =
     options.allowPrint && !options.forPdf
       ? `
-@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }`
+@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } .bs-sheet{ max-width:none; font-size:12px; } .bs-table-wrap{ overflow:visible; } .bs-table{ min-width:0; table-layout:auto; } }`
       : ''
 
   return `${base}${noPrint}${sheetOnly}`

@@ -91,6 +91,17 @@ describe('/table-bookings/[id]/sheet access (D14)', () => {
     expect(html).toContain('@media print{ .bs-sheet{ display:none !important; }')
   })
 
+  it('mounts the automatic print once for a print link, outside the header actions', async () => {
+    mocks.permissions.mockResolvedValue({ success: true, data: BOH_STAFF })
+    const { AutoPrintSheet } = await import('@/app/(authenticated)/table-bookings/[id]/sheet/PrintSheetButton')
+    const { default: Page } = await import('@/app/(authenticated)/table-bookings/[id]/sheet/page')
+
+    const tree = await Page({ params: Promise.resolve({ id: BOOKING_ID }), searchParams: Promise.resolve({ print: '1' }) })
+    const children = React.Children.toArray((tree as React.ReactElement<{ children: React.ReactNode }>).props.children)
+
+    expect(children.filter((child) => React.isValidElement(child) && child.type === AutoPrintSheet)).toHaveLength(1)
+  })
+
   it('offers BOH staff a Print button beside the PDF', async () => {
     mocks.permissions.mockResolvedValue({ success: true, data: BOH_STAFF })
 
@@ -107,7 +118,7 @@ describe('/table-bookings/[id]/sheet access (D14)', () => {
     expect(html).toContain(`<a href="/api/boh/table-bookings/booking-sheets/${BOOKING_ID}">Download PDF</a>`)
     // Printing is allowed: the only print rule keeps the sheet and drops the page around it.
     expect(html).not.toContain('.bs-sheet{ display:none')
-    expect(html).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; } }')
+    expect(html).toContain('@media print{ body *{ visibility:hidden; } .bs-sheet, .bs-sheet *{ visibility:visible; }')
   })
 
   it('offers no download when the permission list did not load', async () => {

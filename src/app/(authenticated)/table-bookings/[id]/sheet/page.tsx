@@ -7,7 +7,7 @@ import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { canDownloadBookingSheet, type BookingSheetModel } from '@/lib/table-bookings/booking-sheet'
 import { loadBookingSheetModel } from '@/lib/table-bookings/booking-sheet-load'
 import { renderBookingOnePager } from '@/lib/table-booking-one-pager-template'
-import { PrintSheetButton } from './PrintSheetButton'
+import { AutoPrintSheet, PrintSheetButton } from './PrintSheetButton'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -66,10 +66,11 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
   }
   if (!model) notFound()
 
-  const autoPrint = query.print === '1'
+  // Only people who may print get the automatic print window too.
+  const autoPrint = canDownload && query.print === '1'
   const headerActions = canDownload ? (
     <>
-      <PrintSheetButton autoPrint={autoPrint} />
+      <PrintSheetButton />
       <LinkButton href={`/api/boh/table-bookings/booking-sheets/${id}`} download variant="secondary" size="sm">
         Download PDF
       </LinkButton>
@@ -84,6 +85,7 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
       headerActions={headerActions}
       showHeaderActionsOnMobile
     >
+      {autoPrint && <AutoPrintSheet />}
       {/* The same escaped HTML the PDF prints, so the screen and the paper cannot disagree. */}
       <div
         data-testid="booking-sheet"
