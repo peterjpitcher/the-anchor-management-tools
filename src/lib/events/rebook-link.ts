@@ -12,7 +12,10 @@ import { loadEventIdsClosedByWholePubHire } from '@/services/private-bookings/ni
  * The one-tap rebook link (event checkout spec, Piece 4.2, owner approval 7 November 2026).
  *
  * When a website event hold lapses unpaid, the "held places released" email links back to the
- * event page with an opaque token: `https://www.the-anchor.pub/events/<slug>?rebook=<token>#event-booking`.
+ * event page with an opaque token in the fragment: `https://www.the-anchor.pub/events/<slug>#rebook=<token>`.
+ * A fragment never leaves the browser, so the token is in no request and so in no server log
+ * (Vercel and Cloudflare log full request URLs). The website scrolls to its form itself and strips
+ * the fragment before analytics runs.
  * The website swaps the token, server side and with its API key, for the details the guest typed
  * last time (POST /api/external/event-bookings/rebook) and fills its booking form in. Places are
  * not held: the guest books and pays as anyone else does.
@@ -76,7 +79,7 @@ function text(value: unknown): string | null {
 export function buildRebookUrl(slug: string | null | undefined, rawToken: string): string | null {
   const cleanSlug = typeof slug === 'string' ? slug.trim() : ''
   if (!cleanSlug || !SLUG_PATTERN.test(cleanSlug)) return null
-  return `${PUBLIC_EVENT_BASE}/${cleanSlug}?rebook=${encodeURIComponent(rawToken)}#event-booking`
+  return `${PUBLIC_EVENT_BASE}/${cleanSlug}#rebook=${encodeURIComponent(rawToken)}`
 }
 
 /**

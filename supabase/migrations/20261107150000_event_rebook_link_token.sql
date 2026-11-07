@@ -2,9 +2,11 @@
 -- owner approval 7 November 2026).
 --
 -- The "held places released" email used to link to the event page, and the guest started again
--- from an empty form. It now carries a single-purpose link token instead: the website swaps it,
--- server side and with its API key, for the details the guest typed last time
--- (GET /api/external/event-bookings/rebook/<token>) and fills the form in. Places are not held.
+-- from an empty form. It now links to https://www.the-anchor.pub/events/<slug>#rebook=<token>: a
+-- single-purpose token in the address fragment, which no server ever receives. The website swaps
+-- it, server side and with its API key, for the details the guest typed last time
+-- (POST /api/external/event-bookings/rebook, token in the JSON body) and fills the form in.
+-- Places are not held.
 --
 -- The token lives in guest_tokens, beside every other guest link, as action_type 'event_rebook':
 --  - only a SHA-256 hash of the token is stored, as for every guest link (src/lib/guest/tokens.ts);

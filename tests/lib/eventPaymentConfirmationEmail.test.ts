@@ -948,7 +948,7 @@ describe('event guest emails', () => {
     })
 
     describe('the one-tap rebook link (event checkout spec, Piece 4.2)', () => {
-      const REBOOK_URL = 'https://www.the-anchor.pub/events/tasting-night-21-november?rebook=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde#event-booking'
+      const REBOOK_URL = 'https://www.the-anchor.pub/events/tasting-night-21-november#rebook=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde'
 
       it('renders cleanly with the rebook link as the button and the plain-text link', async () => {
         const result = await sendEventPaymentExpiredEmail(
@@ -968,6 +968,7 @@ describe('event guest emails', () => {
         expect(sent.metadata).toMatchObject({ template_key: 'event_payment_expired_email', rebook_link: true })
         // The token travels only in the link: never in the stored metadata.
         expect(JSON.stringify(sent.metadata)).not.toContain('rebook=')
+        expect(sent.text).not.toContain('?rebook=')
       })
 
       it('uses the rebook link over the event booking link', async () => {

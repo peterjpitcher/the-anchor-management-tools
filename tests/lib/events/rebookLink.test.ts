@@ -76,10 +76,15 @@ beforeEach(() => {
 })
 
 describe('rebook link building blocks', () => {
-  it('puts only the token on the event page, with the booking anchor', () => {
+  it('puts only the token on the event page, in the fragment so no server ever receives it', () => {
     expect(buildRebookUrl('quiz-night-12-november', RAW_TOKEN)).toBe(
-      `https://www.the-anchor.pub/events/quiz-night-12-november?rebook=${RAW_TOKEN}#event-booking`,
+      `https://www.the-anchor.pub/events/quiz-night-12-november#rebook=${RAW_TOKEN}`,
     )
+    const url = new URL(buildRebookUrl('quiz-night-12-november', RAW_TOKEN)!)
+    // Nothing in the part of the address a browser sends: no query string at all.
+    expect(url.search).toBe('')
+    expect(url.pathname).toBe('/events/quiz-night-12-november')
+    expect(url.hash).toBe(`#rebook=${RAW_TOKEN}`)
     expect(buildRebookUrl(null, RAW_TOKEN)).toBeNull()
     expect(buildRebookUrl('bad slug/../x', RAW_TOKEN)).toBeNull()
   })
@@ -139,7 +144,7 @@ describe('prepareHoldReleasedRebookLink (the hold job)', () => {
 
     expect(plan).toMatchObject({ send: true, outcome: 'issued' })
     const url = (plan as { rebookUrl: string }).rebookUrl
-    const match = url.match(/^https:\/\/www\.the-anchor\.pub\/events\/quiz-night-12-november\?rebook=([A-Za-z0-9_-]{43})#event-booking$/)
+    const match = url.match(/^https:\/\/www\.the-anchor\.pub\/events\/quiz-night-12-november#rebook=([A-Za-z0-9_-]{43})$/)
     expect(match).not.toBeNull()
     const rawToken = match![1]
 

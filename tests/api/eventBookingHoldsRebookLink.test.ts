@@ -55,7 +55,7 @@ function fakeSupabase() {
   }
 }
 
-const LINK = 'https://www.the-anchor.pub/events/quiz-night?rebook=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde#event-booking'
+const LINK = 'https://www.the-anchor.pub/events/quiz-night#rebook=AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde'
 
 beforeEach(() => {
   vi.clearAllMocks()
