@@ -19,6 +19,7 @@ export type EventBookingListRow = {
   payment_status_summary?: string | null
   payment_method_summary?: string | null
   ticket_breakdown?: string | null
+  ticket_line_count?: number | null
 }
 
 /** The statuses staff can still change: everything else is lapsed, cancelled or after the night. */
@@ -89,9 +90,12 @@ export function isChangeableEventBooking(booking: Pick<EventBookingListRow, 'sta
 
 /**
  * Whether the seats can be edited directly. The server refuses a paid booking on a night paid in
- * advance, a booking with named guests and a booking with more than one ticket type (each goes
+ * advance, a booking with named guests and a booking with two or more ticket lines (each goes
  * through Change Tickets), and anything that is not confirmed or waiting for payment
- * (status_not_changeable), so the list does not offer a button that can only fail.
+ * (status_not_changeable), so the list does not offer a button that can only fail. A single line
+ * on any ticket type changes size with the booking (bookingSeatsEditableDirectly, BK-143), so the
+ * rule counts lines: a breakdown is also shown for one line on a non-default type. An unknown
+ * count keeps the button and leaves the decision to the server.
  */
 export function canEditEventBookingSeats(
   booking: EventBookingListRow,
@@ -100,7 +104,7 @@ export function canEditEventBookingSeats(
   if (!isChangeableEventBooking(booking)) return false
   if (booking.status === 'confirmed' && booking.is_reminder_only !== true && paymentMode === 'prepaid') return false
   if (Array.isArray(booking.attendees) && booking.attendees.length > 0) return false
-  if (booking.ticket_breakdown) return false
+  if (Number(booking.ticket_line_count ?? 0) > 1) return false
   return true
 }
 

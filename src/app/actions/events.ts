@@ -108,6 +108,8 @@ export type EventBookingRow = {
   payment_method_summary?: string | null
   /** Compact per-type summary (e.g. "1× Regular, 1× Non-Alcohol"); null for single-type bookings. */
   ticket_breakdown?: string | null
+  /** How many ticket lines the booking has; null when they could not be read. */
+  ticket_line_count?: number | null
   /** Sum of the booking's line items (post-discount snapshots); null when it has none. */
   charge_total?: number | null
   /** The guest's check-in for this event, from the door or the staff list (BK-130); null when none. */
@@ -779,6 +781,8 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
     // query for all bookings — never blocks the listing on failure.
     const breakdownByBooking = new Map<string, string>()
     const chargeTotalByBooking = new Map<string, number>()
+    // How many ticket lines each booking has: two or more cannot be resized with Edit (BK-143).
+    const lineCountByBooking = new Map<string, number>()
     try {
       const itemsByBooking = await loadBookingItemsWithTypes(supabase, bookingIds)
       if (itemsByBooking.size > 0) {
@@ -786,6 +790,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         const ticketTypesOn = eventTicketTypesEnabled()
         for (const [bookingId, items] of itemsByBooking) {
           chargeTotalByBooking.set(bookingId, resolveBookingChargeAmount(items))
+          lineCountByBooking.set(bookingId, items.length)
           if (!ticketTypesOn) continue
           if (!bookingItemsAreMultiType(items, defaultTypeId)) continue
           breakdownByBooking.set(bookingId, formatTicketBreakdownCompact(buildTicketBreakdownLines(items)))
@@ -865,6 +870,7 @@ export async function getEventBookings(eventId: string): Promise<{ data?: EventB
         payment_status_summary: paymentStatusSummary,
         payment_method_summary: paymentMethodSummary,
         ticket_breakdown: breakdownByBooking.get(booking.id) ?? null,
+        ticket_line_count: lineCountByBooking.get(booking.id) ?? null,
         charge_total: chargeTotalByBooking.get(booking.id) ?? null,
         check_in: checkInByBooking.get(booking.id) ?? checkInByCustomer.get(booking.customer_id) ?? null,
         refund_requests: (refundRequestsByBooking.get(booking.id) ?? []).map((request) => ({

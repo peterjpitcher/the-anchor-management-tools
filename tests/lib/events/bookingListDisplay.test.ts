@@ -82,9 +82,16 @@ describe('which buttons work', () => {
     // Paid on a night paid in advance: the server sends staff to Change Tickets.
     expect(canEditEventBookingSeats({ status: 'confirmed', seats: 2 }, 'prepaid')).toBe(false)
     expect(canEditEventBookingSeats({ status: 'confirmed', seats: 2 }, 'cash_only')).toBe(true)
-    // Named guests or several ticket types change guest by guest, not here.
+    // Named guests or two ticket lines change guest by guest, not here.
     expect(canEditEventBookingSeats({ status: 'pending_payment', seats: 2, attendees: [{}, {}] }, 'prepaid')).toBe(false)
-    expect(canEditEventBookingSeats({ status: 'confirmed', seats: 2, ticket_breakdown: '1x Adult, 1x Child' }, 'cash_only')).toBe(false)
+    expect(canEditEventBookingSeats({ status: 'confirmed', seats: 2, ticket_breakdown: '1x Adult, 1x Child', ticket_line_count: 2 }, 'cash_only')).toBe(false)
+  })
+
+  it('keeps Edit on one ticket line of a non-default type, which the server resizes (BK-143)', () => {
+    // getEventBookings shows a breakdown for this booking too, so the rule must count lines.
+    expect(canEditEventBookingSeats({ status: 'pending_payment', seats: 2, ticket_breakdown: '2x Child', ticket_line_count: 1 }, 'prepaid')).toBe(true)
+    // Lines that could not be read leave the decision to the server.
+    expect(canEditEventBookingSeats({ status: 'pending_payment', seats: 2, ticket_line_count: null }, 'prepaid')).toBe(true)
   })
 
   it('offers guest details where there are some, or where the event asks for them', () => {
