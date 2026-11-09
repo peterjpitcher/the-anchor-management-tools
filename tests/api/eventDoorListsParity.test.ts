@@ -147,3 +147,44 @@ describe('door sheet price for a pay-on-the-door booking', () => {
     expect(byName['Legacy Guest']).toEqual(['£24.00', 'Event price: £12.00 per person · 2 guests'])
   })
 })
+
+// Owner decision EV-02: on a night paid in advance with an online price, money still owed is taken
+// at the bar at the full ticket price, and Cash Paid records that. The printed lists said the
+// online price was due (tasting night, 9 November 2026: "£160 due" on paper, £180 at the till).
+describe('amount due on a night paid in advance with an online price', () => {
+  function setupDiscounted() {
+    const db = new FakeDb({
+      events: [{
+        id: EVENT_ID, name: 'Tasting night', date: '2099-11-20', time: '19:00', slug: 'tasting', performer_name: null, performer_type: null,
+        payment_mode: 'prepaid', is_free: false, price: 45, price_per_seat: 45, online_discount_type: 'fixed', online_discount_value: 5,
+        online_discount_ends_at: null, booking_mode: 'communal',
+      }],
+      bookings: [booking('b1', 'Paid', 'confirmed'), booking('b2', 'Waiting', 'pending_payment', { seats: 4 })],
+      booking_items: [
+        { id: 'i1', booking_id: 'b1', ticket_type_id: 't1', quantity: 2, unit_price: 40, attendee_names: [], ticket_type: { name: 'Standard', sort_order: 0, base_price: 45 } },
+        { id: 'i2', booking_id: 'b2', ticket_type_id: 't1', quantity: 4, unit_price: 40, attendee_names: [], ticket_type: { name: 'Standard', sort_order: 0, base_price: 45 } },
+      ],
+      payments: [{ event_booking_id: 'b1', charge_type: 'prepaid_event', status: 'succeeded', payment_method: 'paypal', amount: 80 }],
+      table_bookings: [],
+      booking_table_assignments: [],
+      event_communal_seat_allocations: [],
+      menu_dishes_with_costs: [],
+    })
+    vi.mocked(createAdminClient).mockReturnValue(db.asDb() as never)
+  }
+
+  it('prints the full door price as due on the guest list', async () => {
+    setupDiscounted()
+    await guestList(request('guest-list'), context)
+    const notes = Object.fromEntries(captured.groups.map((group) => [group.bookerName, group.paymentNote]))
+    expect(notes).toEqual({ 'Paid Guest': null, 'Waiting Guest': 'Not paid yet: £180.00 due' })
+  })
+
+  it('prints the full door price as due on the booking sheet, and keeps what a paid guest paid', async () => {
+    setupDiscounted()
+    await bookingSheets(request('booking-sheets'), context)
+    const byName = Object.fromEntries(captured.sheets.map((sheet) => [sheet.customerName, sheet]))
+    expect(byName['Waiting Guest']).toMatchObject({ paymentMethod: 'Not paid yet: £180.00 due', price: '£180.00', priceNote: 'Event price: £45.00 per person · 4 guests' })
+    expect(byName['Paid Guest']).toMatchObject({ paymentMethod: 'Paid online', price: '£80.00' })
+  })
+})

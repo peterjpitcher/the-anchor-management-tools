@@ -13,6 +13,7 @@ import { recordStaffReadOutConsent } from '@/lib/consent/staff-capture'
 import { logger } from '@/lib/logger'
 import { EventBookingService } from '@/services/event-bookings'
 import { hasGuestAnswers } from '@/lib/events/guest-answers'
+import { loadDoorChargeLines } from '@/lib/events/door-list'
 import {
   kioskAmountDue,
   kioskGreetingName,
@@ -371,19 +372,23 @@ function mapWalkInBlockedReason(reason: string | null): string {
   }
 }
 
-/** What an unpaid booking owes, for the "please see the bar" message (BK-032). */
+/**
+ * What an unpaid booking owes at the bar, for the "please see the bar" message (BK-032). It is
+ * the full door price of each ticket, the amount Cash Paid and Card Paid record (doorChargeDue,
+ * owner decision EV-02), not the online price the guest was offered by the payment link: the kiosk
+ * used to say £80 for two tasting-night tickets and the bar took £90. Null (a message with no
+ * amount) when the booking has no ticket lines or they cannot be read.
+ */
 async function bookingAmountDue(bookingId: string): Promise<number | null> {
-  const { data, error } = await createAdminClient()
-    .from('booking_items')
-    .select('quantity, unit_price')
-    .eq('booking_id', bookingId)
-  if (error) {
+  try {
+    const lines = (await loadDoorChargeLines(createAdminClient(), [bookingId])).get(bookingId) ?? []
+    return kioskAmountDue(lines.map((line) => ({ quantity: line.quantity, unit_price: line.base_price })))
+  } catch (error) {
     logger.warn('Failed to load booking items for the check-in payment message', {
-      metadata: { bookingId, error: error.message },
+      metadata: { bookingId, error: error instanceof Error ? error.message : String(error) },
     })
     return null
   }
-  return kioskAmountDue(data ?? [])
 }
 
 async function ensureBooking(event: EventForCheckIn, customerId: string): Promise<

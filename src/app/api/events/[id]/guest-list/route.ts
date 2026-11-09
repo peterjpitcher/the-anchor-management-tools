@@ -11,9 +11,17 @@ import { generateEventGuestListPdf } from '@/lib/events/guest-list-pdf'
 import { formatDateInLondon, formatTime12Hour } from '@/lib/dateUtils'
 import { getAnchorLogoDataUri } from '@/lib/pdf/anchor-logo'
 import { logAuditEvent } from '@/app/actions/audit'
-import { DOOR_LIST_EXCLUDED_STATUS_FILTER, doorPaymentLabel, isOnDoorList, loadDoorPayments } from '@/lib/events/door-list'
+import {
+  DOOR_LIST_EXCLUDED_STATUS_FILTER,
+  doorChargeDue,
+  doorPaymentLabel,
+  isOnDoorList,
+  loadDoorChargeLines,
+  loadDoorPayments,
+  type DoorChargeLine,
+} from '@/lib/events/door-list'
 import { hasGuestAnswers } from '@/lib/events/guest-answers'
-import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 
 type RouteContext = {
   params: Promise<{ id: string }>
@@ -95,13 +103,27 @@ export async function GET(_request: NextRequest, context: RouteContext) {
     const payments = await loadDoorPayments(admin, bookingRows.map((b) => b.id))
     const paymentMode = resolveEventPaymentMode(eventRow)
     const pricePerSeat = resolveEventPriceAmount(eventRow)
+    // On a night paid in advance, money still owed is taken at the bar at the full door price, the
+    // amount Cash Paid records (doorChargeDue, owner decision EV-02), not the online price.
+    const fullUnitPrice = resolveEventTicketPriceAmount(eventRow)
+    let doorLines = new Map<string, DoorChargeLine[]>()
+    if (paymentMode === 'prepaid') {
+      try {
+        doorLines = await loadDoorChargeLines(admin, bookingRows.map((b) => b.id))
+      } catch (linesError) {
+        // The list is needed at the door: fall back to the event's full price for each seat.
+        console.warn('Failed to load ticket lines for the guest list door price:', linesError)
+      }
+    }
 
     const groups = buildGuestListModel(bookingRows.map((b): GuestListBookingInput => {
       const label = doorPaymentLabel({
         paymentMode,
         isFree: pricePerSeat === 0 && paymentMode === 'free',
         payments: payments.get(b.id) ?? [],
-        amountDue: pricePerSeat * Math.max(1, Number(b.seats ?? 1)),
+        amountDue: paymentMode === 'prepaid'
+          ? doorChargeDue(doorLines.get(b.id) ?? [], fullUnitPrice, b.seats)
+          : pricePerSeat * Math.max(1, Number(b.seats ?? 1)),
       })
       return {
         seats: b.seats,

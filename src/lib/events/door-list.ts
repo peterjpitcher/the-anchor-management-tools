@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { resolveDoorChargeAmount } from '@/lib/events/ticket-types'
 
 /**
  * Who belongs on an event's door list, and what each booking has paid (BK-030, customer bookings
@@ -41,6 +42,18 @@ function formatPounds(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
 }
 
+/** The ledger rows that took money, or recorded a comp, for a booking. Refund rows never count. */
+function paidCharges(payments: DoorPaymentRow[]): DoorPaymentRow[] {
+  return payments
+    .filter((payment) => String(payment.charge_type ?? '').toLowerCase() !== 'refund')
+    .filter((payment) => PAID_STATUSES.has(String(payment.status ?? '').toLowerCase()))
+}
+
+/** Whether the payments ledger shows the booking paid (or comped), by any method. */
+export function doorPaymentTaken(payments: DoorPaymentRow[]): boolean {
+  return paidCharges(payments).length > 0
+}
+
 /**
  * What the door sees about money, read from the payments ledger rather than the event's payment
  * method. "Paid online" used to be printed for every prepaid booking that was not still waiting,
@@ -55,8 +68,7 @@ export function doorPaymentLabel(input: {
   amountDue: number
 }): string {
   if (input.isFree) return 'Free'
-  const charges = input.payments.filter((payment) => String(payment.charge_type ?? '').toLowerCase() !== 'refund')
-  const paid = charges.filter((payment) => PAID_STATUSES.has(String(payment.status ?? '').toLowerCase()))
+  const paid = paidCharges(input.payments)
   const methods = new Set(paid.map((payment) => String(payment.payment_method || payment.payment_provider || '').toLowerCase()))
   const realCharge = paid.some((payment) => Number(payment.amount ?? 0) > 0)
 
@@ -94,4 +106,51 @@ export async function loadDoorPayments(
     }
   }
   return byBooking
+}
+
+/** One ticket line with the full price of its ticket type. */
+export type DoorChargeLine = { quantity: number; base_price: number | string }
+
+/**
+ * Every ticket line for these bookings, each with the FULL price of its ticket type, in one read
+ * (the same lines and prices Cash Paid uses, through loadBookingItemsWithBasePrices).
+ */
+export async function loadDoorChargeLines(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingIds: string[],
+): Promise<Map<string, DoorChargeLine[]>> {
+  const byBooking = new Map<string, DoorChargeLine[]>()
+  for (let index = 0; index < bookingIds.length; index += 200) {
+    const ids = bookingIds.slice(index, index + 200)
+    const { data, error } = await supabase
+      .from('booking_items')
+      .select('booking_id, quantity, ticket_type:event_ticket_types(base_price)')
+      .in('booking_id', ids)
+    if (error) throw new Error(`Ticket lines could not be loaded for the door price: ${error.message}`)
+    type Row = {
+      booking_id: string | null
+      quantity: number | null
+      ticket_type: { base_price: number | string | null } | Array<{ base_price: number | string | null }> | null
+    }
+    for (const row of (data ?? []) as unknown as Row[]) {
+      if (!row.booking_id) continue
+      const ticketType = Array.isArray(row.ticket_type) ? row.ticket_type[0] : row.ticket_type
+      const lines = byBooking.get(row.booking_id) ?? []
+      lines.push({ quantity: Number(row.quantity) || 0, base_price: ticketType?.base_price ?? 0 })
+      byBooking.set(row.booking_id, lines)
+    }
+  }
+  return byBooking
+}
+
+/**
+ * What the bar takes for a booking still to pay on a night paid in advance: every ticket at the
+ * full price of its type, never the online price (owner decision EV-02, 4 July 2026), or the
+ * event's full price for each seat when the booking has no ticket lines. It is the amount Cash Paid
+ * and Card Paid record (resolveManualDoorChargeAmount in src/app/actions/events.ts), so the kiosk
+ * and the printed lists ask for the same money. They used to show the online price: on the tasting
+ * night of 20 November 2026 a party of four was "£160 due" on paper and £180 at the till.
+ */
+export function doorChargeDue(lines: DoorChargeLine[], eventFullUnitPrice: number, seats: number | null | undefined): number {
+  return resolveDoorChargeAmount({ items: lines, eventFullUnitPrice, seats: Math.max(1, Number(seats ?? 1)) })
 }
