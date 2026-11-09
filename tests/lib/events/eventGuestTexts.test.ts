@@ -89,6 +89,14 @@ describe.each([
     expect(body).toContain(`Pay here to confirm: ${LINK}`)
   })
 
+  it('labels the manage link, so it does not read as a second payment link', () => {
+    const PAY = 'https://l.the-anchor.pub/pay123'
+    const body = buildEventBookingHeldText({ ...facts, holdUntil: '7:42pm', paymentLink: PAY, manageLink: LINK })
+    assertGuestText(body)
+    expect(body).toContain(`Pay here to confirm: ${PAY} Manage your booking: ${LINK}`)
+    expect(body).not.toContain(`${PAY} ${LINK}`)
+  })
+
   it('says the payment link could not be sent, with the pub number, when it is missing', () => {
     const body = buildEventBookingHeldText({ ...facts, holdUntil: null, paymentLink: null, manageLink: LINK })
     assertGuestText(body)

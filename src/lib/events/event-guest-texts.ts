@@ -80,7 +80,9 @@ export function buildEventBookingHeldText(input: GuestFacts & {
 }): string {
   const places = describeEventPlaces(input)
   const until = input.holdUntil ? ` until ${input.holdUntil}` : ''
-  const manage = input.manageLink ? ` ${input.manageLink}` : ''
+  // Labelled as in the confirmed text: a bare second link after the payment link read as part of
+  // it ("Pay here to confirm: <link> <link>", tasting night, 7 November 2026).
+  const manage = input.manageLink ? ` Manage your booking: ${input.manageLink}` : ''
   const opening = `The Anchor: Hi ${input.firstName}, we're holding ${places} for ${input.eventName}${onWhen(input.when)}${until}.`
   if (input.paymentLink) {
     return `${opening} Pay here to confirm: ${input.paymentLink}${manage}`
