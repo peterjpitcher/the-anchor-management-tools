@@ -70,6 +70,7 @@ import { EventNightNotice } from '../_components/EventNightNotice'
 import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
 import { GuestDetailsModal } from './AddGuestDetailsModal'
+import { RebookBookingDialog } from './RebookBookingDialog'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
@@ -239,6 +240,8 @@ export default function EventDetailClient({
   const [noRefundNote, setNoRefundNote] = useState('')
   const [changeTicketsBooking, setChangeTicketsBooking] = useState<EventBookingRow | null>(null)
   const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
+  // A lapsed booking being started again (owner, 9 November 2026).
+  const [rebookBookingId, setRebookBookingId] = useState<string | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
   const [compReason, setCompReason] = useState('')
   const [doorPayment, setDoorPayment] = useState<{
@@ -699,6 +702,7 @@ export default function EventDetailClient({
                 }}
                 onChangeTickets={setChangeTicketsBooking}
                 onEditNames={setAddDetailsBooking}
+                onRebook={setRebookBookingId}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
                 transferEvents={transferEvents}
@@ -966,6 +970,13 @@ export default function EventDetailClient({
         onSaved={refreshBookings}
       />
 
+      {/* Start a lapsed booking again: tickets, then a payment link or cash or card now (owner, 9 November 2026) */}
+      <RebookBookingDialog
+        bookingId={rebookBookingId}
+        onClose={() => setRebookBookingId(null)}
+        onDone={refreshBookings}
+      />
+
       {/* Delete event confirmation dialog */}
       <ConfirmDialog
         open={deleteDialogOpen}
@@ -1208,6 +1219,7 @@ function AttendeesTab({
   onNoRefund,
   onChangeTickets,
   onEditNames,
+  onRebook,
   transferringBookingId,
   transferTargetEventId,
   transferEvents,
@@ -1246,6 +1258,7 @@ function AttendeesTab({
   onNoRefund: (booking: EventBookingRow, request: RefundRequestForDialog) => void
   onChangeTickets: (booking: EventBookingRow) => void
   onEditNames: (booking: EventBookingRow) => void
+  onRebook: (bookingId: string) => void
   transferringBookingId: string | null
   transferTargetEventId: string
   transferEvents: Event[]
@@ -1395,10 +1408,16 @@ function AttendeesTab({
 
     // A cancelled booking, a payment hold that ran out (expired) and a booking after the night can
     // no longer be edited, paid or cancelled: the server refuses all three, so only what still works
-    // is offered (owner, 9 November 2026).
+    // is offered (owner, 9 November 2026). A lapsed hold can be started again with Rebook.
     if (isCancelled || !isChangeableEventBooking(booking)) {
-      return canShowRefund || refundRequestControls || guestDetailsButton ? (
+      const canRebook = booking.status === 'expired' && booking.is_reminder_only !== true
+      return canShowRefund || refundRequestControls || guestDetailsButton || canRebook ? (
         <div className="flex flex-wrap items-center gap-1">
+          {canRebook && (
+            <Button size="sm" variant="ghost" onClick={() => onRebook(booking.id)}>
+              Rebook
+            </Button>
+          )}
           {guestDetailsButton}
           {refundRequestControls}
           {canShowRefund && (

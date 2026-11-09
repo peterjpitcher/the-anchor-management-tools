@@ -114,6 +114,13 @@ export type CreateBookingParams = {
    */
   skipPendingPaymentSms?: boolean
   /**
+   * Staff are taking the money at the bar as the booking is made (Rebook with cash or card,
+   * owner request 9 November 2026), so no payment link goes by email or text: the guest is
+   * standing there, and the payment confirmation follows within the minute. Any other message
+   * (the guest details request) is unchanged.
+   */
+  skipPendingPaymentMessage?: boolean
+  /**
    * Supabase admin client. Callers that already hold a client (e.g. from
    * requireFohPermission) should pass it in to avoid creating a second connection.
    * If omitted, createAdminClient() is called internally.
@@ -613,6 +620,7 @@ export class EventBookingService {
       appBaseUrl,
       shouldSendSms = true,
       skipPendingPaymentSms = false,
+      skipPendingPaymentMessage = false,
       supabaseClient,
       logTag = 'event booking',
       firstName,
@@ -1036,6 +1044,9 @@ export class EventBookingService {
             }),
           })
         }
+      } else if (resolvedState === 'pending_payment' && skipPendingPaymentMessage) {
+        // Staff are recording cash or card at the bar straight after this (Rebook, 9 November
+        // 2026): a payment link now would ask the guest in front of them to pay twice.
       } else if (resolvedState === 'pending_payment' && bookingMessageId) {
         // BK-142: a phone, bar or text booking's payment link, email first (owner decision D14).
         const pendingBookingId = bookingMessageId
