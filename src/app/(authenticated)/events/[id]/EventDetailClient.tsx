@@ -52,7 +52,6 @@ import { EventTicketTypesCard } from './EventTicketTypesCard'
 import { EventChangesAfterBookingCard } from './EventChangesAfterBookingCard'
 import { EventGuestsNotReachedCard } from './EventGuestsNotReachedCard'
 import { EventTicketSettings, type TicketSettingsEvent } from './EventTicketSettings'
-import { EventAttendeesEditor } from './EventAttendeesEditor'
 import { EventGuestAnswersCard } from './EventGuestAnswersCard'
 import { EventUnbookedRepliesCard } from './EventUnbookedRepliesCard'
 import { isOnDoorList } from '@/lib/events/door-list'
@@ -70,7 +69,7 @@ import { EventOutcomesCard } from './EventOutcomesCard'
 import { EventNightNotice } from '../_components/EventNightNotice'
 import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen/KitchenLoadEditor'
 import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
-import { AddGuestDetailsModal } from './AddGuestDetailsModal'
+import { GuestDetailsModal } from './AddGuestDetailsModal'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
@@ -82,9 +81,16 @@ import { formatDateInLondon, formatTime12Hour, formatDateTime12Hour, getTodayIso
 import { resolveEventOnlineDiscountAmount, resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import { buildEventBookingStats } from '@/lib/events/stats'
 import {
+  canEditEventBookingSeats,
+  describeEventBookingPayment,
+  describeEventBookingSeats,
+  describeEventBookingStatus,
+  hasEventBookingGuestDetails,
+  isChangeableEventBooking,
+} from '@/lib/events/booking-list-display'
+import {
   eventBookingStatusTone,
   eventLinkTypeTone,
-  eventSeatingTypeTone,
   eventStatusLabel,
   eventStatusTone,
 } from '../_shared/status-ui'
@@ -122,6 +128,11 @@ function formatStatusLabel(status: string | null | undefined): string {
 function formatCurrency(amount: number | null | undefined): string {
   if (amount === null || amount === undefined) return '-'
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
+
+function formatBookingCreated(createdAt: string | null | undefined): string {
+  if (!createdAt) return '-'
+  return formatDateInLondon(createdAt, { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function formatBookingMode(mode: Event['booking_mode']): string {
@@ -168,17 +179,6 @@ function formatEventCost(event: Event): string {
   }
 
   return `${formatCurrency(ticketPrice)} per person${paymentMode ? `, ${paymentMode}` : ''}`
-}
-
-function formatBookingPayment(booking: EventBookingRow): string {
-  const amount = Number(booking.paid_amount ?? 0)
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return booking.payment_method_summary === 'Comp' ? 'Comp' : '-'
-  }
-
-  const status = booking.payment_status_summary || 'Paid'
-  const method = booking.payment_method_summary ? ` · ${booking.payment_method_summary}` : ''
-  return `${formatCurrency(amount)} ${status.toLowerCase()}${method}`
 }
 
 function copyToClipboard(text: string, label: string): void {
@@ -956,10 +956,12 @@ export default function EventDetailClient({
         onDone={refreshBookings}
       />
 
-      {/* Add guest details to a booking that has none (BK-016) */}
-      <AddGuestDetailsModal
+      {/* A booking's guests and their answers, out of the list (owner, 9 November 2026; BK-016) */}
+      <GuestDetailsModal
         booking={addDetailsBooking}
         questions={event?.booking_questions ?? []}
+        eventTakesGuestDetails={event ? requiresGuestDetails(event) : false}
+        canEdit={permissions.canManage}
         onClose={() => setAddDetailsBooking(null)}
         onSaved={refreshBookings}
       />
@@ -1291,22 +1293,9 @@ function AttendeesTab({
     setAttendeePage((current) => Math.min(current, totalAttendeePages))
   }, [totalAttendeePages])
 
-  // Numbered attendee-name list, shared between the desktop table cell and the
-  // mobile card so both stay in sync.
-  const renderAttendeeNames = (booking: EventBookingRow) => {
-    if (booking.attendees?.length) return <EventAttendeesEditor bookingId={booking.id} seats={booking.seats ?? 0} attendees={booking.attendees} questions={event.booking_questions ?? []} canEdit={canManage} />
-    const attendeeNames = (booking.attendee_names ?? []).filter(
-      (name) => typeof name === 'string' && name.trim().length > 0
-    )
-    if (attendeeNames.length === 0) return null
-    return (
-      <ol className="mt-1 list-decimal pl-4 text-xs text-text-muted">
-        {attendeeNames.map((name, index) => (
-          <li key={index}>{name}</li>
-        ))}
-      </ol>
-    )
-  }
+  // The night's payment mode, for what the Paid column and the seat editor say (owner, 9 November 2026).
+  const paymentMode = resolveEventPaymentMode(event)
+  const eventTakesGuestDetails = requiresGuestDetails(event)
 
   // The booking's notes, where online meal and early-arrival requests land as "UNCONFIRMED
   // REQUEST" (BK-015). They were only seen if someone printed the booking sheets.
@@ -1321,11 +1310,31 @@ function AttendeesTab({
     )
   }
 
+  // The status, and how long a guest has to pay while their places are held (owner, 9 November 2026).
+  const renderBookingStatus = (booking: EventBookingRow) => {
+    const { label, detail } = describeEventBookingStatus(booking)
+    return (
+      <>
+        <Badge tone={eventBookingStatusTone(booking.status)} dot>
+          {label}
+        </Badge>
+        {detail && <div className="mt-0.5 text-xs text-text-muted">{detail}</div>}
+      </>
+    )
+  }
+
   // Per-booking action cluster (mark-paid/comp/edit/edit-names/transfer/refund/
   // cancel plus the inline seats and transfer editors). Extracted so the desktop
   // table and the mobile card render the exact same controls and handlers.
   const renderBookingActions = (booking: EventBookingRow) => {
-    if (!canManage) return null
+    // Guests' names and answers open from here rather than filling the list (owner, 9 November
+    // 2026). Anyone who can see the page can read them, as they could in the list; only managers edit.
+    const guestDetailsButton = hasEventBookingGuestDetails(booking, eventTakesGuestDetails) ? (
+      <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
+        {canManage && eventTakesGuestDetails && !booking.attendees?.length ? 'Add Guest Details' : 'Guest Details'}
+      </Button>
+    ) : null
+    if (!canManage) return guestDetailsButton
     const isEditing = editingBookingId === booking.id
     const isTransferring = transferringBookingId === booking.id
     const isCancelled = booking.status === 'cancelled'
@@ -1384,9 +1393,13 @@ function AttendeesTab({
       </div>
     ) : null
 
-    if (isCancelled) {
-      return canShowRefund || refundRequestControls ? (
+    // A cancelled booking, a payment hold that ran out (expired) and a booking after the night can
+    // no longer be edited, paid or cancelled: the server refuses all three, so only what still works
+    // is offered (owner, 9 November 2026).
+    if (isCancelled || !isChangeableEventBooking(booking)) {
+      return canShowRefund || refundRequestControls || guestDetailsButton ? (
         <div className="flex flex-wrap items-center gap-1">
+          {guestDetailsButton}
           {refundRequestControls}
           {canShowRefund && (
             <Button size="sm" variant="ghost" onClick={() => onRefundBooking(booking)}>
@@ -1417,10 +1430,6 @@ function AttendeesTab({
       )
     }
 
-    // Only an event that asks for each guest takes guest names (owner, 5 November 2026).
-    const canEditNames =
-      requiresGuestDetails(event) && booking.is_reminder_only !== true && Number(booking.seats ?? 0) >= 1 && !booking.attendees?.length
-
     return (
       <div className="flex flex-wrap items-center gap-1">
         {booking.status === 'pending_payment' && (
@@ -1436,19 +1445,17 @@ function AttendeesTab({
             </Button>
           </>
         )}
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={() => onStartEditSeats(booking)}
-          icon={<Icon name="edit" size={14} />}
-        >
-          Edit
-        </Button>
-        {canEditNames && (
-          <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-            Add Guest Details
+        {canEditEventBookingSeats(booking, paymentMode) && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onStartEditSeats(booking)}
+            icon={<Icon name="edit" size={14} />}
+          >
+            Edit
           </Button>
         )}
+        {guestDetailsButton}
         {booking.status === 'confirmed' && booking.is_reminder_only !== true && (
           <Button size="sm" variant="ghost" onClick={() => onChangeTickets(booking)}>
             Change Tickets
@@ -1560,7 +1567,7 @@ function AttendeesTab({
                 Guest List
               </LinkButton>
               <Button variant="ghost" size="sm" onClick={onToggleCancelled}>
-                {showCancelled ? 'Hide Cancelled' : 'Show Cancelled'}
+                {showCancelled ? 'Hide Cancelled and Expired' : 'Show Cancelled and Expired'}
               </Button>
             </>
           }
@@ -1588,14 +1595,13 @@ function AttendeesTab({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Phone</TableHead>
+                    <TableHead>Booking</TableHead>
                     <TableHead>Seats</TableHead>
-                    {event.booking_mode === 'communal' && <TableHead>Type</TableHead>}
+                    <TableHead>Phone</TableHead>
                     <TableHead>Paid</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Created</TableHead>
-                    {canManage && <TableHead>Actions</TableHead>}
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -1617,50 +1623,27 @@ function AttendeesTab({
                             name={customerName}
                             fallback="-"
                           />
-                          {renderAttendeeNames(booking)}
                           {renderBookingNotes(booking)}
                         </TableCell>
-                        <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
                         <TableCell>
                           {isEditing ? (
                             renderBookingActions(booking)
                           ) : (
                             <>
-                              {booking.seats ?? '-'}
+                              {describeEventBookingSeats(booking)}
                               {booking.ticket_breakdown && (
                                 <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
                               )}
                             </>
                           )}
                         </TableCell>
-                        {event.booking_mode === 'communal' && (
-                          <TableCell>
-                            <Badge tone={eventSeatingTypeTone(booking.event_seating_type)}>
-                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        <TableCell>{formatBookingPayment(booking)}</TableCell>
+                        <TableCell>{booking.customer?.mobile_number ?? '-'}</TableCell>
+                        <TableCell>{describeEventBookingPayment(booking, paymentMode)}</TableCell>
+                        <TableCell>{renderBookingStatus(booking)}</TableCell>
+                        <TableCell>{formatBookingCreated(booking.created_at)}</TableCell>
                         <TableCell>
-                          <Badge
-                            tone={eventBookingStatusTone(booking.status)}
-                            dot
-                          >
-                            {formatStatusLabel(booking.status)}
-                          </Badge>
+                          {isEditing ? null : renderBookingActions(booking)}
                         </TableCell>
-                        <TableCell>
-                          {formatDateInLondon(booking.created_at, {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </TableCell>
-                        {canManage && (
-                          <TableCell>
-                            {isEditing ? null : renderBookingActions(booking)}
-                          </TableCell>
-                        )}
                       </TableRow>
                     )
                   })}
@@ -1678,6 +1661,7 @@ function AttendeesTab({
                   .filter(Boolean)
                   .join(' ') || '-'
                 const isCancelled = booking.status === 'cancelled'
+                const actions = renderBookingActions(booking)
 
                 return (
                   <div key={booking.id} className={`py-4 ${isCancelled ? 'opacity-50' : ''}`}>
@@ -1689,60 +1673,38 @@ function AttendeesTab({
                           fallback="-"
                         />
                       </div>
-                      <Badge
-                        tone={eventBookingStatusTone(booking.status)}
-                        dot
-                      >
-                        {formatStatusLabel(booking.status)}
-                      </Badge>
+                      <div className="text-right">{renderBookingStatus(booking)}</div>
                     </div>
 
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                       <div>
-                        <dt className="text-xs font-medium text-text-muted">Phone</dt>
-                        <dd className="mt-0.5 text-text">{booking.customer?.mobile_number ?? '-'}</dd>
-                      </div>
-                      <div>
                         <dt className="text-xs font-medium text-text-muted">Seats</dt>
                         <dd className="mt-0.5 text-text">
-                          {booking.seats ?? '-'}
+                          {describeEventBookingSeats(booking)}
                           {booking.ticket_breakdown && (
                             <div className="mt-0.5 text-xs text-text-muted">{booking.ticket_breakdown}</div>
                           )}
                         </dd>
                       </div>
-                      {event.booking_mode === 'communal' && (
-                        <div>
-                          <dt className="text-xs font-medium text-text-muted">Type</dt>
-                          <dd className="mt-0.5">
-                            <Badge tone={eventSeatingTypeTone(booking.event_seating_type)}>
-                              {booking.event_seating_type === 'standing' ? 'Standing' : 'Seated'}
-                            </Badge>
-                          </dd>
-                        </div>
-                      )}
+                      <div>
+                        <dt className="text-xs font-medium text-text-muted">Phone</dt>
+                        <dd className="mt-0.5 text-text">{booking.customer?.mobile_number ?? '-'}</dd>
+                      </div>
                       <div>
                         <dt className="text-xs font-medium text-text-muted">Paid</dt>
-                        <dd className="mt-0.5 text-text">{formatBookingPayment(booking)}</dd>
+                        <dd className="mt-0.5 text-text">{describeEventBookingPayment(booking, paymentMode)}</dd>
                       </div>
                       <div>
                         <dt className="text-xs font-medium text-text-muted">Created</dt>
-                        <dd className="mt-0.5 text-text">
-                          {formatDateInLondon(booking.created_at, {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </dd>
+                        <dd className="mt-0.5 text-text">{formatBookingCreated(booking.created_at)}</dd>
                       </div>
                     </dl>
 
-                    {renderAttendeeNames(booking)}
                     {renderBookingNotes(booking)}
 
-                    {canManage && (
+                    {actions && (
                       <div className="mt-3 flex flex-wrap gap-2">
-                        {renderBookingActions(booking)}
+                        {actions}
                       </div>
                     )}
                   </div>
