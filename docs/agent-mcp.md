@@ -53,10 +53,11 @@ Read-only classing is a name and body heuristic in `src/lib/mcp/manifest/build.t
 3. Claude Code, user scope (every session, desktop routine and terminal on the Mac), reading the key at connect time so it is not written into `~/.claude.json`:
 
 ```bash
-claude mcp add-json --scope user anchor-management '{"type":"http","url":"https://management.orangejelly.co.uk/api/mcp","headersHelper":"~/.claude/secrets/anchor-management/headers.sh"}'
+claude mcp add-json --scope user anchor-management '{"type":"http","url":"https://management.orangejelly.co.uk/api/mcp","headersHelper":"/Users/peterpitcher/.claude/secrets/anchor-management/headers.sh"}'
 ```
 
-where `headers.sh` prints `{"Authorization":"Bearer <contents of claude.key>"}`.
+where `headers.sh` prints `{"Authorization":"Bearer <contents of claude.key>"}`. Give `headersHelper` the full path: a `~` there is not expanded.
+4. Jordan's runtime (`1 My Agents/desks/jordan/runtime/.claude/settings.json`) allows the seven read tools so a scheduled run is never held on a prompt; `run_action` and `call_app_route` still ask.
 
 Claude on the web and phone (claude.ai connectors) is not covered: those need an OAuth sign-in flow.
 
