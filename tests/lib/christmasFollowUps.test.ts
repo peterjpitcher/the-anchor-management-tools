@@ -214,6 +214,99 @@ describe('the email that goes', () => {
   })
 })
 
+describe('review fixes of 10 November 2026', () => {
+  it('skips a lead whose customer has unsubscribed from our marketing email', async () => {
+    const db = leadsDb({
+      table_booking_leads: [lead('a', { customer_id: 'customer-1' }), lead('b')],
+      customers: [{ id: 'customer-1', email: 'different@example.com', marketing_email_opted_out_at: '2026-10-01T10:00:00Z' }],
+    })
+    const send = sender()
+
+    const result = await run(db, { send })
+
+    expect(sentTo(send)).toEqual(['b@example.com'])
+    expect(result.state === 'ran' && result.skipped).toEqual({ customer_unsubscribed: 1 })
+    // Not claimed, so nothing about it changed.
+    expect(db.fake.rows('table_booking_leads').find((row) => row.id === 'a')?.follow_up_claimed_at).toBeNull()
+  })
+
+  it('skips a lead whose address belongs to an unsubscribed customer, whatever its case', async () => {
+    const db = leadsDb({
+      table_booking_leads: [lead('a')],
+      customers: [{ id: 'customer-2', email: 'A@Example.com', marketing_email_opted_out_at: '2026-10-01T10:00:00Z' }],
+    })
+    const send = sender()
+
+    const result = await run(db, { send })
+
+    expect(send).not.toHaveBeenCalled()
+    expect(result.state === 'ran' && result.skipped).toEqual({ customer_unsubscribed: 1 })
+  })
+
+  it('does not email an address a second time in a season after the first lead has been deleted', async () => {
+    // The first lead (and its claim) went in the 30-day clear-out; the email log still has it.
+    const db = leadsDb({
+      table_booking_leads: [lead('a')],
+      email_messages: [
+        { id: 'em-1', comm_type: 'christmas_lead_follow_up', to_address: 'a@example.com', metadata: { lead_id: 'gone', booking_period_id: CHRISTMAS_PERIOD.id } },
+      ],
+    })
+    const send = sender()
+
+    const result = await run(db, { send })
+
+    expect(send).not.toHaveBeenCalled()
+    expect(result.state === 'ran' && result.skipped).toEqual({ already_followed_up: 1 })
+  })
+
+  it('still emails an address whose earlier follow-up was for another season', async () => {
+    const db = leadsDb({
+      table_booking_leads: [lead('a')],
+      email_messages: [
+        { id: 'em-1', comm_type: 'christmas_lead_follow_up', to_address: 'a@example.com', metadata: { lead_id: 'old', booking_period_id: 'period-xmas-2025' } },
+      ],
+    })
+    const send = sender()
+
+    await run(db, { send })
+
+    expect(sentTo(send)).toEqual(['a@example.com'])
+    expect(send.mock.calls[0][0].metadata).toEqual(expect.objectContaining({ booking_period_id: CHRISTMAS_PERIOD.id }))
+  })
+
+  it('reads past a full page of skipped leads to reach one that can be emailed', async () => {
+    // 150 older leads all skipped (their customer unsubscribed), then one good lead.
+    const skipped = Array.from({ length: 150 }, (_, index) =>
+      lead(`s${index}`, { customer_id: 'customer-out', created_at: `2026-11-18T10:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z` }),
+    )
+    const db = leadsDb({
+      table_booking_leads: [...skipped, lead('good', { created_at: '2026-11-19T15:00:00.000Z' })],
+      customers: [{ id: 'customer-out', email: null, marketing_email_opted_out_at: '2026-10-01T10:00:00Z' }],
+    })
+    const send = sender()
+
+    const result = await run(db, { send })
+
+    expect(sentTo(send)).toEqual(['good@example.com'])
+    expect(result.state === 'ran' && result.considered).toBe(151)
+    expect(result.state === 'ran' && result.skipped).toEqual({ customer_unsubscribed: 150 })
+  })
+
+  it('sends no more than 100 in one run, and the rest wait for the next', async () => {
+    const leads = Array.from({ length: 130 }, (_, index) =>
+      lead(`l${index}`, { created_at: `2026-11-18T11:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z` }),
+    )
+    const db = leadsDb({ table_booking_leads: leads })
+    const send = sender()
+
+    const result = await run(db, { send })
+
+    expect(send).toHaveBeenCalledTimes(100)
+    expect(result.state === 'ran' && result.sent).toBe(100)
+    expect(db.fake.rows('table_booking_leads').filter((row) => row.follow_up_claimed_at === null)).toHaveLength(30)
+  })
+})
+
 describe('the claim', () => {
   it('is written before the email goes, and records the outcome after', async () => {
     const db = leadsDb({ table_booking_leads: [lead('a')] })

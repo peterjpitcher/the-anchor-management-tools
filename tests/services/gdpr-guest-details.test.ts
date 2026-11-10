@@ -189,6 +189,48 @@ describe('GDPR erasure of event guest details', () => {
   })
 })
 
+describe('GDPR and unfinished Christmas bookings (table_booking_leads)', () => {
+  beforeEach(() => {
+    state.client = null
+  })
+
+  function seedWithLeads(): Record<string, Row[]> {
+    return {
+      ...seed(),
+      table_booking_leads: [
+        // Saved after the guest became a customer.
+        { id: 'lead-by-customer', customer_id: CUSTOMER, email: 'someone@example.com', mobile_e164: '+447700900555' },
+        // Saved before: only the details match.
+        { id: 'lead-by-email', customer_id: null, email: 'jo@example.com', mobile_e164: '+447700900556' },
+        { id: 'lead-by-mobile', customer_id: null, email: 'other@example.com', mobile_e164: '+447700900123' },
+        { id: 'lead-someone-else', customer_id: OTHER_CUSTOMER, email: 'ali@example.com', mobile_e164: '+447700900999' },
+      ],
+    }
+  }
+
+  it('deletes every lead that is the erased guest, by customer, email or mobile, and no one else\'s', async () => {
+    const client = createFakeClient(seedWithLeads())
+    state.client = client
+    const result = await GdprService.deleteUserData((await GdprService.resolveErasureSubject(CUSTOMER))!)
+
+    const leadDeletes = client.writes.filter((write) => write.table === 'table_booking_leads')
+    expect(leadDeletes).toHaveLength(1)
+    expect(leadDeletes[0].op).toBe('delete')
+    const deletedIds = (leadDeletes[0].filters[0][2] as string[]).slice().sort()
+    expect(deletedIds).toEqual(['lead-by-customer', 'lead-by-email', 'lead-by-mobile'])
+    expect(result.counts.tableBookingLeads).toBe(3)
+  })
+
+  it('includes those leads in the guest\'s data export', async () => {
+    const client = createFakeClient(seedWithLeads())
+    state.client = client
+    const result = await GdprService.exportSubjectData((await GdprService.resolveErasureSubject(CUSTOMER))!)
+    const parsed = JSON.parse(result.data) as Record<string, Row[]>
+
+    expect(parsed.tableBookingLeads.map((row) => row.id).sort()).toEqual(['lead-by-customer', 'lead-by-email', 'lead-by-mobile'])
+  })
+})
+
 describe('GDPR export for a guest\'s data request', () => {
   beforeEach(() => {
     state.client = null
@@ -222,7 +264,7 @@ describe('GDPR export for a guest\'s data request', () => {
       'customers', 'customerConsents', 'eventBookings', 'eventBookingItems', 'bookingReminders',
       'tableBookings', 'tableBookingItems', 'preorderCovers', 'privateBookings', 'privateBookingSms',
       'parkingBookings', 'pendingBookings', 'smsPromoContext', 'reviewFeedback', 'messages',
-      'emailMessages', 'unmatchedCommunications', 'webhookLogs', 'auditLogs',
+      'emailMessages', 'unmatchedCommunications', 'webhookLogs', 'auditLogs', 'tableBookingLeads',
     ]))
     // It reads, and never writes.
     expect(client.writes).toEqual([])

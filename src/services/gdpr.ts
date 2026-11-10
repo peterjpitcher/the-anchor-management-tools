@@ -358,6 +358,7 @@ interface SubjectRows {
   pendingBookings: any[]
   smsPromoContext: any[]
   reviewFeedback: any[]
+  tableBookingLeads: any[]
 }
 
 async function readSubjectRows(
@@ -381,6 +382,7 @@ async function readSubjectRows(
     pendingBookings,
     smsPromoContext,
     reviewFeedback,
+    tableBookingLeads,
   ] = await Promise.all([
     fetchRowsByIdentity(adminClient, 'messages', identity, {
       idColumn: 'customer_id',
@@ -421,6 +423,13 @@ async function readSubjectRows(
     fetchRowsByIdentity(adminClient, 'review_feedback', identity, {
       emailColumns: ['customer_email'],
       phoneColumns: ['customer_phone'],
+    }, ids),
+    // An unfinished Christmas booking keeps its own copy of the name, email and mobile, and is
+    // often saved before the guest is a customer, so it is found by the details as well.
+    fetchRowsByIdentity(adminClient, 'table_booking_leads', identity, {
+      idColumn: 'customer_id',
+      emailColumns: ['email'],
+      phoneColumns: ['mobile_e164'],
     }, ids),
   ])
 
@@ -471,6 +480,7 @@ async function readSubjectRows(
     pendingBookings,
     smsPromoContext,
     reviewFeedback,
+    tableBookingLeads,
   }
 }
 
@@ -826,6 +836,7 @@ export class GdprService {
       pendingBookings: rows.pendingBookings,
       smsPromoContext: rows.smsPromoContext,
       reviewFeedback: rows.reviewFeedback,
+      tableBookingLeads: rows.tableBookingLeads,
       messages: rows.messages,
       emailMessages: rows.emailMessages,
       unmatchedCommunications: rows.unmatchedCommunications,
@@ -1010,6 +1021,7 @@ export class GdprService {
       parkingBookings: 0,
       pendingBookings: 0,
       reviewFeedback: 0,
+      tableBookingLeads: 0,
       unmatchedCommunications: 0,
       webhookLogs: 0,
       storageObjects: storagePaths.length,
@@ -1156,6 +1168,10 @@ export class GdprService {
       // scheduling records for a guest who no longer exists, so there is nothing
       // to preserve: removing them is both correct and collision-free.
       await deleteRows('bookingReminders', 'booking_reminders', rowIds(reminderRows))
+
+      // Deleted rather than scrubbed: a lead is nothing but the guest's details and the sitting they
+      // chose, and an unclaimed one could otherwise still be sent the Christmas follow-up email.
+      await deleteRows('tableBookingLeads', 'table_booking_leads', rowIds(rows.tableBookingLeads))
 
       await scrub('eventBookings', 'bookings', {
         attendee_names: null,
