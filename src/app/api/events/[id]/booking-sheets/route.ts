@@ -14,12 +14,16 @@ import {
   type EventBookingSheetData,
   type EventBookingSheetMenuItem,
 } from '@/lib/event-booking-sheet-template'
-import { resolveEventPaymentMode, resolveEventPriceAmount } from '@/lib/events/pricing'
+import { resolveEventPaymentMode, resolveEventPriceAmount, resolveEventTicketPriceAmount } from '@/lib/events/pricing'
 import {
   DOOR_LIST_EXCLUDED_STATUS_FILTER,
+  doorChargeDue,
   doorPaymentLabel,
+  doorPaymentTaken,
   isOnDoorList,
+  loadDoorChargeLines,
   loadDoorPayments,
+  type DoorChargeLine,
   type DoorPaymentRow,
 } from '@/lib/events/door-list'
 import {
@@ -210,8 +214,10 @@ function toSheetData(input: {
   bookedItems?: BookingItemWithTypeRow[]
   /** This booking's rows in the payments ledger, which says what was actually paid (BK-030). */
   payments: DoorPaymentRow[]
+  /** Every ticket line at the full price of its type, for the door price (EV-02). */
+  doorLines?: DoorChargeLine[]
 }): EventBookingSheetData {
-  const { event, booking, tableBooking, tableName, multiTypeItems, bookedItems, payments } = input
+  const { event, booking, tableBooking, tableName, multiTypeItems, bookedItems, payments, doorLines } = input
   const seats = Math.max(1, Number(booking.seats || 1))
   const pricePerSeat = resolveEventPriceAmount(event)
   const paymentMode = resolveEventPaymentMode(event)
@@ -233,10 +239,19 @@ function toSheetData(input: {
   const bookedAtPrice = !breakdownLines && !isFree && paymentMode === 'cash_only' && bookedItems && bookedItems.length === 1
     ? Number(bookedItems[0].unit_price)
     : null
-  const chargeAmount = breakdownLines && !isFree
-    ? resolveBookingChargeAmount(multiTypeItems ?? [])
-    : bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? Number((bookedAtPrice * seats).toFixed(2)) : pricePerSeat * seats
-  const unitPriceShown = bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? bookedAtPrice : pricePerSeat
+  // A booking still to pay on a night paid in advance pays the full door price at the bar, the
+  // amount Cash Paid records (doorChargeDue, EV-02). The sheet used to print the online price as due.
+  const doorDue = paymentMode === 'prepaid' && !isFree && !doorPaymentTaken(payments)
+    ? doorChargeDue(doorLines ?? [], resolveEventTicketPriceAmount(event), seats)
+    : null
+  const chargeAmount = doorDue !== null
+    ? doorDue
+    : breakdownLines && !isFree
+      ? resolveBookingChargeAmount(multiTypeItems ?? [])
+      : bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? Number((bookedAtPrice * seats).toFixed(2)) : pricePerSeat * seats
+  const unitPriceShown = doorDue !== null
+    ? Number((doorDue / seats).toFixed(2))
+    : bookedAtPrice !== null && Number.isFinite(bookedAtPrice) ? bookedAtPrice : pricePerSeat
   // From the ledger, not the payment method: a lapsed hold on a prepaid night used to print
   // "Paid online" (BK-030, customer bookings review of 24 October 2026).
   const paymentMethod = doorPaymentLabel({ paymentMode, isFree, payments, amountDue: chargeAmount })
@@ -251,7 +266,9 @@ function toSheetData(input: {
   // Fall back to the flat aggregate list if the line items carry no names.
   const attendeeNames = annotatedAttendeeNames.length > 0 ? annotatedAttendeeNames : legacyAttendeeNames
   const price = isFree ? 'Free' : formatCurrency(chargeAmount)
-  const priceNote = breakdownLines && !isFree
+  const priceNote = doorDue !== null && breakdownLines
+    ? `Door price: ${formatCurrency(doorDue)} for ${seats} guests`
+    : breakdownLines && !isFree
     ? `Event price: ${breakdownLines.map((line) => `${line.quantity} × ${line.typeName} at ${formatCurrency(line.unitPrice)}`).join(' · ')}`
     : isFree ? 'Event price: Free' : `Event price: ${formatCurrency(unitPriceShown)} per person · ${seats} guests`
 
@@ -315,6 +332,15 @@ export async function GET(_request: NextRequest, context: RouteContext) {
 
     const bookingIds = bookingRows.map((booking) => booking.id)
     const paymentsByBooking = await loadDoorPayments(admin, bookingIds)
+    let doorLinesByBooking = new Map<string, DoorChargeLine[]>()
+    if (resolveEventPaymentMode(event as EventRow) === 'prepaid') {
+      try {
+        doorLinesByBooking = await loadDoorChargeLines(admin, bookingIds)
+      } catch (linesError) {
+        // The sheets are needed at the door: fall back to the event's full price for each seat.
+        console.warn('Failed to load ticket lines for the booking sheet door price:', linesError)
+      }
+    }
 
     // Per-type line items for genuinely multi-type bookings (one batched query).
     // Display-only — a failure here must never block the booking sheets.
@@ -404,6 +430,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
         multiTypeItems: multiTypeItemsByBooking.get(booking.id),
         bookedItems: bookedItemsByBooking.get(booking.id),
         payments: paymentsByBooking.get(booking.id) ?? [],
+        doorLines: doorLinesByBooking.get(booking.id),
       })
     })
 

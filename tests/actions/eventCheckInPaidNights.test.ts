@@ -78,12 +78,13 @@ describe('kiosk lookup (BK-202)', () => {
 })
 
 describe('kiosk on a night paid in advance (BK-032, D12)', () => {
-  it('tells an unpaid booker what is due and sends them to the bar', async () => {
+  it('tells an unpaid booker the door price due and sends them to the bar', async () => {
+    // Booked at the £40 online price; the bar takes the full £45 ticket price (EV-02), as Cash Paid records.
     state.booking = { id: 'booking-1', seats: 2, status: 'pending_payment', attendees: [] }
-    state.items = [{ quantity: 2, unit_price: 40 }]
+    state.items = [{ booking_id: 'booking-1', quantity: 2, unit_price: 40, ticket_type: { base_price: 45 } }]
     const result = await lookupEventGuest({ eventId: EVENT_ID, phone: '07700900123' })
     if (!result.success || result.status !== 'known') throw new Error('expected a known guest')
-    expect(result.data.booking?.paymentDue).toEqual({ message: "Payment due: £80.00. Please see the bar and we'll check you in." })
+    expect(result.data.booking?.paymentDue).toEqual({ message: "Payment due: £90.00. Please see the bar and we'll check you in." })
   })
 
   it('will not check in an unpaid booker', async () => {

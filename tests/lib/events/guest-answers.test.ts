@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { doorPaymentLabel, isOnDoorList } from '@/lib/events/door-list'
+import { doorChargeDue, doorPaymentLabel, doorPaymentTaken, isOnDoorList } from '@/lib/events/door-list'
 import { eventBookingReference, hasGuestAnswers, summariseGuestAnswers } from '@/lib/events/guest-answers'
 import { generateKitchenSummaryPdf } from '@/lib/events/kitchen-summary-pdf'
 
@@ -42,6 +42,13 @@ describe('doorPaymentLabel', () => {
     expect(doorPaymentLabel({ ...prepaid, payments: [{ status: 'succeeded', payment_method: 'cash', amount: 90 }] })).toBe('Paid in cash')
     expect(doorPaymentLabel({ ...prepaid, payments: [{ status: 'succeeded', payment_method: 'card_terminal', amount: 90 }] })).toBe('Paid by card')
     expect(doorPaymentLabel({ ...prepaid, payments: [{ status: 'succeeded', payment_method: 'comp', amount: 0 }] })).toBe('No charge')
+  })
+  it('knows when the ledger shows the booking paid', () => {
+    expect(doorPaymentTaken([])).toBe(false)
+    expect(doorPaymentTaken([{ charge_type: 'prepaid_event', status: 'pending', payment_method: 'paypal', amount: 80 }])).toBe(false)
+    expect(doorPaymentTaken([{ charge_type: 'refund', status: 'succeeded', payment_method: 'paypal', amount: 80 }])).toBe(false)
+    expect(doorPaymentTaken([{ status: 'succeeded', payment_method: 'cash', amount: 90 }])).toBe(true)
+    expect(doorPaymentTaken([{ status: 'succeeded', payment_method: 'comp', amount: 0 }])).toBe(true)
   })
   it('never counts a refund row as paid', () => {
     expect(doorPaymentLabel({ ...prepaid, payments: [{ charge_type: 'refund', status: 'succeeded', payment_method: 'paypal', amount: 90 }] })).toBe('Not paid yet: £90.00 due')
@@ -136,3 +143,15 @@ describe('guests whose names are to follow', () => {
   })
 })
 
+
+// Owner decision EV-02: money taken at the pub is the full ticket price, never the online price.
+describe('doorChargeDue', () => {
+  it('charges each ticket line at the full price of its type, whatever it was booked at', () => {
+    expect(doorChargeDue([{ quantity: 4, base_price: '45.00' }], 45, 4)).toBe(180)
+    expect(doorChargeDue([{ quantity: 2, base_price: 45 }, { quantity: 1, base_price: '20' }], 45, 3)).toBe(110)
+  })
+  it("falls back to the event's full price for each seat when the booking has no lines", () => {
+    expect(doorChargeDue([], 45, 2)).toBe(90)
+    expect(doorChargeDue([], 45, null)).toBe(45)
+  })
+})
