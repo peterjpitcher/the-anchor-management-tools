@@ -177,9 +177,9 @@ describe('checkScheduledJobs', () => {
       expect(findMissedRun([], own, nowMs, nowMs - 24 * 60 * MINUTE, null, null)).toMatchObject({ from: null })
     })
 
-    it('gives the two jobs first watched in the staff training release a valid monitoredFrom', () => {
+    it('gives the jobs watched after recording began (staff training, Christmas funnel) a valid monitoredFrom', () => {
       const dated = MONITORED_CRON_JOBS.filter((job) => job.monitoredFrom !== undefined)
-      expect(dated.map((job) => job.jobName).sort()).toEqual(['signing-reminders', 'training-daily'])
+      expect(dated.map((job) => job.jobName).sort()).toEqual(['christmas-follow-ups', 'signing-reminders', 'training-daily'])
       for (const job of dated) expect(Number.isFinite(Date.parse(job.monitoredFrom as string))).toBe(true)
     })
   })
