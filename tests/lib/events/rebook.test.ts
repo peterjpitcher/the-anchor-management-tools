@@ -4,6 +4,7 @@ import {
   describeRebookBlock,
   rebookDoorCharge,
   rebookGuestSummaries,
+  rebookOnlineUnitPrice,
   rebookRefusal,
   rebookStoredGuests,
 } from '@/lib/events/rebook'
@@ -133,6 +134,21 @@ describe('rebookDoorCharge', () => {
     expect(rebookDoorCharge({ seats: 4, ticketBasePrice: 45, eventFullUnitPrice: 45 })).toBe(180)
     expect(rebookDoorCharge({ seats: 1, ticketBasePrice: '30.00', eventFullUnitPrice: 45 })).toBe(30)
     expect(rebookDoorCharge({ seats: 2, ticketBasePrice: null, eventFullUnitPrice: 45 })).toBe(90)
+  })
+})
+
+describe('rebookOnlineUnitPrice', () => {
+  const tastingNight = { payment_mode: 'prepaid', price: 45, online_discount_type: 'fixed', online_discount_value: 5, online_discount_ends_at: null }
+
+  it('is what a payment link charges per ticket: the price less the online discount', () => {
+    expect(rebookOnlineUnitPrice({ ticketBasePrice: null, doorUnitPrice: 45, event: tastingNight })).toBe(40)
+    expect(rebookOnlineUnitPrice({ ticketBasePrice: 30, doorUnitPrice: 30, event: tastingNight })).toBe(25)
+  })
+
+  it('offers nothing when online is no cheaper or the discount has ended', () => {
+    expect(rebookOnlineUnitPrice({ ticketBasePrice: null, doorUnitPrice: 45, event: { ...tastingNight, online_discount_value: null } })).toBeNull()
+    expect(rebookOnlineUnitPrice({ ticketBasePrice: null, doorUnitPrice: 45, event: { ...tastingNight, online_discount_ends_at: '2026-01-01T00:00:00Z' } })).toBeNull()
+    expect(rebookOnlineUnitPrice({ ticketBasePrice: null, doorUnitPrice: 45, event: { ...tastingNight, payment_mode: 'cash_only' } })).toBeNull()
   })
 })
 

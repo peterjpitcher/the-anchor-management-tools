@@ -52,6 +52,10 @@ const event = {
   price: 45,
   price_per_seat: null,
   is_free: false,
+  // Tasting night: £45 a ticket, £5 off online.
+  online_discount_type: 'fixed',
+  online_discount_value: 5,
+  online_discount_ends_at: null,
   booking_questions: [{ id: ALLERGY_ID, label: 'Allergies?', type: 'text', required: true }],
 }
 
@@ -186,6 +190,7 @@ describe('getEventRebookPreview', () => {
         seats: 2,
         guests: [{ id: 'g1', name: 'Helen Bhoobun' }, { id: 'g2', name: 'Amar Bhoobun' }],
         doorUnitPrice: 45,
+        onlineUnitPrice: 40,
         linkGoesBy: 'email',
         refusal: null,
       },
@@ -280,8 +285,21 @@ describe('rebookLapsedEventBooking', () => {
     const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
     expect(service.createBooking.mock.calls[0][0]).toMatchObject({ shouldSendSms: false, skipPendingPaymentMessage: true, customerId: 'customer-rupi' })
     expect(service.createBooking.mock.calls[0][0].attendees).toBeUndefined()
-    expect(eventsActions.markEventBookingPaidManually).toHaveBeenCalledWith({ bookingId: 'booking-new', method: 'cash', confirmedAmount: 180 })
+    expect(eventsActions.markEventBookingPaidManually).toHaveBeenCalledWith({ bookingId: 'booking-new', method: 'cash', confirmedAmount: 180, price: 'door' })
     expect(result).toMatchObject({ success: true, data: { state: 'confirmed', payment_recorded: true, payment_error: null, next_step_url: null } })
+  })
+
+  it('takes £160 cash for Rupi\'s four at the online price when staff give it (owner, 10 November 2026)', async () => {
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160, price: 'online' })
+    expect(eventsActions.markEventBookingPaidManually).toHaveBeenCalledWith({ bookingId: 'booking-new', method: 'cash', confirmedAmount: 160, price: 'online' })
+    expect(audit.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ additional_info: expect.objectContaining({ payment: 'cash', price: 'online' }) }))
+    expect(result).toMatchObject({ success: true, data: { state: 'confirmed', payment_recorded: true } })
+  })
+
+  it('refuses £180 at the online price before anything is booked', async () => {
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180, price: 'online' })
+    expect(result).toEqual({ error: 'The amount to take is now £160.00. Check it and try again.' })
+    expect(service.createBooking).not.toHaveBeenCalled()
   })
 
   it('says the booking is made but the payment is not, when recording the cash fails', async () => {
