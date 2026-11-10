@@ -1238,6 +1238,11 @@ type TableBookingCancellationNoticeParams = {
   bookingDate: string // YYYY-MM-DD format
   refundResult: TableBookingCancellationRefundResult
   tableBookingId: string
+  /**
+   * A lapsed Christmas deposit hold's "Finish my booking" link (issueLapsedHoldLead), shown in the
+   * email only. The raw token is kept out of the email log, and the text is unchanged.
+   */
+  finishBooking?: { url: string; rawToken: string } | null
 }
 
 /**
@@ -1327,6 +1332,7 @@ async function sendTableBookingCancelledEmailFirst(
       partySize: booking?.party_size ?? null,
       refundSentence: describeTableBookingCancellationRefund(params.refundResult),
       cancelledBy: params.refundResult.cancelledBy,
+      finishBookingUrl: params.finishBooking?.url ?? null,
     })
 
     return await notifyTableBookingGuestEmailFirst({
@@ -1345,6 +1351,7 @@ async function sendTableBookingCancelledEmailFirst(
         metadata: { booking_reference: params.bookingReference },
       },
       idempotencyKey: tableBookingCancelledEmailKey(params.tableBookingId, booking?.cancelled_at),
+      logRedactions: params.finishBooking ? [params.finishBooking.rawToken] : undefined,
       auditContext: {
         booking_reference: params.bookingReference,
         refunded: params.refundResult.refunded,

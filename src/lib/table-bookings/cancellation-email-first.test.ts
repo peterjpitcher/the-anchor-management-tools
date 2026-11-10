@@ -428,3 +428,87 @@ describe('cancellation email renders', () => {
     expect(email.text).not.toContain('Party size:')
   })
 })
+
+// Christmas funnel spec, owner decision 6: a lapsed Christmas deposit hold's cancellation email
+// carries a "Finish my booking" link. No new message: the same one email, and the text unchanged.
+describe('lapsed Christmas hold: Finish my booking link', () => {
+  const RAW = 'AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcde'
+  const FINISH_URL = `https://www.the-anchor.pub/book-table?christmas=1#resume=${RAW}`
+  const HOLD_EXPIRED = { refunded: false, reason: 'hold_expired' } as const
+
+  it('puts the link in the email as a button, and keeps the raw token out of the email log', async () => {
+    const db = buildDb(SARAH)
+    vi.mocked(createAdminClient).mockReturnValue(db.client as never)
+
+    await sendTableBookingCancelledSmsIfAllowed(db.client as never, {
+      customerId: 'cust-1',
+      bookingReference: BOOKING.booking_reference,
+      bookingDate: BOOKING.booking_date,
+      refundResult: HOLD_EXPIRED,
+      tableBookingId: BOOKING.id,
+      finishBooking: { url: FINISH_URL, rawToken: RAW },
+    })
+
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    expect(sendSMS).not.toHaveBeenCalled()
+    const options = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(options.html).toContain(`href="${FINISH_URL}"`)
+    expect(options.html).toContain('>Finish my booking</a>')
+    expect(options.text).toContain(`Finish my booking: ${FINISH_URL}`)
+    expect(options.logRedactions).toEqual([RAW])
+  })
+
+  it('sends the same email with no link and no redactions for every other cancellation', async () => {
+    const db = buildDb(SARAH)
+    vi.mocked(createAdminClient).mockReturnValue(db.client as never)
+
+    await sendTableBookingCancelledSmsIfAllowed(db.client as never, {
+      customerId: 'cust-1',
+      bookingReference: BOOKING.booking_reference,
+      bookingDate: BOOKING.booking_date,
+      refundResult: HOLD_EXPIRED,
+      tableBookingId: BOOKING.id,
+    })
+
+    const options = vi.mocked(sendEmail).mock.calls[0][0]
+    expect(options.html).not.toContain('Finish my booking')
+    expect(options.text).not.toContain('Finish my booking')
+    expect(options.logRedactions).toBeUndefined()
+  })
+
+  it('leaves the fallback text exactly as it was, with no link in it', async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Resend 500: internal server error' } as never)
+    const db = buildDb(SARAH)
+    vi.mocked(createAdminClient).mockReturnValue(db.client as never)
+
+    await sendTableBookingCancelledSmsIfAllowed(db.client as never, {
+      customerId: 'cust-1',
+      bookingReference: BOOKING.booking_reference,
+      bookingDate: BOOKING.booking_date,
+      refundResult: HOLD_EXPIRED,
+      tableBookingId: BOOKING.id,
+      finishBooking: { url: FINISH_URL, rawToken: RAW },
+    })
+
+    expect(sendSMS).toHaveBeenCalledTimes(1)
+    const body = vi.mocked(sendSMS).mock.calls[0][1]
+    expect(body).not.toContain(RAW)
+    expect(body).toContain("The deposit wasn't paid in time, so the table has been released.")
+  })
+
+  it('renders cleanly with the link', () => {
+    const email = buildTableBookingCancelledEmail({
+      firstName: 'Sarah',
+      bookingReference: 'TB-A1B2',
+      bookingDate: '2026-12-15',
+      bookingTime: '12:00:00',
+      partySize: 12,
+      refundSentence: describeTableBookingCancellationRefund(HOLD_EXPIRED),
+      finishBookingUrl: FINISH_URL,
+    })
+
+    assertCleanRender(email)
+    expect(email.text).toContain(`Date: ${expectedLongDate('2026-12-15')}`)
+    expect(email.text).toContain(`Finish my booking: ${FINISH_URL}`)
+  })
+})
