@@ -339,11 +339,7 @@
     },
     {
       "path": "/api/cron/christmas-follow-ups",
-      "schedule": "0 9 * * *"
-    },
-    {
-      "path": "/api/cron/christmas-follow-ups",
-      "schedule": "0 10 * * *"
+      "schedule": "0 9,10 * * *"
     }
   ]
 }

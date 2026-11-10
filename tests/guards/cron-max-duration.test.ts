@@ -38,6 +38,10 @@ function intervalMinutes(schedule: string): number | null {
     return null
   }
   if (/^\d+$/.test(minute) && /^\d+$/.test(hour)) return 1440
+  // A daily job at two neighbouring UTC hours, so one run lands on the same London hour in
+  // winter and in summer time (the job itself acts on one of them): still once a day.
+  const pair = /^(\d+),(\d+)$/.exec(hour)
+  if (/^\d+$/.test(minute) && pair && Number(pair[2]) - Number(pair[1]) === 1) return 1440
   return null
 }
 
@@ -62,6 +66,8 @@ describe('scheduled cron routes', () => {
     expect(intervalMinutes('*/15 * * * *')).toBe(15)
     expect(intervalMinutes('50 * * * *')).toBe(60)
     expect(intervalMinutes('0 9 * * *')).toBe(1440)
+    expect(intervalMinutes('0 9,10 * * *')).toBe(1440)
+    expect(intervalMinutes('0 9,12 * * *')).toBeNull()
     expect(intervalMinutes('0 9 * * 1-5')).toBeNull()
   })
 })
