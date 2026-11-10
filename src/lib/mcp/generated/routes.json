@@ -1129,6 +1129,15 @@
   "auth": "other"
  },
  {
+  "path": "/api/table-bookings/leads/opt-out",
+  "module": "api/table-bookings/leads/opt-out/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
   "path": "/api/training/export",
   "module": "api/training/export/route",
   "methods": [

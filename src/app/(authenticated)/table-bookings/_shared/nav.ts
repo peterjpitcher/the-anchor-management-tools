@@ -8,11 +8,13 @@ export const TABLE_BOOKINGS_NAV: HeaderNavItem[] = [
   { label: 'Back of House', href: '/table-bookings/boh' },
   { label: 'Front of House', href: '/table-bookings/foh' },
   { label: 'Reports', href: '/table-bookings/reports' },
+  { label: 'Christmas follow-ups', href: '/table-bookings/christmas-follow-ups' },
 ]
 
 /**
  * The tab row for one viewer: Reports shows only to somebody who can open it. Every page in the
- * row (Back of House and Reports) builds its tabs here, so they filter the same way. A booking's
+ * row (Back of House, Reports and Christmas follow-ups) builds its tabs here, so they filter the
+ * same way. Christmas follow-ups needs table_bookings view, which every viewer of the row has. A booking's
  * detail page is a child page: it shows the back button, not this row.
  */
 export function tableBookingsNav({ canViewReports }: { canViewReports: boolean }): HeaderNavItem[] {

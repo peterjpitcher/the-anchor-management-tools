@@ -1433,6 +1433,21 @@
   "readOnly": false
  },
  {
+  "name": "christmas-follow-ups.markChristmasLeadCalled",
+  "module": "christmas-follow-ups",
+  "export": "markChristmasLeadCalled",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ leadId: string; note?: string }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "",
+  "readOnly": false
+ },
+ {
   "name": "communications.ignoreUnmatchedCommunicationAction",
   "module": "communications",
   "export": "ignoreUnmatchedCommunicationAction",
