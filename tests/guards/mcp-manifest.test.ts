@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildMcpManifest, explainActionClassing, renderManifestFiles } from '@/lib/mcp/manifest/build'
+import { buildMcpManifest, renderManifestFiles } from '@/lib/mcp/manifest/build'
 import { ACTION_OVERRIDES } from '@/lib/mcp/action-overrides'
 
 /**
@@ -15,7 +15,9 @@ import { ACTION_OVERRIDES } from '@/lib/mcp/action-overrides'
  */
 
 const root = process.cwd()
-const manifest = buildMcpManifest(root, ACTION_OVERRIDES)
+// One scan for the whole file: it reads every action and what it calls, which is slow on a busy runner.
+const reasons = new Map<string, string>()
+const manifest = buildMcpManifest(root, ACTION_OVERRIDES, reasons)
 const files = renderManifestFiles(manifest)
 
 describe('MCP manifest', () => {
@@ -49,7 +51,6 @@ describe('MCP manifest', () => {
   it('sees writes made by the services and helpers an action calls', () => {
     // PR 334 review: these read-named actions change records further down the call chain
     // (training sync, a snowball eligibility insert, a payroll period created on first view).
-    const reasons = explainActionClassing(root, ACTION_OVERRIDES)
     const byName = new Map(manifest.actions.map((action) => [action.name, action]))
     for (const name of [
       'training.getEmployeeTraining',

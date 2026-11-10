@@ -833,21 +833,20 @@ function buildTables(root: string): ManifestTable[] {
 
 // ---------------------------------------------------------------------------------------------
 
-export function buildMcpManifest(root: string, overrides: Record<string, 'read' | 'write'> = {}): McpManifest {
+/**
+ * `reasons`, when given, is filled with why each action that is not read only is classed that
+ * way (the call chain behind a write), from the same scan.
+ */
+export function buildMcpManifest(
+  root: string,
+  overrides: Record<string, 'read' | 'write'> = {},
+  reasons?: Map<string, string>,
+): McpManifest {
   return {
-    actions: buildActions(root, overrides),
+    actions: buildActions(root, overrides, reasons),
     routes: buildRoutes(root),
     tables: buildTables(root),
   }
-}
-
-/**
- * Why each action that is not read only is classed that way, for `npm run mcp:manifest -- --why`.
- */
-export function explainActionClassing(root: string, overrides: Record<string, 'read' | 'write'> = {}): Map<string, string> {
-  const reasons = new Map<string, string>()
-  buildActions(root, overrides, reasons)
-  return reasons
 }
 
 export const GENERATED_DIR = 'src/lib/mcp/generated'
