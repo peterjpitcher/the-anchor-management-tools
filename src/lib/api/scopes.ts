@@ -46,6 +46,9 @@ const SCOPE_DEFINITIONS = [
   // POST /api/website/payment-failure-alert, which texts the pub's alert number, and
   // POST /api/website/booking-funnel, which records refused website bookings and form signals.
   { value: 'write:ops_alerts', label: 'Send Operations Alerts', usedByRoutes: true },
+  // POST /api/mcp: the agent bridge, which acts as the owner's own account and can therefore do
+  // anything he can in the app. Never granted by the '*' wildcard: it has to be ticked by name.
+  { value: 'mcp:full', label: 'Agent Access (MCP): act as the owner, full access', usedByRoutes: true },
   { value: 'write:events', label: 'Write Events', usedByRoutes: false },
   { value: 'write:performers', label: 'Write Performers', usedByRoutes: false },
   { value: 'write:menu', label: 'Write Menu', usedByRoutes: false },
