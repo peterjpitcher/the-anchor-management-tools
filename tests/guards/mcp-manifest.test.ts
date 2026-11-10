@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { buildMcpManifest, renderManifestFiles } from '@/lib/mcp/manifest/build'
+import { buildMcpManifest, explainActionClassing, renderManifestFiles } from '@/lib/mcp/manifest/build'
 import { ACTION_OVERRIDES } from '@/lib/mcp/action-overrides'
 
 /**
@@ -44,6 +44,36 @@ describe('MCP manifest', () => {
   it('every override names a real action', () => {
     const names = new Set(manifest.actions.map((action) => action.name))
     expect(Object.keys(ACTION_OVERRIDES).filter((name) => !names.has(name))).toEqual([])
+  })
+
+  it('sees writes made by the services and helpers an action calls', () => {
+    // PR 334 review: these read-named actions change records further down the call chain
+    // (training sync, a snowball eligibility insert, a payroll period created on first view).
+    const reasons = explainActionClassing(root, ACTION_OVERRIDES)
+    const byName = new Map(manifest.actions.map((action) => [action.name, action]))
+    for (const name of [
+      'training.getEmployeeTraining',
+      'training-portal.getMyTraining',
+      'event-check-in.lookupEventGuest',
+      'payroll.getPayrollMonthData',
+    ]) {
+      expect(byName.get(name)?.readOnly, `${name} must not be classed read only`).toBe(false)
+    }
+    expect(reasons.get('training.getEmployeeTraining')).toMatch(/syncAssignments/)
+    expect(reasons.get('payroll.getPayrollMonthData')).toMatch(/getOrCreatePayrollPeriodRecord/)
+  })
+
+  it('does not mistake hashes, signed URLs, read-only RPCs or pure helpers for writes', () => {
+    const byName = new Map(manifest.actions.map((action) => [action.name, action]))
+    for (const name of [
+      'invoices.getInvoiceSummary', // read-only RPC through the permission check
+      'invoicePayPalActions.getInvoicePortalLink', // HMAC-signed token
+      'expenses.getExpenseFiles', // storage signed URLs
+      'event-lifecycle.getEventLifecycleImpact', // refundBlock() is a pure helper
+      'auditLogs.listAuditLogUsers', // get_audit_log_users is STABLE
+    ]) {
+      expect(byName.get(name)?.readOnly, `${name} should be classed read only`).toBe(true)
+    }
   })
 
   it('never classes an obvious writer as read only', () => {

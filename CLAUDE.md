@@ -112,7 +112,7 @@ Never bypass these to get a message out. Treat every local run as production-cap
 **Owner rule: if anything is updated, the MCP server is updated as well.** In the same change:
 
 - Adding, renaming or removing a server action, an API route or a table, or changing an action's parameters: run `npm run mcp:manifest` and commit `src/lib/mcp/generated/`. `tests/guards/mcp-manifest.test.ts` fails until you do.
-- A new action: check its read-only classing in `src/lib/mcp/generated/actions.json`, and correct it in `src/lib/mcp/action-overrides.ts` if the heuristic got it wrong. Give it a doc comment: agents read it through `describe_action`.
+- A new action: check its read-only classing in `src/lib/mcp/generated/actions.json` (`npm run mcp:manifest -- --why <module.action>` shows what makes it a write), and correct it in `src/lib/mcp/action-overrides.ts` if the check got it wrong. A new read-only Postgres function an action reads through goes on `READ_ONLY_RPCS` in `src/lib/mcp/manifest/build.ts` only once its definition in production has been checked. Give it a doc comment: agents read it through `describe_action`.
 - A feature an agent cannot reach through an action, a staff route or `query_records` (a new kind of capability): add a tool in `src/lib/mcp/server.ts`, with a test in `tests/api/mcpRoute.test.ts`.
 - A change to how agents use it (tools, auth, the acting account): update `docs/agent-mcp.md`.
 

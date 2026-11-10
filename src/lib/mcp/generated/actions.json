@@ -129,7 +129,7 @@
   "params": [],
   "typeRefs": {},
   "doc": "",
-  "readOnly": false
+  "readOnly": true
  },
  {
   "name": "auth.signIn",
@@ -315,7 +315,7 @@
    "BulkRecipientFilters": "interface BulkRecipientFilters {\n  eventId?: string\n  bookingStatus?: 'with_bookings' | 'without_bookings'\n  smsOptIn: 'opted_in' | 'all'\n  categoryId?: string\n  createdAfter?: string    // ISO date\n  createdBefore?: string   // ISO date\n  search?: string\n  page?: number\n  pageSize?: number\n}"
   },
   "doc": "Fetches bulk SMS recipients from the database using the get_bulk_sms_recipients RPC.\nAll filtering (event, booking status, category, date range, search) is handled server-side.\nSearch wildcards are escaped before passing to prevent unintended ILIKE expansion.",
-  "readOnly": false
+  "readOnly": true
  },
  {
   "name": "bulk-messages.sendBulkMessages",
@@ -1657,7 +1657,7 @@
   ],
   "typeRefs": {},
   "doc": "What a merge would move, worked out by running it and rolling it back. Changes nothing.",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "customerEmailActions.sendCustomerEmail",
@@ -2161,7 +2161,7 @@
   ],
   "typeRefs": {},
   "doc": "",
-  "readOnly": false
+  "readOnly": true
  },
  {
   "name": "employeeActions.addEmergencyContact",
@@ -3043,7 +3043,7 @@
    "lookupSchema": "const lookupSchema = z.object({\n  eventId: z.string().uuid(),\n  phone: z.string().trim().min(3, 'Enter a phone number'),\n})"
   },
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "event-check-in.registerKnownGuest",
@@ -3388,7 +3388,7 @@
    "LifecycleAction": "type LifecycleAction = 'cancel' | 'postpone'"
   },
   "doc": "Who a cancellation or postponement would affect, for the confirm dialog (D8).",
-  "readOnly": false
+  "readOnly": true
  },
  {
   "name": "event-lifecycle.postponeEvent",
@@ -4107,7 +4107,7 @@
   ],
   "typeRefs": {},
   "doc": "Fetch file metadata + signed URLs for a given expense.\nNever accepts raw storage_path from the client — resolves by\nexpense_files.id after verifying permissions.",
-  "readOnly": false
+  "readOnly": true
  },
  {
   "name": "expenses.getExpenseInsights",
@@ -7259,7 +7259,7 @@
   ],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "oj-projects/recurring-charges.updateRecurringCharge",
@@ -7846,7 +7846,7 @@
   ],
   "typeRefs": {},
   "doc": "---------------------------------------------------------------------------\nGet payroll review data for a month\nReturns planned vs actual per hourly employee\n---------------------------------------------------------------------------",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "payroll.sendPayrollEmail",
@@ -8494,7 +8494,7 @@
   ],
   "typeRefs": {},
   "doc": "Generates a shareable, read-only customer portal link for a private booking.\nThe link embeds an HMAC-signed token — no login required for the customer.\nRequires the caller to be able to edit bookings or manage deposits.",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "privateBookingActions.getCancellationPreview",
@@ -10139,7 +10139,7 @@
   "params": [],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipt-rules.getReceiptSettings",
@@ -10166,7 +10166,7 @@
   "params": [],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipt-rules.previewReceiptRuleRun",
@@ -10653,7 +10653,7 @@
   ],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipts.getReceiptVendorCostReview",
@@ -10668,7 +10668,7 @@
   ],
   "typeRefs": {},
   "doc": "These two ask OpenAI to put the figures into words, which costs money. They used to need only\n`receipts:view`, so a view-only user could run up calls. They now need `receipts:manage`. The\nfigures themselves are on the vendor screens for everyone who can view.",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipts.getReceiptVendorDetail",
@@ -10683,7 +10683,7 @@
   ],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipts.getReceiptVendorMonthTransactions",
@@ -10698,7 +10698,7 @@
   ],
   "typeRefs": {},
   "doc": "",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "receipts.getReceiptVendorMovements",
@@ -13464,7 +13464,7 @@
   "params": [],
   "typeRefs": {},
   "doc": "---------------------------------------------------------------------------------------------\nActions\n---------------------------------------------------------------------------------------------\nRuns `syncAssignments({ employeeId: self })`, then lists what is due, waiting and done.",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "training-portal.prepareMyConfirmation",
@@ -13619,7 +13619,7 @@
   ],
   "typeRefs": {},
   "doc": "training:view. One person's Training tab; runs `syncAssignments({ employeeId })` first.",
-  "readOnly": true
+  "readOnly": false
  },
  {
   "name": "training.getTrainingActivity",
