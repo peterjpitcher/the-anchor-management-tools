@@ -1,5 +1,6 @@
 import type { BookingQuestion, StaffEventAttendeeInput } from '@/lib/events/booking-questions'
-import { resolveDoorChargeAmount } from '@/lib/events/ticket-types'
+import { resolveDoorChargeAmount, resolveTicketTypeSellPrice } from '@/lib/events/ticket-types'
+import { resolveEventPriceAmount } from '@/lib/events/pricing'
 
 /**
  * Rebooking a booking whose payment hold ran out (owner request, 9 November 2026).
@@ -147,6 +148,31 @@ export function rebookDoorCharge(input: {
     eventFullUnitPrice: input.eventFullUnitPrice,
     seats: input.seats,
   })
+}
+
+/**
+ * The online price of one ticket, which staff may give at the bar instead of the door price
+ * (owner, 10 November 2026: Rupi pays £160 for four, not £180). It is the price a payment link
+ * charges: the ticket type's price, or the event's, less the online discount. Null when it is no
+ * lower than the door price, so there is nothing to choose.
+ */
+export function rebookOnlineUnitPrice(input: {
+  ticketBasePrice: number | string | null
+  doorUnitPrice: number
+  event: {
+    payment_mode?: string | null
+    price?: number | string | null
+    price_per_seat?: number | string | null
+    is_free?: boolean | null
+    online_discount_type?: string | null
+    online_discount_value?: number | string | null
+    online_discount_ends_at?: string | null
+  }
+}): number | null {
+  const online = input.ticketBasePrice === null
+    ? resolveEventPriceAmount(input.event)
+    : resolveTicketTypeSellPrice(Number(input.ticketBasePrice), input.event)
+  return online > 0 && online < input.doorUnitPrice ? online : null
 }
 
 /** Why a booking cannot be rebooked, in words staff can act on; null when it can. */

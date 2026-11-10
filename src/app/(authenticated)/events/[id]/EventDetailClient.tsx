@@ -250,6 +250,9 @@ export default function EventDetailClient({
     method: 'cash' | 'card_terminal'
     amount: number | null
     seats: number | null
+    /** The online price staff may give instead (owner, 10 November 2026); null when none. */
+    onlineAmount: number | null
+    giveOnlinePrice: boolean
     error: string | null
   } | null>(null)
 
@@ -441,7 +444,7 @@ export default function EventDetailClient({
   const handleMarkPaid = useCallback(async (
     bookingId: string,
     method: 'cash' | 'card_terminal' | 'comp',
-    details: { confirmedAmount?: number; note?: string },
+    details: { confirmedAmount?: number; note?: string; price?: 'door' | 'online' },
   ): Promise<void> => {
     const result = await markEventBookingPaidManually({ bookingId, method, ...details })
     if ('error' in result) {
@@ -458,14 +461,14 @@ export default function EventDetailClient({
   }, [refreshBookings])
 
   const handleRequestDoorPayment = useCallback((bookingId: string, method: 'cash' | 'card_terminal') => {
-    setDoorPayment({ bookingId, method, amount: null, seats: null, error: null })
+    setDoorPayment({ bookingId, method, amount: null, seats: null, onlineAmount: null, giveOnlinePrice: false, error: null })
     getEventBookingDoorCharge(bookingId)
       .then((result) => {
         setDoorPayment((current) => {
           if (!current || current.bookingId !== bookingId) return current
           return 'error' in result
             ? { ...current, error: result.error }
-            : { ...current, amount: result.data.amount, seats: result.data.seats }
+            : { ...current, amount: result.data.amount, seats: result.data.seats, onlineAmount: result.data.onlineAmount }
         })
       })
       .catch(() => {
@@ -476,11 +479,19 @@ export default function EventDetailClient({
       })
   }, [])
 
+  // What the Cash Paid / Card Paid dialog will record: the door price, or the online price if ticked.
+  const doorPaymentAmount = doorPayment?.giveOnlinePrice && doorPayment.onlineAmount !== null
+    ? doorPayment.onlineAmount
+    : doorPayment?.amount ?? null
+
   const handleConfirmDoorPayment = useCallback(async (): Promise<void> => {
     if (!doorPayment || doorPayment.amount === null) {
       throw new Error(doorPayment?.error ?? 'Still working out the amount. Try again in a moment.')
     }
-    await handleMarkPaid(doorPayment.bookingId, doorPayment.method, { confirmedAmount: doorPayment.amount })
+    const online = doorPayment.giveOnlinePrice && doorPayment.onlineAmount !== null
+    await handleMarkPaid(doorPayment.bookingId, doorPayment.method, online
+      ? { confirmedAmount: doorPayment.onlineAmount ?? undefined, price: 'online' }
+      : { confirmedAmount: doorPayment.amount, price: 'door' })
   }, [doorPayment, handleMarkPaid])
 
   const handleConfirmComp = useCallback(async (): Promise<void> => {
@@ -884,14 +895,24 @@ export default function EventDetailClient({
           ) : doorPayment?.amount === null || doorPayment?.amount === undefined ? (
             <PageLoading inline label="Working out the amount" className="py-4" />
           ) : (
-            <p className="text-sm text-text">
-              Record {formatCurrency(doorPayment.amount)} paid{' '}
-              {doorPayment.method === 'card_terminal' ? 'by card' : 'in cash'} for{' '}
-              {doorPayment.seats === 1 ? '1 seat' : `${doorPayment.seats} seats`}? This confirms the booking.
-            </p>
+            <div className="space-y-3">
+              <p className="text-sm text-text">
+                Record {formatCurrency(doorPaymentAmount ?? doorPayment.amount)} paid{' '}
+                {doorPayment.method === 'card_terminal' ? 'by card' : 'in cash'} for{' '}
+                {doorPayment.seats === 1 ? '1 seat' : `${doorPayment.seats} seats`}? This confirms the booking.
+              </p>
+              {doorPayment.onlineAmount !== null && (
+                <Checkbox
+                  label={`Give the online price: ${formatCurrency(doorPayment.onlineAmount)} instead of ${formatCurrency(doorPayment.amount)}`}
+                  description="The door price is the usual rule. This is noted on the payment."
+                  checked={doorPayment.giveOnlinePrice}
+                  onChange={(checked) => setDoorPayment((current) => (current ? { ...current, giveOnlinePrice: checked } : current))}
+                />
+              )}
+            </div>
           )
         }
-        confirmLabel={doorPayment?.amount != null ? `Record ${formatCurrency(doorPayment.amount)}` : 'Record payment'}
+        confirmLabel={doorPaymentAmount != null ? `Record ${formatCurrency(doorPaymentAmount)}` : 'Record payment'}
         tone="primary"
       />
 

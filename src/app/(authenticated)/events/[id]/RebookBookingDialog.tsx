@@ -28,6 +28,8 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
   const [ticketsText, setTicketsText] = useState('')
   const [keep, setKeep] = useState<string[]>([])
   const [payment, setPayment] = useState<RebookPaymentChoice>('link')
+  // At the bar staff may give the online price instead of the door price (owner, 10 November 2026).
+  const [giveOnlinePrice, setGiveOnlinePrice] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   // A sent link stays on screen to read out or copy, as Add Booking does (BK-033).
@@ -39,6 +41,7 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
     setSubmitError(null)
     setOutcome(null)
     setPayment('link')
+    setGiveOnlinePrice(false)
     if (!bookingId) return
     let cancelled = false
     getEventRebookPreview(bookingId)
@@ -67,7 +70,10 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
   }, [ticketsText])
   const guests = preview?.guests ?? []
   const choosingGuests = tickets !== null && guests.length > tickets
-  const amount = preview && tickets !== null ? Number((preview.doorUnitPrice * tickets).toFixed(2)) : null
+  const onlineOffered = payment !== 'link' && preview?.onlineUnitPrice != null
+  const useOnlinePrice = onlineOffered && giveOnlinePrice
+  const unitPrice = preview ? (useOnlinePrice ? preview.onlineUnitPrice ?? preview.doorUnitPrice : preview.doorUnitPrice) : null
+  const amount = unitPrice !== null && tickets !== null ? Number((unitPrice * tickets).toFixed(2)) : null
 
   const ticketsError = ticketsText.trim() === '' || tickets !== null ? undefined : `Enter a number from 1 to ${REBOOK_MAX_TICKETS}.`
   const guestsError = choosingGuests && keep.length > (tickets ?? 0)
@@ -90,6 +96,7 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
         keepGuestIds: choosingGuests ? keep : undefined,
         payment,
         confirmedAmount: payment === 'link' ? undefined : amount ?? undefined,
+        ...(payment === 'link' ? {} : { price: useOnlinePrice ? 'online' as const : 'door' as const }),
       })
       if ('error' in result) {
         setSubmitError(result.error)
@@ -229,9 +236,19 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
             </div>
           </Fieldset>
 
-          {payment !== 'link' && amount !== null && (
+          {onlineOffered && preview.onlineUnitPrice != null && (
+            <Checkbox
+              label={`Give the online price: ${formatMoney(preview.onlineUnitPrice)} a ticket instead of ${formatMoney(preview.doorUnitPrice)}`}
+              description="The door price is the usual rule. This is noted on the payment."
+              checked={giveOnlinePrice}
+              onChange={setGiveOnlinePrice}
+              disabled={submitting || Boolean(outcome)}
+            />
+          )}
+
+          {payment !== 'link' && amount !== null && unitPrice !== null && (
             <Alert tone="info" size="sm">
-              Take {formatMoney(amount)}: {tickets === 1 ? '1 ticket' : `${tickets} tickets`} at {formatMoney(preview.doorUnitPrice)}, the door price.
+              Take {formatMoney(amount)}: {tickets === 1 ? '1 ticket' : `${tickets} tickets`} at {formatMoney(unitPrice)}, the {useOnlinePrice ? 'online' : 'door'} price.
             </Alert>
           )}
 

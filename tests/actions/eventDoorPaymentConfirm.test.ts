@@ -23,7 +23,9 @@ vi.mock('@/lib/events/manage-booking', () => ({
   processEventRefund: vi.fn(),
   updateEventBookingSeatsById: vi.fn(),
 }))
+const payments = vi.hoisted(() => ({ getEventAmountDueForBooking: vi.fn() }))
 vi.mock('@/lib/events/event-payments', () => ({
+  getEventAmountDueForBooking: payments.getEventAmountDueForBooking,
   sendEventBookingSeatUpdateSms: vi.fn(),
   sendEventPaymentConfirmationSms: vi.fn(async () => ({ success: true, code: null, logFailure: false })),
   sendEventPaymentManualReviewSms: vi.fn(async () => ({ success: true, code: null, logFailure: false })),
@@ -62,12 +64,22 @@ function seed(): FakeSupabase & { rpc: ReturnType<typeof vi.fn> } {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The payment link would charge the online price: £40 a ticket.
+  payments.getEventAmountDueForBooking.mockResolvedValue({ amount: 80, currency: 'GBP', holdExpiresAt: '2026-11-11T12:00:00Z' })
 })
 
 describe('door payments and comps (BK-217)', () => {
   it('shows the amount Cash Paid would record: the full door price for the seats', async () => {
     seed()
-    expect(await getEventBookingDoorCharge(BOOKING)).toEqual({ success: true, data: { amount: 90, seats: 2 } })
+    expect(await getEventBookingDoorCharge(BOOKING)).toEqual({ success: true, data: { amount: 90, seats: 2, onlineAmount: 80 } })
+  })
+
+  it('offers no online price when the link would charge no less than the door', async () => {
+    seed()
+    payments.getEventAmountDueForBooking.mockResolvedValue(null)
+    expect(await getEventBookingDoorCharge(BOOKING)).toMatchObject({ data: { amount: 90, onlineAmount: null } })
+    payments.getEventAmountDueForBooking.mockResolvedValue({ amount: 90, currency: 'GBP', holdExpiresAt: '2026-11-11T12:00:00Z' })
+    expect(await getEventBookingDoorCharge(BOOKING)).toMatchObject({ data: { amount: 90, onlineAmount: null } })
   })
 
   it('refuses a comp with no reason', async () => {
@@ -107,5 +119,31 @@ describe('door payments and comps (BK-217)', () => {
     expect(db.rpc).toHaveBeenCalledWith('confirm_event_manual_payment_v01', expect.objectContaining({
       p_payment_method: 'cash', p_amount: 90,
     }))
+  })
+
+  it('records the online price when staff give it, and notes it on the payment (owner, 10 November 2026)', async () => {
+    const db = seed()
+    const result = await markEventBookingPaidManually({ bookingId: BOOKING, method: 'cash', confirmedAmount: 80, price: 'online' })
+    expect(result).toMatchObject({ success: true, data: { state: 'confirmed' } })
+    expect(db.rpc).toHaveBeenCalledWith('confirm_event_manual_payment_v01', expect.objectContaining({
+      p_payment_method: 'cash', p_amount: 80, p_note: 'Online price given at the bar',
+    }))
+  })
+
+  it('refuses the door figure when staff chose the online price, and the online one when they did not', async () => {
+    const db = seed()
+    expect(await markEventBookingPaidManually({ bookingId: BOOKING, method: 'cash', confirmedAmount: 90, price: 'online' }))
+      .toEqual({ error: 'The amount to record is now £80.00. Check it and try again.' })
+    expect(await markEventBookingPaidManually({ bookingId: BOOKING, method: 'cash', confirmedAmount: 80 }))
+      .toEqual({ error: 'The amount to record is now £90.00. Check it and try again.' })
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('refuses the online price when it cannot be worked out', async () => {
+    const db = seed()
+    payments.getEventAmountDueForBooking.mockResolvedValue(null)
+    expect(await markEventBookingPaidManually({ bookingId: BOOKING, method: 'card_terminal', confirmedAmount: 80, price: 'online' }))
+      .toEqual({ error: 'The online price could not be worked out for this booking. Record the door price instead.' })
+    expect(db.rpc).not.toHaveBeenCalled()
   })
 })

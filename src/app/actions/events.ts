@@ -34,7 +34,7 @@ import {
   type EventRefundRequestKind
 } from '@/lib/events/refund-requests'
 import { canIssueEventRefund } from '@/lib/events/refund-permissions'
-import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
+import { getEventAmountDueForBooking, sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { notifyEventPaymentOutcome } from '@/lib/events/event-payment-notify'
 import {
   sendEventBookingCancelledEmail,
@@ -2387,6 +2387,12 @@ const markEventBookingPaidSchema = z.object({
    * refused if the door price has changed since, so nothing is recorded that nobody saw.
    */
   confirmedAmount: z.number().nonnegative().optional(),
+  /**
+   * Cash or card only: 'online' gives the guest the online price, the figure their payment link
+   * charges, instead of the door price (owner, 10 November 2026: Rupi pays £160, not £180). The
+   * door price stays the default (EV-02); the choice is noted on the payment and the audit row.
+   */
+  price: z.enum(['door', 'online']).optional().default('door'),
   sendSms: z.boolean().optional().default(true)
 })
   // A free booking must be explainable later (BK-217): a comp needs a reason.
@@ -2435,10 +2441,33 @@ async function resolveManualDoorChargeAmount(
   })
 }
 
-/** The amount Cash Paid or Card Paid would record, shown to staff before they confirm (BK-217). */
+/** The booking's online price, as its payment link charges it; null when it cannot be worked out. */
+async function resolveOnlineChargeAmount(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+): Promise<number | null> {
+  try {
+    const due = await getEventAmountDueForBooking(supabase, bookingId)
+    return due && due.amount > 0 ? due.amount : null
+  } catch (error) {
+    logger.warn('Could not work out the online price for a door payment', {
+      metadata: { bookingId, error: error instanceof Error ? error.message : String(error) },
+    })
+    return null
+  }
+}
+
+/** What a door payment records when staff give the online price, noted on the payment. */
+const ONLINE_PRICE_AT_BAR_NOTE = 'Online price given at the bar'
+
+/**
+ * The amount Cash Paid or Card Paid would record, shown to staff before they confirm (BK-217),
+ * and the online price they may give instead: the figure the booking's payment link charges, or
+ * null when it is no lower than the door price or cannot be worked out.
+ */
 export async function getEventBookingDoorCharge(
   bookingId: string
-): Promise<{ error: string } | { success: true; data: { amount: number; seats: number } }> {
+): Promise<{ error: string } | { success: true; data: { amount: number; seats: number; onlineAmount: number | null } }> {
   try {
     const canManageEvents = await checkUserPermission('events', 'manage')
     if (!canManageEvents) {
@@ -2464,7 +2493,8 @@ export async function getEventBookingDoorCharge(
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seats = Math.max(1, Number(bookingRow.seats || 1))
     const amount = await resolveManualDoorChargeAmount(supabase, bookingId, eventRecord ?? null, seats)
-    return { success: true, data: { amount, seats } }
+    const online = await resolveOnlineChargeAmount(supabase, bookingId)
+    return { success: true, data: { amount, seats, onlineAmount: online !== null && online < amount ? online : null } }
   } catch (error) {
     logger.error('Failed to work out the door charge for an event booking', {
       error: error instanceof Error ? error : new Error(String(error)),
@@ -2495,6 +2525,8 @@ export async function markEventBookingPaidManually(input: {
   note?: string
   /** Required for cash or card: the amount staff confirmed on screen (BK-217). */
   confirmedAmount?: number
+  /** Cash or card: the door price (default) or the online price the payment link charges. */
+  price?: 'door' | 'online'
   sendSms?: boolean
 }): Promise<MarkEventBookingPaidResult> {
   try {
@@ -2532,9 +2564,22 @@ export async function markEventBookingPaidManually(input: {
     const eventRecord = Array.isArray(bookingRow.event) ? bookingRow.event[0] : bookingRow.event
     const seatCount = Math.max(1, Number(bookingRow.seats || 1))
 
-    const expectedAmount = parsed.data.method === 'comp'
-      ? 0
-      : await resolveManualDoorChargeAmount(supabase, parsed.data.bookingId, eventRecord ?? null, seatCount)
+    const giveOnlinePrice = parsed.data.method !== 'comp' && parsed.data.price === 'online'
+    let expectedAmount: number
+    if (parsed.data.method === 'comp') {
+      expectedAmount = 0
+    } else if (giveOnlinePrice) {
+      const online = await resolveOnlineChargeAmount(supabase, parsed.data.bookingId)
+      if (online === null) {
+        return { error: 'The online price could not be worked out for this booking. Record the door price instead.' }
+      }
+      expectedAmount = online
+    } else {
+      expectedAmount = await resolveManualDoorChargeAmount(supabase, parsed.data.bookingId, eventRecord ?? null, seatCount)
+    }
+    const paymentNote = giveOnlinePrice
+      ? [ONLINE_PRICE_AT_BAR_NOTE, parsed.data.note].filter(Boolean).join('. ')
+      : parsed.data.note || null
 
     // Record only the amount staff confirmed on screen (BK-217).
     if (
@@ -2554,7 +2599,7 @@ export async function markEventBookingPaidManually(input: {
         p_amount: expectedAmount,
         p_currency: 'GBP',
         p_performed_by: user.id,
-        p_note: parsed.data.note || null
+        p_note: paymentNote
       }
     )
 
@@ -2615,7 +2660,8 @@ export async function markEventBookingPaidManually(input: {
         event_id: bookingRow.event_id,
         method: parsed.data.method,
         amount: expectedAmount,
-        note: parsed.data.note || null,
+        price: parsed.data.method === 'comp' ? null : parsed.data.price,
+        note: paymentNote,
         state,
         reason
       }

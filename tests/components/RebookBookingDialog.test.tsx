@@ -18,6 +18,7 @@ const helen = {
   seats: 2,
   guests: [{ id: 'g1', name: 'Helen Bhoobun' }, { id: 'g2', name: 'Amar Bhoobun' }],
   doorUnitPrice: 45,
+  onlineUnitPrice: 40 as number | null,
   linkGoesBy: 'email' as const,
   refusal: null,
 }
@@ -67,9 +68,28 @@ describe('RebookBookingDialog', () => {
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
     expect(screen.getByText('Take £90.00: 2 tickets at £45.00, the door price.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
-    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 90, seats: 2 })))
+    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 90, seats: 2, price: 'door' })))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(onDone).toHaveBeenCalled()
+  })
+
+  it('lets staff give the online price at the bar and sends that figure (owner, 10 November 2026)', async () => {
+    render(<RebookBookingDialog bookingId="booking-helen" onClose={vi.fn()} onDone={vi.fn()} />)
+    await screen.findByLabelText('Tickets')
+    expect(screen.queryByLabelText(/Give the online price/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Cash at the bar now'))
+    fireEvent.click(screen.getByLabelText('Give the online price: £40.00 a ticket instead of £45.00'))
+    expect(screen.getByText('Take £80.00: 2 tickets at £40.00, the online price.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £80.00' }))
+    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 80, price: 'online' })))
+  })
+
+  it('offers no online price when the event has none', async () => {
+    actions.getEventRebookPreview.mockResolvedValue({ success: true, data: { ...helen, onlineUnitPrice: null } })
+    render(<RebookBookingDialog bookingId="booking-helen" onClose={vi.fn()} onDone={vi.fn()} />)
+    await screen.findByLabelText('Tickets')
+    fireEvent.click(screen.getByLabelText('Cash at the bar now'))
+    expect(screen.queryByLabelText(/Give the online price/)).not.toBeInTheDocument()
   })
 
   it('keeps the dialog open with the error when the booking cannot be made', async () => {

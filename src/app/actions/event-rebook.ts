@@ -19,6 +19,7 @@ import {
   describeRebookBlock,
   rebookDoorCharge,
   rebookGuestSummaries,
+  rebookOnlineUnitPrice,
   rebookRefusal,
   rebookStoredGuests,
   type RebookGuestSummary,
@@ -54,6 +55,9 @@ type LapsedBookingRow = {
     price: number | string | null
     price_per_seat: number | string | null
     is_free: boolean | null
+    online_discount_type: string | null
+    online_discount_value: number | string | null
+    online_discount_ends_at: string | null
     booking_questions: unknown
   } | null
 }
@@ -66,6 +70,8 @@ type LapsedBookingContext = {
   ticketTypeId: string | null
   ticketBasePrice: number | string | null
   eventFullUnitPrice: number
+  /** One ticket at the online price staff may give at the bar; null when it is not lower. */
+  onlineUnitPrice: number | null
   refusal: string | null
 }
 
@@ -77,7 +83,7 @@ function one<T>(value: T | T[] | null | undefined): T | null {
 async function loadLapsedBooking(supabase: AdminClient, bookingId: string): Promise<{ error: string } | LapsedBookingContext> {
   const { data, error } = await supabase
     .from('bookings')
-    .select('id, event_id, customer_id, status, seats, is_reminder_only, event_seating_type, attendees, attendee_names, contact_email, customer:customers(id, first_name, last_name, mobile_number, mobile_e164, email), event:events(id, name, booking_mode, payment_mode, price, price_per_seat, is_free, booking_questions)')
+    .select('id, event_id, customer_id, status, seats, is_reminder_only, event_seating_type, attendees, attendee_names, contact_email, customer:customers(id, first_name, last_name, mobile_number, mobile_e164, email), event:events(id, name, booking_mode, payment_mode, price, price_per_seat, is_free, online_discount_type, online_discount_value, online_discount_ends_at, booking_questions)')
     .eq('id', bookingId)
     .maybeSingle()
   if (error) {
@@ -130,6 +136,15 @@ async function loadLapsedBooking(supabase: AdminClient, bookingId: string): Prom
     ticketTypeId: typeIds.length === 1 ? typeIds[0] : null,
     ticketBasePrice: typeIds.length === 1 ? firstType?.base_price ?? null : null,
     eventFullUnitPrice: resolveEventTicketPriceAmount(booking.event as unknown as Event),
+    onlineUnitPrice: rebookOnlineUnitPrice({
+      ticketBasePrice: typeIds.length === 1 ? firstType?.base_price ?? null : null,
+      doorUnitPrice: rebookDoorCharge({
+        seats: 1,
+        ticketBasePrice: typeIds.length === 1 ? firstType?.base_price ?? null : null,
+        eventFullUnitPrice: resolveEventTicketPriceAmount(booking.event as unknown as Event),
+      }),
+      event: booking.event,
+    }),
     refusal: rebookRefusal({
       status: booking.status,
       isReminderOnly: booking.is_reminder_only,
@@ -146,6 +161,8 @@ export type EventRebookPreview = {
   guests: RebookGuestSummary[]
   /** The door price of one ticket, what cash or card at the bar records per ticket (EV-02). */
   doorUnitPrice: number
+  /** One ticket at the online price, which staff may give at the bar instead; null when not lower. */
+  onlineUnitPrice: number | null
   /** Where a payment link would go: by email when there is an address, otherwise by text. */
   linkGoesBy: 'email' | 'text' | null
   /** Why it cannot be rebooked, in words staff can act on; null when it can. */
@@ -177,6 +194,7 @@ export async function getEventRebookPreview(
         seats: Math.max(1, Number(booking.seats ?? 1)),
         guests: rebookGuestSummaries(loaded.storedGuests),
         doorUnitPrice: rebookDoorCharge({ seats: 1, ticketBasePrice: loaded.ticketBasePrice, eventFullUnitPrice: loaded.eventFullUnitPrice }),
+        onlineUnitPrice: loaded.onlineUnitPrice,
         linkGoesBy: hasEmail ? 'email' : hasMobile ? 'text' : null,
         refusal: loaded.refusal,
       },
@@ -197,6 +215,8 @@ const rebookSchema = z.object({
   payment: z.enum(['link', 'cash', 'card_terminal']),
   /** For cash or card: the amount staff confirmed on screen (BK-217). */
   confirmedAmount: z.number().nonnegative().optional(),
+  /** For cash or card: the door price (default, EV-02) or the online price (owner, 10 November 2026). */
+  price: z.enum(['door', 'online']).optional().default('door'),
 }).refine((value) => value.payment === 'link' || value.confirmedAmount !== undefined, {
   message: 'Confirm the amount taken before rebooking.',
   path: ['confirmedAmount'],
@@ -288,6 +308,7 @@ export async function rebookLapsedEventBooking(input: {
   keepGuestIds?: string[]
   payment: 'link' | 'cash' | 'card_terminal'
   confirmedAmount?: number
+  price?: 'door' | 'online'
 }): Promise<RebookResult> {
   try {
     if (!(await checkUserPermission('events', 'manage'))) {
@@ -315,9 +336,15 @@ export async function rebookLapsedEventBooking(input: {
     }
 
     // Cash or card: check the figure staff confirmed before anything is booked (BK-217).
-    const doorCharge = rebookDoorCharge({ seats, ticketBasePrice: loaded.ticketBasePrice, eventFullUnitPrice: loaded.eventFullUnitPrice })
-    if (payment !== 'link' && Math.round((parsed.data.confirmedAmount ?? -1) * 100) !== Math.round(doorCharge * 100)) {
-      return { error: `The amount to take is now ${formatMoney(doorCharge)}. Check it and try again.` }
+    const giveOnlinePrice = payment !== 'link' && parsed.data.price === 'online'
+    if (giveOnlinePrice && loaded.onlineUnitPrice === null) {
+      return { error: 'This event has no lower online price. Take the door price instead.' }
+    }
+    const barCharge = giveOnlinePrice
+      ? Number(((loaded.onlineUnitPrice ?? 0) * seats).toFixed(2))
+      : rebookDoorCharge({ seats, ticketBasePrice: loaded.ticketBasePrice, eventFullUnitPrice: loaded.eventFullUnitPrice })
+    if (payment !== 'link' && Math.round((parsed.data.confirmedAmount ?? -1) * 100) !== Math.round(barCharge * 100)) {
+      return { error: `The amount to take is now ${formatMoney(barCharge)}. Check it and try again.` }
     }
 
     const questionsParsed = bookingQuestionsSchema.safeParse(event.booking_questions ?? [])
@@ -381,6 +408,7 @@ export async function rebookLapsedEventBooking(input: {
         seats_before: booking.seats,
         seats,
         payment,
+        ...(payment === 'link' ? {} : { price: giveOnlinePrice ? 'online' : 'door' }),
         guests_carried: carried.attendees?.filter((guest) => guest.name.trim()).length ?? 0,
         written_off_payment_ids: writtenOff,
       },
@@ -394,6 +422,7 @@ export async function rebookLapsedEventBooking(input: {
         bookingId: newBookingId,
         method: payment,
         confirmedAmount: parsed.data.confirmedAmount,
+        price: giveOnlinePrice ? 'online' : 'door',
       })
       if ('error' in paid) {
         paymentError = `The booking is made but the payment was not recorded: ${paid.error} Use ${payment === 'cash' ? 'Cash Paid' : 'Card Paid'} on the new booking.`
@@ -402,7 +431,7 @@ export async function rebookLapsedEventBooking(input: {
       } else if (paid.data.state === 'manual_review') {
         // The money is recorded but the booking stays waiting for payment: never report it confirmed.
         paymentRecorded = true
-        needsReview = `The ${formatMoney(doorCharge)} is recorded, but the booking is not confirmed because ${describeReviewReason(paid.data.reason)}. A manager needs to check it; it shows as waiting for payment until then.`
+        needsReview = `The ${formatMoney(barCharge)} is recorded, but the booking is not confirmed because ${describeReviewReason(paid.data.reason)}. A manager needs to check it; it shows as waiting for payment until then.`
       } else {
         paymentRecorded = true
       }
