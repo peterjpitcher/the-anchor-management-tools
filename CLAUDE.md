@@ -105,6 +105,19 @@ SMS safety (`src/lib/sms/`): idempotency claims, global and per-recipient hourly
 
 Never bypass these to get a message out. Treat every local run as production-capable: those flags are the only guard between a script and a customer's phone or inbox.
 
+## Agent access (MCP): keep it in step
+
+`POST /api/mcp` lets Peter's agents view and change everything in the app as Peter's own account (owner decision, 10 November 2026: everything, contact details included, for his use only). It is a bridge over the app's own server actions, staff API routes and tables, so the app's rules apply to agents unchanged. How it works and how to connect an agent: `docs/agent-mcp.md`.
+
+**Owner rule: if anything is updated, the MCP server is updated as well.** In the same change:
+
+- Adding, renaming or removing a server action, an API route or a table, or changing an action's parameters: run `npm run mcp:manifest` and commit `src/lib/mcp/generated/`. `tests/guards/mcp-manifest.test.ts` fails until you do.
+- A new action: check its read-only classing in `src/lib/mcp/generated/actions.json`, and correct it in `src/lib/mcp/action-overrides.ts` if the heuristic got it wrong. Give it a doc comment: agents read it through `describe_action`.
+- A feature an agent cannot reach through an action, a staff route or `query_records` (a new kind of capability): add a tool in `src/lib/mcp/server.ts`, with a test in `tests/api/mcpRoute.test.ts`.
+- A change to how agents use it (tools, auth, the acting account): update `docs/agent-mcp.md`.
+
+Never point `MCP_ACTING_USER_ID` at anyone but Peter, and never let the `*` wildcard grant `mcp:full`.
+
 ## Scheduled jobs
 
 `vercel.json` is the source of truth for crons; do not trust any list in docs. Every cron route authenticates through `src/lib/cron-auth.ts` (`Authorization: Bearer CRON_SECRET`; `CRON_SECRET` is mandatory in production). Deferred work goes through the job queue (`src/lib/background-jobs.ts`, drained by `/api/jobs/process`). Writes made by webhooks and crons are attributed to `SYSTEM_USER_ID` (nil UUID by default). Cron failures email `CRON_ALERT_EMAIL` when it is set.
