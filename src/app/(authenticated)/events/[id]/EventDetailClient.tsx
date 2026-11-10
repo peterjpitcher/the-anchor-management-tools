@@ -86,6 +86,7 @@ import {
   describeEventBookingPayment,
   describeEventBookingSeats,
   describeEventBookingStatus,
+  canEditEventBookingGuestDetails,
   hasEventBookingGuestDetails,
   isChangeableEventBooking,
 } from '@/lib/events/booking-list-display'
@@ -965,7 +966,7 @@ export default function EventDetailClient({
         booking={addDetailsBooking}
         questions={event?.booking_questions ?? []}
         eventTakesGuestDetails={event ? requiresGuestDetails(event) : false}
-        canEdit={permissions.canManage}
+        canEdit={permissions.canManage && addDetailsBooking !== null && canEditEventBookingGuestDetails(addDetailsBooking)}
         onClose={() => setAddDetailsBooking(null)}
         onSaved={refreshBookings}
       />
@@ -1344,7 +1345,7 @@ function AttendeesTab({
     // 2026). Anyone who can see the page can read them, as they could in the list; only managers edit.
     const guestDetailsButton = hasEventBookingGuestDetails(booking, eventTakesGuestDetails) ? (
       <Button size="sm" variant="ghost" onClick={() => onEditNames(booking)}>
-        {canManage && eventTakesGuestDetails && !booking.attendees?.length ? 'Add Guest Details' : 'Guest Details'}
+        {canManage && eventTakesGuestDetails && !booking.attendees?.length && canEditEventBookingGuestDetails(booking) ? 'Add Guest Details' : 'Guest Details'}
       </Button>
     ) : null
     if (!canManage) return guestDetailsButton
