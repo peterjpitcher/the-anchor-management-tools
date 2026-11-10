@@ -1,10 +1,9 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const WORKFLOW_FILES = [
-  '.github/workflows/cron-jobs.yml',
-  '.github/workflows/table-booking-monitoring.yml',
-]
+// vercel.json is the only cron scheduler. The GitHub Actions copies were removed on
+// 10 November 2026 because they duplicated it and used up the Actions allowance.
+const SCHEDULE_FILES = ['vercel.json']
 
 const LEGACY_BOOKING_ENDPOINTS = [
   '/api/cron/table-booking-reminders',
@@ -20,10 +19,10 @@ const RETIRED_BOOKING_ENDPOINTS = [
   '/api/cron/sunday-lunch-prep',
 ]
 
-describe('booking cron workflow endpoint mapping', () => {
+describe('booking cron schedule endpoint mapping', () => {
   it('uses existing cron routes and does not reference removed booking cron paths', () => {
-    for (const relativeWorkflowPath of WORKFLOW_FILES) {
-      const workflowPath = path.resolve(process.cwd(), relativeWorkflowPath)
+    for (const relativeSchedulePath of SCHEDULE_FILES) {
+      const workflowPath = path.resolve(process.cwd(), relativeSchedulePath)
       const workflowContent = fs.readFileSync(workflowPath, 'utf8')
 
       for (const legacyEndpoint of LEGACY_BOOKING_ENDPOINTS) {
