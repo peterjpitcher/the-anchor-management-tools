@@ -237,7 +237,7 @@ describe('public table bookings route: the Christmas payloads', () => {
 describe('public table bookings route: Christmas refusals', () => {
   it.each([
     ['Christmas bookings are for 4 guests or more.', 2, 'CHRISTMAS_PARTY_TOO_SMALL', 'are for 4 guests or more'],
-    // Raised by core until 20261110185254; still matched for a request in flight as it lands.
+    // Raised by core until 20261110195056; still matched for a request in flight as it lands.
     [
       'Christmas bookings for more than 20 guests are arranged as private hire. Please call us.',
       30,

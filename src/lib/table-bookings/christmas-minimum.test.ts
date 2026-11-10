@@ -83,7 +83,7 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
     const range = /IF v_party NOT BETWEEN (\d+) AND (\d+) THEN/.exec(body)
     expect(range, `${file} has no Christmas party-size range`).toBeTruthy()
     expect(Number(range![1])).toBe(CHRISTMAS_MIN_PARTY_SIZE)
-    // Since 20261110185254_christmas_online_26 (owner decision of 10 November 2026) the top of the
+    // Since 20261110195056_christmas_online_26 (owner decision of 10 November 2026) the top of the
     // range is the online Christmas ceiling setting, patched into that definition in place, so the
     // newest migration that patches it in says the range production runs.
     const ceiling =

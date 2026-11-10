@@ -1,4 +1,4 @@
--- Rollback for 20261110185254_christmas_online_26.sql. Puts create_table_booking_public_v06,
+-- Rollback for 20261110195056_christmas_online_26.sql. Puts create_table_booking_public_v06,
 -- create_table_booking_core_v06, create_table_booking_christmas_v01, check_table_availability_v06
 -- and create_table_booking_staff_v06 back exactly as production held them on 10 November 2026 (each
 -- patched passage replaced by the original, last step first), deletes the

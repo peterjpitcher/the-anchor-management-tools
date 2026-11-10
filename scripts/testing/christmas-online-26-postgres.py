@@ -34,7 +34,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[2]
 PG = Path(os.environ.get('PG_BIN', '/opt/homebrew/bin'))
 MIGRATIONS = ROOT / 'supabase/migrations'
-MIGRATION = MIGRATIONS / '20261110185254_christmas_online_26.sql'
+MIGRATION = MIGRATIONS / '20261110195056_christmas_online_26.sql'
 ROLLBACK = ROOT / 'tasks/christmas-funnel/rollback-r1.sql'
 LONE_PARTY = MIGRATIONS / '20261016180511_kitchen_pacing_lone_party.sql'
 KITCHEN_FOOD = MIGRATIONS / '20261027133140_kitchen_pacing_counts_hire_and_event_food.sql'
