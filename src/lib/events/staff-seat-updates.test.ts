@@ -285,7 +285,7 @@ describe('Christmas amendment preflight', () => {
     const { client } = createSupabaseStub({ data: null, error: null })
     await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
       tableBookingId: 'tb-1', partySize: 3, autoMoveTable: true, christmasCourseCounts: [1, 1, 1]
-    })).rejects.toThrow('Christmas bookings are for 4 to 20 guests.')
+    })).rejects.toThrow('Christmas bookings are for 4 to 26 guests.')
     expect(mockedMoveToTables).not.toHaveBeenCalled()
   })
   it('rejects a course change after the deadline before moving tables', async () => {
@@ -299,7 +299,7 @@ describe('Christmas amendment preflight', () => {
   })
 })
 
-// BK-053: the 4 to 20 rule holds on every Christmas amendment, not only those with courses recorded.
+// BK-053: the 4-guest minimum holds on every Christmas amendment, not only those with courses recorded.
 describe('Christmas booking with no courses recorded', () => {
   it('refuses fewer than 4 guests on a staff change', async () => {
     bookingRow.booking_type = 'christmas'
@@ -307,10 +307,10 @@ describe('Christmas booking with no courses recorded', () => {
     const { client, updateMock } = createSupabaseStub({ data: null, error: null })
     await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
       tableBookingId: 'tb-1', partySize: 3, autoMoveTable: true
-    })).rejects.toThrow('Christmas bookings are for 4 to 20 guests.')
+    })).rejects.toThrow('Christmas bookings are for 4 to 26 guests.')
     expect(updateMock).not.toHaveBeenCalled()
   })
-  it('still saves a plain size change between 4 and 20', async () => {
+  it('still saves a plain size change between 4 and 26', async () => {
     bookingRow.booking_type = 'christmas'
     bookingRow.booking_period_answer = true
     const { client, updateMock } = createSupabaseStub({
@@ -319,6 +319,61 @@ describe('Christmas booking with no courses recorded', () => {
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 5, autoMoveTable: true })
     expect(result.state).toBe('updated')
     expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ party_size: 5 }))
+  })
+})
+
+// The ceiling is the caller's (owner decisions of 10 November 2026): 60 for staff, 26 for a guest, and
+// it only stops a party growing past it. A fixed 20 stopped staff changing a party of 21 or more at all.
+describe('Christmas party ceiling', () => {
+  beforeEach(() => {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+  })
+
+  it('lets staff make a Christmas party of 30 smaller', async () => {
+    bookingRow.party_size = 30
+    const { client, updateMock } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 28, committed_party_size: 28, updated_at: null }, error: null
+    })
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 28, autoMoveTable: true, christmasMaxPartySize: 60
+    })
+    expect(result.state).toBe('updated')
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ party_size: 28 }))
+  })
+
+  it('lets a party already above the ceiling get smaller even under the guest ceiling', async () => {
+    bookingRow.party_size = 30
+    const { client } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 29, committed_party_size: 29, updated_at: null }, error: null
+    })
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, { tableBookingId: 'tb-1', partySize: 29, autoMoveTable: true })
+    expect(result.state).toBe('updated')
+  })
+
+  it('lets staff raise a Christmas party of 22 to 24', async () => {
+    bookingRow.party_size = 22
+    const { client, updateMock } = createSupabaseStub({
+      data: { id: 'tb-1', party_size: 24, committed_party_size: 24, updated_at: null }, error: null
+    })
+    const result = await updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 24, autoMoveTable: true, christmasMaxPartySize: 60
+    })
+    expect(result.state).toBe('updated')
+    expect(updateMock).toHaveBeenCalledWith(expect.objectContaining({ party_size: 24 }))
+  })
+
+  it('stops a party growing past the ceiling it is given, naming it', async () => {
+    bookingRow.party_size = 22
+    const { client, updateMock } = createSupabaseStub({ data: null, error: null })
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 27, autoMoveTable: true
+    })).rejects.toThrow('Christmas bookings are for 4 to 26 guests.')
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', partySize: 61, autoMoveTable: true, christmasMaxPartySize: 60
+    })).rejects.toThrow('Christmas bookings are for 4 to 60 guests.')
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
   })
 })
 

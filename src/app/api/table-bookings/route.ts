@@ -36,7 +36,6 @@ import {
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import {
-  CHRISTMAS_MAX_PARTY_SIZE,
   CHRISTMAS_MIN_PARTY_SIZE,
   extractChristmasRuleErrorMessage,
   isChristmasBookingType,
@@ -128,7 +127,9 @@ const CreateTableBookingSchema = z.object({
   // normal terms. See GET /api/table-bookings/periods for what to show the guest.
   booking_period_id: z.string().uuid().optional(),
   booking_period_answer: z.boolean().optional(),
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
+  // Up to the typo guard: create_table_booking_christmas_v01 refuses a party above the online Christmas
+  // ceiling (26), which comes back as CHRISTMAS_PARTY_TOO_LARGE with the phone number.
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(PARTY_SIZE_INPUT_CEILING).optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { getAppUrl } from '@/lib/env'
 import { logAuditEvent } from '@/app/actions/audit'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
+import { CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from '@/lib/table-bookings/christmas'
 import { requireBohTableBookingPermission, requireFohPermission, tableBookingsManagerCheck } from '@/lib/foh/api-auth'
 import { logger } from '@/lib/logger'
 import {
@@ -23,7 +23,12 @@ import {
 import { sendTableBookingRescheduledNotificationIfAllowed } from '@/lib/table-bookings/bookings'
 import type { GuestNotificationOutcome } from '@/lib/table-bookings/guest-notification-outcome'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
-import { PARTY_SIZE_INPUT_CEILING, readTableBookingPartyLimit, staffPartyLimitMessage } from '@/lib/table-bookings/party-limit'
+import {
+  PARTY_SIZE_INPUT_CEILING,
+  readStaffPartyLimit,
+  staffChristmasPartyLimitMessage,
+  staffPartyLimitMessage
+} from '@/lib/table-bookings/party-limit'
 
 /**
  * A staff party-size change, for both staff screens (BK-129, customer bookings review of
@@ -40,12 +45,14 @@ export type PartySizeChangeSurface = 'foh' | 'boh'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
+// The list lengths are typo guards only (PARTY_SIZE_INPUT_CEILING). The party limit is checked once
+// the booking is read, because it depends on whether it is a Christmas booking.
 const UpdatePartySizeSchema = z.object({
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(PARTY_SIZE_INPUT_CEILING).optional(),
   // The Christmas guests who are leaving, by their seat number now, so their own dishes go (BK-054).
-  removed_seats: z.array(z.number().int().min(1).max(CHRISTMAS_MAX_PARTY_SIZE)).max(CHRISTMAS_MAX_PARTY_SIZE - 1).optional(),
+  removed_seats: z.array(z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)).max(PARTY_SIZE_INPUT_CEILING - 1).optional(),
   // The course list the dialog showed, so a change made against guests that have since changed is refused.
-  expected_course_counts: z.array(z.number().int().min(1).max(3)).max(CHRISTMAS_MAX_PARTY_SIZE).nullable().optional(),
+  expected_course_counts: z.array(z.number().int().min(1).max(3)).max(PARTY_SIZE_INPUT_CEILING).nullable().optional(),
   party_size: z.preprocess(
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)
@@ -93,11 +100,6 @@ export async function changeTableBookingPartySize(
   }
 
   const newPartySize = parsed.data.party_size
-  // One party limit everywhere (D30, BK-146), read from the setting the booking functions use.
-  const partyLimit = await readTableBookingPartyLimit(auth.supabase)
-  if (newPartySize > partyLimit) {
-    return NextResponse.json({ error: staffPartyLimitMessage(partyLimit) }, { status: 400 })
-  }
   const appBaseUrl = getAppUrl()
 
   // Read current booking state before the update so we can detect threshold crossings
@@ -114,6 +116,21 @@ export async function changeTableBookingPartySize(
   }
 
   const previousPartySize = Math.max(1, Number(currentBooking.party_size || 1))
+
+  // The staff party limit, read from the settings the booking functions use: the ordinary limit
+  // (D30, BK-146), or for a Christmas booking christmas_staff_max_party (60, A3). It stops a party
+  // growing past it and never a change to a party already above it, so staff can always make a big
+  // booking smaller. Read before the booking, it held every Christmas booking to the ordinary 20, and
+  // staff could not change a Christmas party of 21 or more at all.
+  const isChristmasBooking = isChristmasBookingType(currentBooking.booking_type ?? null)
+  const partyLimit = await readStaffPartyLimit(auth.supabase, { christmas: isChristmasBooking })
+  if (newPartySize > previousPartySize && newPartySize > partyLimit) {
+    return NextResponse.json(
+      { error: isChristmasBooking ? staffChristmasPartyLimitMessage(partyLimit) : staffPartyLimitMessage(partyLimit) },
+      { status: 400 }
+    )
+  }
+
   try {
     const result = await updateTableBookingPartySizeWithLinkedEventSeats(auth.supabase, {
       tableBookingId: id,
@@ -123,6 +140,7 @@ export async function changeTableBookingPartySize(
       christmasExpectedCourses: parsed.data.expected_course_counts,
       // After the Christmas pre-order deadline only a manager may change the numbers (D21).
       canMakeLateChristmasChange: tableBookingsManagerCheck(auth),
+      christmasMaxPartySize: partyLimit,
       actor: surface,
       sendSms: parsed.data.send_sms,
       appBaseUrl,

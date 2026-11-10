@@ -58,6 +58,20 @@ export const CHRISTMAS_MIN_PARTY_SIZE = 4
 /** Maximum party size for a table booking of any type; above this is private hire. */
 export const CHRISTMAS_MAX_PARTY_SIZE = 20
 
+/**
+ * The largest sit-down Christmas dinner a guest can book online, or grow their own booking to, when
+ * the setting `table_booking_max_party_christmas_online` cannot be read; the booking functions use
+ * the same default. Read the setting with readChristmasOnlinePartyLimit (party-limit.ts) wherever
+ * the server can; this number is for client screens and fallbacks.
+ */
+export const DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT = 26
+
+/**
+ * The largest Christmas party staff may book in the management app when the setting
+ * `christmas_staff_max_party` cannot be read; create_table_booking_staff_v06 uses the same default.
+ */
+export const DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT = 60
+
 /** Minimum notice in hours for a Christmas booking (staff can override). */
 export const CHRISTMAS_MIN_NOTICE_HOURS = 24
 

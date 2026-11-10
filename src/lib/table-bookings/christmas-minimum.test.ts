@@ -94,7 +94,9 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
     for (const path of schemaFiles) {
       const source = readFileSync(join(process.cwd(), path), 'utf8')
       expect(source, path).toContain(
-        'christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE)',
+        // The top is a typo guard: the party limit is checked by the database and, for staff, once
+        // the booking is read (owner decisions of 10 November 2026).
+        'christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(PARTY_SIZE_INPUT_CEILING)',
       )
     }
   })

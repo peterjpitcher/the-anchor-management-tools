@@ -26,7 +26,6 @@ import {
 } from '@/lib/table-bookings/preorder'
 import { PREORDER_COURSES } from '@/types/preorders'
 import { changeChristmasPartyByRawToken } from '@/lib/table-bookings/guest-christmas-party'
-import { CHRISTMAS_MAX_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import { resolvePreorderCutoff } from '../preorder-data'
 
 const ActionSchema = z.object({
@@ -213,7 +212,10 @@ async function runGuestTableManageAction(request: NextRequest, token: string, pa
   }
 }
 
-/** A "how many join on this tier" box: blank is none, anything else a whole number in range. */
+/**
+ * A "how many join on this tier" box: blank is none, anything else a whole number of one or two
+ * digits. The party's ceiling is checked in guest-christmas-party.ts, from the setting.
+ */
 function readJoinCount(formData: FormData, name: string): number | null {
   const raw = formData.get(name)
   if (raw == null) return 0
@@ -221,8 +223,7 @@ function readJoinCount(formData: FormData, name: string): number | null {
   const trimmed = raw.trim()
   if (trimmed === '') return 0
   if (!/^\d{1,2}$/.test(trimmed)) return null
-  const value = Number.parseInt(trimmed, 10)
-  return value <= CHRISTMAS_MAX_PARTY_SIZE ? value : null
+  return Number.parseInt(trimmed, 10)
 }
 
 /**
@@ -244,8 +245,9 @@ async function runGuestChristmasPartyChange(request: NextRequest, token: string,
   const expectedRaw = formData.get('expected_courses')
   let expectedCourses: number[] | undefined
   if (typeof expectedRaw === 'string' && expectedRaw.trim() !== '') {
-    // 0 is a guest whose number of courses is still to be chosen on the food page.
-    if (!/^[0-3](,[0-3]){0,19}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
+    // 0 is a guest whose number of courses is still to be chosen on the food page. Up to 99 seats, a
+    // typo guard: it held 20, so a Christmas party of 21 or more could not change its numbers at all.
+    if (!/^[0-3](,[0-3]){0,98}$/.test(expectedRaw.trim())) return redirectWithStatus(request, token, 'error')
     expectedCourses = expectedRaw.trim().split(',').map((value) => Number.parseInt(value, 10))
   }
   // Anyone joining starts with their number of courses still to choose (the database gives them 0,

@@ -92,6 +92,23 @@ describe('Christmas numbers form', () => {
     }))
   })
 
+  // Owner decision of 10 November 2026: Christmas books online for up to 26, so the form carries a
+  // course list longer than 20. It used to be refused as an error before anything was checked.
+  it('takes the numbers form from a party of 24, leaving the ceiling to the change itself', async () => {
+    mocks.changeChristmasPartyByRawToken.mockResolvedValue({ state: 'updated', tableBookingId: 'booking-1' })
+    const response = await post([
+      ['action', 'christmas_party'],
+      ['expected_courses', Array(24).fill('1').join(',')],
+      ['add_guests', '2'],
+    ])
+
+    expect(statusOf(response)).toBe('christmas_updated')
+    expect(mocks.changeChristmasPartyByRawToken).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      expectedCourses: Array(24).fill(1),
+      added: { oneCourse: 2, twoCourses: 0, threeCourses: 0 },
+    }))
+  })
+
   it('refuses a "how many more" count that is not a whole number', async () => {
     expect(statusOf(await post([['action', 'christmas_party'], ['add_guests', 'lots']]))).toBe('christmas_size')
     expect(mocks.changeChristmasPartyByRawToken).not.toHaveBeenCalled()

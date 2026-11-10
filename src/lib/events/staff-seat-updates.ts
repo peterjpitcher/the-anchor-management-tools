@@ -4,7 +4,7 @@ import { sendEventBookingSeatUpdateSms } from '@/lib/events/event-payments'
 import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { logger } from '@/lib/logger'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
+import { CHRISTMAS_MIN_PARTY_SIZE, DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT } from '@/lib/table-bookings/christmas'
 import type { PreorderRemovedCover } from '@/lib/table-bookings/preorder'
 import {
   getMoveTableAvailability,
@@ -228,6 +228,13 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
      * late change (owner decision D21: a manager, table_bookings 'manage')? Left out means no.
      */
     canMakeLateChristmasChange?: () => Promise<boolean>
+    /**
+     * The most a Christmas party may grow to through this change: for staff,
+     * christmas_staff_max_party (60); for a guest changing their own booking, the online Christmas
+     * ceiling (26, owner decisions of 10 November 2026). Left out, the online ceiling. It never stops
+     * a party from staying the same size or getting smaller.
+     */
+    christmasMaxPartySize?: number
     actor?: string
     sendSms?: boolean
     appBaseUrl?: string
@@ -303,10 +310,14 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const christmasChanged = isChristmasBooking && (oldPartySize !== newPartySize || coursesChanged || removedSeats.length > 0)
   let lateChristmasChange = false
   if (isChristmasBooking && christmasChanged) {
-    // Before looking for or moving tables. The database repeats these checks on the final write.
-    // Every Christmas amendment, with or without recorded courses, keeps to the 4 to 20 rule (BK-053).
-    if (newPartySize < CHRISTMAS_MIN_PARTY_SIZE || newPartySize > CHRISTMAS_MAX_PARTY_SIZE) {
-      throw new ChristmasCourseValidationError(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)
+    // Before looking for or moving tables. Every Christmas amendment, with or without recorded
+    // courses, keeps to the 4-guest minimum (BK-053). The ceiling is the caller's and stops only a
+    // party growing past it: a party already above it (staff take up to 60, the website 26) may still
+    // be changed or made smaller. It used to be a fixed 20 for every change, which stopped staff
+    // changing a Christmas party of 21 or more at all, even to make it smaller.
+    const christmasMax = input.christmasMaxPartySize ?? DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT
+    if (newPartySize < CHRISTMAS_MIN_PARTY_SIZE || (newPartySize > oldPartySize && newPartySize > christmasMax)) {
+      throw new ChristmasCourseValidationError(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${christmasMax} guests.`)
     }
   }
   if (nextCourses) {
