@@ -59,6 +59,12 @@ function expectReconciles(booking: MappableBooking) {
   )
   expect(rendered.totalAmount).toBe(money.grossTotal)
 
+  // The printed header must add up on its own: net, less discount, plus VAT.
+  const { subtotal_amount, discount_amount, vat_amount, total_amount } = result.totals
+  expect(Math.round((subtotal_amount - discount_amount + vat_amount) * 100)).toBe(
+    Math.round(total_amount * 100),
+  )
+
   return result
 }
 
@@ -386,6 +392,33 @@ describe('mapBookingToInvoice', () => {
       })
       expect(lineItems[1]).toMatchObject({ quantity: 20, unit_price: 12.8 })
       expect(warnings.join(' ')).not.toContain('rounding adjustment')
+    })
+  })
+
+  describe('header that adds up after rounding', () => {
+    it('derives the discount so net, less discount, plus VAT equals the total', () => {
+      // £1.01 at 50% off: the discount is 50.5p and the VAT 10.1p. Rounding
+      // each on its own printed 1.01 - 0.51 + 0.10 = 0.60 against a 0.61 total.
+      const { totals } = expectReconciles({
+        items: [item({ description: 'Tea', quantity: 1, unit_price: 1.01, line_total: 1.01, display_order: 0 })],
+        discount_type: 'percent',
+        discount_amount: 50,
+      })
+      expect(totals).toMatchObject({ subtotal_amount: 1.01, discount_amount: 0.5, vat_amount: 0.1, total_amount: 0.61 })
+    })
+
+    it('adds up for percentage discounts over awkward lines too', () => {
+      for (let pct = 1; pct <= 60; pct++) {
+        expectReconciles({
+          items: [
+            item({ description: 'Buffet', quantity: 37, unit_price: 9.17, line_total: 339.29, display_order: 0 }),
+            item({ description: 'Room', quantity: 4.5, unit_price: 10.33, line_total: 46.49, display_order: 1 }),
+            item({ description: 'Tea', quantity: 1, unit_price: 1.01, line_total: 1.01, display_order: 2 }),
+          ],
+          discount_type: 'percent',
+          discount_amount: pct,
+        })
+      }
     })
   })
 

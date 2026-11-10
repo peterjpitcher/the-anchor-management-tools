@@ -296,14 +296,26 @@ export function mapBookingToInvoice(booking: MappableBooking): InvoiceMappingRes
   }
 
   // Header figures come from the lines as printed, so the invoice's own net,
-  // discount and VAT always agree with its line table. The total is the
-  // booking's gross total, which the database re-checks.
+  // discount and VAT agree with its line table. The total is the booking's
+  // gross total, which the database re-checks. Each figure is rounded, so the
+  // last one is derived from the others: the printed header (net, less
+  // discount, plus VAT) must add up to the total to the penny, and rounding
+  // each part on its own can leave it a penny out.
+  const vatAmount = rendered.vatAmount
+  const totalAmount = money.grossTotal
+  const subtotalAmount = usesInvoiceDiscount
+    ? round2(rendered.subtotalBeforeInvoiceDiscount)
+    : round2(totalAmount - vatAmount)
+  const discountAmount = usesInvoiceDiscount
+    ? round2(subtotalAmount + vatAmount - totalAmount)
+    : 0
+
   const totals: MappedInvoiceTotals = {
-    subtotal_amount: round2(rendered.subtotalBeforeInvoiceDiscount),
-    discount_amount: round2(rendered.invoiceDiscountAmount),
+    subtotal_amount: subtotalAmount,
+    discount_amount: discountAmount,
     invoice_discount_percentage: usesInvoiceDiscount ? bookingDiscountValue : 0,
-    vat_amount: rendered.vatAmount,
-    total_amount: money.grossTotal,
+    vat_amount: vatAmount,
+    total_amount: totalAmount,
   }
 
   return { lineItems: reconciled, totals, warnings }
