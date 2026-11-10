@@ -113,7 +113,7 @@ const CreateFohTableBookingSchema = z.object({
   // Christmas only, and only from an older FOH bundle: the 1, 2 or 3 courses each guest is having,
   // seat 1 first (BK-057). The current screen sends none (owner decision D1, 6 November 2026): every
   // guest starts on 0 and chooses on the food page. Up to the input ceiling, because a staff
-  // Christmas party may be bigger than 20 (A3); the party limit is checked below.
+  // Christmas party may be bigger than the ordinary limit (A3); the party limit is checked below.
   christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(1).max(PARTY_SIZE_INPUT_CEILING).optional(),
   default_country_code: z.string().regex(/^\d{1,4}$/).optional(),
   management_override: z.boolean().optional(),
@@ -695,6 +695,11 @@ type FohCreateBookingResponseData = {
   // high chairs are already held, so staff can tell the guest before they arrive.
   high_chairs_granted: number
   is_outside_seating: boolean
+  /**
+   * True when a Christmas party was seated across tables that are not joined (27 or more, owner
+   * decision of 10 November 2026), so the screen tells staff to move them together. Absent otherwise.
+   */
+  tables_unjoined?: boolean
 }
 
 async function recordFohTableBookingAnalyticsSafe(
@@ -1936,7 +1941,8 @@ async function createFohTableBooking(
         is_outside_seating: bookingResult.is_outside_seating ?? false,
         notification_sent: notificationSent,
         ...(christmasCoursesSaved === undefined ? {} : { christmas_courses_saved: christmasCoursesSaved }),
-        ...(allergiesSaved === undefined ? {} : { allergies_saved: allergiesSaved })
+        ...(allergiesSaved === undefined ? {} : { allergies_saved: allergiesSaved }),
+        ...(responseState !== 'blocked' && bookingResult.tables_unjoined === true ? { tables_unjoined: true } : {})
       } satisfies FohCreateBookingResponseData
     },
     { status: responseStatus }

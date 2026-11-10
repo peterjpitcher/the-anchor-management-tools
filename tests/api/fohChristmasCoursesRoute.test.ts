@@ -6,6 +6,7 @@ const state = vi.hoisted(() => ({
   covers: [] as Array<{ ordinal: number; guest_name: string | null }>,
   policy: null as Record<string, unknown> | null,
   canManage: false,
+  settings: {} as Record<string, number>,
 }))
 
 vi.mock('@/lib/foh/api-auth', () => ({
@@ -15,10 +16,17 @@ vi.mock('@/lib/foh/api-auth', () => ({
     supabase: {
       from: (table: string) => ({
         select: () => ({
-          eq: () =>
+          eq: (_column: string, value: string) =>
             table === 'booking_preorder_covers'
               ? Promise.resolve({ data: state.covers, error: null })
-              : { maybeSingle: async () => ({ data: state.row, error: null }) },
+              : table === 'system_settings'
+                ? {
+                    maybeSingle: async () => ({
+                      data: value in state.settings ? { value: { value: state.settings[value] } } : null,
+                      error: null,
+                    }),
+                  }
+                : { maybeSingle: async () => ({ data: state.row, error: null }) },
         }),
       }),
       rpc: async () => ({ data: state.policy, error: null }),
@@ -40,6 +48,7 @@ async function read(row: Record<string, unknown>) {
 }
 
 beforeEach(() => {
+  state.settings = {}
   state.covers = []
   state.policy = { multiple_courses_available: true }
   state.canManage = false
@@ -54,7 +63,20 @@ describe('GET /api/foh/bookings/[id]/christmas-courses', () => {
       seat_names: [],
       deadline: 'open',
       can_change_late: false,
+      staff_max_party: 60,
     })
+  })
+
+  // Owner decisions of 10 November 2026: the dialog offers as many seats as staff may book, from
+  // christmas_staff_max_party, not a number of its own.
+  it('gives the staff Christmas limit from the setting, and only on a Christmas booking', async () => {
+    state.settings = { christmas_staff_max_party: 45 }
+    expect(
+      await read({ booking_type: 'christmas', booking_period_answer: true, christmas_course_counts: [1, 1, 1, 1] }),
+    ).toMatchObject({ staff_max_party: 45 })
+    expect(await read({ booking_type: 'regular', booking_period_answer: null, christmas_course_counts: null })).not.toHaveProperty(
+      'staff_max_party',
+    )
   })
 
   it('returns recorded courses and does not offer to set them again', async () => {

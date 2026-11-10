@@ -7,8 +7,13 @@ import { fohBookingBypassesPacing } from '@/lib/foh/pacing-bypass'
 export type FohAvailabilityQuery = {
   date: string
   partySize: number
-  /** What check_table_availability_v06 understands: a Christmas booking is a food booking. */
-  purpose: 'food' | 'drinks'
+  /**
+   * Passed to check_table_availability_v06 as given. 'christmas' is a food booking in every respect
+   * except the party limit: on a Christmas date the database lets staff ask about up to
+   * christmas_staff_max_party (60), and offers a party above the online Christmas ceiling (26) tables
+   * that are not joined, saying so with tables_unjoined (owner decisions of 10 November 2026).
+   */
+  purpose: 'food' | 'drinks' | 'christmas'
   outside: boolean
   requiresAccessibleTable: boolean
   highChairCount: number
@@ -39,7 +44,7 @@ export function parseFohAvailabilityQuery(
     value: {
       date,
       partySize,
-      purpose: rawPurpose === 'drinks' ? 'drinks' : 'food',
+      purpose: rawPurpose as FohAvailabilityQuery['purpose'],
       outside: params.get('outside') === 'true',
       requiresAccessibleTable: params.get('requires_accessible_table') === 'true',
       highChairCount,
@@ -48,6 +53,13 @@ export function parseFohAvailabilityQuery(
     },
   }
 }
+
+/**
+ * What staff are told when a Christmas party is offered, or seated on, tables that are not joined
+ * (owner decision of 10 November 2026: the Dining Room joins to 26, so a party of 27 or more sits on
+ * separate tables). Shown with the free times and after the booking is saved.
+ */
+export const FOH_TABLES_UNJOINED_WARNING = 'These tables are not joined: move them together before the party arrives.'
 
 /** The public reasons that come only from the arrival limits a FOH walk-in or drinks booking skips. */
 const PACING_REASONS = new Set(['kitchen_full', 'drinks_full'])

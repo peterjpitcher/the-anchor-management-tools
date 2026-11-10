@@ -9,13 +9,16 @@
  *
  * Business rules (owner-confirmed):
  *   - Service window 10 November to 20 December 2026 inclusive.
- *   - Minimum 4 guests on every day of the window (lowered from 6 on 6 September 2026),
- *     maximum 20 guests (above 20 is private hire).
+ *   - Minimum 4 guests on every day of the window (lowered from 6 on 6 September 2026).
+ *   - Online, a sit-down Christmas dinner is for up to 26 guests (setting
+ *     table_booking_max_party_christmas_online, owner decision of 10 November 2026); a bigger
+ *     group calls us. Staff can book up to 60 (christmas_staff_max_party), and a party of 27 or
+ *     more sits across tables that are not joined. Ordinary table bookings stay at 20.
  *   - A deposit of GBP 10 per person is ALWAYS taken, at any party size.
  *   - At least 24 hours notice, unless staff override the cut-off.
  *
- * The party-size minimum and the 24-hour notice rule are enforced in the
- * database, as is the 21-or-more block. The service window is NOT enforced
+ * The party-size minimum, both ceilings and the 24-hour notice rule are enforced in the
+ * database. The service window is NOT enforced
  * anywhere yet: nothing currently stops a Christmas booking being taken for a
  * date outside 10 November to 20 December 2026. Whoever adds the customer-
  * facing Christmas form must restrict the date picker, or the window needs
@@ -54,9 +57,6 @@ export function isChristmasFoodDeadlinePassed(closesAtIso: string | null | undef
  * booking period's min_party_size. christmas-minimum.test.ts holds all three to this value.
  */
 export const CHRISTMAS_MIN_PARTY_SIZE = 4
-
-/** Maximum party size for a table booking of any type; above this is private hire. */
-export const CHRISTMAS_MAX_PARTY_SIZE = 20
 
 /**
  * The largest sit-down Christmas dinner a guest can book online, or grow their own booking to, when

@@ -46,13 +46,36 @@ describe('GET /api/foh/availability', () => {
     })
   })
 
-  it("uses the walk-in channel for a walk-in and treats Christmas as food, as the booking function does", async () => {
+  // Owner decisions of 10 November 2026: the database reads the Christmas limits for purpose
+  // 'christmas' (60 for staff, unjoined tables above 26) and treats it as food in every other respect.
+  it('uses the walk-in channel for a walk-in and asks as Christmas, so the Christmas limits apply', async () => {
     const rpc = vi.fn(async () => ({ data: { calculation_state: 'complete', slots: [] }, error: null }))
     signedIn(rpc)
 
     await GET(request('date=2026-12-12&party_size=6&purpose=christmas&walk_in=true'))
 
-    expect(rpc).toHaveBeenCalledWith('check_table_availability_v06', expect.objectContaining({ p_purpose: 'food', p_channel: 'walkin' }))
+    expect(rpc).toHaveBeenCalledWith('check_table_availability_v06', expect.objectContaining({ p_purpose: 'christmas', p_channel: 'walkin' }))
+  })
+
+  it('passes on that a Christmas party of 27 is offered tables that are not joined', async () => {
+    const rpc = vi.fn(async () => ({
+      data: {
+        calculation_state: 'complete',
+        max_party_size_online: 60,
+        tables_unjoined: true,
+        slots: [{ time: '18:00', state: 'available', public_reason: null }],
+      },
+      error: null,
+    }))
+    signedIn(rpc)
+
+    const body = await (await GET(request('date=2026-12-12&party_size=27&purpose=christmas'))).json()
+
+    expect(rpc).toHaveBeenCalledWith(
+      'check_table_availability_v06',
+      expect.objectContaining({ p_purpose: 'christmas', p_party_size: 27, p_channel: 'staff' })
+    )
+    expect(body.data).toMatchObject({ tables_unjoined: true, slots: [{ time: '18:00', state: 'available' }] })
   })
 
   it('answers unknown, never free, when the check fails', async () => {

@@ -1,9 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import {
   christmasPreorderDeadlineText,
   FohCreateBookingModal,
-  isLargeStaffChristmasParty,
   type CreateForm,
 } from '../FohCreateBookingModal'
 import type { FohEventOption } from '../../types'
@@ -162,25 +161,30 @@ describe('FohCreateBookingModal: no Christmas courses at booking', () => {
     expect(screen.getByText(/Nobody chooses courses now/)).toBeInTheDocument()
   })
 
-  it('says staff can book more than the website takes, and never calls more than 20 private hire', () => {
+  // Owner decisions of 10 November 2026: Christmas books online for up to 26, staff for up to 60,
+  // and a party of 27 or more sits on tables that are not joined.
+  it('says staff can book up to 60, the website up to 26, and that 27 or more sit apart, never private hire', () => {
     renderModal(CHRISTMAS_FORM)
-    expect(screen.getByText(/You can book more\s+than 20 here/)).toBeInTheDocument()
+    expect(screen.getByText(/You can book up to\s+60 here; the website takes up to 26\./)).toBeInTheDocument()
+    expect(screen.getByText(/A party of 27 or more sits on tables that are not\s+joined\./)).toBeInTheDocument()
     expect(screen.queryByText(/private hire/)).not.toBeInTheDocument()
     expect(screen.queryByText(/nothing to pre-order/)).not.toBeInTheDocument()
   })
 
-  it('does not offer the free times list for a Christmas party above 20, which it would mark too large', () => {
-    renderModal({ ...CHRISTMAS_FORM, party_size: '40' })
-    expect(screen.getByText(/The free times list stops at 20 guests/)).toBeInTheDocument()
-    expect(screen.getByLabelText('Time')).toBeInTheDocument()
-  })
-
-  it('keeps the free times note away from an ordinary booking', () => {
-    renderModal({ ...CHRISTMAS_FORM, purpose: 'food', party_size: '40' })
-    expect(screen.queryByText(/The free times list stops at 20 guests/)).not.toBeInTheDocument()
-    expect(isLargeStaffChristmasParty('food', '40')).toBe(false)
-    expect(isLargeStaffChristmasParty('christmas', '20')).toBe(false)
-    expect(isLargeStaffChristmasParty('christmas', '21')).toBe(true)
+  it('offers the free times list for a Christmas party of 27, which the check now answers', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ success: false }), { status: 500 }))
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      renderModal({ ...CHRISTMAS_FORM, party_size: '27' })
+      expect(screen.queryByText(/The free times list stops at/)).not.toBeInTheDocument()
+      expect(screen.getByText('Free times')).toBeInTheDocument()
+      await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+      const url = String((fetchMock.mock.calls[0] as unknown[])[0])
+      expect(url).toContain('party_size=27')
+      expect(url).toContain('purpose=christmas')
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
 

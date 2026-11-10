@@ -735,6 +735,40 @@ describe('POST /api/foh/bookings: the staff Christmas party limit', () => {
     expect(syncPreorderCovers).not.toHaveBeenCalled()
   })
 
+  // Owner decision of 10 November 2026: a Christmas party of 27 or more sits on tables that are not
+  // joined. create_table_booking_staff_v06 says so with tables_unjoined, and the screen warns staff.
+  it('passes on that a Christmas party of 27 was seated on tables that are not joined', async () => {
+    const db = createSupabaseMock({
+      rpcResult: {
+        data: { state: 'confirmed', table_booking_id: 'booking-1', booking_reference: 'TB-TEST', tables_unjoined: true },
+        error: null,
+      },
+    })
+    mockAuthSuccess(db)
+
+    const res = await POST(bookingFor(27, 'christmas'))
+
+    expect(res.status).toBe(201)
+    expect((await res.json()).data).toMatchObject({ state: 'confirmed', tables_unjoined: true })
+  })
+
+  it('says nothing about joining for a party on joined tables, or one that was refused', async () => {
+    const joined = createSupabaseMock({
+      rpcResult: {
+        data: { state: 'confirmed', table_booking_id: 'booking-1', booking_reference: 'TB-TEST', tables_unjoined: false },
+        error: null,
+      },
+    })
+    mockAuthSuccess(joined)
+    expect((await (await POST(bookingFor(26, 'christmas'))).json()).data.tables_unjoined).toBeUndefined()
+
+    const refused = createSupabaseMock({
+      rpcResult: { data: { state: 'blocked', reason: 'no_table', tables_unjoined: true }, error: null },
+    })
+    mockAuthSuccess(refused)
+    expect((await (await POST(bookingFor(30, 'christmas'))).json()).data.tables_unjoined).toBeUndefined()
+  })
+
   it('still refuses an ordinary management override above the normal limit', async () => {
     const db = createSupabaseMock({ roleRows: [{ roles: { name: 'super_admin' } }] })
     mockAuthSuccess(db)

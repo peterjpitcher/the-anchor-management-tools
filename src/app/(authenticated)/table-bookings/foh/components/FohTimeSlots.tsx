@@ -1,8 +1,8 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { Button } from '@/ds'
-import { describeFohSlotReason } from '@/lib/foh/availability-query'
+import { Alert, Button } from '@/ds'
+import { describeFohSlotReason, FOH_TABLES_UNJOINED_WARNING } from '@/lib/foh/availability-query'
 
 type Slot = {
   time: string
@@ -13,7 +13,7 @@ type Slot = {
 type Answer =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'ready'; slots: Slot[] }
+  | { status: 'ready'; slots: Slot[]; tablesUnjoined: boolean }
   | { status: 'unknown' }
 
 export type FohTimeSlotsProps = {
@@ -70,14 +70,18 @@ export function FohTimeSlots(props: FohTimeSlotsProps): React.ReactElement | nul
           signal: controller.signal,
         })
         const body = (await response.json().catch(() => null)) as
-          | { success?: boolean; data?: { calculation_state?: string; slots?: Slot[] } }
+          | { success?: boolean; data?: { calculation_state?: string; slots?: Slot[]; tables_unjoined?: boolean } }
           | null
         if (controller.signal.aborted) return
         if (!response.ok || !body?.success || body.data?.calculation_state !== 'complete') {
           setAnswer({ status: 'unknown' })
           return
         }
-        setAnswer({ status: 'ready', slots: Array.isArray(body.data.slots) ? body.data.slots : [] })
+        setAnswer({
+          status: 'ready',
+          slots: Array.isArray(body.data.slots) ? body.data.slots : [],
+          tablesUnjoined: body.data.tables_unjoined === true,
+        })
       } catch {
         if (!controller.signal.aborted) setAnswer({ status: 'unknown' })
       }
@@ -101,6 +105,11 @@ export function FohTimeSlots(props: FohTimeSlotsProps): React.ReactElement | nul
       )}
       {answer.status === 'ready' && answer.slots.length === 0 && (
         <p className="text-xs text-text-muted">No times to offer on that date for this booking.</p>
+      )}
+      {answer.status === 'ready' && answer.tablesUnjoined && answer.slots.some((slot) => slot.state === 'available') && (
+        <Alert tone="warning" size="sm" role="status" className="mb-2">
+          {FOH_TABLES_UNJOINED_WARNING}
+        </Alert>
       )}
       {answer.status === 'ready' && answer.slots.length > 0 && (
         <ul className="flex flex-wrap gap-2">
