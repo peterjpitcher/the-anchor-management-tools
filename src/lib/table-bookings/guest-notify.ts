@@ -70,6 +70,8 @@ export type TableBookingGuestNotifyInput = {
   idempotencyKey: string
   /** Extra facts for the audit row. */
   auditContext?: Record<string, unknown>
+  /** Secrets in the email (a raw link token) kept out of the email log. */
+  logRedactions?: string[]
   /**
    * What the bounce fallback needs to rebuild this text later: which message it is, the facts it
    * states and how its link was made. Required, because every message sent here allows a later
@@ -207,6 +209,7 @@ export async function notifyTableBookingGuestEmailFirst(
         customerId: input.customer.id,
         tableBookingId: input.tableBookingId,
         idempotencyKey: input.idempotencyKey,
+        ...(input.logRedactions && input.logRedactions.length > 0 ? { logRedactions: input.logRedactions } : {}),
         metadata: {
           table_booking_id: input.tableBookingId,
           template_key: input.templateKey,

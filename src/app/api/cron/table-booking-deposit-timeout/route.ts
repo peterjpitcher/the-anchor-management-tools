@@ -13,6 +13,7 @@ import {
 } from '@/lib/table-bookings/paypal-deposit-reconcile'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
 import { runDepositHoldReminders, type DepositReminderRunResult } from '@/lib/table-bookings/deposit-hold-reminder'
+import { issueLapsedHoldLead } from '@/lib/table-bookings/christmas-leads'
 
 /**
  * Cancels table bookings whose deposit hold ran out unpaid: the one place this happens (BK-113,
@@ -240,6 +241,15 @@ export async function GET(request: NextRequest) {
         })
       }
 
+      // A lapsed Christmas hold is saved as an unfinished booking, so staff can see it on the
+      // Christmas follow-ups tab, and its cancellation email (no new message) carries a
+      // "Finish my booking" link while the date can still be booked online (Christmas funnel,
+      // owner decision 6). Never throws: any fault leaves the email exactly as it was.
+      const finishBooking =
+        booking.booking_type === 'christmas'
+          ? await issueLapsedHoldLead(supabase, { tableBookingId: booking.id, now })
+          : null
+
       if (booking.customer_id) {
         // Carried over from the event hold cron, which used to cancel these.
         await recordAnalyticsEvent(supabase, {
@@ -262,6 +272,10 @@ export async function GET(request: NextRequest) {
             refundResult: { refunded: false, reason: 'hold_expired' },
             // Keys the email's duplicate protection and the text's log row to this booking.
             tableBookingId: booking.id,
+            finishBooking:
+              finishBooking?.finishUrl && finishBooking.rawToken
+                ? { url: finishBooking.finishUrl, rawToken: finishBooking.rawToken }
+                : null,
           })
           // The audit row the notice writes names the booking.
           if (notice.status === 'failed' || notice.status === 'no_channel') {

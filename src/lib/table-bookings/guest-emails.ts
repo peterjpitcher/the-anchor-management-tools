@@ -863,9 +863,15 @@ export function buildTableBookingCancelledEmail(
     refundSentence: string
     /** 'venue' when the pub cancelled (BK-046): the email apologises and says it was us. */
     cancelledBy?: 'guest' | 'venue'
+    /**
+     * A lapsed Christmas deposit hold's "Finish my booking" link to the website, which picks up
+     * where the guest left off (Christmas funnel, owner decision 6). Absent for every other booking.
+     */
+    finishBookingUrl?: string | null
   }
 ): TableBookingEmail {
   const date = formatBookingDateForEmail(input.bookingDate, input.startDateTime)
+  const cta = input.finishBookingUrl ? { label: 'Finish my booking', url: input.finishBookingUrl } : undefined
   if (input.cancelledBy === 'venue') {
     return renderTableBookingEmail({
       subject: "We've had to cancel your booking at The Anchor",
@@ -878,6 +884,7 @@ export function buildTableBookingCancelledEmail(
       ],
       details: bookingDetailRows(input),
       closing: [input.refundSentence],
+      cta,
       beforeContact: ['If you have any questions, tell us.'],
     })
   }
@@ -892,6 +899,7 @@ export function buildTableBookingCancelledEmail(
     ],
     details: bookingDetailRows(input),
     closing: [input.refundSentence],
+    cta,
     beforeContact: ['If this does not look right, tell us.'],
   })
 }

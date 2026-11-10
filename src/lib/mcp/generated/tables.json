@@ -18122,6 +18122,112 @@
   ]
  },
  {
+  "name": "table_booking_leads",
+  "kind": "table",
+  "columns": [
+   {
+    "name": "booking_date",
+    "type": "string"
+   },
+   {
+    "name": "booking_period_id",
+    "type": "string"
+   },
+   {
+    "name": "booking_time",
+    "type": "string"
+   },
+   {
+    "name": "call_note",
+    "type": "string | null"
+   },
+   {
+    "name": "called_at",
+    "type": "string | null"
+   },
+   {
+    "name": "called_by",
+    "type": "string | null"
+   },
+   {
+    "name": "created_at",
+    "type": "string"
+   },
+   {
+    "name": "customer_id",
+    "type": "string | null"
+   },
+   {
+    "name": "email",
+    "type": "string | null"
+   },
+   {
+    "name": "first_name",
+    "type": "string"
+   },
+   {
+    "name": "follow_up_claimed_at",
+    "type": "string | null"
+   },
+   {
+    "name": "follow_up_opt_out",
+    "type": "boolean"
+   },
+   {
+    "name": "follow_up_outcome",
+    "type": "string | null"
+   },
+   {
+    "name": "follow_up_sent_at",
+    "type": "string | null"
+   },
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "last_name",
+    "type": "string | null"
+   },
+   {
+    "name": "lead_ref",
+    "type": "string"
+   },
+   {
+    "name": "mobile_e164",
+    "type": "string | null"
+   },
+   {
+    "name": "opt_out_token_hash",
+    "type": "string | null"
+   },
+   {
+    "name": "party_size",
+    "type": "number"
+   },
+   {
+    "name": "resume_token_expires_at",
+    "type": "string | null"
+   },
+   {
+    "name": "resume_token_hash",
+    "type": "string | null"
+   },
+   {
+    "name": "source",
+    "type": "string"
+   },
+   {
+    "name": "table_booking_id",
+    "type": "string | null"
+   },
+   {
+    "name": "updated_at",
+    "type": "string"
+   }
+  ]
+ },
+ {
   "name": "table_booking_modifications",
   "kind": "table",
   "columns": [
