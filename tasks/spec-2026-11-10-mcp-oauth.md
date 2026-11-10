@@ -1,6 +1,6 @@
 # Spec: Claude on the web and phone connecting to the agent bridge (OAuth for `/api/mcp`)
 
-Date: 10 November 2026. Status: SPEC ONLY, no code, nothing deployed. Reviewed the same day by an independent adversarial pass against the code, the live schema and the live site (1 blocker, 10 should-fix, 11 minor points); every finding is folded in below. Owner decisions marked "pending" were put to Peter in chat on 10 November 2026; this file assumes the recommended answer until he decides, and must be updated with his answers before anyone builds from it.
+Date: 10 November 2026. Status: PARKED. Peter's claude.ai account offers "Request headers", so he connects Claude on the web and phone with a second API key (section 4) and nothing here is being built. This spec is kept for the day a sign-in with expiry and a PIN is wanted; his answers are in section 21. Reviewed the same day by an independent adversarial pass against the code, the live schema and the live site (1 blocker, 10 should-fix, 11 minor points); every finding is folded in below. Owner decisions marked "pending" were put to Peter in chat on 10 November 2026; this file assumes the recommended answer until he decides, and must be updated with his answers before anyone builds from it.
 
 ## 1. Summary
 
@@ -65,7 +65,7 @@ If the "Add custom connector" dialog shows "Request headers":
 - Works today with no code, no migration and no deploy. Switching the key off on Settings stops it on the next call.
 - What it does not give, compared with sections 5 onwards: no password or code check when connecting, a credential that never expires on its own (the API keys screen cannot set an expiry), no rotation, and no reuse detection. The credential's protection is the same as the Mac key's, except that it is held by Anthropic and usable by anyone signed in to Peter's claude.ai account, which is also true of the OAuth tokens below.
 
-If the section is missing, or Peter prefers a sign-in with expiring tokens and a connect-time check, build the rest of this spec. Owner decision pending (question 1 in chat); this spec assumes the OAuth build goes ahead.
+If the section is missing, or Peter prefers a sign-in with expiring tokens and a connect-time check, build the rest of this spec. Decided 10 November 2026: Peter's account has the section and he uses this route (section 21). Live check that day: `POST /api/mcp` answers 401 from the public internet with no key and with a bad `x-api-key`, and `extractApiKey` in `src/lib/api/auth.ts` reads `x-api-key` before `Authorization`.
 
 ## 5. Design decisions
 
@@ -506,11 +506,13 @@ Changed: `src/lib/api/auth.ts` (including an optional headers parameter on `crea
 
 Deliberately unchanged: the tools and their annotations, `acting-session.ts`, `acting-context.ts`, the API key screen's key handling, `src/app/actions/profile.ts` and the reset flow (the password trigger covers them), the distributed rate limiter, the website repository (the website does not call `/api/mcp`, so no counterpart change).
 
-## 21. Owner decisions (pending, asked in chat on 10 November 2026)
+## 21. Owner decisions (answered by Peter in chat, 10 November 2026)
 
-| # | Topic | Assumed in this spec |
+| # | Topic | Decision |
 |---|---|---|
-| 1 | Use claude.ai "Request headers" with a second key instead of building, if Peter's account has it | Build OAuth |
-| 2 | Connect-time check: emailed code, authenticator app, or password only | Emailed code |
-| 3 | Longest a connection lasts before reconnecting | 90 days, ended early after 30 days unused |
-| 4 | Web and phone connection: full access or read only | Full access |
+| 1 | Use claude.ai "Request headers" with a second key instead of building | Peter's account has "Request headers" and he is connecting that way (section 4). The OAuth build in sections 5 to 20 is PARKED: not started, built only if Peter asks for it. |
+| 2 | Connect-time check | "I'll set a pin number myself." If the OAuth build is ever started, the connect-time check is a PIN Peter chooses, not an emailed code (section 10, option D below). It does not apply to the request-header route, which has no connect step. |
+| 3 | Longest a connection lasts | 90 days. |
+| 4 | Full access or read only | Full access: "The whole point of this is that I can ask agents to make changes, update details, and review details for the application for day-to-day management of the business." D7 stands; the read-only branch in section 12 is dropped. |
+
+Option D, for the parked build (replaces option A in section 10 if built): Peter sets a PIN of at least 6 digits on his profile page, signed in and after re-entering his password. It is stored only as a slow salted hash (Node's `crypto.scrypt`, as for any low-entropy secret), never shown again, and changed the same way. The consent screen asks for password and PIN; 5 wrong PINs in 15 minutes lock connecting and raise a problem alert, counted from audit rows as for the password. A PIN is something Peter knows, like the password, so it is not a second factor in the strict sense; it does stop a browser left signed in, or a password reused elsewhere, from being enough on its own. No email is sent, so the email-suspension and `email_messages` points in section 10 fall away, and `mcp_oauth_consent_codes` is not needed (a single hashed PIN column or row for the acting user instead).
