@@ -1979,6 +1979,8 @@ async function reconcileBalancePaymentStatus(
   }
 }
 
+const MAX_DISCOUNT_REASON_LENGTH = 200;
+
 export async function applyBookingDiscount(
   bookingId: string,
   data: {
@@ -1990,6 +1992,10 @@ export async function applyBookingDiscount(
   // Server-side discount validation
   if (data.discount_type !== 'percent' && data.discount_type !== 'fixed') {
     throw new Error('Invalid discount type -- must be "percent" or "fixed"');
+  }
+  // The reason is printed on the customer's contract, so it is kept to a sentence.
+  if (typeof data.discount_reason === 'string' && data.discount_reason.trim().length > MAX_DISCOUNT_REASON_LENGTH) {
+    throw new Error(`Reason for discount must be ${MAX_DISCOUNT_REASON_LENGTH} characters or fewer`);
   }
   if (typeof data.discount_amount !== 'number' || !Number.isFinite(data.discount_amount) || data.discount_amount <= 0) {
     throw new Error('Invalid discount value -- must be a positive number');
@@ -2945,23 +2951,62 @@ export async function addBookingItem(data: {
   return warning ? { success: true, warning } : { success: true };
 }
 
+/** Long enough for any real line name; stops a pasted paragraph breaking the contract table. */
+const MAX_ITEM_DESCRIPTION_LENGTH = 200;
+
 export async function updateBookingItem(itemId: string, data: {
+  description?: string;
   quantity?: number;
   unit_price?: number;
   discount_value?: number;
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
 }): Promise<{ success: true; bookingId: string; warning?: string }> {
+  // The description is what the contract, invoice and event sheet print for the line,
+  // so it can be renamed but never blanked.
+  let description: string | undefined;
+  if (data.description !== undefined) {
+    description = typeof data.description === 'string' ? data.description.trim() : '';
+    if (!description) {
+      throw new Error('Description cannot be empty');
+    }
+    if (description.length > MAX_ITEM_DESCRIPTION_LENGTH) {
+      throw new Error(`Description must be ${MAX_ITEM_DESCRIPTION_LENGTH} characters or fewer`);
+    }
+  }
+  if (data.quantity !== undefined && (!Number.isFinite(data.quantity) || data.quantity <= 0)) {
+    throw new Error('Quantity must be greater than 0');
+  }
+  if (data.unit_price !== undefined && (!Number.isFinite(data.unit_price) || data.unit_price < 0)) {
+    throw new Error('Unit price cannot be negative');
+  }
+  if (data.discount_value !== undefined && data.discount_value !== null && !Number.isFinite(data.discount_value)) {
+    throw new Error('Discount must be a number');
+  }
+
   const supabase = await createClient();
 
   const { data: currentItem, error: fetchError } = await supabase
     .from('private_booking_items')
-    .select('booking_id, quantity, unit_price, discount_type, discount_value')
+    .select('booking_id, item_type, description, quantity, unit_price, discount_type, discount_value')
     .eq('id', itemId)
     .single();
 
   if (fetchError || !currentItem) {
     throw new Error('Item not found');
+  }
+
+  // Contracts and invoices print a room, catering package or supplier under the name
+  // on its own record (itemDisplayName), so a rename of one of those lines would save
+  // and never be seen by the customer. Only free-text lines can be renamed.
+  if (
+    description !== undefined &&
+    currentItem.item_type !== 'other' &&
+    description !== String(currentItem.description ?? '').trim()
+  ) {
+    throw new Error(
+      'Rooms, catering and suppliers keep the name from their own record. Put anything specific to this booking in Notes.'
+    );
   }
 
   // D9: Merge incoming partial data with current values for validation
@@ -2984,6 +3029,7 @@ export async function updateBookingItem(itemId: string, data: {
 
   const updateData: any = {};
 
+  if (description !== undefined) updateData.description = description;
   if (data.quantity !== undefined) updateData.quantity = data.quantity;
   if (data.unit_price !== undefined) updateData.unit_price = data.unit_price;
   if (data.discount_value !== undefined) updateData.discount_value = data.discount_value;

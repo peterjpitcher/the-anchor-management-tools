@@ -1524,12 +1524,13 @@ function DiscountModal({
           />
         </Field>
 
-        <Field label="Reason for Discount">
+        <Field label="Reason for Discount" hint="Printed on the customer's contract next to the discount, so write it as you would say it to them.">
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={2}
             required
+            maxLength={200}
             placeholder="e.g., Early bird discount, loyalty customer, etc."
           />
         </Field>
@@ -1575,6 +1576,7 @@ function EditItemModal({
   item,
   onSuccess,
 }: EditItemModalProps) {
+  const [description, setDescription] = useState(item.description);
   const [quantity, setQuantity] = useState(item.quantity.toString());
   const [unitPrice, setUnitPrice] = useState(item.unit_price.toString());
   const [discountValue, setDiscountValue] = useState(
@@ -1588,6 +1590,7 @@ function EditItemModal({
 
   useEffect(() => {
     // Reset form when item changes
+    setDescription(item.description);
     setQuantity(item.quantity.toString());
     setUnitPrice(item.unit_price.toString());
     setDiscountValue(item.discount_value?.toString() || "");
@@ -1617,6 +1620,13 @@ function EditItemModal({
     e.preventDefault();
     setIsSubmitting(true);
 
+    const trimmedDescription = description.trim();
+    if (!trimmedDescription) {
+      toast.error("Description cannot be empty");
+      setIsSubmitting(false);
+      return;
+    }
+
     const parsedQuantity = Number.parseFloat(quantity);
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
       toast.error("Quantity must be greater than 0");
@@ -1624,11 +1634,14 @@ function EditItemModal({
       return;
     }
 
+    // An emptied discount box means no discount: send 0 so a discount the item
+    // already had is removed rather than left in place.
     const result = await updateBookingItem(item.id, {
+      description: trimmedDescription,
       quantity: parsedQuantity,
       unit_price: parseFloat(unitPrice),
-      discount_value: discountValue ? parseFloat(discountValue) : undefined,
-      discount_type: discountValue ? discountType : undefined,
+      discount_value: discountValue.trim() === "" ? 0 : parseFloat(discountValue),
+      discount_type: discountType,
       notes: notes || null,
     });
 
@@ -1661,7 +1674,24 @@ function EditItemModal({
       }
     >
       <form id="pb-edit-item-form" onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
-        <Input label="Description" value={item.description} readOnly />
+        {/* Contracts and invoices print a room, package or supplier under its own
+            record's name, so only free-text lines can be renamed here. */}
+        <Field
+          label="Description"
+          hint={
+            item.item_type === "other"
+              ? undefined
+              : "Rooms, catering and suppliers keep the name from their own record. Put anything specific to this booking in Notes."
+          }
+        >
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            readOnly={item.item_type !== "other"}
+            maxLength={200}
+            required
+          />
+        </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Quantity">
