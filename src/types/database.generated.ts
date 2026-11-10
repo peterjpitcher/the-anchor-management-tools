@@ -18814,6 +18814,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "table_booking_leads_called_by_fkey"
+            columns: ["called_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "table_booking_leads_customer_id_fkey"
             columns: ["customer_id"]
             isOneToOne: false

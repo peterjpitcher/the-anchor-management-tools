@@ -80,7 +80,7 @@ export const MESSAGING_FLAG_KEYS = [
   // The one follow-up email to somebody who started a Christmas dinner booking online and did not
   // finish (Christmas funnel spec, owner decisions 5 and 8 of 10 November 2026). The owner approved
   // the wording on 10 November 2026; switched on by migration
-  // 20261110185124_christmas_booking_leads.sql. Switching it off stops the emails with no deploy.
+  // 20261110195005_christmas_booking_leads.sql. Switching it off stops the emails with no deploy.
   'christmas_lead_follow_up',
   'bounce_sms_fallback',
   'staff_message_email_option',
