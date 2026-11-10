@@ -51,6 +51,11 @@ const READ_BY_HAND: Array<{ file: string; why: UnreadReason; checked: string }> 
     checked: 'The list comes from buildStaffStatusTransitionPlan in src/lib/table-bookings/staff-status-actions.ts. Its six lists name ten table_bookings columns and all ten exist.',
   },
   {
+    file: 'src/lib/mcp/records.ts',
+    why: 'table is not written in the chain',
+    checked: 'The agent bridge reads any table an agent names. validateQuery refuses a table missing from src/lib/mcp/generated/tables.json and any filter or order column that table lacks (10 November 2026).',
+  },
+  {
     file: 'src/lib/paypal-refund-webhook.ts',
     why: 'filter column is built at run time',
     checked: 'Table and column are looked up by source type in two records. private_bookings and table_bookings have paypal_deposit_capture_id; parking_booking_payments has transaction_id.',

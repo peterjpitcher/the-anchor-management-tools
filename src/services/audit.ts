@@ -1,6 +1,17 @@
 import { createAdminClient } from '@/lib/supabase/admin';
 import { headers } from 'next/headers';
 import type { Database } from '@/types/database';
+import { getMcpActingContext } from '@/lib/mcp/acting-context';
+
+/**
+ * Marks an entry written during an /api/mcp request, so the audit trail tells an agent's
+ * change from one made in the browser by the same person.
+ */
+function withMcpMarker(info: Record<string, any> | undefined): Record<string, any> | null {
+  const acting = getMcpActingContext();
+  if (!acting) return info ?? null;
+  return { ...(info ?? {}), via_mcp: { key: acting.keyName } };
+}
 
 export interface AuditLogParams {
   user_id?: string;
@@ -51,7 +62,7 @@ export class AuditService {
         error_message: params.error_message ?? null,
         old_values: params.old_values ?? null,
         new_values: params.new_values ?? null,
-        additional_info: params.additional_info ?? null,
+        additional_info: withMcpMarker(params.additional_info),
         ip_address: ip,
         user_agent: userAgent,
       } satisfies Database['public']['Tables']['audit_logs']['Insert'];

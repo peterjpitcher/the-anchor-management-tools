@@ -25,13 +25,15 @@ Root `src/app/layout.tsx` holds global providers, the PWA manifest, robots block
 
 ### API surface (`src/app/api/`)
 
-Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hours`, `cashup`, `client-errors`, `cron`, `customers`, `employees`, `event-bookings`, `event-categories`, `event-waitlist`, `events`, `external` (`create-booking`, `event-bookings`, `performer-interest`, `table-bookings`), `feedback`, `foh`, `invoices`, `jobs`, `marketing`, `menu`, `menu-management`, `messages`, `oj-projects`, `outstanding-counts`, `parking`, `portal`, `private-booking-enquiry`, `private-bookings`, `public` (`private-booking`), `quotes`, `receipts`, `recruitment`, `redirect`, `rota`, `search`, `settings`, `short-links`, `stripe` (`webhook`), `table-bookings`, `training` (`images/[versionId]/[...src]`, `external/[assignmentId]`, `export`: staff training files and the log CSV, each checking the session and `training` permissions itself), `unsubscribe`, `vouchers`, `webhooks`, `website` (`ui-flags`, `payment-failure-alert`, `booking-funnel`).
+Top-level folders: `app-version`, `boh`, `bug-report`, `business`, `business-hours`, `cashup`, `client-errors`, `cron`, `customers`, `employees`, `event-bookings`, `event-categories`, `event-waitlist`, `events`, `external` (`create-booking`, `event-bookings`, `performer-interest`, `table-bookings`), `feedback`, `foh`, `invoices`, `jobs`, `marketing`, `mcp`, `menu`, `menu-management`, `messages`, `oj-projects`, `outstanding-counts`, `parking`, `portal`, `private-booking-enquiry`, `private-bookings`, `public` (`private-booking`), `quotes`, `receipts`, `recruitment`, `redirect`, `rota`, `search`, `settings`, `short-links`, `stripe` (`webhook`), `table-bookings`, `training` (`images/[versionId]/[...src]`, `external/[assignmentId]`, `export`: staff training files and the log CSV, each checking the session and `training` permissions itself), `unsubscribe`, `vouchers`, `webhooks`, `website` (`ui-flags`, `payment-failure-alert`, `booking-funnel`).
 
 Webhooks: `webhooks/paypal` (root plus `event-bookings`, `table-bookings`, `invoices`, `private-bookings`, `parking`), `webhooks/resend`, `webhooks/twilio`, `stripe/webhook`.
 
 Turnstile-checked endpoints: `recruitment/applications` (keyless callers only), `recruitment/booking/[token]` (plus `cancel` and `reschedule`). `event-bookings` and `table-bookings` take API-key callers only and the website verifies its own Turnstile token before it proxies (BK-129). `verifyTurnstileToken` skips the check without `TURNSTILE_SECRET_KEY` in development and tests, and refuses in production.
 
 External API auth: `src/lib/api/auth.ts` hashes keys (SHA-256) and looks them up in `api_keys` (permissions, `rate_limit`, `is_active`, `expires_at`); `checkRateLimit()` is per key.
+
+Agent bridge: `mcp` (`POST /api/mcp`), an MCP server for Peter's agents that runs the server actions and staff routes as his account; key scope `mcp:full` (never granted by `*`), acting account `MCP_ACTING_USER_ID`. See `docs/agent-mcp.md`.
 
 ## 2. Scheduled jobs inventory (2026-09-18)
 

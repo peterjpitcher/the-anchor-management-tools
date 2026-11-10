@@ -1,0 +1,1196 @@
+[
+ {
+  "path": "/api/app-version",
+  "module": "api/app-version/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings",
+  "module": "api/boh/table-bookings/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]",
+  "module": "api/boh/table-bookings/[id]/route",
+  "methods": [
+   "PATCH",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/deposit",
+  "module": "api/boh/table-bookings/[id]/deposit/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/deposit-link",
+  "module": "api/boh/table-bookings/[id]/deposit-link/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/deposit-review",
+  "module": "api/boh/table-bookings/[id]/deposit-review/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/email",
+  "module": "api/boh/table-bookings/[id]/email/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/move-table",
+  "module": "api/boh/table-bookings/[id]/move-table/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/party-size",
+  "module": "api/boh/table-bookings/[id]/party-size/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/pin",
+  "module": "api/boh/table-bookings/[id]/pin/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/preorder",
+  "module": "api/boh/table-bookings/[id]/preorder/route",
+  "methods": [
+   "GET",
+   "POST",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/sms",
+  "module": "api/boh/table-bookings/[id]/sms/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/[id]/status",
+  "module": "api/boh/table-bookings/[id]/status/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/booking-sheets",
+  "module": "api/boh/table-bookings/booking-sheets/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/booking-sheets/[id]",
+  "module": "api/boh/table-bookings/booking-sheets/[id]/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/day-load",
+  "module": "api/boh/table-bookings/day-load/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/lookup",
+  "module": "api/boh/table-bookings/lookup/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/preorder-sheet",
+  "module": "api/boh/table-bookings/preorder-sheet/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/boh/table-bookings/preorder-totals",
+  "module": "api/boh/table-bookings/preorder-totals/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/bug-report",
+  "module": "api/bug-report/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/business-hours",
+  "module": "api/business-hours/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/business/amenities",
+  "module": "api/business/amenities/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/business/hours",
+  "module": "api/business/hours/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/business/screening-hours",
+  "module": "api/business/screening-hours/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/cashing-up/online-income/export",
+  "module": "api/cashing-up/online-income/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/cashup/weekly/print",
+  "module": "api/cashup/weekly/print/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/client-errors",
+  "module": "api/client-errors/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/employees/[employee_id]/employment-contract",
+  "module": "api/employees/[employee_id]/employment-contract/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/employees/[employee_id]/starter-pack",
+  "module": "api/employees/[employee_id]/starter-pack/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/[id]/artwork/composite",
+  "module": "api/events/[id]/artwork/composite/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/events/[id]/artwork/table-talker-sheet",
+  "module": "api/events/[id]/artwork/table-talker-sheet/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/events/[id]/booking-sheets",
+  "module": "api/events/[id]/booking-sheets/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/[id]/guest-answers",
+  "module": "api/events/[id]/guest-answers/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/[id]/guest-list",
+  "module": "api/events/[id]/guest-list/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/[id]/kitchen-summary",
+  "module": "api/events/[id]/kitchen-summary/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/customers/search",
+  "module": "api/events/customers/search/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/events/export",
+  "module": "api/events/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/events/qr-pack",
+  "module": "api/events/qr-pack/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/external/performer-interest",
+  "module": "api/external/performer-interest/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/feedback",
+  "module": "api/feedback/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/availability",
+  "module": "api/foh/availability/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/awaiting-confirmation",
+  "module": "api/foh/awaiting-confirmation/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings",
+  "module": "api/foh/bookings/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/cancel",
+  "module": "api/foh/bookings/[id]/cancel/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/christmas-courses",
+  "module": "api/foh/bookings/[id]/christmas-courses/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/deposit",
+  "module": "api/foh/bookings/[id]/deposit/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/left",
+  "module": "api/foh/bookings/[id]/left/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/move-table",
+  "module": "api/foh/bookings/[id]/move-table/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/no-show",
+  "module": "api/foh/bookings/[id]/no-show/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/notes",
+  "module": "api/foh/bookings/[id]/notes/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/outcome",
+  "module": "api/foh/bookings/[id]/outcome/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/party-size",
+  "module": "api/foh/bookings/[id]/party-size/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/seated",
+  "module": "api/foh/bookings/[id]/seated/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/time",
+  "module": "api/foh/bookings/[id]/time/route",
+  "methods": [
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/[id]/walkout",
+  "module": "api/foh/bookings/[id]/walkout/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/bookings/open-earlier",
+  "module": "api/foh/bookings/open-earlier/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/customers/search",
+  "module": "api/foh/customers/search/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/event-bookings",
+  "module": "api/foh/event-bookings/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/events",
+  "module": "api/foh/events/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/events/upcoming",
+  "module": "api/foh/events/upcoming/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/food-order-alert",
+  "module": "api/foh/food-order-alert/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/guest-not-told",
+  "module": "api/foh/guest-not-told/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/periods",
+  "module": "api/foh/periods/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/schedule",
+  "module": "api/foh/schedule/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/sunday-preorder/menu",
+  "module": "api/foh/sunday-preorder/menu/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/customer",
+  "module": "api/foh/vouchers/customer/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/event-bookers",
+  "module": "api/foh/vouchers/event-bookers/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/events",
+  "module": "api/foh/vouchers/events/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/issue",
+  "module": "api/foh/vouchers/issue/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/lookup",
+  "module": "api/foh/vouchers/lookup/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/redeem",
+  "module": "api/foh/vouchers/redeem/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/summary",
+  "module": "api/foh/vouchers/summary/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/vouchers/undo-redeem",
+  "module": "api/foh/vouchers/undo-redeem/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/invoices/[id]/pdf",
+  "module": "api/invoices/[id]/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/invoices/export",
+  "module": "api/invoices/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/menu-management/dishes",
+  "module": "api/menu-management/dishes/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/dishes/[id]",
+  "module": "api/menu-management/dishes/[id]/route",
+  "methods": [
+   "GET",
+   "PATCH",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/dishes/allergens/pdf",
+  "module": "api/menu-management/dishes/allergens/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/menu-management/ingredients",
+  "module": "api/menu-management/ingredients/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/ingredients/[id]",
+  "module": "api/menu-management/ingredients/[id]/route",
+  "methods": [
+   "PATCH",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/ingredients/[id]/prices",
+  "module": "api/menu-management/ingredients/[id]/prices/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/ingredients/allergens/pdf",
+  "module": "api/menu-management/ingredients/allergens/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/menu-management/menus",
+  "module": "api/menu-management/menus/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/recipes",
+  "module": "api/menu-management/recipes/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu-management/recipes/[id]",
+  "module": "api/menu-management/recipes/[id]/route",
+  "methods": [
+   "GET",
+   "PATCH",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/menu/ai-parse",
+  "module": "api/menu/ai-parse/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/messages/unread-count",
+  "module": "api/messages/unread-count/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/mileage/report",
+  "module": "api/mileage/report/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/oj-projects/billing-preview",
+  "module": "api/oj-projects/billing-preview/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/oj-projects/statement-pdf",
+  "module": "api/oj-projects/statement-pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/oj-projects/work-record",
+  "module": "api/oj-projects/work-record/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/outstanding-counts",
+  "module": "api/outstanding-counts/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/parking/payment/retry",
+  "module": "api/parking/payment/retry/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/parking/payment/return",
+  "module": "api/parking/payment/return/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/portal/calendar-feed",
+  "module": "api/portal/calendar-feed/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/portal/signing/[partyId]/decline",
+  "module": "api/portal/signing/[partyId]/decline/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/portal/signing/[partyId]/document",
+  "module": "api/portal/signing/[partyId]/document/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/portal/signing/[partyId]/sign",
+  "module": "api/portal/signing/[partyId]/sign/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/portal/signing/[partyId]/signed",
+  "module": "api/portal/signing/[partyId]/signed/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/private-bookings/[id]/receipts/[documentId]",
+  "module": "api/private-bookings/[id]/receipts/[documentId]/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/private-bookings/contract",
+  "module": "api/private-bookings/contract/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/private-bookings/event-sheet",
+  "module": "api/private-bookings/event-sheet/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/private-bookings/outcome/[outcome]/[token]",
+  "module": "api/private-bookings/outcome/[outcome]/[token]/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/public/private-booking",
+  "module": "api/public/private-booking/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/public/private-booking/config",
+  "module": "api/public/private-booking/config/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/quotes/[id]/pdf",
+  "module": "api/quotes/[id]/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/receipts/export",
+  "module": "api/receipts/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/receipts/pnl/export",
+  "module": "api/receipts/pnl/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/recruitment/applications/[id]/interview-kit",
+  "module": "api/recruitment/applications/[id]/interview-kit/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/recruitment/applications/[id]/trial-brief",
+  "module": "api/recruitment/applications/[id]/trial-brief/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/recruitment/booking/[token]",
+  "module": "api/recruitment/booking/[token]/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/recruitment/booking/[token]/cancel",
+  "module": "api/recruitment/booking/[token]/cancel/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/recruitment/booking/[token]/reschedule",
+  "module": "api/recruitment/booking/[token]/reschedule/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/recruitment/postings",
+  "module": "api/recruitment/postings/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/redirect",
+  "module": "api/redirect/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/redirect/[code]",
+  "module": "api/redirect/[code]/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/rota/export",
+  "module": "api/rota/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/rota/feed",
+  "module": "api/rota/feed/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/rota/hours/pdf",
+  "module": "api/rota/hours/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/rota/open-shift-requests/approve",
+  "module": "api/rota/open-shift-requests/approve/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/rota/pdf",
+  "module": "api/rota/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/rota/resync-calendar",
+  "module": "api/rota/resync-calendar/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "session"
+ },
+ {
+  "path": "/api/settings/table-bookings/allocation",
+  "module": "api/settings/table-bookings/allocation/route",
+  "methods": [
+   "GET",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/holds",
+  "module": "api/settings/table-bookings/holds/route",
+  "methods": [
+   "GET",
+   "POST",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/join-groups",
+  "module": "api/settings/table-bookings/join-groups/route",
+  "methods": [
+   "GET",
+   "POST",
+   "PUT",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/kitchen-pacing",
+  "module": "api/settings/table-bookings/kitchen-pacing/route",
+  "methods": [
+   "GET",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/pacing",
+  "module": "api/settings/table-bookings/pacing/route",
+  "methods": [
+   "GET",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/periods",
+  "module": "api/settings/table-bookings/periods/route",
+  "methods": [
+   "GET",
+   "POST",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/periods/menu",
+  "module": "api/settings/table-bookings/periods/menu/route",
+  "methods": [
+   "POST",
+   "DELETE"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/space-area-links",
+  "module": "api/settings/table-bookings/space-area-links/route",
+  "methods": [
+   "GET",
+   "PUT"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/settings/table-bookings/tables",
+  "module": "api/settings/table-bookings/tables/route",
+  "methods": [
+   "GET",
+   "POST",
+   "PUT",
+   "PATCH"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/short-links/legacy-report",
+  "module": "api/short-links/legacy-report/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/sign/[token]/decline",
+  "module": "api/sign/[token]/decline/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/sign/[token]/document",
+  "module": "api/sign/[token]/document/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/sign/[token]/identity",
+  "module": "api/sign/[token]/identity/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/sign/[token]/sign",
+  "module": "api/sign/[token]/sign/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/signing/documents/[id]/pdf",
+  "module": "api/signing/documents/[id]/pdf/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/training/export",
+  "module": "api/training/export/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/training/external/[assignmentId]",
+  "module": "api/training/external/[assignmentId]/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/training/images/[versionId]/[...src]",
+  "module": "api/training/images/[versionId]/[...src]/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/unsubscribe",
+  "module": "api/unsubscribe/route",
+  "methods": [
+   "GET",
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/vouchers/batches/[id]/download",
+  "module": "api/vouchers/batches/[id]/download/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/vouchers/batches/[id]/manifest",
+  "module": "api/vouchers/batches/[id]/manifest/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/vouchers/batches/[id]/render",
+  "module": "api/vouchers/batches/[id]/render/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/vouchers/terms-sheet",
+  "module": "api/vouchers/terms-sheet/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ }
+]

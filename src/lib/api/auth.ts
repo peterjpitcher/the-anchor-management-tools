@@ -555,3 +555,64 @@ export async function withApiAuth(
     );
   }
 }
+
+/** The one scope that opens /api/mcp. See src/lib/api/scopes.ts. */
+export const MCP_SCOPE: ApiKeyScope = 'mcp:full';
+
+/**
+ * The guard for /api/mcp, the agent bridge.
+ *
+ * Same answers as withApiAuth for the same failures (503 when the key or the rate limit cannot
+ * be checked, 401 for a bad key, 429 over the limit), with one deliberate difference: the '*'
+ * wildcard does NOT grant MCP access. The bridge acts as the owner's own account, so a key must
+ * hold `mcp:full` by name. Five switched-off keys hold '*'; reactivating one must not hand it
+ * the owner's account.
+ *
+ * `label` names the call for the usage log, for example `/api/mcp/run_action:invoices.voidInvoice`,
+ * so `api_usage` shows which agent ran what. Arguments and results are never logged.
+ */
+export async function withMcpAuth(
+  request: Request,
+  label: string,
+  handler: (apiKey: ApiKey) => Promise<Response>
+): Promise<Response> {
+  const startTime = Date.now();
+  const resolution = await resolveApiKey(extractApiKey(request.headers));
+
+  if (resolution.state === 'unavailable') {
+    return createErrorResponse('Authentication is temporarily unavailable', 'AUTH_UNAVAILABLE', 503);
+  }
+  if (resolution.state === 'anonymous') {
+    return createErrorResponse('Invalid or missing API key', 'UNAUTHORIZED', 401);
+  }
+
+  const key = resolution.key;
+  const method = normalizeRequestMethod(request.method);
+
+  if (!key.permissions.includes(MCP_SCOPE)) {
+    console.warn('[API Auth] Rejected key without MCP access', { apiKeyId: key.id, apiKeyName: key.name });
+    safeLogApiUsage(key.id, label, method, 403, Date.now() - startTime).catch(() => undefined);
+    return createErrorResponse('This key does not have agent access', 'FORBIDDEN', 403);
+  }
+
+  const withinLimit = await checkRateLimit(key.id, key.rate_limit);
+  if (withinLimit === null) {
+    return createErrorResponse('Rate limiting is temporarily unavailable', 'RATE_LIMIT_UNAVAILABLE', 503);
+  }
+  if (!withinLimit) {
+    return createErrorResponse('Rate limit exceeded', 'RATE_LIMIT_EXCEEDED', 429);
+  }
+
+  try {
+    const response = await handler(key);
+    safeLogApiUsage(key.id, label, method, response.status, Date.now() - startTime).catch(() => undefined);
+    return response;
+  } catch (error) {
+    logger.error('MCP request crashed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { label, apiKeyId: key.id },
+    });
+    safeLogApiUsage(key.id, label, method, 500, Date.now() - startTime).catch(() => undefined);
+    return createErrorResponse('Internal server error', 'INTERNAL_ERROR', 500);
+  }
+}

@@ -19,7 +19,8 @@
     "test": "TEST_TZ=Europe/London VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:utc": "TEST_TZ=UTC VITE_CJS_IGNORE_WARNING=true vitest run",
     "test:coverage": "TEST_TZ=Europe/London vitest run --coverage",
-    "test:pg": "fail=0; for f in scripts/testing/*-postgres.py; do echo \"== $f\"; LC_ALL=C python3 \"$f\" || fail=1; done; exit $fail"
+    "test:pg": "fail=0; for f in scripts/testing/*-postgres.py; do echo \"== $f\"; LC_ALL=C python3 \"$f\" || fail=1; done; exit $fail",
+    "mcp:manifest": "tsx scripts/mcp/generate-manifest.ts"
   },
   "dependencies": {
     "@azure/identity": "^4.10.2",
@@ -28,6 +29,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@headlessui/react": "^2.2.4",
     "@microsoft/microsoft-graph-client": "^3.0.7",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@paypal/react-paypal-js": "^9.0.1",
     "@sparticuz/chromium": "^143.0.4",
     "@supabase/ssr": "^0.10.0",

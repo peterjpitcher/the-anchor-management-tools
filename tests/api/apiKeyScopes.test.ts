@@ -37,7 +37,7 @@ const NOT_A_ROUTE = new Set([
 ])
 
 // Any quoted token shaped like a scope: word:word, or word:word:word.
-const SCOPE_LITERAL = /['"`]((?:read|write|create|parking|payments|delete|manage)(?::[a-z_]+){1,2})['"`]/g
+const SCOPE_LITERAL = /['"`]((?:read|write|create|parking|payments|delete|manage|mcp)(?::[a-z_]+){1,2})['"`]/g
 
 function routeFiles(dir: string): string[] {
   const found: string[] = []
