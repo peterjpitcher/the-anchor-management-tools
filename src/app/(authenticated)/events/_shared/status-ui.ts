@@ -100,17 +100,6 @@ export function eventChecklistStatusTextClass(status: string | null | undefined)
   return EVENT_CHECKLIST_STATUS_TEXT_CLASSES.get(status) ?? 'text-text-muted'
 }
 
-// Seated or standing, on a communal event's attendee list.
-const EVENT_SEATING_TYPE_TONES = new Map<string, EventBadgeTone>([
-  ['standing', 'warning'],
-  ['seated', 'info'],
-])
-
-export function eventSeatingTypeTone(seatingType: string | null | undefined): EventBadgeTone {
-  if (!seatingType) return 'info'
-  return EVENT_SEATING_TYPE_TONES.get(seatingType) ?? 'info'
-}
-
 // A marketing short link is for a digital channel or for print.
 const EVENT_LINK_TYPE_TONES = new Map<string, EventBadgeTone>([
   ['digital', 'info'],
