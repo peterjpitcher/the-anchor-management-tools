@@ -21,6 +21,7 @@ import { computeTableBookingRequestHash, canonicalFixtureBookingNotes } from '@/
 import { formatPhoneForStorage } from '@/lib/utils'
 import { ensureCustomerForPhone } from '@/lib/sms/customers'
 import { recordBookingContactEmail } from '@/lib/bookings/contact-email'
+import { linkLeadToBooking } from '@/lib/table-bookings/christmas-leads'
 import { EMAIL_REQUIRED_FOR_NON_MOBILE_CODE, EMAIL_REQUIRED_FOR_NON_MOBILE_MESSAGE, isUkMobile } from '@/lib/phone/uk-mobile'
 import { INVALID_EMAIL_CODE, INVALID_EMAIL_MESSAGE, INVALID_PHONE_CODE, INVALID_PHONE_MESSAGE, isOnlyEmailInvalid } from '@/lib/bookings/contact-refusals'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -174,6 +175,10 @@ const CreateTableBookingSchema = z.object({
     )
     .max(PARTY_SIZE_INPUT_CEILING)
     .optional(),
+  // The website's unfinished-booking record for this guest (Christmas funnel, owner decision 5),
+  // linked to the booking once it is made so no follow-up email goes. Like the labels below it
+  // changes nothing about the booking and stays out of the idempotency hash.
+  lead_ref: z.string().uuid().optional(),
   // Page-source labels (see PAGE_SOURCE_LABEL_CAPS). Optional and cleaned leniently by the shared
   // helper in src/lib/api/attribution-labels.ts, so a bad label never rejects a booking. They change
   // nothing about the booking: they stay out of the idempotency hash and out of the booking
@@ -888,6 +893,16 @@ export async function POST(request: NextRequest) {
       // somebody's existing booking, which a typed address must never redirect.
       if (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment') {
         await recordBookingContactEmail('table_bookings', bookingResult.table_booking_id, customerResolution.bookingContactEmail)
+      }
+
+      // The website's unfinished-booking record becomes this booking, so it is never followed up.
+      // linkLeadToBooking never throws: a failed link is logged and the booking carries on.
+      if (
+        payload.lead_ref &&
+        bookingResult.table_booking_id &&
+        (bookingResult.state === 'confirmed' || bookingResult.state === 'pending_payment')
+      ) {
+        await linkLeadToBooking(supabase, { leadRef: payload.lead_ref, tableBookingId: bookingResult.table_booking_id })
       }
 
       // Only on a booking this request made: an id on a refused answer is somebody's existing
