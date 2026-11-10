@@ -41,9 +41,21 @@ const BOOKING = {
   booking_period_id: 'period-1',
 }
 
+// The online Christmas ceiling as system_settings holds it; null reads as a missing row (default 26).
+let christmasOnlineLimit: number | null = null
+
 function supabaseWith(booking: Record<string, unknown> | null) {
   return {
-    from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: booking, error: null }) }) }) }),
+    from: (table: string) => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () =>
+            table === 'system_settings'
+              ? { data: christmasOnlineLimit === null ? null : { value: { value: christmasOnlineLimit } }, error: null }
+              : { data: booking, error: null },
+        }),
+      }),
+    }),
   } as never
 }
 
@@ -59,6 +71,7 @@ function change(overrides: Partial<Parameters<typeof changeChristmasPartyByRawTo
 
 beforeEach(() => {
   vi.clearAllMocks()
+  christmasOnlineLimit = null
   mocks.preview.mockResolvedValue({ state: 'ready', table_booking_id: 'booking-1', booking_type: 'christmas', can_edit: true })
   mocks.deadline.mockResolvedValue('open')
   mocks.update.mockResolvedValue({ state: 'updated' })
@@ -111,10 +124,40 @@ describe('changeChristmasPartyByRawToken', () => {
     expect(mocks.update).not.toHaveBeenCalled()
   })
 
-  it('keeps to 4 to 20 guests', async () => {
+  // Owner decision of 10 November 2026: a guest may grow their Christmas party to the online
+  // ceiling (26), and no further.
+  it('keeps to 4 guests at least and lets the guest grow the party to 26, not 27', async () => {
     expect(await change({ removedSeats: [1, 2, 3] })).toMatchObject({ reason: 'christmas_size' })
-    expect(await change({ added: { oneCourse: 15, twoCourses: 0, threeCourses: 0 } })).toMatchObject({ reason: 'christmas_size' })
+    expect(await change({ added: { oneCourse: 21, twoCourses: 0, threeCourses: 0 } })).toMatchObject({ reason: 'christmas_size' })
     expect(mocks.update).not.toHaveBeenCalled()
+
+    expect(await change({ added: { oneCourse: 20, twoCourses: 0, threeCourses: 0 } })).toMatchObject({
+      state: 'updated',
+      newPartySize: 26,
+    })
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ partySize: 26, christmasMaxPartySize: 26 }))
+  })
+
+  it('reads the ceiling from the setting', async () => {
+    christmasOnlineLimit = 24
+    expect(await change({ added: { oneCourse: 19, twoCourses: 0, threeCourses: 0 } })).toMatchObject({ reason: 'christmas_size' })
+    expect(await change({ added: { oneCourse: 18, twoCourses: 0, threeCourses: 0 } })).toMatchObject({ newPartySize: 24 })
+    expect(mocks.update).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ christmasMaxPartySize: 24 }))
+  })
+
+  it('lets a party staff booked above the ceiling get smaller, but not bigger', async () => {
+    const thirty = { ...BOOKING, party_size: 30, christmas_course_counts: Array(30).fill(1) }
+    expect(await change({ removedSeats: [30], added: { oneCourse: 0, twoCourses: 0, threeCourses: 0 } }, thirty)).toMatchObject({
+      state: 'updated',
+      previousPartySize: 30,
+      newPartySize: 29,
+    })
+    expect(await change({ added: { oneCourse: 1, twoCourses: 0, threeCourses: 0 } }, thirty)).toMatchObject({ reason: 'christmas_size' })
+  })
+
+  it('turns the staff path ceiling refusal into the size message', async () => {
+    mocks.update.mockRejectedValue(new ChristmasCourseValidationError('Christmas bookings are for 4 to 26 guests.'))
+    expect(await change({ added: { oneCourse: 1, twoCourses: 0, threeCourses: 0 } })).toMatchObject({ reason: 'christmas_size' })
   })
 
   it('says when nothing was asked for', async () => {

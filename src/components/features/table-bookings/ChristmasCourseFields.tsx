@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useState } from 'react'
 import { Alert, Checkbox, Fieldset, Select } from '@/ds'
+import { DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT } from '@/lib/table-bookings/christmas'
 
 const COURSE_OPTIONS = [
   { value: '0', label: 'Choose courses' },
@@ -14,9 +15,6 @@ const COURSE_OPTIONS = [
 // booking's food page by the pre-order deadline, so a guest joining starts on "Choose courses".
 const COURSES_HELP =
   "Every guest's courses and food are chosen on the food page by the pre-order deadline. Anyone joining starts on Choose courses."
-
-/** The largest Christmas party staff can book (christmas_staff_max_party, default 60, A3). */
-const CHRISTMAS_STAFF_MAX_PARTY = 60
 
 const LATE_HELP =
   'The pre-order deadline has passed, so this is saved as a late change. Guests can leave or join, but nobody can move up to more courses here. A manager can change courses in the seat editor.'
@@ -55,6 +53,8 @@ type Loaded = {
   seatNames: Array<string | null>
   deadline: 'open' | 'closed' | 'none'
   canChangeLate: boolean
+  /** The largest Christmas party staff can book: christmas_staff_max_party, from the server (A3). */
+  maxParty: number
 }
 
 function courseWord(count: number): string {
@@ -96,6 +96,10 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
           seatNames: Array.isArray(data.seat_names) ? data.seat_names : [],
           deadline,
           canChangeLate: data.can_change_late === true,
+          maxParty:
+            Number.isInteger(data.staff_max_party) && data.staff_max_party > 0
+              ? data.staff_max_party
+              : DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT,
         } as const
         if (data.course_counts) {
           setLoaded({ recorded: data.course_counts, firstTime: false, ...common })
@@ -107,7 +111,7 @@ export function ChristmasCourseFields({ bookingId, partySize, onChange, appearan
     return () => controller.abort()
   }, [bookingId, onChange])
 
-  const size = Math.min(CHRISTMAS_STAFF_MAX_PARTY, Math.max(0, partySize || 0))
+  const size = Math.min(loaded?.maxParty ?? DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT, Math.max(0, partySize || 0))
   const late = loaded?.deadline === 'closed'
   const recordedCount = loaded?.recorded.length ?? 0
   const shrinking = Boolean(loaded) && !loaded?.firstTime && size < recordedCount

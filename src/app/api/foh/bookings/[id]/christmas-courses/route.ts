@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission, tableBookingsManagerCheck } from '@/lib/foh/api-auth'
 import { ChristmasCourseValidationError, readChristmasDeadline } from '@/lib/events/staff-seat-updates'
+import { readStaffPartyLimit } from '@/lib/table-bookings/party-limit'
 
 /**
  * The course tiers recorded on a booking, for the party-size dialogs.
@@ -9,8 +10,9 @@ import { ChristmasCourseValidationError, readChristmasDeadline } from '@/lib/eve
  * BK-057), so the dialog can offer to record them once. `seat_names` gives each recorded seat's
  * guest name, if the booker gave one, so staff can pick who is leaving (BK-054). `deadline` says
  * where the date stands against its pre-order deadline, and `can_change_late` whether this user may
- * change the party after it (a manager, D21). The party-size routes and the database still decide
- * what is accepted.
+ * change the party after it (a manager, D21), and on a Christmas booking `staff_max_party` the most
+ * guests staff may book (christmas_staff_max_party, 60, A3), so the dialog offers that many seats.
+ * The party-size routes and the database still decide what is accepted.
  */
 export async function GET(_request: NextRequest, context: { params: Promise<{ id: string }> }): Promise<NextResponse> {
   const auth = await requireFohPermission('view')
@@ -35,7 +37,10 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
 
   let deadline: 'open' | 'closed' | 'none' = 'none'
   let canChangeLate = false
+  let staffMaxParty: number | null = null
   if (isChristmas) {
+    // Never throws: an unreadable setting answers the default the booking functions use.
+    staffMaxParty = await readStaffPartyLimit(auth.supabase, { christmas: true })
     try {
       deadline = await readChristmasDeadline(auth.supabase, data.booking_date)
     } catch (deadlineError) {
@@ -53,5 +58,6 @@ export async function GET(_request: NextRequest, context: { params: Promise<{ id
     seat_names: seatNames,
     deadline,
     can_change_late: canChangeLate,
+    ...(staffMaxParty === null ? {} : { staff_max_party: staffMaxParty }),
   })
 }

@@ -45,7 +45,7 @@ import CustomerSearchInput from '@/components/features/customers/CustomerSearchI
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
-import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
+import { DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT, formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -772,8 +772,12 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
 
   async function handleSubmitPartySize() {
     const nextSize = Number.parseInt(partySizeEditValue, 10)
-    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 20) {
-      toast.error('Enter a party size between 1 and 20')
+    // A typo guard only; the server checks the real limit from the settings. A Christmas booking
+    // goes up to christmas_staff_max_party (60, A3): a fixed 20 here stopped staff changing a
+    // Christmas party of 21 or more at all.
+    const maxSize = booking.booking_type === 'christmas' ? DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT : 20
+    if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > maxSize) {
+      toast.error(`Enter a party size between 1 and ${maxSize}`)
       return
     }
     // Grow+move is a single server-side step: the party-size endpoint auto-moves
@@ -2090,7 +2094,7 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
               type="number"
               min={1}
               // A staff Christmas booking can be up to christmas_staff_max_party (60, A3).
-              max={booking.booking_type === 'christmas' ? 60 : 20}
+              max={booking.booking_type === 'christmas' ? DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT : 20}
               value={partySizeEditValue}
               onChange={(e) => setPartySizeEditValue(e.target.value)}
             />

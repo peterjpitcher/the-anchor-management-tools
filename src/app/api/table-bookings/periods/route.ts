@@ -15,7 +15,7 @@ import {
   type BookingPeriodRow,
 } from '@/lib/table-bookings/periods'
 import { resolveTableBookingDeposit } from '@/lib/table-bookings/period-deposit'
-import { readTableBookingPartyLimit } from '@/lib/table-bookings/party-limit'
+import { readChristmasOnlinePartyLimit, readTableBookingPartyLimit } from '@/lib/table-bookings/party-limit'
 
 /**
  * The seasonal period that applies to a date, for the website.
@@ -36,9 +36,11 @@ import { readTableBookingPartyLimit } from '@/lib/table-bookings/party-limit'
  *   * `deposit.collect` is the kill switch. When it is false a deposit is still owed under the
  *     rules but AMS is not taking money right now, so do not present a payment step.
  *   * `period.max_party_size` is the period's own limit, which for Christmas is the STAFF limit (60,
- *     A3). The website caps online booking at `period.max_party_size_online`, the setting
- *     `table_booking_max_party_online` (20) that create_table_booking_public_v06 enforces, and asks
- *     a bigger group to phone (D15).
+ *     A3). The website caps online booking at `period.max_party_size_online`, the ceiling
+ *     create_table_booking_public_v06 enforces for a guest who accepts this period: for a Christmas
+ *     period the setting `table_booking_max_party_christmas_online` (26, owner decision of
+ *     10 November 2026), otherwise `table_booking_max_party_online` (20). A bigger group is asked to
+ *     phone.
  *   * Answering "no" to `guest_question` is a supported answer. That guest gets the normal menu at
  *     normal terms, which is what `deposit.if_declined` prices.
  */
@@ -246,7 +248,7 @@ export async function GET(request: NextRequest) {
         const [collect, onlinePartyLimit] = await Promise.all([
           isDepositCollectionEnabled(supabase),
           // Never throws: an unreadable setting answers the default the booking functions use.
-          readTableBookingPartyLimit(supabase),
+          period.periodKind === 'christmas' ? readChristmasOnlinePartyLimit(supabase) : readTableBookingPartyLimit(supabase),
         ])
         // Optional capability: an older database keeps the existing seasonal journey.
         // A missing RPC never advertises unsupported one-course booking.

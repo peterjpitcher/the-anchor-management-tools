@@ -394,3 +394,54 @@ describe("the organiser's food page", () => {
     expect((await response.json()).error).toContain('01753 682707')
   })
 })
+
+// Owner decision of 10 November 2026: Christmas dinner books online for up to 26 and staff seat up
+// to 60, so the food page must take every seat on a party of 27 or more. The seat number in the
+// request is a typo guard only; the seat is checked against the booking's own cover list.
+describe('the food page on a Christmas party of 27', () => {
+  const seatId = (ordinal: number) => `00000000-0000-4000-8000-${String(ordinal).padStart(12, '0')}`
+  const BIG_PARTY = 27
+
+  beforeEach(() => {
+    mocks.loadPreorderOrder.mockResolvedValue(order({
+      partySize: BIG_PARTY,
+      courseCounts: Array(BIG_PARTY).fill(0),
+      covers: Array.from({ length: BIG_PARTY }, (_, index) => cover(seatId(index + 1), index + 1)),
+    }))
+    mocks.savePreorderCover.mockResolvedValue(cover(seatId(BIG_PARTY), BIG_PARTY))
+  })
+
+  it("saves the organiser's line for the 27th guest", async () => {
+    const response = await organiser({ action: 'save', seat: seatPayload({ ordinal: BIG_PARTY, coverId: seatId(BIG_PARTY) }) })
+
+    expect(response.status).toBe(200)
+    expect(mocks.savePreorderCover).toHaveBeenCalledWith(
+      db.client,
+      expect.objectContaining({ coverId: seatId(BIG_PARTY), tableBookingId: BOOKING, actor: { savedBy: 'organiser' } }),
+    )
+  })
+
+  it('sends the 27th guest their own link', async () => {
+    const response = await organiser({ action: 'invite', ordinal: BIG_PARTY, coverId: seatId(BIG_PARTY), email: 'guest@example.test' })
+
+    expect(response.status).toBe(200)
+    expect(mocks.createPreorderGuestToken).toHaveBeenCalledWith(db.client, expect.objectContaining({ coverId: seatId(BIG_PARTY) }))
+  })
+
+  it("saves the 27th guest's line from their own link", async () => {
+    mocks.resolvePreorderGuestToken.mockResolvedValue({
+      ok: true, tableBookingId: BOOKING, coverId: seatId(BIG_PARTY), customerId: 'customer-1', expiresAt: '2026-12-04T12:00:00.000Z',
+    })
+    const response = await guest({ seat: seatPayload({ ordinal: BIG_PARTY, coverId: seatId(BIG_PARTY) }) })
+
+    expect(response.status).toBe(200)
+    expect(mocks.savePreorderCover).toHaveBeenCalledWith(db.client, expect.objectContaining({ coverId: seatId(BIG_PARTY) }))
+  })
+
+  it('still refuses a seat the booking does not have', async () => {
+    const response = await organiser({ action: 'save', seat: seatPayload({ ordinal: BIG_PARTY + 1, coverId: seatId(BIG_PARTY + 1) }) })
+
+    expect(response.status).not.toBe(200)
+    expect(mocks.savePreorderCover).not.toHaveBeenCalled()
+  })
+})

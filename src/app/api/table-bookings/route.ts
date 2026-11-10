@@ -36,7 +36,6 @@ import {
 } from '@/lib/table-bookings/bookings'
 import { computeDepositAmount, LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
 import {
-  CHRISTMAS_MAX_PARTY_SIZE,
   CHRISTMAS_MIN_PARTY_SIZE,
   extractChristmasRuleErrorMessage,
   isChristmasBookingType,
@@ -52,7 +51,7 @@ import {
 import { loadBookingPeriodContext } from '@/lib/table-bookings/period-lookup'
 import type { BookingPeriod } from '@/lib/table-bookings/periods'
 import { extractServiceWindowRuleErrorMessage } from '@/lib/table-bookings/service-window-guard'
-import { PARTY_SIZE_INPUT_CEILING, readTableBookingPartyLimit } from '@/lib/table-bookings/party-limit'
+import { PARTY_SIZE_INPUT_CEILING, readChristmasOnlinePartyLimit } from '@/lib/table-bookings/party-limit'
 import { isAssignmentConflictError } from '@/lib/table-bookings/move-table'
 import { savePreorderCover, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { reportPreorderSaveFailure } from '@/lib/table-bookings/preorder-alerts'
@@ -128,7 +127,9 @@ const CreateTableBookingSchema = z.object({
   // normal terms. See GET /api/table-bookings/periods for what to show the guest.
   booking_period_id: z.string().uuid().optional(),
   booking_period_answer: z.boolean().optional(),
-  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE).optional(),
+  // Up to the typo guard: create_table_booking_christmas_v01 refuses a party above the online Christmas
+  // ceiling (26), which comes back as CHRISTMAS_PARTY_TOO_LARGE with the phone number.
+  christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(PARTY_SIZE_INPUT_CEILING).optional(),
   notes: z.string().trim().max(500).optional(),
   // Deprecated. Older public clients may still post this while their bundle
   // rolls forward, but Sunday bookings no longer have a pre-order flow.
@@ -171,7 +172,7 @@ const CreateTableBookingSchema = z.object({
         addon_menu_item_ids: z.array(z.string().uuid()).max(10).optional()
       })
     )
-    .max(20)
+    .max(PARTY_SIZE_INPUT_CEILING)
     .optional(),
   // Page-source labels (see PAGE_SOURCE_LABEL_CAPS). Optional and cleaned leniently by the shared
   // helper in src/lib/api/attribution-labels.ts, so a bad label never rejects a booking. They change
@@ -644,8 +645,9 @@ export async function POST(request: NextRequest) {
     // A Christmas refusal as the guest reads it: always status 400 with the phone number, never a
     // success status, so the website cannot mistake it for a booking (spec section 3.6).
     const christmasRefusal = async (code: ChristmasRefusalCode, ruleMessage?: string | null) => {
+      // The online Christmas ceiling (26), which the database applied to this booking.
       const onlinePartyLimit =
-        code === 'CHRISTMAS_PARTY_TOO_LARGE' ? await readTableBookingPartyLimit(supabase) : null
+        code === 'CHRISTMAS_PARTY_TOO_LARGE' ? await readChristmasOnlinePartyLimit(supabase) : null
       logger.info('Public Christmas table booking refused', {
         metadata: { code, bookingDate: payload.date, partySize: payload.party_size },
       })

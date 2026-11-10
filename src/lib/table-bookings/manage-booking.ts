@@ -689,7 +689,10 @@ export async function updateTableBookingByRawToken(
 
   // The website's own party limit, the setting the booking function reads for online bookings
   // (BK-129: this was a hard-coded 21, so lowering the setting never reached a guest's own change).
-  if (newPartySize > (await readTableBookingPartyLimit(supabase))) {
+  // It stops a guest growing the party, never a booking that is already bigger: a Christmas dinner
+  // books online for up to 26 and staff take up to 60 (owner decisions of 10 November 2026), and
+  // such a guest must still be able to change their notes or cancel here.
+  if (newPartySize > oldPartySize && newPartySize > (await readTableBookingPartyLimit(supabase))) {
     return {
       state: 'blocked',
       reason: 'too_large_party'

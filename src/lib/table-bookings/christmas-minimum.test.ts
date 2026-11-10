@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, extractChristmasRuleErrorMessage } from './christmas'
+import {
+  CHRISTMAS_MIN_PARTY_SIZE,
+  DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT,
+  extractChristmasRuleErrorMessage,
+} from './christmas'
 
 /**
  * The Christmas dinner minimum, held to one figure at every layer that enforces or shows it.
@@ -76,12 +80,21 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
     // This function was missed on 11 September, so parties of 4 and 5 who chose Christmas dinner
     // online were still refused (BK-004, 24 October review).
     const { file, body } = latestDefinitionOf('create_table_booking_christmas_v01')
-    const range = /IF v_party NOT BETWEEN (\d+) AND (\d+) THEN\s*RAISE EXCEPTION '([^']+)'/.exec(body)
+    const range = /IF v_party NOT BETWEEN (\d+) AND (\d+) THEN/.exec(body)
     expect(range, `${file} has no Christmas party-size range`).toBeTruthy()
     expect(Number(range![1])).toBe(CHRISTMAS_MIN_PARTY_SIZE)
-    expect(Number(range![2])).toBe(CHRISTMAS_MAX_PARTY_SIZE)
-    const message = range![3]
-    expect(message).toBe(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`)
+    // Since 20261110195056_christmas_online_26 (owner decision of 10 November 2026) the top of the
+    // range is the online Christmas ceiling setting, patched into that definition in place, so the
+    // newest migration that patches it in says the range production runs.
+    const ceiling =
+      /IF v_party NOT BETWEEN (\d+) AND public\.get_setting_int\('table_booking_max_party_christmas_online', (\d+)\) THEN\s*RAISE EXCEPTION '([^']+)'/
+    const patched = newestFirst.map((name) => ({ name, found: ceiling.exec(read(name)) })).find(({ found }) => found)
+    expect(patched, 'no migration gives create_table_booking_christmas_v01 the online Christmas ceiling').toBeTruthy()
+    expect(patched!.name > file, `${patched!.name} must come after ${file}`).toBe(true)
+    expect(Number(patched!.found![1])).toBe(CHRISTMAS_MIN_PARTY_SIZE)
+    expect(Number(patched!.found![2])).toBe(DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT)
+    const message = patched!.found![3].replace('%', String(DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT))
+    expect(message).toBe(`Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT} guests.`)
     expect(extractChristmasRuleErrorMessage({ message })).toBe(message)
   })
 
@@ -94,7 +107,9 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
     for (const path of schemaFiles) {
       const source = readFileSync(join(process.cwd(), path), 'utf8')
       expect(source, path).toContain(
-        'christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(CHRISTMAS_MAX_PARTY_SIZE)',
+        // The top is a typo guard: the party limit is checked by the database and, for staff, once
+        // the booking is read (owner decisions of 10 November 2026).
+        'christmas_course_counts: z.array(z.number().int().min(1).max(3)).min(CHRISTMAS_MIN_PARTY_SIZE).max(PARTY_SIZE_INPUT_CEILING)',
       )
     }
   })

@@ -32,6 +32,7 @@ import {
   type FohBookingCustomerMode,
 } from '@/lib/foh/booking-client-contract'
 import { WALK_IN_TODAY_ONLY_MESSAGE } from '@/lib/foh/walk-in'
+import { FOH_TABLES_UNJOINED_WARNING } from '@/lib/foh/availability-query'
 
 /**
  * The seasonal period covering the chosen booking date, as the staff route
@@ -725,7 +726,9 @@ export function useFohCreateBooking(input: {
       const allergiesText = payload.data.allergies_saved === false
         ? ' The allergies did not save: add them to the booking now.'
         : ''
-      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${highChairText}${coursesText}${allergiesText}${notificationText}${paymentLinkText}`)
+      // A Christmas party of 27 or more sits on tables that are not joined (10 November 2026).
+      const unjoinedText = payload.data.tables_unjoined === true ? ` ${FOH_TABLES_UNJOINED_WARNING}` : ''
+      setStatusMessage(`${bookingLabel} ${bookingRef}${tableText}${walkInTableMoveText} was ${outcome}.${unjoinedText}${highChairText}${coursesText}${allergiesText}${notificationText}${paymentLinkText}`)
       closeCreateModal()
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'Failed to create booking')

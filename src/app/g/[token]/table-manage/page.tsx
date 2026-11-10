@@ -36,7 +36,12 @@ import { ChristmasPartySection } from './ChristmasPartySection'
 import { ChristmasFoodSection, type ChristmasFoodSectionProps } from './ChristmasFoodSection'
 import { buildFoodMenu, buildFoodSeatViews, loadChristmasTierPrices, loadFoodInviteLedger, type FoodInviteLedger } from './food-data'
 import { isMessagingFlagOn } from '@/lib/messaging/flags'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_MIN_PARTY_SIZE,
+  DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT,
+  isChristmasBookingType
+} from '@/lib/table-bookings/christmas'
+import { readChristmasOnlinePartyLimit } from '@/lib/table-bookings/party-limit'
 
 /** Names the flow at the top of the page, per the approved kicker list. */
 // Static and non-personal on purpose: no token, customer name or booking reference may reach
@@ -116,7 +121,14 @@ function mapBlockedReason(reason?: string): string {
   }
 }
 
-function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text: string } | null {
+/**
+ * `christmasLimit` is the online Christmas ceiling (table_booking_max_party_christmas_online), read only
+ * when the banner needs it.
+ */
+function statusMessage(
+  status?: string,
+  christmasLimit: number = DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT
+): { tone: 'green' | 'amber' | 'red'; text: string } | null {
   switch (status) {
     case 'updated':
       return { tone: 'green', text: 'Booking updated.' }
@@ -135,7 +147,7 @@ function statusMessage(status?: string): { tone: 'green' | 'amber' | 'red'; text
     case 'christmas_size':
       return {
         tone: 'red',
-        text: `Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
+        text: `Online, Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${christmasLimit} guests. Please call us on ${GUEST_CONTACT.phoneDisplay} and we'll help.`
       }
     case 'christmas_no_change':
       return { tone: 'amber', text: 'Tick anyone not coming, or add guests, then press Update numbers.' }
@@ -233,7 +245,10 @@ export default async function TableManageBookingPage({
   const supabase = createAdminClient()
   const preview = await getTableManagePreviewByRawToken(supabase, token)
 
-  const banner = statusMessage(query.status)
+  const banner = statusMessage(
+    query.status,
+    query.status === 'christmas_size' ? await readChristmasOnlinePartyLimit(supabase) : undefined
+  )
 
   if (preview.state !== 'ready') {
     return (
@@ -327,7 +342,13 @@ export default async function TableManageBookingPage({
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { tableBookingId: preview.table_booking_id }
       })
-      christmasParty = { courseCounts: null, seatNames: [], canChangeOnline: false, closesAt: null }
+      christmasParty = {
+        courseCounts: null,
+        seatNames: [],
+        canChangeOnline: false,
+        closesAt: null,
+        maxPartySize: DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT
+      }
     }
   }
 

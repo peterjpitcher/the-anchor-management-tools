@@ -5,8 +5,9 @@ import {
   readChristmasDeadline,
   updateTableBookingPartySizeWithLinkedEventSeats,
 } from '@/lib/events/staff-seat-updates'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from './christmas'
+import { CHRISTMAS_MIN_PARTY_SIZE, isChristmasBookingType } from './christmas'
 import { getTableManagePreviewByRawToken } from './manage-booking'
+import { readChristmasOnlinePartyLimit } from './party-limit'
 import { recordGuestPartySizeChange } from './party-size-alerts'
 import { applyPartySizeDepositTransition } from './staff-deposit-transitions'
 
@@ -16,8 +17,9 @@ import { applyPartySizeDepositTransition } from './staff-deposit-transitions'
  * Until noon seven days before the date the guest can say who is not coming and add guests on 1, 2
  * or 3 courses. After that, or on a Christmas booking with no courses recorded, the page asks them to
  * ring, and a manager makes the change. The change goes through exactly the path staff use
- * (`updateTableBookingPartySizeWithLinkedEventSeats`): the 4 to 20 rule, the table move and its
- * undo, and `change_christmas_party_v01`, which takes the leaving guests' own seats and dishes and
+ * (`updateTableBookingPartySizeWithLinkedEventSeats`): the 4-guest minimum, the online Christmas
+ * ceiling (26, owner decision of 10 November 2026: a guest may grow the party to it, and a party staff
+ * booked above it may still get smaller), the table move and its undo, and `change_christmas_party_v01`, which takes the leaving guests' own seats and dishes and
  * closes up the rest. The plain party-size box is never used for a Christmas booking, because the
  * database refuses a size that does not match the course list and the guest would only see an error.
  */
@@ -108,7 +110,8 @@ export async function changeChristmasPartyByRawToken(
 
   const removed = new Set(removedSeats)
   const nextCourses = [...recorded.filter((_, index) => !removed.has(index + 1)), ...tiersAdded]
-  if (nextCourses.length < CHRISTMAS_MIN_PARTY_SIZE || nextCourses.length > CHRISTMAS_MAX_PARTY_SIZE) {
+  const guestLimit = await readChristmasOnlinePartyLimit(supabase)
+  if (nextCourses.length < CHRISTMAS_MIN_PARTY_SIZE || (nextCourses.length > recorded.length && nextCourses.length > guestLimit)) {
     return blocked('christmas_size', tableBookingId)
   }
 
@@ -125,6 +128,7 @@ export async function changeChristmasPartyByRawToken(
       sendSms: false,
       appBaseUrl: input.appBaseUrl,
       autoMoveTable: true,
+      christmasMaxPartySize: guestLimit,
       // A guest never makes a late change: after the deadline a manager does (D21).
     })
   } catch (changeError) {

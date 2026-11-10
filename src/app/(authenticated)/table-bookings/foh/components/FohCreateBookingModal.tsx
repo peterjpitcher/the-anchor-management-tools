@@ -8,7 +8,11 @@ import {
   LARGE_GROUP_DEPOSIT_PER_PERSON_GBP,
   LARGE_GROUP_DEPOSIT_THRESHOLD,
 } from '@/lib/table-bookings/deposit'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_MIN_PARTY_SIZE,
+  DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT,
+  DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT
+} from '@/lib/table-bookings/christmas'
 import type {
   FohCreateMode,
   FohCustomerSearchResult,
@@ -123,16 +127,6 @@ export function christmasPreorderDeadlineText(cutoffDays: number | null | undefi
   if (typeof cutoffDays !== 'number' || !Number.isFinite(cutoffDays)) return 'the pre-order deadline'
   if (cutoffDays === 0) return 'noon on the date'
   return `noon ${cutoffDays} day${cutoffDays === 1 ? '' : 's'} before the date`
-}
-
-/**
- * True for a Christmas party bigger than the website takes. Staff may book one up to the seated
- * Christmas capacity (A3, christmas_staff_max_party), but the free-times check still applies the
- * ordinary table limit and would mark every time as too large, so those times are not offered.
- */
-export function isLargeStaffChristmasParty(purpose: CreateForm['purpose'], partySize: string): boolean {
-  const size = Number.parseInt(partySize, 10)
-  return purpose === 'christmas' && Number.isFinite(size) && size > CHRISTMAS_MAX_PARTY_SIZE
 }
 
 function isPhoneLikeCustomerQuery(value: string): boolean {
@@ -300,14 +294,10 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             />
           )}
 
-          {createForm.purpose !== 'event' && isLargeStaffChristmasParty(createForm.purpose, createForm.party_size) && (
-            <p className="text-xs text-text-muted md:col-span-2">
-              The free times list stops at {CHRISTMAS_MAX_PARTY_SIZE} guests. Type the time; the booking is
-              checked against the tables when you save it.
-            </p>
-          )}
-
-          {createForm.purpose !== 'event' && !isLargeStaffChristmasParty(createForm.purpose, createForm.party_size) && (
+          {/* A Christmas party gets free times at every size staff can book (A3): the check reads the
+              Christmas limits, and above the online ceiling it offers, and warns about, tables that
+              are not joined. */}
+          {createForm.purpose !== 'event' && (
             <FohTimeSlots
               date={createForm.booking_date}
               partySize={createForm.party_size}
@@ -414,9 +404,10 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             {createForm.purpose === 'christmas' && (
               <p className="mt-1 text-xs text-text-muted">
                 Christmas bookings need {CHRISTMAS_MIN_PARTY_SIZE} guests or more and always take a
-                deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person. You can book more
-                than {CHRISTMAS_MAX_PARTY_SIZE} here, up to the seated Christmas capacity; the website
-                stops at {CHRISTMAS_MAX_PARTY_SIZE}. Nobody chooses courses now: the organiser chooses
+                deposit of {formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person. You can book up to{' '}
+                {DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT} here; the website takes up to {DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT}.
+                A party of {DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT + 1} or more sits on tables that are not
+                joined. Nobody chooses courses now: the organiser chooses
                 everyone&apos;s food from their food link by {christmasPreorderDeadlineText(christmasPreorderCutoffDays)}.
               </p>
             )}

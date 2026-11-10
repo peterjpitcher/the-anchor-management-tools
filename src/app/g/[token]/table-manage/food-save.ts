@@ -23,6 +23,7 @@ import {
   type SavePreorderCoverInput,
 } from '@/lib/table-bookings/preorder'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { PARTY_SIZE_INPUT_CEILING } from '@/lib/table-bookings/party-limit'
 import {
   PREORDER_ALLERGY_DETAIL_MAX_LENGTH,
   PREORDER_COURSES,
@@ -40,7 +41,9 @@ const MenuItemId = z.string().uuid().nullable()
 
 /** One line, as the line component posts it. Text is trimmed and length-checked here. */
 export const FoodSeatPayloadSchema = z.object({
-  ordinal: z.number().int().min(1).max(60),
+  // A typo guard only: the seat must also be on the booking, checked against the cover list when it
+  // saves, so the page takes as many guests as the booking holds (staff book Christmas up to 60).
+  ordinal: z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING),
   /** The seat the page showed, so a save from a page left open after the numbers changed is refused. */
   coverId: z.string().uuid().nullable().optional(),
   guestName: z.string().max(PREORDER_GUEST_NAME_MAX_LENGTH * 2).nullable(),

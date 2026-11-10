@@ -78,6 +78,12 @@ export type TableBookingRpcResult = {
   table_name?: string
   table_names?: string[]
   tables_joined?: boolean
+  /**
+   * create_table_booking_staff_v06 only: true when a Christmas party above the online Christmas
+   * ceiling was seated across tables that are not joined, so staff move them together before it
+   * arrives (owner decision of 10 November 2026).
+   */
+  tables_unjoined?: boolean
   party_size?: number
   // Christmas requests are stored as a `food` purpose with booking_type
   // 'christmas'. Neither the RPC nor the walk-in override path ever returns

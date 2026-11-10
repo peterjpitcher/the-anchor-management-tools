@@ -481,11 +481,27 @@ describe('useFohCreateBooking high chairs, outside and step-free', () => {
     expect(body.christmas_course_counts).toBeUndefined()
   })
 
-  // A3: staff may book a Christmas party bigger than the website's 20; the server checks the limit.
-  it('posts a staff Christmas party of more than 20 without a cap of its own', async () => {
+  // A3: staff may book a Christmas party bigger than the website's 26; the server checks the limit.
+  it('posts a staff Christmas party of more than 26 without a cap of its own', async () => {
     const calls = stubBookingFetch({})
     await submitBooking({ purpose: 'christmas', party_size: '45' })
     expect(bookingBody(calls)).toMatchObject({ purpose: 'christmas', party_size: 45 })
+  })
+
+  // Owner decision of 10 November 2026: a Christmas party of 27 or more sits on tables that are not
+  // joined, and staff are told to move them together when the booking saves.
+  it('tells staff to move the tables together when a party of 27 is seated on tables that are not joined', async () => {
+    stubBookingFetch({ tables_unjoined: true, table_name: 'Dining 1, Dining 2' })
+    const { setStatusMessage } = await submitBooking({ purpose: 'christmas', party_size: '27' })
+    expect(setStatusMessage).toHaveBeenLastCalledWith(
+      expect.stringContaining('These tables are not joined: move them together before the party arrives.')
+    )
+  })
+
+  it('says nothing about joining tables when the party fits joined tables', async () => {
+    stubBookingFetch({})
+    const { setStatusMessage } = await submitBooking({ purpose: 'christmas', party_size: '26' })
+    expect(setStatusMessage).toHaveBeenLastCalledWith(expect.not.stringContaining('not joined'))
   })
 
   it('tells staff to set the courses on the booking when they did not save', async () => {

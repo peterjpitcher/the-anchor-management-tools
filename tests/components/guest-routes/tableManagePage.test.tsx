@@ -251,13 +251,16 @@ describe('table-manage page on a Christmas booking', () => {
       seatNames: [null, 'Dave', null, null, null],
       canChangeOnline: true,
       closesAt: new Date('2026-12-17T12:00:00.000Z'),
+      maxPartySize: 26,
     })
 
     await renderPage()
 
     expect(screen.queryByLabelText(/Party size/)).not.toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Your Christmas numbers' })).toBeInTheDocument()
-    expect(screen.getByText(/You can change your numbers here until/)).toHaveTextContent('Christmas bookings are for 4 to 20 guests.')
+    // Owner decision of 10 November 2026: a guest may grow the party to the online ceiling, 26.
+    expect(screen.getByText(/You can change your numbers here until/)).toHaveTextContent('Online, Christmas bookings are for 4 to 26 guests.')
+    expect(screen.getByLabelText('How many more guests?')).toHaveAttribute('max', '22')
     const dave = screen.getByRole('checkbox', { name: 'Guest 2 (Dave), 2 courses' })
     expect(dave).toHaveAttribute('name', 'remove_seat')
     expect(dave).toHaveAttribute('value', '2')
@@ -272,7 +275,7 @@ describe('table-manage page on a Christmas booking', () => {
   })
 
   it('asks the guest to ring once the deadline has passed', async () => {
-    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: false, closesAt: null })
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: false, closesAt: null, maxPartySize: 26 })
 
     await renderPage()
 
@@ -282,15 +285,31 @@ describe('table-manage page on a Christmas booking', () => {
   })
 
   it('asks the guest to ring when no courses are recorded', async () => {
-    loadGuestChristmasParty.mockResolvedValue({ courseCounts: null, seatNames: [], canChangeOnline: true, closesAt: null })
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: null, seatNames: [], canChangeOnline: true, closesAt: null, maxPartySize: 26 })
 
     await renderPage()
 
     expect(screen.getByText(`To change numbers for Christmas dinner, please call us on ${GUEST_CONTACT.phoneDisplay}.`)).toBeInTheDocument()
   })
 
+  it('names the online Christmas ceiling when a change is too big', async () => {
+    loadGuestChristmasParty.mockResolvedValue({
+      courseCounts: [1, 1, 1, 1, 1],
+      seatNames: [],
+      canChangeOnline: true,
+      closesAt: null,
+      maxPartySize: 26,
+    })
+
+    await renderPage({ status: 'christmas_size' })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      `Online, Christmas bookings are for 4 to 26 guests. Please call us on ${GUEST_CONTACT.phoneDisplay}`
+    )
+  })
+
   it('says what happens to the deposit after a change', async () => {
-    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: true, closesAt: null })
+    loadGuestChristmasParty.mockResolvedValue({ courseCounts: [1, 1, 1, 1, 1], seatNames: [], canChangeOnline: true, closesAt: null, maxPartySize: 26 })
 
     await renderPage({ status: 'christmas_updated' })
 

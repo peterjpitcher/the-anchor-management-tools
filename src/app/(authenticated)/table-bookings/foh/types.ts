@@ -140,6 +140,8 @@ export type FohCreateBookingResponse = {
     sunday_preorder_reason?: string | null
     high_chairs_granted?: number
     is_outside_seating?: boolean
+    /** A Christmas party seated across tables that are not joined: staff move them together. */
+    tables_unjoined?: boolean
   }
   error?: string
   code?: string

@@ -19,8 +19,11 @@ import { parseFohAvailabilityQuery, withPacingBypass } from '@/lib/foh/availabil
  *
  * Party size: the database applies the one table booking limit (table_booking_max_party_online,
  * D30) to every channel, so a party over it gets no times, as the staff booking function would
- * refuse it. Walk-ins and drinks bookings skip kitchen pacing and the drinks ceiling when saved, so
- * their times are not refused for those here.
+ * refuse it. A Christmas dinner (purpose=christmas) on a Christmas date goes up to
+ * christmas_staff_max_party (60); above the online Christmas ceiling (26) no joined tables hold the
+ * party, so the times offered seat it across tables that are not joined and the answer carries
+ * tables_unjoined: true, for the screen to warn staff. Walk-ins and drinks bookings skip kitchen
+ * pacing and the drinks ceiling when saved, so their times are not refused for those here.
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const auth = await requireFohPermission('view')
