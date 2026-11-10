@@ -41,6 +41,7 @@ import { getEventRebookPreview, rebookLapsedEventBooking } from '@/app/actions/e
 
 const HELEN_ID = '275ac4a2-a8c5-49fd-b9ef-6b94033f4acf'
 const RUPI_ID = '082de866-ebde-403e-9855-3257f9915d25'
+const LEGACY_ID = '6b0e1c55-7d43-4f2a-9a51-1d2b6c3e4f50'
 const ALLERGY_ID = '11111111-1111-4111-8111-111111111111'
 
 const event = {
@@ -82,6 +83,21 @@ const bookings: Record<string, Record<string, unknown>> = {
     contact_email: null,
     attendees: [],
     customer: { id: 'customer-rupi', first_name: 'Rupi', last_name: '', mobile_number: '+447700900002', mobile_e164: '+447700900002', email: null },
+    event,
+  },
+  // An older website booking that kept its guests only as a list of names.
+  [LEGACY_ID]: {
+    id: LEGACY_ID,
+    event_id: 'event-1',
+    customer_id: 'customer-legacy',
+    status: 'expired',
+    seats: 2,
+    is_reminder_only: false,
+    event_seating_type: 'seated',
+    contact_email: 'sam@example.com',
+    attendees: [],
+    attendee_names: ['Sam Lee', 'Jo Lee'],
+    customer: { id: 'customer-legacy', first_name: 'Sam', last_name: 'Lee', mobile_number: '+447700900003', mobile_e164: '+447700900003', email: null },
     event,
   },
 }
@@ -182,6 +198,11 @@ describe('getEventRebookPreview', () => {
     expect('success' in result && result.data.refusal).toMatch(/waiting for payment/)
   })
 
+  it('lists the guests of an older booking that kept only their names', async () => {
+    const result = await getEventRebookPreview(LEGACY_ID)
+    expect('success' in result && result.data.guests).toEqual([{ id: 'listed-1', name: 'Sam Lee' }, { id: 'listed-2', name: 'Jo Lee' }])
+  })
+
   it('refuses someone who cannot manage events', async () => {
     rbac.checkUserPermission.mockResolvedValue(false)
     expect(await getEventRebookPreview(HELEN_ID)).toEqual({ error: 'You do not have permission to rebook event bookings.' })
@@ -231,8 +252,15 @@ describe('rebookLapsedEventBooking', () => {
         details_to_follow: false,
         payment_recorded: false,
         payment_error: null,
+        needs_review: null,
       },
     })
+  })
+
+  it('carries the names of an older booking that kept only a list, keeping the guest staff chose', async () => {
+    await rebookLapsedEventBooking({ bookingId: LEGACY_ID, seats: 1, keepGuestIds: ['listed-2'], payment: 'link' })
+    const params = service.createBooking.mock.calls[0][0]
+    expect(params.attendees.map((guest: { name: string }) => guest.name)).toEqual(['Jo Lee'])
   })
 
   it('takes one ticket for one of two guests when staff choose who is coming (Leo needed one, not two)', async () => {
@@ -266,6 +294,23 @@ describe('rebookLapsedEventBooking', () => {
         state: 'pending_payment',
         payment_recorded: false,
         payment_error: 'The booking is made but the payment was not recorded: Failed to confirm manual payment. Use Cash Paid on the new booking.',
+      },
+    })
+  })
+
+  it('never reports a paid booking as confirmed when it went to a manager for review', async () => {
+    eventsActions.markEventBookingPaidManually.mockResolvedValue({
+      success: true,
+      data: { state: 'manual_review', reason: 'capacity_unavailable_after_capture', booking_id: 'booking-new', payment_id: 'pay-new', sms_sent: false },
+    })
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        state: 'pending_payment',
+        payment_recorded: true,
+        payment_error: null,
+        needs_review: 'The £180.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.',
       },
     })
   })

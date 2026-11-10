@@ -42,6 +42,28 @@ export function rebookGuestSummaries(storedAttendees: unknown): RebookGuestSumma
     }))
 }
 
+function listedNames(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((name): name is string => typeof name === 'string' && name.trim().length > 0).map((name) => name.trim())
+}
+
+/**
+ * The lapsed booking's guests: its guest rows, or, for an older booking that kept its guests only
+ * as a list of names (`attendee_names` on the booking, else on its ticket lines), one row per
+ * name. Without this those names were lost on rebooking (Codex review of PR 330). The ids are
+ * built from the list's order, so the preview and the rebook agree on who staff ticked.
+ */
+export function rebookStoredGuests(input: {
+  attendees: unknown
+  attendeeNames?: unknown
+  lineAttendeeNames?: unknown[]
+}): unknown[] {
+  if (Array.isArray(input.attendees) && input.attendees.length > 0) return input.attendees
+  const bookingNames = listedNames(input.attendeeNames)
+  const names = bookingNames.length > 0 ? bookingNames : (input.lineAttendeeNames ?? []).flatMap(listedNames)
+  return names.map((name, index) => ({ id: `listed-${index + 1}`, name }))
+}
+
 /** An answer the event still asks and would still accept, so the new booking is never refused for it. */
 function carriedAnswer(question: BookingQuestion, raw: unknown): string | null {
   if (typeof raw !== 'string') return null

@@ -27,7 +27,7 @@ beforeEach(() => {
   actions.getEventRebookPreview.mockResolvedValue({ success: true, data: helen })
   actions.rebookLapsedEventBooking.mockResolvedValue({
     success: true,
-    data: { booking_id: 'new', state: 'confirmed', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: true, payment_error: null },
+    data: { booking_id: 'new', state: 'confirmed', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: true, payment_error: null, needs_review: null },
   })
 })
 
@@ -85,13 +85,31 @@ describe('RebookBookingDialog', () => {
   it('says what still needs doing when the booking is made but the cash is not recorded', async () => {
     actions.rebookLapsedEventBooking.mockResolvedValue({
       success: true,
-      data: { booking_id: 'new', state: 'pending_payment', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: false, payment_error: 'The booking is made but the payment was not recorded: Failed. Use Cash Paid on the new booking.' },
+      data: { booking_id: 'new', state: 'pending_payment', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: false, payment_error: 'The booking is made but the payment was not recorded: Failed. Use Cash Paid on the new booking.', needs_review: null },
     })
     render(<RebookBookingDialog bookingId="booking-helen" onClose={vi.fn()} onDone={vi.fn()} />)
     await screen.findByLabelText('Tickets')
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
     fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
     expect(await screen.findByText(/Use Cash Paid on the new booking/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+  })
+
+  it('stays open and says a manager must check it when the cash is recorded but the booking is not confirmed', async () => {
+    const review = 'The £90.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.'
+    actions.rebookLapsedEventBooking.mockResolvedValue({
+      success: true,
+      data: { booking_id: 'new', state: 'pending_payment', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: true, payment_error: null, needs_review: review },
+    })
+    const onClose = vi.fn()
+    const onDone = vi.fn()
+    render(<RebookBookingDialog bookingId="booking-helen" onClose={onClose} onDone={onDone} />)
+    await screen.findByLabelText('Tickets')
+    fireEvent.click(screen.getByLabelText('Cash at the bar now'))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
+    expect(await screen.findByText(review)).toBeInTheDocument()
+    expect(onDone).toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 

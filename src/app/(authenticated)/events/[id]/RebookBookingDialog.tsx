@@ -102,6 +102,11 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
         setOutcome({ tone: 'warning', message: 'Rebooked. The payment still needs recording.', links: [] })
         return
       }
+      if (result.data.needs_review) {
+        // The money is recorded but the booking is not confirmed: say so rather than close on success.
+        setOutcome({ tone: 'warning', message: result.data.needs_review, links: [] })
+        return
+      }
       if (payment === 'link') {
         setOutcome(describeManualBookingOutcome({
           state: result.data.state,

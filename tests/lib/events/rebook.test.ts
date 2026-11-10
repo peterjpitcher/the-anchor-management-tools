@@ -5,6 +5,7 @@ import {
   rebookDoorCharge,
   rebookGuestSummaries,
   rebookRefusal,
+  rebookStoredGuests,
 } from '@/lib/events/rebook'
 import type { BookingQuestion } from '@/lib/events/booking-questions'
 
@@ -109,6 +110,20 @@ describe('rebookGuestSummaries', () => {
       { id: 'b', name: 'Guest 2' },
     ])
     expect(rebookGuestSummaries(undefined)).toEqual([])
+  })
+})
+
+describe('rebookStoredGuests', () => {
+  it('uses the guest rows when the booking has them', () => {
+    expect(rebookStoredGuests({ attendees: helenGuests, attendeeNames: ['Someone else'] })).toBe(helenGuests)
+  })
+
+  it('makes a row per listed name for an older booking, from the booking or else its ticket lines', () => {
+    expect(rebookStoredGuests({ attendees: [], attendeeNames: [' Sam Lee ', '', 'Jo Lee'] }))
+      .toEqual([{ id: 'listed-1', name: 'Sam Lee' }, { id: 'listed-2', name: 'Jo Lee' }])
+    expect(rebookStoredGuests({ attendees: null, attendeeNames: null, lineAttendeeNames: [['Sam Lee'], null, ['Jo Lee']] }))
+      .toEqual([{ id: 'listed-1', name: 'Sam Lee' }, { id: 'listed-2', name: 'Jo Lee' }])
+    expect(rebookStoredGuests({ attendees: [], attendeeNames: [] })).toEqual([])
   })
 })
 

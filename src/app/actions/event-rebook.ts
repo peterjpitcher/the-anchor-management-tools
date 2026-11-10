@@ -20,6 +20,7 @@ import {
   rebookDoorCharge,
   rebookGuestSummaries,
   rebookRefusal,
+  rebookStoredGuests,
   type RebookGuestSummary,
 } from '@/lib/events/rebook'
 import type { Event } from '@/types/database'
@@ -42,6 +43,7 @@ type LapsedBookingRow = {
   is_reminder_only: boolean | null
   event_seating_type: string | null
   attendees: unknown
+  attendee_names: string[] | null
   contact_email: string | null
   customer: { id: string; first_name: string | null; last_name: string | null; mobile_number: string | null; mobile_e164: string | null; email: string | null } | null
   event: {
@@ -58,6 +60,8 @@ type LapsedBookingRow = {
 
 type LapsedBookingContext = {
   booking: LapsedBookingRow
+  /** Its guest rows, or one row per listed name on an older booking (rebookStoredGuests). */
+  storedGuests: unknown[]
   /** The lapsed booking's one ticket type, kept on the new booking; null for the event's default. */
   ticketTypeId: string | null
   ticketBasePrice: number | string | null
@@ -73,7 +77,7 @@ function one<T>(value: T | T[] | null | undefined): T | null {
 async function loadLapsedBooking(supabase: AdminClient, bookingId: string): Promise<{ error: string } | LapsedBookingContext> {
   const { data, error } = await supabase
     .from('bookings')
-    .select('id, event_id, customer_id, status, seats, is_reminder_only, event_seating_type, attendees, contact_email, customer:customers(id, first_name, last_name, mobile_number, mobile_e164, email), event:events(id, name, booking_mode, payment_mode, price, price_per_seat, is_free, booking_questions)')
+    .select('id, event_id, customer_id, status, seats, is_reminder_only, event_seating_type, attendees, attendee_names, contact_email, customer:customers(id, first_name, last_name, mobile_number, mobile_e164, email), event:events(id, name, booking_mode, payment_mode, price, price_per_seat, is_free, booking_questions)')
     .eq('id', bookingId)
     .maybeSingle()
   if (error) {
@@ -98,7 +102,7 @@ async function loadLapsedBooking(supabase: AdminClient, bookingId: string): Prom
       .limit(1),
     supabase
       .from('booking_items')
-      .select('ticket_type_id, quantity, ticket_type:event_ticket_types(base_price)')
+      .select('ticket_type_id, quantity, attendee_names, ticket_type:event_ticket_types(base_price)')
       .eq('booking_id', booking.id),
   ])
   if (otherError || itemsError) {
@@ -112,12 +116,17 @@ async function loadLapsedBooking(supabase: AdminClient, bookingId: string): Prom
     return { error: 'Could not load the booking. Try again.' }
   }
 
-  const lines = ((items ?? []) as unknown as Array<{ ticket_type_id: string | null; ticket_type: { base_price: number | string | null } | Array<{ base_price: number | string | null }> | null }>)
+  const lines = ((items ?? []) as unknown as Array<{ ticket_type_id: string | null; attendee_names: string[] | null; ticket_type: { base_price: number | string | null } | Array<{ base_price: number | string | null }> | null }>)
   const typeIds = Array.from(new Set(lines.map((line) => line.ticket_type_id).filter((id): id is string => Boolean(id))))
   const firstType = lines.length > 0 ? one(lines[0].ticket_type) : null
 
   return {
     booking,
+    storedGuests: rebookStoredGuests({
+      attendees: booking.attendees,
+      attendeeNames: booking.attendee_names,
+      lineAttendeeNames: lines.map((line) => line.attendee_names),
+    }),
     ticketTypeId: typeIds.length === 1 ? typeIds[0] : null,
     ticketBasePrice: typeIds.length === 1 ? firstType?.base_price ?? null : null,
     eventFullUnitPrice: resolveEventTicketPriceAmount(booking.event as unknown as Event),
@@ -166,7 +175,7 @@ export async function getEventRebookPreview(
         bookingId: booking.id,
         customerName: [customer?.first_name, customer?.last_name].filter((part) => part && part.trim()).join(' ') || 'This guest',
         seats: Math.max(1, Number(booking.seats ?? 1)),
-        guests: rebookGuestSummaries(booking.attendees),
+        guests: rebookGuestSummaries(loaded.storedGuests),
         doorUnitPrice: rebookDoorCharge({ seats: 1, ticketBasePrice: loaded.ticketBasePrice, eventFullUnitPrice: loaded.eventFullUnitPrice }),
         linkGoesBy: hasEmail ? 'email' : hasMobile ? 'text' : null,
         refusal: loaded.refusal,
@@ -207,11 +216,23 @@ export type RebookResult =
         payment_recorded: boolean
         /** Cash or card only: why the payment was not recorded, with what to do next. */
         payment_error: string | null
+        /**
+         * Cash or card only: the money is recorded but the booking could not be confirmed (no table
+         * or place was free when it was checked), so it waits for a manager, as on Cash Paid.
+         */
+        needs_review: string | null
       }
     }
 
 function formatMoney(amount: number): string {
   return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
+
+/** Why confirm_event_manual_payment_v01 sent a paid booking to review, in plain words. */
+function describeReviewReason(reason: string | null): string {
+  if (reason === 'table_unavailable_after_capture') return 'no table was free'
+  if (reason === 'capacity_unavailable_after_capture') return 'no place was free'
+  return 'it could not be confirmed'
 }
 
 /**
@@ -301,7 +322,7 @@ export async function rebookLapsedEventBooking(input: {
 
     const questionsParsed = bookingQuestionsSchema.safeParse(event.booking_questions ?? [])
     const carried = carryGuestsToRebook({
-      storedAttendees: booking.attendees,
+      storedAttendees: loaded.storedGuests,
       keepGuestIds: parsed.data.keepGuestIds ?? null,
       seats,
       questions: questionsParsed.success ? questionsParsed.data : [],
@@ -367,6 +388,7 @@ export async function rebookLapsedEventBooking(input: {
 
     let paymentRecorded = false
     let paymentError: string | null = null
+    let needsReview: string | null = null
     if (payment !== 'link' && result.resolvedState === 'pending_payment') {
       const paid = await markEventBookingPaidManually({
         bookingId: newBookingId,
@@ -377,6 +399,10 @@ export async function rebookLapsedEventBooking(input: {
         paymentError = `The booking is made but the payment was not recorded: ${paid.error} Use ${payment === 'cash' ? 'Cash Paid' : 'Card Paid'} on the new booking.`
       } else if (paid.data.state === 'blocked') {
         paymentError = `The booking is made but the payment was not recorded (${(paid.data.reason ?? 'blocked').replace(/_/g, ' ')}). Use ${payment === 'cash' ? 'Cash Paid' : 'Card Paid'} on the new booking.`
+      } else if (paid.data.state === 'manual_review') {
+        // The money is recorded but the booking stays waiting for payment: never report it confirmed.
+        paymentRecorded = true
+        needsReview = `The ${formatMoney(doorCharge)} is recorded, but the booking is not confirmed because ${describeReviewReason(paid.data.reason)}. A manager needs to check it; it shows as waiting for payment until then.`
       } else {
         paymentRecorded = true
       }
@@ -391,12 +417,13 @@ export async function rebookLapsedEventBooking(input: {
       success: true,
       data: {
         booking_id: newBookingId,
-        state: paymentRecorded ? 'confirmed' : result.resolvedState,
+        state: paymentRecorded && !needsReview ? 'confirmed' : result.resolvedState,
         next_step_url: payment === 'link' ? result.nextStepUrl : null,
         manage_booking_url: result.manageUrl,
         details_to_follow: prepared.detailsToFollow,
         payment_recorded: paymentRecorded,
         payment_error: paymentError,
+        needs_review: needsReview,
       },
     }
   } catch (error) {
