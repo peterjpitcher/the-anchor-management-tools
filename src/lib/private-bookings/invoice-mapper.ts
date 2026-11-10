@@ -11,8 +11,11 @@
  * 1. The invoice total MUST equal the booking's gross total to the penny. The
  *    customer already holds that figure on their signed contract and has been
  *    sent it by SMS. `computeBookingMoney` is the single source of that number
- *    (and mirrors the SQL functions), so header totals are taken from it
- *    directly rather than recomputed.
+ *    (and mirrors the SQL functions), so the header total is taken from it
+ *    directly. Spreading a fixed discount and rounding VAT per line can leave
+ *    the printed lines a few pence out; those pence go on the largest line,
+ *    and the header net and VAT are taken from the lines as printed, so they
+ *    may differ from the contract's split by a penny while the total matches.
  *
  * 2. Discounts should stay visible where possible. Room hire is routinely
  *    given away at 100% off, and a customer seeing "100% off, £0.00" is being
@@ -264,38 +267,158 @@ export function mapBookingToInvoice(booking: MappableBooking): InvoiceMappingRes
     return buildLine(item, net * spreadFactor, index + 1, warnings)
   })
 
-  const totals: MappedInvoiceTotals = {
-    subtotal_amount: usesInvoiceDiscount ? money.netTotal : money.discountedNet,
-    discount_amount: usesInvoiceDiscount ? round2(money.netTotal - money.discountedNet) : 0,
-    invoice_discount_percentage: usesInvoiceDiscount ? bookingDiscountValue : 0,
-    vat_amount: money.vatAmount,
-    total_amount: money.grossTotal,
-  }
+  // Spreading a fixed discount, and rounding VAT line by line, can leave the
+  // printed lines a few pence away from the contract total even though every
+  // line is right to the penny on its own. Absorb that rounding in the largest
+  // line rather than refusing an invoice the customer is owed.
+  const reconciled = absorbRoundingDifference(
+    lineItems,
+    money.grossTotal,
+    usesInvoiceDiscount ? bookingDiscountValue : 0,
+    warnings,
+  )
 
   // The guard. `calculateInvoiceTotals` is what the PDF uses to render the line
   // table, so if it disagrees with the header we would print an invoice whose
   // lines do not sum to its own total. Refuse rather than send that.
-  const rendered = calculateInvoiceTotals(
-    lineItems.map(line => ({
+  const rendered = renderLines(reconciled, usesInvoiceDiscount ? bookingDiscountValue : 0)
+
+  if (pence(rendered.totalAmount) !== pence(money.grossTotal)) {
+    throw new InvoiceMappingError(
+      'invoice_total_reconciliation_failed',
+      'The invoice lines do not add up to the booking total, so no invoice was created.',
+      {
+        bookingGrossTotal: money.grossTotal,
+        renderedTotal: rendered.totalAmount,
+        differencePence: pence(rendered.totalAmount) - pence(money.grossTotal),
+      },
+    )
+  }
+
+  // Header figures come from the lines as printed, so the invoice's own net,
+  // discount and VAT always agree with its line table. The total is the
+  // booking's gross total, which the database re-checks.
+  const totals: MappedInvoiceTotals = {
+    subtotal_amount: round2(rendered.subtotalBeforeInvoiceDiscount),
+    discount_amount: round2(rendered.invoiceDiscountAmount),
+    invoice_discount_percentage: usesInvoiceDiscount ? bookingDiscountValue : 0,
+    vat_amount: rendered.vatAmount,
+    total_amount: money.grossTotal,
+  }
+
+  return { lineItems: reconciled, totals, warnings }
+}
+
+function renderLines(lines: MappedInvoiceLine[], invoiceDiscountPercentage: number) {
+  return calculateInvoiceTotals(
+    lines.map(line => ({
       quantity: line.quantity,
       unit_price: line.unit_price,
       discount_percentage: line.discount_percentage,
       vat_rate: line.vat_rate,
     })),
-    totals.invoice_discount_percentage,
+    invoiceDiscountPercentage,
   )
+}
 
-  if (pence(rendered.totalAmount) !== pence(totals.total_amount)) {
-    throw new InvoiceMappingError(
-      'invoice_total_reconciliation_failed',
-      'The invoice lines do not add up to the booking total, so no invoice was created.',
-      {
-        bookingGrossTotal: totals.total_amount,
-        renderedTotal: rendered.totalAmount,
-        differencePence: pence(rendered.totalAmount) - pence(totals.total_amount),
-      },
-    )
+/** Net of a line after its own discount, before any invoice-level discount. */
+function lineNet(line: MappedInvoiceLine): number {
+  return line.quantity * line.unit_price * (1 - line.discount_percentage / 100)
+}
+
+/**
+ * Restate a line as one unit at its exact net, keeping the detail in the
+ * description, so its price can move by a penny without inventing a unit price.
+ */
+function asSingleCharge(line: MappedInvoiceLine): MappedInvoiceLine {
+  if (line.quantity === 1 && line.discount_percentage === 0) return line
+  const parts = [`${formatQuantity(line.quantity)} at ${formatMoney(line.unit_price)}`]
+  if (line.discount_percentage > 0) {
+    parts.push(`less ${formatQuantity(line.discount_percentage)}% discount`)
+  }
+  return {
+    ...line,
+    description: `${line.description} (${parts.join(', ')})`,
+    quantity: 1,
+    unit_price: round2(lineNet(line)),
+    discount_percentage: 0,
+  }
+}
+
+/** Furthest a line is moved, in pence. Real drift is a few pence at most. */
+const MAX_ADJUSTMENT_PENCE = 25
+
+/**
+ * Make the printed lines total exactly `grossTotal` by moving the largest line
+ * (and, if one line alone cannot land on the figure, the next largest by a
+ * penny or two) by the fewest pence.
+ *
+ * Two lines are sometimes needed because VAT is rounded per line: moving one
+ * line's net by a penny moves its gross by 1p or 2p, so a single line can step
+ * over the target. Returns the lines unchanged when they already reconcile,
+ * and unchanged when no small adjustment works (the caller then refuses).
+ */
+function absorbRoundingDifference(
+  lines: MappedInvoiceLine[],
+  grossTotal: number,
+  invoiceDiscountPercentage: number,
+  warnings: string[],
+): MappedInvoiceLine[] {
+  const target = pence(grossTotal)
+  const totalOf = (candidate: MappedInvoiceLine[]) =>
+    pence(renderLines(candidate, invoiceDiscountPercentage).totalAmount)
+
+  if (totalOf(lines) === target) return lines
+
+  const bySize = lines
+    .map((line, index) => ({ index, net: lineNet(line) }))
+    .filter(entry => entry.net > 0)
+    .sort((a, b) => b.net - a.net)
+    .map(entry => entry.index)
+
+  if (bySize.length === 0) return lines
+
+  const [first, second] = bySize
+  const firstDeltas = penceSearchOrder(MAX_ADJUSTMENT_PENCE)
+  const secondDeltas = second === undefined ? [0] : penceSearchOrder(2)
+
+  const firstBase = asSingleCharge(lines[first])
+  const secondBase = second === undefined ? null : asSingleCharge(lines[second])
+
+  for (const secondDelta of secondDeltas) {
+    for (const firstDelta of firstDeltas) {
+      const firstPrice = round2(firstBase.unit_price + firstDelta / 100)
+      if (firstPrice < 0) continue
+
+      // The candidate is exactly what gets returned, so what was checked is
+      // what is sent. An untouched second line keeps its natural shape.
+      const candidate = lines.slice()
+      candidate[first] = { ...firstBase, unit_price: firstPrice }
+
+      if (second !== undefined && secondBase && secondDelta !== 0) {
+        const secondPrice = round2(secondBase.unit_price + secondDelta / 100)
+        if (secondPrice < 0) continue
+        candidate[second] = { ...secondBase, unit_price: secondPrice }
+      }
+
+      if (totalOf(candidate) !== target) continue
+
+      const moved = [first, ...(second !== undefined && secondDelta !== 0 ? [second] : [])]
+      for (const index of moved) {
+        warnings.push(
+          `"${lines[index].description}" carries a rounding adjustment of a few pence so the invoice matches the contract total.`,
+        )
+      }
+      return candidate
+    }
   }
 
-  return { lineItems, totals, warnings }
+  return lines
+}
+
+/** 0, -1, 1, -2, 2 ... up to the limit, so the smallest move is tried first. */
+function penceSearchOrder(limit: number): number[] {
+  const order = [0]
+  for (let step = 1; step <= limit; step++) order.push(-step, step)
+  return order
 }
