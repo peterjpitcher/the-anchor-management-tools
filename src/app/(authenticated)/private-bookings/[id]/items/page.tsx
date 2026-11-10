@@ -564,6 +564,7 @@ interface EditItemModalProps {
 }
 
 function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalProps) {
+  const [description, setDescription] = useState(item.description)
   const [quantity, setQuantity] = useState(item.quantity.toString())
   const [unitPrice, setUnitPrice] = useState(item.unit_price.toString())
   const [discountAmount, setDiscountAmount] = useState(item.discount_value?.toString() || '')
@@ -575,6 +576,13 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
     e.preventDefault()
     setIsSubmitting(true)
 
+    const trimmedDescription = description.trim()
+    if (!trimmedDescription) {
+      toast.error('Description cannot be empty')
+      setIsSubmitting(false)
+      return
+    }
+
     const parsedQuantity = Number.parseFloat(quantity)
     if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
       toast.error('Quantity must be greater than 0')
@@ -582,11 +590,14 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
       return
     }
 
+    // An emptied discount box means no discount: send 0 so a discount the item
+    // already had is removed rather than left in place.
     const result = await updateBookingItem(item.id, {
+      description: trimmedDescription,
       quantity: parsedQuantity,
       unit_price: parseFloat(unitPrice),
-      discount_value: discountAmount ? parseFloat(discountAmount) : undefined,
-      discount_type: discountAmount ? discountType : undefined,
+      discount_value: discountAmount.trim() === '' ? 0 : parseFloat(discountAmount),
+      discount_type: discountType,
       notes: notes || null
     })
 
@@ -629,7 +640,13 @@ function EditItemModal({ isOpen, onClose, item, onItemUpdated }: EditItemModalPr
       }
     >
       <form id="pb-items-edit-form" onSubmit={handleSubmit} className="space-y-4">
-        <Input label="Item" value={item.description} readOnly />
+        <Input
+          label="Item"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          maxLength={200}
+          required
+        />
 
         <div className="grid grid-cols-2 gap-4">
           <Field label="Quantity" required>

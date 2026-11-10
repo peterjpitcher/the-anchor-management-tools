@@ -2945,13 +2945,39 @@ export async function addBookingItem(data: {
   return warning ? { success: true, warning } : { success: true };
 }
 
+/** Long enough for any real line name; stops a pasted paragraph breaking the contract table. */
+const MAX_ITEM_DESCRIPTION_LENGTH = 200;
+
 export async function updateBookingItem(itemId: string, data: {
+  description?: string;
   quantity?: number;
   unit_price?: number;
   discount_value?: number;
   discount_type?: 'percent' | 'fixed';
   notes?: string | null;
 }): Promise<{ success: true; bookingId: string; warning?: string }> {
+  // The description is what the contract, invoice and event sheet print for the line,
+  // so it can be renamed but never blanked.
+  let description: string | undefined;
+  if (data.description !== undefined) {
+    description = typeof data.description === 'string' ? data.description.trim() : '';
+    if (!description) {
+      throw new Error('Description cannot be empty');
+    }
+    if (description.length > MAX_ITEM_DESCRIPTION_LENGTH) {
+      throw new Error(`Description must be ${MAX_ITEM_DESCRIPTION_LENGTH} characters or fewer`);
+    }
+  }
+  if (data.quantity !== undefined && (!Number.isFinite(data.quantity) || data.quantity <= 0)) {
+    throw new Error('Quantity must be greater than 0');
+  }
+  if (data.unit_price !== undefined && (!Number.isFinite(data.unit_price) || data.unit_price < 0)) {
+    throw new Error('Unit price cannot be negative');
+  }
+  if (data.discount_value !== undefined && data.discount_value !== null && !Number.isFinite(data.discount_value)) {
+    throw new Error('Discount must be a number');
+  }
+
   const supabase = await createClient();
 
   const { data: currentItem, error: fetchError } = await supabase
@@ -2984,6 +3010,7 @@ export async function updateBookingItem(itemId: string, data: {
 
   const updateData: any = {};
 
+  if (description !== undefined) updateData.description = description;
   if (data.quantity !== undefined) updateData.quantity = data.quantity;
   if (data.unit_price !== undefined) updateData.unit_price = data.unit_price;
   if (data.discount_value !== undefined) updateData.discount_value = data.discount_value;

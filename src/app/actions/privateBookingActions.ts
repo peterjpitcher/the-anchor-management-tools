@@ -1943,6 +1943,7 @@ export async function addBookingItem(data: {
 }
 
 export async function updateBookingItem(itemId: string, data: {
+  description?: string
   quantity?: number
   unit_price?: number
   discount_value?: number

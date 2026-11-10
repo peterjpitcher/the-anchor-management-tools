@@ -385,6 +385,43 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     ).rejects.toThrow('Item not found')
   })
 
+  it('updateBookingItem saves a renamed description, trimmed', async () => {
+    const fetchSingle = vi.fn().mockResolvedValue({
+      data: { booking_id: 'booking-1', quantity: 1, unit_price: 11.67, discount_type: null, discount_value: 0 },
+      error: null,
+    })
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'item-1' }, error: null })
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle }) }),
+    })
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn((table: string) => {
+        if (table !== 'private_booking_items') throw new Error(`Unexpected table: ${table}`)
+        return { select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: fetchSingle }) }), update }
+      }),
+    })
+
+    await PrivateBookingService.updateBookingItem('item-1', { description: '  Vegan Pizza ' }).catch(() => undefined)
+
+    expect(update).toHaveBeenCalledWith({ description: 'Vegan Pizza' })
+  })
+
+  it.each([
+    [{ description: '   ' }, 'Description cannot be empty'],
+    [{ description: 'x'.repeat(201) }, 'Description must be 200 characters or fewer'],
+    [{ quantity: 0 }, 'Quantity must be greater than 0'],
+    [{ quantity: Number.NaN }, 'Quantity must be greater than 0'],
+    [{ unit_price: -1 }, 'Unit price cannot be negative'],
+    [{ unit_price: Number.NaN }, 'Unit price cannot be negative'],
+    [{ discount_value: Number.NaN }, 'Discount must be a number'],
+  ])('updateBookingItem refuses %o before touching the database', async (data, message) => {
+    const from = vi.fn()
+    mockedCreateClient.mockResolvedValue({ from })
+
+    await expect(PrivateBookingService.updateBookingItem('item-1', data)).rejects.toThrow(message)
+    expect(from).not.toHaveBeenCalled()
+  })
+
   it('deleteBookingItem throws not-found when delete affects no rows', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
       data: { booking_id: 'booking-1' },
