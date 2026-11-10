@@ -59,6 +59,12 @@ function expectReconciles(booking: MappableBooking) {
   )
   expect(rendered.totalAmount).toBe(money.grossTotal)
 
+  // The printed header must add up on its own: net, less discount, plus VAT.
+  const { subtotal_amount, discount_amount, vat_amount, total_amount } = result.totals
+  expect(Math.round((subtotal_amount - discount_amount + vat_amount) * 100)).toBe(
+    Math.round(total_amount * 100),
+  )
+
   return result
 }
 
@@ -293,6 +299,126 @@ describe('mapBookingToInvoice', () => {
       expect(totals.subtotal_amount).toBe(300)
       expect(totals.vat_amount).toBe(40)
       expect(totals.total_amount).toBe(340)
+    })
+  })
+
+  describe('Lorna Wright, a real booking with a fixed discount over seven lines', () => {
+    // Live 10 Nov 2026: items 1,095.02 net, fixed discount 182.50 ("to remove
+    // the VAT"), gross 1,095.02. Before this fix the spread discount plus
+    // per-line VAT rounding printed 1,095.04, and the invoice was refused.
+    const lornaItems = () => [
+      item({ item_type: 'space', description: 'Entire Pub', quantity: '4.50' as unknown as number, unit_price: '200.00' as unknown as number, discount_type: 'percent', discount_value: 100, line_total: 0, display_order: 2 }),
+      item({ item_type: 'other', description: 'DJ', quantity: 5, unit_price: 55, line_total: 275, display_order: 3 }),
+      item({ item_type: 'catering', description: 'Burger Buffet', quantity: 60, unit_price: 11, discount_type: 'percent', discount_value: 0, line_total: 660, display_order: 4 }),
+      item({ item_type: 'other', description: 'Margarita Pizza', quantity: 4, unit_price: 10.83, discount_type: 'percent', discount_value: 0, line_total: 43.32, display_order: 5 }),
+      item({ item_type: 'other', description: 'Pepperoni Pizza', quantity: 5, unit_price: 11.67, discount_type: 'percent', discount_value: 0, line_total: 58.35, display_order: 6 }),
+      item({ item_type: 'other', description: 'Vegetarian Pizza', quantity: 4, unit_price: 11.67, discount_type: 'percent', discount_value: 0, line_total: 46.68, display_order: 7 }),
+      item({ item_type: 'other', description: 'Vegan Pizza', quantity: 1, unit_price: 11.67, discount_type: 'percent', discount_value: 0, line_total: 11.67, display_order: 8 }),
+    ]
+
+    it('invoices at exactly the contract total of £1,095.02', () => {
+      const { totals } = expectReconciles({ items: lornaItems(), discount_type: 'fixed', discount_amount: 182.5 })
+      expect(totals.total_amount).toBe(1095.02)
+    })
+
+    it('keeps the header net and VAT in step with the printed lines', () => {
+      const { totals, lineItems } = mapBookingToInvoice({ items: lornaItems(), discount_type: 'fixed', discount_amount: 182.5 })
+      const rendered = calculateInvoiceTotals(
+        lineItems.map(l => ({ quantity: l.quantity, unit_price: l.unit_price, discount_percentage: l.discount_percentage, vat_rate: l.vat_rate })),
+        0,
+      )
+      expect(totals.subtotal_amount).toBe(Math.round(rendered.subtotalBeforeInvoiceDiscount * 100) / 100)
+      expect(totals.vat_amount).toBe(rendered.vatAmount)
+      expect(Math.round((totals.subtotal_amount + totals.vat_amount) * 100) / 100).toBe(1095.02)
+      // Within a few pence of the contract's own split.
+      expect(Math.abs(totals.subtotal_amount - 912.52)).toBeLessThanOrEqual(0.05)
+    })
+
+    it('puts the pennies on the biggest line and tells the operator', () => {
+      const { lineItems, warnings } = mapBookingToInvoice({ items: lornaItems(), discount_type: 'fixed', discount_amount: 182.5 })
+      const buffet = lineItems.find(l => l.description.includes('Burger Buffet'))!
+      expect(Math.abs(buffet.quantity * buffet.unit_price - 550)).toBeLessThanOrEqual(0.25)
+      expect(warnings.join(' ')).toContain('rounding adjustment')
+    })
+
+    it('reconciles for every fixed discount from £150.00 to £220.00', () => {
+      for (let p = 15000; p <= 22000; p++) {
+        expectReconciles({ items: lornaItems(), discount_type: 'fixed', discount_amount: p / 100 })
+      }
+    })
+  })
+
+  describe('fixed discounts over many awkward lines', () => {
+    it('always reconciles, whatever the prices and discount', () => {
+      // Deterministic pseudo-random bookings: odd per-head prices, part
+      // quantities, item discounts and a zero-rated line now and then.
+      let seed = 20261110
+      const rand = () => {
+        seed = (seed * 1103515245 + 12345) % 2147483648
+        return seed / 2147483648
+      }
+      for (let n = 0; n < 400; n++) {
+        const count = 2 + Math.floor(rand() * 9)
+        const items = Array.from({ length: count }, (_, i) => {
+          const quantity = 1 + Math.floor(rand() * 80)
+          const unit = Math.round((1 + rand() * 60) * 100) / 100
+          const pct = rand() < 0.2 ? Math.round(rand() * 50) : 0
+          const gross = quantity * unit * (1 - pct / 100)
+          return item({
+            description: `Line ${i}`,
+            quantity,
+            unit_price: unit,
+            discount_type: pct > 0 ? 'percent' : undefined,
+            discount_value: pct,
+            vat_rate: rand() < 0.1 ? 0 : 20,
+            line_total: Math.round(gross * 100) / 100,
+            display_order: i,
+          })
+        })
+        const net = items.reduce((sum, i) => sum + Number(i.line_total), 0)
+        const discount = Math.round(rand() * net * 0.4 * 100) / 100
+        expectReconciles({ items, discount_type: 'fixed', discount_amount: discount })
+      }
+    })
+
+    it('leaves a booking that already reconciles exactly as it was', () => {
+      const { lineItems, warnings } = mapBookingToInvoice({
+        items: [
+          item({ item_type: 'space', description: 'The Dining Room', quantity: 4, unit_price: 25, line_total: 100, display_order: 0 }),
+          item({ description: 'Finger Buffet', quantity: 20, unit_price: 16, line_total: 320, display_order: 1 }),
+        ],
+        discount_type: 'fixed',
+        discount_amount: 84,
+      })
+      expect(lineItems[1]).toMatchObject({ quantity: 20, unit_price: 12.8 })
+      expect(warnings.join(' ')).not.toContain('rounding adjustment')
+    })
+  })
+
+  describe('header that adds up after rounding', () => {
+    it('derives the discount so net, less discount, plus VAT equals the total', () => {
+      // £1.01 at 50% off: the discount is 50.5p and the VAT 10.1p. Rounding
+      // each on its own printed 1.01 - 0.51 + 0.10 = 0.60 against a 0.61 total.
+      const { totals } = expectReconciles({
+        items: [item({ description: 'Tea', quantity: 1, unit_price: 1.01, line_total: 1.01, display_order: 0 })],
+        discount_type: 'percent',
+        discount_amount: 50,
+      })
+      expect(totals).toMatchObject({ subtotal_amount: 1.01, discount_amount: 0.5, vat_amount: 0.1, total_amount: 0.61 })
+    })
+
+    it('adds up for percentage discounts over awkward lines too', () => {
+      for (let pct = 1; pct <= 60; pct++) {
+        expectReconciles({
+          items: [
+            item({ description: 'Buffet', quantity: 37, unit_price: 9.17, line_total: 339.29, display_order: 0 }),
+            item({ description: 'Room', quantity: 4.5, unit_price: 10.33, line_total: 46.49, display_order: 1 }),
+            item({ description: 'Tea', quantity: 1, unit_price: 1.01, line_total: 1.01, display_order: 2 }),
+          ],
+          discount_type: 'percent',
+          discount_amount: pct,
+        })
+      }
     })
   })
 
