@@ -9,7 +9,7 @@ import {
 import { GuestSubmitButton } from '@/components/features/shared/GuestSubmitButton'
 import { formatDateTime12Hour } from '@/lib/dateUtils'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
-import { CHRISTMAS_MAX_PARTY_SIZE, CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
+import { CHRISTMAS_MIN_PARTY_SIZE } from '@/lib/table-bookings/christmas'
 import type { GuestChristmasParty } from './christmas-party-data'
 
 type ChristmasPartySectionProps = GuestChristmasParty & {
@@ -33,7 +33,14 @@ function seatLabel(seat: number, tier: number, name: string | null): string {
  * booking with no courses recorded, the page asks them to ring instead, because a manager makes the
  * change then. Plain server-rendered HTML posting to the route next door, like the rest of the page.
  */
-export function ChristmasPartySection({ courseCounts, seatNames, canChangeOnline, closesAt, actionUrl }: ChristmasPartySectionProps) {
+export function ChristmasPartySection({
+  courseCounts,
+  seatNames,
+  canChangeOnline,
+  closesAt,
+  maxPartySize,
+  actionUrl,
+}: ChristmasPartySectionProps) {
   const phone = GUEST_CONTACT.phoneDisplay
 
   if (!courseCounts) {
@@ -63,7 +70,7 @@ export function ChristmasPartySection({ courseCounts, seatNames, canChangeOnline
         closesAt
           ? `You can change your numbers here until ${formatDateTime12Hour(closesAt)}. After that, please call us.`
           : 'You can change your numbers here until the pre-order deadline. After that, please call us.'
-      } Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${CHRISTMAS_MAX_PARTY_SIZE} guests.`}
+      } Online, Christmas bookings are for ${CHRISTMAS_MIN_PARTY_SIZE} to ${maxPartySize} guests.`}
     >
       <form method="post" action={actionUrl} className="flex flex-col gap-guest-lg">
         <input type="hidden" name="action" value="christmas_party" />
@@ -105,7 +112,7 @@ export function ChristmasPartySection({ courseCounts, seatNames, canChangeOnline
               type="number"
               inputMode="numeric"
               min="0"
-              max={String(CHRISTMAS_MAX_PARTY_SIZE - CHRISTMAS_MIN_PARTY_SIZE)}
+              max={String(Math.max(0, maxPartySize - CHRISTMAS_MIN_PARTY_SIZE))}
               defaultValue="0"
               className="sm:max-w-40"
             />

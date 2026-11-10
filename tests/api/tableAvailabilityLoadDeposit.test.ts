@@ -153,3 +153,43 @@ describe('GET /api/table-bookings/load quotes the deposit AMS charges', () => {
     })
   })
 })
+
+// Owner decision of 10 November 2026: sit-down Christmas dinner books online for up to 26 while
+// ordinary tables stay at 20. The slot list asks check_table_availability_v06 as 'christmas' for a
+// Christmas dinner, so on a Christmas date it uses the Christmas ceiling; the database treats it as
+// food in every other respect.
+describe('GET /api/table-bookings/load asks about a Christmas dinner as one', () => {
+  function capture() {
+    const calls: Array<{ name: string; args: Record<string, unknown> }> = []
+    db.onRpc((name, args) => {
+      calls.push({ name, args })
+      if (name === 'resolve_table_booking_deposit') {
+        return { data: { ok: true, required: true, amount: 260, rule: 'period', reason: 'Christmas deposit.' }, error: null }
+      }
+      return availability()
+    })
+    return () => calls.find((call) => call.name === 'check_table_availability_v06')?.args
+  }
+
+  it('asks as christmas when the guest has accepted the period', async () => {
+    const availabilityArgs = capture()
+    await GET(load(`date=2026-12-12&party_size=26&purpose=food&period_id=${PERIOD_ID}&period_answer=true`))
+    expect(availabilityArgs()).toMatchObject({ p_party_size: 26, p_purpose: 'christmas' })
+  })
+
+  it('asks as christmas for the legacy christmas purpose', async () => {
+    const availabilityArgs = capture()
+    await GET(load('date=2026-12-12&party_size=26&purpose=christmas'))
+    expect(availabilityArgs()).toMatchObject({ p_purpose: 'christmas' })
+  })
+
+  it('keeps an ordinary food or drinks question as it was', async () => {
+    const food = capture()
+    await GET(load('date=2026-12-12&party_size=6&purpose=food'))
+    expect(food()).toMatchObject({ p_purpose: 'food' })
+
+    const drinks = capture()
+    await GET(load(`date=2026-12-12&party_size=6&purpose=drinks&period_id=${PERIOD_ID}&period_answer=true`))
+    expect(drinks()).toMatchObject({ p_purpose: 'drinks' })
+  })
+})

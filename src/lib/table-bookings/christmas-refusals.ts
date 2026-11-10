@@ -10,10 +10,13 @@
  *    here, exactly as the migrations raise them:
  *      create_table_booking_core_v06 (20260913120622_booking_start_inside_trading_day.sql):
  *        "Christmas bookings are for 4 guests or more."
- *        "Christmas bookings for more than 20 guests are arranged as private hire. ..."
  *        "Christmas bookings need at least % hours notice."
- *      create_table_booking_christmas_v01 (20261027232639_christmas_preorder_cutoff_message.sql):
- *        "Christmas bookings are for 4 to 20 guests."
+ *        (Until 20261110185254_christmas_online_26 it also raised "Christmas bookings for more than 20
+ *        guests are arranged as private hire. ..."; still matched here for a request in flight while
+ *        that migration lands. A party above the caller's ceiling is now the blocked answer
+ *        `too_large_party` instead.)
+ *      create_table_booking_christmas_v01 (20261110185254_christmas_online_26.sql):
+ *        "Christmas bookings are for 4 to N guests.", N the online Christmas ceiling (26)
  *        "Christmas bookings are not open for that date."
  *        "Christmas bookings for two or three courses need a pre-order by noon % before the booking. ..."
  *  - The new payload (purpose `food` with the Christmas period accepted) is refused with a blocked
@@ -43,7 +46,7 @@ export type ChristmasRefusalFacts = {
   minNoticeHours?: number | null
   /** The period's min_party_size, when it could be read. */
   minPartySize?: number | null
-  /** The online party limit (table_booking_max_party_online), when it could be read. */
+  /** The online Christmas ceiling (table_booking_max_party_christmas_online, 26), when it could be read. */
   onlinePartyLimit?: number | null
 }
 

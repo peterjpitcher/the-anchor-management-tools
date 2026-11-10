@@ -99,7 +99,8 @@ export async function GET(request: NextRequest) {
     // person or six were booking.
     const partySizeRaw = url.searchParams.get('party_size')
     const partySize = partySizeRaw ? Number.parseInt(partySizeRaw, 10) : null
-    const purpose = url.searchParams.get('purpose') === 'drinks' ? 'drinks' : 'food'
+    const requestedPurpose = url.searchParams.get('purpose')
+    const purpose = requestedPurpose === 'drinks' ? 'drinks' : 'food'
     const outside = url.searchParams.get('outside') === 'true'
     const requiresAccessibleTable = url.searchParams.get('requires_accessible_table') === 'true'
     const highChairCountRaw = url.searchParams.get('high_chair_count')
@@ -107,6 +108,13 @@ export async function GET(request: NextRequest) {
     // The seasonal answer, so the deposit quoted matches the one the booking would charge (BK-186).
     const periodId = parsePeriodId(url.searchParams.get('period_id'))
     const periodAnswer = url.searchParams.get('period_answer') === 'true'
+    // A food booking that is a Christmas dinner (the legacy purpose, or the guest accepting the
+    // period) asks the slot list as 'christmas', so on a Christmas date it reads the online Christmas
+    // ceiling (26, owner decision of 10 November 2026) instead of the ordinary 20. The database
+    // treats it as food in every other respect, and as plain food on any other date. Counted as
+    // food in the funnel, as before.
+    const availabilityPurpose =
+      purpose === 'food' && (requestedPurpose === 'christmas' || periodAnswer) ? 'christmas' : purpose
 
     if (!isValidCalendarDate(date)) {
       return createErrorResponse('Date must use YYYY-MM-DD format', 'VALIDATION_ERROR', 400)
@@ -183,7 +191,7 @@ export async function GET(request: NextRequest) {
       const { data, error } = await supabase.rpc('check_table_availability_v06', {
         p_booking_date: date,
         p_party_size: partySize,
-        p_purpose: purpose,
+        p_purpose: availabilityPurpose,
         p_outside: outside,
         p_requires_accessible_table: requiresAccessibleTable,
         p_high_chair_count: highChairCount,

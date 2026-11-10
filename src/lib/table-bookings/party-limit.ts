@@ -1,13 +1,19 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+import { DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT, DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT } from './christmas'
+
+export { DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT, DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT }
 
 /**
  * The table booking party limit (owner decision D30, BK-146): one limit for every channel, the
  * website, staff screens and guests changing their own booking alike. It lives in the setting
  * `table_booking_max_party_online`, which the booking functions read (create_table_booking_public_v06
  * and, since 20261028125055, create_table_booking_staff_v06), so the app reads the same setting
- * rather than a number of its own. Bigger groups are private bookings.
+ * rather than a number of its own. Bigger groups are private bookings. Sit-down Christmas dinner has
+ * two ceilings of its own (owner decisions of 10 November 2026): online and for a guest changing their
+ * own booking, `table_booking_max_party_christmas_online` (26); for staff, `christmas_staff_max_party`
+ * (60).
  */
 
 /** What the booking functions fall back to when the setting is missing or unreadable. */
@@ -25,11 +31,18 @@ export const PARTY_LIMIT_SETTING_KEY = 'table_booking_max_party_online'
 /**
  * The largest Christmas party staff may book in the management app (A3, owner decisions of
  * 6 November 2026): the seated Christmas capacity. create_table_booking_staff_v06 reads the same
- * setting, with the same default, for a booking that accepted the Christmas period. The website
- * keeps the ordinary limit.
+ * setting, with the same default, for a booking that accepted the Christmas period. Above the
+ * online Christmas ceiling the party sits across tables that are not joined.
  */
 export const CHRISTMAS_STAFF_PARTY_LIMIT_SETTING_KEY = 'christmas_staff_max_party'
-export const DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT = 60
+
+/**
+ * The largest sit-down Christmas dinner the website takes, and the most a guest may raise their own
+ * Christmas booking to (owner decision of 10 November 2026). create_table_booking_public_v06,
+ * create_table_booking_christmas_v01 and check_table_availability_v06 read the same setting, with
+ * the same default, for a booking that accepted the Christmas period.
+ */
+export const CHRISTMAS_ONLINE_PARTY_LIMIT_SETTING_KEY = 'table_booking_max_party_christmas_online'
 
 /** A positive whole-number setting, stored as {"value": n}, or the fallback the database also uses. */
 async function readPartyLimitSetting(
@@ -68,6 +81,17 @@ export async function readTableBookingPartyLimit(
   supabase: SupabaseClient<any, 'public', any>
 ): Promise<number> {
   return readPartyLimitSetting(supabase, PARTY_LIMIT_SETTING_KEY, DEFAULT_TABLE_BOOKING_PARTY_LIMIT)
+}
+
+/** The largest sit-down Christmas dinner a guest can book online or grow their own booking to. */
+export async function readChristmasOnlinePartyLimit(
+  supabase: SupabaseClient<any, 'public', any>
+): Promise<number> {
+  return readPartyLimitSetting(
+    supabase,
+    CHRISTMAS_ONLINE_PARTY_LIMIT_SETTING_KEY,
+    DEFAULT_CHRISTMAS_ONLINE_PARTY_LIMIT
+  )
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
 import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import { readChristmasOnlinePartyLimit } from '@/lib/table-bookings/party-limit'
 
 type Db = SupabaseClient<any, any, any>
 
@@ -13,6 +14,11 @@ export type GuestChristmasParty = {
   canChangeOnline: boolean
   /** When online changes close, or null when the date has no Christmas course policy. */
   closesAt: Date | null
+  /**
+   * The most guests the booker may grow the party to online: the online Christmas ceiling
+   * (table_booking_max_party_christmas_online, 26). A bigger party, or a bigger change, is a phone call.
+   */
+  maxPartySize: number
 }
 
 /**
@@ -60,5 +66,6 @@ export async function loadGuestChristmasParty(supabase: Db, tableBookingId: stri
     seatNames,
     canChangeOnline: !policyError && policy?.multiple_courses_available === true,
     closesAt,
+    maxPartySize: await readChristmasOnlinePartyLimit(supabase),
   }
 }

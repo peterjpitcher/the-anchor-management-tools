@@ -58,6 +58,8 @@ vi.mock('@/lib/table-bookings/period-lookup', async (importActual) => ({
 vi.mock('@/lib/table-bookings/party-limit', async (importActual) => ({
   ...(await importActual<typeof import('@/lib/table-bookings/party-limit')>()),
   readTableBookingPartyLimit: vi.fn().mockResolvedValue(20),
+  // The online Christmas ceiling (owner decision of 10 November 2026).
+  readChristmasOnlinePartyLimit: vi.fn().mockResolvedValue(26),
 }))
 
 vi.mock('@/lib/table-bookings/christmas-one-course', async (importActual) => ({
@@ -164,6 +166,50 @@ describe('public table bookings route: the Christmas payloads', () => {
     expect(result.body).toMatchObject({ success: true, data: { requires_preorder: true } })
   })
 
+  // Owner decision of 10 November 2026: a sit-down Christmas dinner books online for 4 to 26 guests.
+  it('takes a Christmas dinner of 26 online, on both payloads', async () => {
+    mockRpc({ data: { ...CONFIRMED, party_size: 26, booking_period_requires_preorder: true } })
+
+    const result = await post(newPayload({ party_size: 26 }))
+
+    expect(result.status).toBe(201)
+    expect(rpc.mock.calls[0][0]).toBe('create_table_booking_public_v06')
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_party_size: 26, p_booking_period_answer: true })
+
+    mockRpc({ data: { ...CONFIRMED, party_size: 26, booking_period_requires_preorder: false } })
+    const old = await post(newPayload({ party_size: 26, email: undefined, christmas_course_counts: Array(26).fill(1) }))
+
+    expect(old.status).toBe(201)
+    expect(rpc.mock.calls[0][0]).toBe('create_table_booking_christmas_v01')
+    expect(rpc.mock.calls[0][1]).toMatchObject({ p_course_counts: Array(26).fill(1) })
+  })
+
+  it('refuses a Christmas dinner of 27 online with the phone number, on both payloads', async () => {
+    // create_table_booking_public_v06 refuses above its Christmas ceiling with too_large_party.
+    mockRpc({ data: { state: 'blocked', reason: 'too_large_party', table_booking_id: null } })
+
+    const result = await post(newPayload({ party_size: 27 }))
+
+    expect(result.status).toBe(400)
+    expect(result.body).toEqual({
+      success: false,
+      error: {
+        code: 'CHRISTMAS_PARTY_TOO_LARGE',
+        message:
+          "We take Christmas bookings online for up to 26 guests. For a bigger group, call us on 01753 682707 and we'll book it for you.",
+      },
+    })
+
+    // The course-count payload reaches create_table_booking_christmas_v01, which says the range.
+    mockRpc({ error: { code: '22023', message: 'Christmas bookings are for 4 to 26 guests.', details: null, hint: null } })
+    const old = await post(newPayload({ party_size: 27, email: undefined, christmas_course_counts: Array(27).fill(1) }))
+
+    expect(old.status).toBe(400)
+    expect(old.body.error.code).toBe('CHRISTMAS_PARTY_TOO_LARGE')
+    expect(old.body.error.message).toContain('up to 26 guests')
+    expect(old.body.error.message).toContain('01753 682707')
+  })
+
   it('asks for an email on the new payload before touching the database', async () => {
     mockRpc({ data: CONFIRMED })
 
@@ -191,11 +237,12 @@ describe('public table bookings route: the Christmas payloads', () => {
 describe('public table bookings route: Christmas refusals', () => {
   it.each([
     ['Christmas bookings are for 4 guests or more.', 2, 'CHRISTMAS_PARTY_TOO_SMALL', 'are for 4 guests or more'],
+    // Raised by core until 20261110185254; still matched for a request in flight as it lands.
     [
       'Christmas bookings for more than 20 guests are arranged as private hire. Please call us.',
-      24,
+      30,
       'CHRISTMAS_PARTY_TOO_LARGE',
-      'up to 20 guests',
+      'up to 26 guests',
     ],
     ['Christmas bookings need at least 192 hours notice.', 6, 'CHRISTMAS_NOTICE', 'up to 8 days ahead'],
     ['Christmas bookings are not open for that date.', 6, 'CHRISTMAS_NOT_AVAILABLE', "can't take a Christmas booking"],

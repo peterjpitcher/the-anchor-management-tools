@@ -28,6 +28,8 @@ const state = {
   coursePolicy: null as unknown,
   /** The table_booking_max_party_online row, as stored. */
   partyLimitRow: { value: { value: 20 } } as Record<string, unknown> | null,
+  /** The table_booking_max_party_christmas_online row, as stored (owner decision of 10 November 2026). */
+  christmasLimitRow: { value: { value: 26 } } as Record<string, unknown> | null,
 }
 
 /** Every filter the route applies, so the test can prove the live-only query was really built. */
@@ -73,7 +75,9 @@ vi.mock('@/lib/supabase/admin', () => ({
           return chainFor(table, (filters) =>
             filters.some((args) => args[1] === 'table_booking_max_party_online')
               ? { data: state.partyLimitRow, error: null }
-              : { data: state.settingsRow, error: state.settingsError }
+              : filters.some((args) => args[1] === 'table_booking_max_party_christmas_online')
+                ? { data: state.christmasLimitRow, error: null }
+                : { data: state.settingsRow, error: state.settingsError }
           )
         }),
       }
@@ -154,6 +158,7 @@ beforeEach(() => {
   state.settingsRow = { value: { value: true } }
   state.settingsError = null
   state.partyLimitRow = { value: { value: 20 } }
+  state.christmasLimitRow = { value: { value: 26 } }
 })
 
 describe('GET /api/table-bookings/periods', () => {
@@ -221,16 +226,27 @@ describe('GET /api/table-bookings/periods', () => {
     expect(json.data.deposit).toBeNull()
   })
 
-  it('gives the online party limit beside the period limit, which for Christmas is the staff one', async () => {
+  // Owner decision of 10 November 2026: Christmas dinner books online for up to 26, ordinary tables
+  // stay at 20, and staff keep 60. The period row carries the staff limit.
+  it('gives the online party limit beside the period limit: 26 online for Christmas, the staff one in the row', async () => {
     state.period = { ...CHRISTMAS_ROW, max_party_size: 60, min_notice_hours: 192 }
     const json = await (await GET(makeRequest('?date=2026-12-05'))).json()
 
     expect(json.data.period.max_party_size).toBe(60)
-    expect(json.data.period.max_party_size_online).toBe(20)
+    expect(json.data.period.max_party_size_online).toBe(26)
     expect(json.data.period.min_notice_hours).toBe(192)
   })
 
-  it('reads the online limit from the setting, and falls back to the default the database uses', async () => {
+  it('reads the Christmas online limit from its own setting, and falls back to the default the database uses', async () => {
+    state.christmasLimitRow = { value: { value: 24 } }
+    expect((await (await GET(makeRequest('?date=2026-12-05'))).json()).data.period.max_party_size_online).toBe(24)
+
+    state.christmasLimitRow = null
+    expect((await (await GET(makeRequest('?date=2026-12-05'))).json()).data.period.max_party_size_online).toBe(26)
+  })
+
+  it('gives a period that is not Christmas the ordinary online limit, not the Christmas one', async () => {
+    state.period = { ...CHRISTMAS_ROW, period_kind: 'mothers_day', legacy_booking_type: null }
     state.partyLimitRow = { value: { value: 18 } }
     expect((await (await GET(makeRequest('?date=2026-12-05'))).json()).data.period.max_party_size_online).toBe(18)
 

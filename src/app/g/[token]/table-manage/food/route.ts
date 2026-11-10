@@ -5,6 +5,7 @@ import { checkGuestTokenThrottle } from '@/lib/guest/token-throttle'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { logger } from '@/lib/logger'
 import { getTableManagePreviewByRawToken } from '@/lib/table-bookings/manage-booking'
+import { PARTY_SIZE_INPUT_CEILING } from '@/lib/table-bookings/party-limit'
 import { isPreorderEnabled, loadPreorderOrder, syncPreorderCovers } from '@/lib/table-bookings/preorder'
 import { preorderClosedMessage } from '@/lib/table-bookings/preorder-food-link-emails'
 import type { PreorderOrder } from '@/types/preorders'
@@ -28,7 +29,8 @@ const BodySchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('save'), seat: FoodSeatPayloadSchema }),
   z.object({
     action: z.literal('invite'),
-    ordinal: z.number().int().min(1).max(60),
+    // A typo guard only; the seat is checked against the booking's party size below.
+    ordinal: z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING),
     coverId: z.string().uuid().nullable().optional(),
     email: z.string().max(400),
   }),
