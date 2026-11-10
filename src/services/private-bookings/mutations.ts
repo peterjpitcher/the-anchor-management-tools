@@ -1979,6 +1979,8 @@ async function reconcileBalancePaymentStatus(
   }
 }
 
+const MAX_DISCOUNT_REASON_LENGTH = 200;
+
 export async function applyBookingDiscount(
   bookingId: string,
   data: {
@@ -1990,6 +1992,10 @@ export async function applyBookingDiscount(
   // Server-side discount validation
   if (data.discount_type !== 'percent' && data.discount_type !== 'fixed') {
     throw new Error('Invalid discount type -- must be "percent" or "fixed"');
+  }
+  // The reason is printed on the customer's contract, so it is kept to a sentence.
+  if (typeof data.discount_reason === 'string' && data.discount_reason.trim().length > MAX_DISCOUNT_REASON_LENGTH) {
+    throw new Error(`Reason for discount must be ${MAX_DISCOUNT_REASON_LENGTH} characters or fewer`);
   }
   if (typeof data.discount_amount !== 'number' || !Number.isFinite(data.discount_amount) || data.discount_amount <= 0) {
     throw new Error('Invalid discount value -- must be a positive number');
@@ -2982,12 +2988,25 @@ export async function updateBookingItem(itemId: string, data: {
 
   const { data: currentItem, error: fetchError } = await supabase
     .from('private_booking_items')
-    .select('booking_id, quantity, unit_price, discount_type, discount_value')
+    .select('booking_id, item_type, description, quantity, unit_price, discount_type, discount_value')
     .eq('id', itemId)
     .single();
 
   if (fetchError || !currentItem) {
     throw new Error('Item not found');
+  }
+
+  // Contracts and invoices print a room, catering package or supplier under the name
+  // on its own record (itemDisplayName), so a rename of one of those lines would save
+  // and never be seen by the customer. Only free-text lines can be renamed.
+  if (
+    description !== undefined &&
+    currentItem.item_type !== 'other' &&
+    description !== String(currentItem.description ?? '').trim()
+  ) {
+    throw new Error(
+      'Rooms, catering and suppliers keep the name from their own record. Put anything specific to this booking in Notes.'
+    );
   }
 
   // D9: Merge incoming partial data with current values for validation

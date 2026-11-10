@@ -1530,6 +1530,7 @@ function DiscountModal({
             onChange={(e) => setReason(e.target.value)}
             rows={2}
             required
+            maxLength={200}
             placeholder="e.g., Early bird discount, loyalty customer, etc."
           />
         </Field>
@@ -1673,13 +1674,24 @@ function EditItemModal({
       }
     >
       <form id="pb-edit-item-form" onSubmit={withSubmitErrorToast(handleSubmit)} className="space-y-4">
-        <Input
+        {/* Contracts and invoices print a room, package or supplier under its own
+            record's name, so only free-text lines can be renamed here. */}
+        <Field
           label="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          maxLength={200}
-          required
-        />
+          hint={
+            item.item_type === "other"
+              ? undefined
+              : "Rooms, catering and suppliers keep the name from their own record. Put anything specific to this booking in Notes."
+          }
+        >
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            readOnly={item.item_type !== "other"}
+            maxLength={200}
+            required
+          />
+        </Field>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field label="Quantity">

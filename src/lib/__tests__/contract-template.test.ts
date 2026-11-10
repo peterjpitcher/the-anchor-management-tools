@@ -759,6 +759,18 @@ describe('schedule of booked items', () => {
     expect(rowsOnLast).toBeLessThanOrEqual(8)
   })
 
+  it('finishes, with the totals on the only sheet, when the totals are taller than the room left', () => {
+    // A discount reason this long is refused at save (200 characters), but a contract
+    // must still render for any row already stored rather than paginate for ever.
+    const html = generateContractHTML(
+      baseData(makeBooking([space], {
+        discount_type: 'fixed', discount_amount: 10, discount_reason: 'Long reason. '.repeat(160),
+      } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(sheetCount(html)).toBe(5)
+    expect(countOf(html, 'Sum of items listed above (excl. VAT)')).toBe(1)
+  })
+
   it('costs long notes as taller rows, so fewer fit on a sheet', () => {
     const note = 'There will be an additional charge of £200 if the room is not cleared by the agreed time, payable on the night by card. '.repeat(1)
     const short = Array.from({ length: 12 }, (_, i) =>

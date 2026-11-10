@@ -254,3 +254,28 @@ describe.each([
     }))
   })
 })
+
+describe('booking page: edit form for a catering line', () => {
+  it('shows the name as fixed, with the reason, and still saves other changes', async () => {
+    mockedUpdateItem.mockResolvedValue({ success: true })
+    const catering = { ...item, item_type: 'catering', package_id: 'package-1', description: 'Burger Buffet' }
+    mockedGetBooking.mockResolvedValue({ data: { ...booking(), items: [catering] } })
+    render(
+      <PrivateBookingDetailClient
+        bookingId="booking-1"
+        initialBooking={{ ...booking(), items: [catering] } as unknown as PrivateBookingWithDetails}
+        permissions={permissions}
+        paymentHistory={[]}
+        depositRefunds={[]}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Edit item' }))
+    await screen.findByRole('button', { name: 'Save Changes' })
+
+    expect((screen.getByLabelText('Description') as HTMLInputElement).readOnly).toBe(true)
+    expect(screen.getByText(/keep the name from their own record/)).toBeTruthy()
+    fireEvent.click(saveButton())
+
+    await waitFor(() => expect(mockedUpdateItem).toHaveBeenCalledWith('item-1', expect.objectContaining({ description: 'Burger Buffet' })))
+  })
+})

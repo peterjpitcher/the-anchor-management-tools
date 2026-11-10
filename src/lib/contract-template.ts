@@ -510,7 +510,8 @@ export function generateContractHTML(data: ContractData): string {
       // final sheet until it holds about half, as long as they still fit there.
       const half = heightOf(withLead) / 2
       let moved = 0
-      do {
+      // Never move the sheet's last row: a sheet always keeps at least one.
+      while (chunk.filter((e) => e.kind === 'row').length > 1) {
         const entry = chunk.pop() as ScheduleEntry
         next -= 1
         moved += entryHeightMm(entry)
@@ -519,10 +520,18 @@ export function generateContractHTML(data: ContractData): string {
           next -= 1
         }
         // The next row that would move, plus room for a "(continued)" heading.
-        const candidate = chunk.length > 0 ? chunk[chunk.length - 1] : null
+        const candidate = chunk[chunk.length - 1]
         const nextCost = candidate ? entryHeightMm(candidate) : Infinity
         if (moved >= half || moved + nextCost + GROUP_HEADING_MM > finalRowBudgetMm) break
-      } while (chunk.filter((e) => e.kind === 'row').length > 1)
+      }
+    }
+    if (next >= scheduleEntries.length) {
+      // Nothing could move to a sheet of its own: the totals alone are taller than the
+      // room left after a single row (only possible with an extreme discount reason or
+      // note). Print them on this sheet; if it overflows, the PDF render refuses the
+      // clipped sheet with an error rather than this loop running for ever.
+      chunks.push(withLead)
+      break
     }
     chunks.push(chunk)
     cursor = next

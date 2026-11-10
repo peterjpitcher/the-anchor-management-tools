@@ -387,7 +387,7 @@ describe('PrivateBookingService mutation row-effect guards', () => {
 
   it('updateBookingItem saves a renamed description, trimmed', async () => {
     const fetchSingle = vi.fn().mockResolvedValue({
-      data: { booking_id: 'booking-1', quantity: 1, unit_price: 11.67, discount_type: null, discount_value: 0 },
+      data: { booking_id: 'booking-1', item_type: 'other', description: 'Vegetarian Pizza', quantity: 1, unit_price: 11.67, discount_type: null, discount_value: 0 },
       error: null,
     })
     const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'item-1' }, error: null })
@@ -404,6 +404,50 @@ describe('PrivateBookingService mutation row-effect guards', () => {
     await PrivateBookingService.updateBookingItem('item-1', { description: '  Vegan Pizza ' }).catch(() => undefined)
 
     expect(update).toHaveBeenCalledWith({ description: 'Vegan Pizza' })
+  })
+
+  it.each([['catering'], ['space'], ['vendor']])('updateBookingItem refuses to rename a %s line, whose printed name comes from its own record', async (itemType) => {
+    const fetchSingle = vi.fn().mockResolvedValue({
+      data: { booking_id: 'booking-1', item_type: itemType, description: 'Burger Buffet', quantity: 60, unit_price: 11, discount_type: null, discount_value: 0 },
+      error: null,
+    })
+    const update = vi.fn()
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn(() => ({ select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: fetchSingle }) }), update })),
+    })
+
+    await expect(
+      PrivateBookingService.updateBookingItem('item-1', { description: 'Vegan Buffet' }),
+    ).rejects.toThrow('Rooms, catering and suppliers keep the name from their own record')
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('updateBookingItem lets a catering line save its unchanged name with other edits', async () => {
+    const fetchSingle = vi.fn().mockResolvedValue({
+      data: { booking_id: 'booking-1', item_type: 'catering', description: 'Burger Buffet', quantity: 60, unit_price: 11, discount_type: null, discount_value: 0 },
+      error: null,
+    })
+    const updateMaybeSingle = vi.fn().mockResolvedValue({ data: { id: 'item-1' }, error: null })
+    const update = vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ maybeSingle: updateMaybeSingle }) }),
+    })
+    mockedCreateClient.mockResolvedValue({
+      from: vi.fn(() => ({ select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: fetchSingle }) }), update })),
+    })
+
+    await PrivateBookingService.updateBookingItem('item-1', { description: 'Burger Buffet ', quantity: 61 }).catch(() => undefined)
+
+    expect(update).toHaveBeenCalledWith({ description: 'Burger Buffet', quantity: 61 })
+  })
+
+  it('applyBookingDiscount refuses a reason too long for the contract', async () => {
+    const from = vi.fn()
+    mockedCreateClient.mockResolvedValue({ from })
+
+    await expect(
+      PrivateBookingService.applyBookingDiscount('booking-1', { discount_type: 'fixed', discount_amount: 10, discount_reason: 'x'.repeat(201) }),
+    ).rejects.toThrow('Reason for discount must be 200 characters or fewer')
+    expect(from).not.toHaveBeenCalled()
   })
 
   it.each([
