@@ -59,7 +59,18 @@ claude mcp add-json --scope user anchor-management '{"type":"http","url":"https:
 where `headers.sh` prints `{"Authorization":"Bearer <contents of claude.key>"}`. Give `headersHelper` the full path (the set-up was proven with it).
 4. Jordan's runtime (`1 My Agents/desks/jordan/runtime/.claude/settings.json`) allows the seven read tools so a scheduled run is never held on a prompt; `run_action` and `call_app_route` still ask.
 
-Claude on the web and phone (claude.ai connectors) is not covered: those need an OAuth sign-in flow.
+### Claude on the web, the desktop chat and the phone (claude.ai)
+
+A claude.ai custom connector with a request header (Anthropic's "Request headers", a beta feature; Peter's account has it, checked 10 November 2026). Every call comes from Anthropic's cloud, whichever device Peter is on.
+
+1. Settings, API keys: create a separate key named `claude.ai` with only **Agent Access (MCP)** ticked, rate limit 2,000 an hour like the Mac key. Copy it once. Keeping it separate means either key can be switched off without touching the other.
+2. claude.ai: Customize, Connectors, Add custom connector. Name `Anchor management`, server URL `https://management.orangejelly.co.uk/api/mcp`, authentication **No sign-in**, request header `x-api-key` with the key as its value. Leave Advanced, Transport as it is.
+3. The connector then works in Claude on the web, the desktop app and the phone apps for that claude.ai account, and for anyone signed in to it.
+4. `run_action` and `call_app_route` are marked destructive, so Claude asks before each call unless "Always allow" has been set for that tool; in Research mode Claude can call tools without asking.
+5. To stop it, switch the `claude.ai` key off on Settings, API keys. claude.ai cannot edit a saved header, so a new key means removing the connector and adding it again.
+6. The key does not expire on its own: the API keys screen cannot set an expiry.
+
+An OAuth sign-in for claude.ai (expiring tokens and a PIN at connect time) is specified and parked in `tasks/spec-2026-11-10-mcp-oauth.md`; it is built only if Peter asks.
 
 ## Rollback
 
