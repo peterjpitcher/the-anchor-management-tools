@@ -137,6 +137,18 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     // New in the staff training release; see signing-reminders above.
     monitoredFrom: '2026-11-09T00:00:00.000Z',
   },
+  {
+    jobName: 'christmas-follow-ups',
+    path: '/api/cron/christmas-follow-ups',
+    // vercel.json runs it at 09:00 and 10:00 UTC so one run lands at 10:00 London all year; it
+    // records both, so a day without either is still a day without a run.
+    intervalMinutes: 1440,
+    maxDurationSeconds: 120,
+    recording: 'every_run',
+    label: 'Christmas booking follow-up emails and clear-out',
+    // New in the Christmas funnel release (10 November 2026); see signing-reminders above.
+    monitoredFrom: '2026-11-12T00:00:00.000Z',
+  },
 ]
 
 /** Slack on top of twice the interval, for Vercel starting a run a little late. */
