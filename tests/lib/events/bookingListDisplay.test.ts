@@ -4,6 +4,7 @@ import {
   describeEventBookingPayment,
   describeEventBookingSeats,
   describeEventBookingStatus,
+  canEditEventBookingGuestDetails,
   hasEventBookingGuestDetails,
   isChangeableEventBooking,
 } from '@/lib/events/booking-list-display'
@@ -98,7 +99,20 @@ describe('which buttons work', () => {
     expect(hasEventBookingGuestDetails({ attendees: [{}] }, false)).toBe(true)
     expect(hasEventBookingGuestDetails({ attendees: [], attendee_names: ['Sam'] }, false)).toBe(true)
     expect(hasEventBookingGuestDetails({ attendees: [], attendee_names: [' '] }, false)).toBe(false)
-    expect(hasEventBookingGuestDetails({ attendees: [] }, true)).toBe(true)
-    expect(hasEventBookingGuestDetails({ attendees: [], is_reminder_only: true }, true)).toBe(false)
+    expect(hasEventBookingGuestDetails({ attendees: [], status: 'pending_payment' }, true)).toBe(true)
+    expect(hasEventBookingGuestDetails({ attendees: [], status: 'pending_payment', is_reminder_only: true }, true)).toBe(false)
+  })
+
+  it('offers nothing to add on a lapsed or cancelled booking, where the save can only fail', () => {
+    // Leo's and Rupi's lapsed phone bookings on the tasting night, 10 November 2026.
+    expect(hasEventBookingGuestDetails({ attendees: [], status: 'expired' }, true)).toBe(false)
+    expect(hasEventBookingGuestDetails({ attendees: [], status: 'cancelled' }, true)).toBe(false)
+    // Guests already named still show, read-only.
+    expect(hasEventBookingGuestDetails({ attendees: [{}], status: 'expired' }, true)).toBe(true)
+    expect(canEditEventBookingGuestDetails({ status: 'expired' })).toBe(false)
+    expect(canEditEventBookingGuestDetails({ status: 'cancelled' })).toBe(false)
+    expect(canEditEventBookingGuestDetails({ status: 'confirmed', is_reminder_only: true })).toBe(false)
+    expect(canEditEventBookingGuestDetails({ status: 'confirmed' })).toBe(true)
+    expect(canEditEventBookingGuestDetails({ status: 'pending_payment' })).toBe(true)
   })
 })

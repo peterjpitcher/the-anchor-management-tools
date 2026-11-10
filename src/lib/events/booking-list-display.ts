@@ -108,13 +108,23 @@ export function canEditEventBookingSeats(
   return true
 }
 
-/** Whether the booking has guest details to show, or should have some on this event. */
+/**
+ * Whether staff can add or change the booking's guest details. The save refuses a reminder and a
+ * cancelled or lapsed booking (saveBookingGuestDetails), so those open read-only, and a lapsed
+ * booking with no guests offers nothing to add (found live on 10 November 2026: Leo's and Rupi's
+ * lapsed rows offered Add Guest Details, and the save could only fail).
+ */
+export function canEditEventBookingGuestDetails(booking: Pick<EventBookingListRow, 'status' | 'is_reminder_only'>): boolean {
+  return booking.is_reminder_only !== true && isChangeableEventBooking(booking)
+}
+
+/** Whether the booking has guest details to show, or should have some added on this event. */
 export function hasEventBookingGuestDetails(
-  booking: Pick<EventBookingListRow, 'attendees' | 'attendee_names' | 'is_reminder_only'>,
+  booking: Pick<EventBookingListRow, 'attendees' | 'attendee_names' | 'is_reminder_only' | 'status'>,
   eventTakesGuestDetails: boolean,
 ): boolean {
   if (booking.is_reminder_only === true) return false
   if (Array.isArray(booking.attendees) && booking.attendees.length > 0) return true
   if ((booking.attendee_names ?? []).some((name) => typeof name === 'string' && name.trim().length > 0)) return true
-  return eventTakesGuestDetails
+  return eventTakesGuestDetails && canEditEventBookingGuestDetails(booking)
 }
