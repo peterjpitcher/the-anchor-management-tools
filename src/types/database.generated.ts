@@ -18723,6 +18723,133 @@ export type Database = {
           },
         ]
       }
+      table_booking_leads: {
+        Row: {
+          booking_date: string
+          booking_period_id: string
+          booking_time: string
+          call_note: string | null
+          called_at: string | null
+          called_by: string | null
+          created_at: string
+          customer_id: string | null
+          email: string | null
+          first_name: string
+          follow_up_claimed_at: string | null
+          follow_up_opt_out: boolean
+          follow_up_outcome: string | null
+          follow_up_sent_at: string | null
+          id: string
+          last_name: string | null
+          lead_ref: string
+          mobile_e164: string | null
+          opt_out_token_hash: string | null
+          party_size: number
+          resume_token_expires_at: string | null
+          resume_token_hash: string | null
+          source: string
+          table_booking_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          booking_date: string
+          booking_period_id: string
+          booking_time: string
+          call_note?: string | null
+          called_at?: string | null
+          called_by?: string | null
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          first_name: string
+          follow_up_claimed_at?: string | null
+          follow_up_opt_out?: boolean
+          follow_up_outcome?: string | null
+          follow_up_sent_at?: string | null
+          id?: string
+          last_name?: string | null
+          lead_ref: string
+          mobile_e164?: string | null
+          opt_out_token_hash?: string | null
+          party_size: number
+          resume_token_expires_at?: string | null
+          resume_token_hash?: string | null
+          source: string
+          table_booking_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          booking_date?: string
+          booking_period_id?: string
+          booking_time?: string
+          call_note?: string | null
+          called_at?: string | null
+          called_by?: string | null
+          created_at?: string
+          customer_id?: string | null
+          email?: string | null
+          first_name?: string
+          follow_up_claimed_at?: string | null
+          follow_up_opt_out?: boolean
+          follow_up_outcome?: string | null
+          follow_up_sent_at?: string | null
+          id?: string
+          last_name?: string | null
+          lead_ref?: string
+          mobile_e164?: string | null
+          opt_out_token_hash?: string | null
+          party_size?: number
+          resume_token_expires_at?: string | null
+          resume_token_hash?: string | null
+          source?: string
+          table_booking_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "table_booking_leads_booking_period_id_fkey"
+            columns: ["booking_period_id"]
+            isOneToOne: false
+            referencedRelation: "booking_periods"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_leads_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_consent_legacy_gaps"
+            referencedColumns: ["customer_id"]
+          },
+          {
+            foreignKeyName: "table_booking_leads_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customer_messaging_health"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_leads_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_leads_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "table_booking_leads_table_booking_id_fkey"
+            columns: ["table_booking_id"]
+            isOneToOne: false
+            referencedRelation: "table_bookings_awaiting_confirmation"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       table_booking_modifications: {
         Row: {
           booking_id: string
