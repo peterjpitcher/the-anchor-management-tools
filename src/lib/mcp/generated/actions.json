@@ -8887,7 +8887,7 @@
    },
    {
     "name": "data",
-    "type": "{\n  quantity?: number\n  unit_price?: number\n  discount_value?: number\n  discount_type?: 'percent' | 'fixed'\n  notes?: string | null\n}",
+    "type": "{\n  description?: string\n  quantity?: number\n  unit_price?: number\n  discount_value?: number\n  discount_type?: 'percent' | 'fixed'\n  notes?: string | null\n}",
     "optional": false
    }
   ],
