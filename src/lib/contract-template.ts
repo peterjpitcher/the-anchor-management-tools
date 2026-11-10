@@ -375,13 +375,6 @@ export function generateContractHTML(data: ContractData): string {
               <div class="sched-c num">${formatCurrency(lineTotal)}</div>`
   }
 
-  // A row whose sub-line wraps to two lines measures 15.62mm, so 6 rows fill
-  // 93.72mm of the 124.15mm left once the worst-case furniture (group headings,
-  // header row, totals block and both footnotes) is subtracted. 8 rows at that
-  // height would be 124.96mm, marginally over. Production maxes out at 6 items,
-  // so this is dormant insurance rather than a routine path.
-  const MAX_ROWS_PER_SHEET = 6
-
   // Group in a fixed order, omitting empty groups, then flatten back to a linear
   // list of renderables so pagination can chunk them without splitting a row.
   type ScheduleEntry = { kind: 'group'; label: string } | { kind: 'row'; item: PrivateBookingItem }
@@ -393,25 +386,147 @@ export function generateContractHTML(data: ContractData): string {
     for (const item of groupItems) scheduleEntries.push({ kind: 'row', item })
   }
 
-  // Chunk by ROW count only: a group heading rides with the rows beneath it.
-  const chunks: ScheduleEntry[][] = []
-  let currentChunk: ScheduleEntry[] = []
-  let rowsInChunk = 0
-  for (const entry of scheduleEntries) {
-    if (entry.kind === 'row' && rowsInChunk >= MAX_ROWS_PER_SHEET) {
-      chunks.push(currentChunk)
-      currentChunk = []
-      rowsInChunk = 0
-      // Repeat the group heading, marked as continued, when a group spans sheets.
-      const lastGroup = [...scheduleEntries.slice(0, scheduleEntries.indexOf(entry))]
-        .reverse()
-        .find((e): e is { kind: 'group'; label: string } => e.kind === 'group')
-      if (lastGroup) currentChunk.push({ kind: 'group', label: `${lastGroup.label} (continued)` })
+  // The booking-level discount reason is printed under the discount row of the
+  // tie-out (owner decision, 10 November 2026: a discount is listed with the
+  // reason it was given). Staff are told in the discount form that it shows here.
+  const discountReason = (booking.discount_reason ?? '').trim()
+  const discountReasonHtml = hasBookingDiscount && discountReason ? clean(discountReason) : null
+
+  const scheduleFootnotesHtml = buildScheduleFootnotes()
+
+  // ---- pagination: fill each sheet by estimated height ----
+  // Every row used to be costed as the tallest possible row (a two-line note) with
+  // a flat cap of 6 per sheet, so a seventh short line went onto a sheet of its own
+  // (owner report, 10 November 2026). Each entry is now costed by its own shape,
+  // using the heights measured for the schedule CSS (tasks/contract-booking-items-
+  // plan-2026-08-04.md, "Measured mm budget"), rounded up and with deliberately
+  // pessimistic characters-per-line, so an estimate can only over-state a row.
+  // `.sched-wrap` still clips rows rather than the tie-out if an estimate is ever short.
+  const USABLE_HEIGHT_MM = 248.13
+  const SECTION_LABEL_MM = 7.24
+  const COLUMN_HEADER_MM = 8.17
+  const TABLE_MARGIN_MM = 4
+  const GROUP_HEADING_MM = 7.24
+  // .sched-c: 2.2mm padding top and bottom, 1px rule; 11px x 1.35 per name line.
+  const ROW_PADDING_MM = 4.66
+  const NAME_LINE_MM = 3.93
+  // .sched-sub: 0.6mm margin; 9px x 1.35 per line.
+  const SUB_MARGIN_MM = 0.6
+  const SUB_LINE_MM = 3.21
+  // The unit cell is always two lines ("£11.67" over "each").
+  const MIN_ROW_MM = ROW_PADDING_MM + 2 * NAME_LINE_MM
+  // About 109mm of description column: roughly 75 characters at 11px and 90 at
+  // 9px in practice. These are set lower so a long line is costed as wrapping early.
+  const NAME_CHARS_PER_LINE = 55
+  const SUB_CHARS_PER_LINE = 75
+  // .fin-row: 1.4mm padding top and bottom, 1px rule, 11px x ~1.4 line.
+  const FIN_ROW_MM = 7.9
+  // .callout: 10px x 1.45 per line (5.12mm), 1.2mm padding, 4mm margin. The
+  // callouts span the full 186mm content width, about 150 characters a line.
+  const CALLOUT_LINE_MM = 5.12
+  const CALLOUT_FIXED_MM = 5.2
+  const CALLOUT_CHARS_PER_LINE = 120
+
+  const linesFor = (text: string, perLine: number): number =>
+    Math.max(1, Math.ceil(text.length / perLine))
+  const plainText = (html: string): string =>
+    html.replace(/<[^>]*>/g, '').replace(/&[a-z#0-9]+;/gi, 'x')
+
+  const rowHeightMm = (item: PrivateBookingItem): number => {
+    const name = itemDisplayName(item)
+    const qualifier = cateringZeroPriceQualifier(item)
+    const nameText = qualifier ? `${name} (${qualifier})` : name
+    const qty = toNum(item.quantity)
+    const unitPrice = toNum(item.unit_price)
+    const lineTotal = round2(itemLineTotal(item))
+    const base = qty !== null && unitPrice !== null ? round2(qty * unitPrice) : 0
+    const subLine = buildSubLine([discountPhrase(item, base, lineTotal), item.notes ?? null])
+    let height = ROW_PADDING_MM + linesFor(nameText, NAME_CHARS_PER_LINE) * NAME_LINE_MM
+    if (subLine) {
+      height += SUB_MARGIN_MM + linesFor(plainText(subLine), SUB_CHARS_PER_LINE) * SUB_LINE_MM
     }
-    currentChunk.push(entry)
-    if (entry.kind === 'row') rowsInChunk += 1
+    return Math.max(MIN_ROW_MM, height)
   }
-  if (currentChunk.length > 0) chunks.push(currentChunk)
+  const entryHeightMm = (entry: ScheduleEntry): number =>
+    entry.kind === 'group' ? GROUP_HEADING_MM : rowHeightMm(entry.item)
+
+  const calloutHeightMm = (html: string): number =>
+    CALLOUT_FIXED_MM + linesFor(plainText(html), CALLOUT_CHARS_PER_LINE) * CALLOUT_LINE_MM
+  const tieOutRows = hasBookingDiscount ? 5 : 3
+  const finalFurnitureMm =
+    SECTION_LABEL_MM + // "Totals" label
+    tieOutRows * FIN_ROW_MM +
+    (discountReasonHtml ? linesFor(discountReason, 90) * SUB_LINE_MM + SUB_MARGIN_MM : 0) +
+    TABLE_MARGIN_MM +
+    scheduleFootnotesHtml.callouts.reduce((sum, html) => sum + calloutHeightMm(html), 0)
+  // Every sheet carries the page label, the column header row and the table margin.
+  const rowBudgetMm = USABLE_HEIGHT_MM - SECTION_LABEL_MM - COLUMN_HEADER_MM - TABLE_MARGIN_MM
+  const finalRowBudgetMm = rowBudgetMm - finalFurnitureMm
+
+  const heightOf = (entries: ScheduleEntry[]): number =>
+    entries.reduce((sum, entry) => sum + entryHeightMm(entry), 0)
+  const continuedHeading = (index: number): ScheduleEntry | null => {
+    // Repeat the group heading, marked as continued, when a group spans sheets.
+    if (scheduleEntries[index]?.kind !== 'row') return null
+    const lastGroup = scheduleEntries
+      .slice(0, index)
+      .reverse()
+      .find((e): e is { kind: 'group'; label: string } => e.kind === 'group')
+    return lastGroup ? { kind: 'group', label: `${lastGroup.label} (continued)` } : null
+  }
+
+  const chunks: ScheduleEntry[][] = []
+  let cursor = 0
+  while (cursor < scheduleEntries.length) {
+    const lead = continuedHeading(cursor)
+    const remaining = scheduleEntries.slice(cursor)
+    const withLead = lead ? [lead, ...remaining] : remaining
+    // Everything left fits with the totals beneath it: this is the last sheet.
+    if (heightOf(withLead) <= finalRowBudgetMm) {
+      chunks.push(withLead)
+      break
+    }
+    // Otherwise fill this sheet, never ending it on a group heading and always
+    // leaving at least one row for the sheet that carries the totals.
+    const chunk: ScheduleEntry[] = lead ? [lead] : []
+    let used = lead ? entryHeightMm(lead) : 0
+    let next = cursor
+    while (next < scheduleEntries.length) {
+      const entry = scheduleEntries[next]
+      const cost = entryHeightMm(entry)
+      if (chunk.some((e) => e.kind === 'row') && used + cost > rowBudgetMm) break
+      chunk.push(entry)
+      used += cost
+      next += 1
+    }
+    while (chunk.length > 0 && chunk[chunk.length - 1].kind === 'group') {
+      chunk.pop()
+      next -= 1
+    }
+    if (next >= scheduleEntries.length) {
+      // Everything left would fit on this sheet, but not with the totals beneath it,
+      // so it goes over two sheets. Share the rows out evenly rather than leaving one
+      // line alone above the totals (the 10 November 2026 report): move rows to the
+      // final sheet until it holds about half, as long as they still fit there.
+      const half = heightOf(withLead) / 2
+      let moved = 0
+      do {
+        const entry = chunk.pop() as ScheduleEntry
+        next -= 1
+        moved += entryHeightMm(entry)
+        while (chunk.length > 0 && chunk[chunk.length - 1].kind === 'group') {
+          moved += entryHeightMm(chunk.pop() as ScheduleEntry)
+          next -= 1
+        }
+        // The next row that would move, plus room for a "(continued)" heading.
+        const candidate = chunk.length > 0 ? chunk[chunk.length - 1] : null
+        const nextCost = candidate ? entryHeightMm(candidate) : Infinity
+        if (moved >= half || moved + nextCost + GROUP_HEADING_MM > finalRowBudgetMm) break
+      } while (chunk.filter((e) => e.kind === 'row').length > 1)
+    }
+    chunks.push(chunk)
+    cursor = next
+  }
 
   // The tie-out is built from `money` and from figures already printed above it.
   // The label on the final row is verbatim page 1's, so the reader can match the
@@ -422,7 +537,7 @@ export function generateContractHTML(data: ContractData): string {
             <p class="section-label gap">Totals</p>
             <div class="fin">
               <div class="fin-row"><span class="fk">Sum of items listed above (excl. VAT)</span><span class="fv">${formatCurrency(printedSubtotal)}</span></div>
-              ${hasBookingDiscount ? `<div class="fin-row"><span class="fk">Less discount applied to the booking as a whole (excl. VAT)</span><span class="fv">&minus;${formatCurrency(bookingDiscount)}</span></div>
+              ${hasBookingDiscount ? `<div class="fin-row"><span class="fk">Less discount applied to the booking as a whole (excl. VAT)${discountReasonHtml ? `<span class="fin-sub">Reason: ${discountReasonHtml}</span>` : ''}</span><span class="fv">&minus;${formatCurrency(bookingDiscount)}</span></div>
               <div class="fin-row"><span class="fk">Event price before VAT</span><span class="fv">${formatCurrency(money.discountedNet)}</span></div>` : ''}
               <div class="fin-row"><span class="fk">VAT</span><span class="fv">${formatCurrency(money.vatAmount)}</span></div>
               <div class="fin-row total"><span class="fk">Event price, excluding deposit</span><span class="fv">${formatCurrency(eventPriceGross)}</span></div>
@@ -430,30 +545,34 @@ export function generateContractHTML(data: ContractData): string {
 
   // A booking-level discount is spread pro-rata across the lines and belongs to
   // none of them, so it has to be explained in words or the table looks wrong.
-  // The discount REASON is deliberately never printed: it is internal shorthand
-  // (the one production value is "reg") and does not belong on a customer's
-  // legal document.
-  let bookingDiscountSentence = ''
-  if (hasBookingDiscount) {
-    if (booking.discount_type === 'percent') {
-      const pct = String(round2(Number(booking.discount_amount ?? 0)))
-      bookingDiscountSentence = ` A discount of ${pct}% has been agreed on the booking as a whole. It applies to the total before VAT, not to any single item above, and the VAT shown is charged on the reduced amount.`
-    } else if (money.discountedNet <= 0) {
-      bookingDiscountSentence = ` A discount has been agreed on the booking as a whole. It reduces the total before VAT to nil; nothing further is carried forward.`
-    } else {
-      bookingDiscountSentence = ` A fixed discount of ${formatCurrency(bookingDiscount)} has been agreed on the booking as a whole. It is not attached to any single item above: it reduces the total before VAT, and the VAT shown is charged on the reduced amount.`
-    }
-  }
-
   // The deposit must appear nowhere as a figure on this page, or the customer
   // will read the schedule total as everything owed. It is named in words only.
-  const scheduleFootnotesHtml = `
-            <p class="callout">All values in the table above exclude VAT. The VAT shown is the VAT included in the event price on page 1, and the event price, excluding deposit, is the same figure as the financial summary on page 1.${bookingDiscountSentence}</p>
-            <p class="callout" style="margin-bottom:0;">${depositApplied
-              ? `This schedule covers the event price. The deposit of ${formatCurrency(appliedDepositAmount)} has been applied towards that price and is not an additional charge.`
-              : depositRequired
-              ? `This schedule covers the event price only. The booking and damage deposit of ${formatCurrency(depositAmount)} is not part of the event price and is not included in the figures above. It is shown separately on page 1, where it is added to give the total to pay before the event.`
-              : 'This schedule covers the event price only. No booking and damage deposit is payable for this event.'}</p>`
+  function buildScheduleFootnotes(): { html: string; callouts: string[] } {
+    const reasonClause = discountReasonHtml ? ` The reason given for it: ${discountReasonHtml}.` : ''
+    let bookingDiscountSentence = ''
+    if (hasBookingDiscount) {
+      if (booking.discount_type === 'percent') {
+        const pct = String(round2(Number(booking.discount_amount ?? 0)))
+        bookingDiscountSentence = ` A discount of ${pct}% has been agreed on the booking as a whole. It applies to the total before VAT, not to any single item above, and the VAT shown is charged on the reduced amount.${reasonClause}`
+      } else if (money.discountedNet <= 0) {
+        bookingDiscountSentence = ` A discount has been agreed on the booking as a whole. It reduces the total before VAT to nil; nothing further is carried forward.${reasonClause}`
+      } else {
+        bookingDiscountSentence = ` A fixed discount of ${formatCurrency(bookingDiscount)} has been agreed on the booking as a whole. It is not attached to any single item above: it reduces the total before VAT, and the VAT shown is charged on the reduced amount.${reasonClause}`
+      }
+    }
+    const first = `All values in the table above exclude VAT. The VAT shown is the VAT included in the event price on page 1, and the event price, excluding deposit, is the same figure as the financial summary on page 1.${bookingDiscountSentence}`
+    const second = depositApplied
+      ? `This schedule covers the event price. The deposit of ${formatCurrency(appliedDepositAmount)} has been applied towards that price and is not an additional charge.`
+      : depositRequired
+      ? `This schedule covers the event price only. The booking and damage deposit of ${formatCurrency(depositAmount)} is not part of the event price and is not included in the figures above. It is shown separately on page 1, where it is added to give the total to pay before the event.`
+      : 'This schedule covers the event price only. No booking and damage deposit is payable for this event.'
+    return {
+      callouts: [first, second],
+      html: `
+            <p class="callout">${first}</p>
+            <p class="callout" style="margin-bottom:0;">${second}</p>`,
+    }
+  }
 
   const scheduleSheetsHtml =
     orderedItems.length === 0
@@ -485,7 +604,7 @@ export function generateContractHTML(data: ContractData): string {
             </div>
           </div>
           <div class="sched-tail">${isLast ? `${tieOutHtml}
-${scheduleFootnotesHtml}` : ''}</div>
+${scheduleFootnotesHtml.html}` : ''}</div>
         </div>
         ${runFoot(regShort, 'Page')}
       </div>
@@ -607,6 +726,7 @@ ${scheduleFootnotesHtml}` : ''}</div>
   .sched-c{ font-size:11px; line-height:1.35; color:var(--ink-soft); padding:2.2mm 3.6mm; border-bottom:1px solid var(--rule); overflow-wrap:anywhere; }
   .sched-h.num, .sched-c.num{ text-align:right; font-variant-numeric:tabular-nums; }
   .sched-c.num{ font-weight:600; color:var(--ink); }
+  .fin-sub{ display:block; font-size:9px; line-height:1.35; color:var(--ink-mute); margin-top:0.6mm; }
   .sched-sub{ display:block; font-size:9px; line-height:1.35; color:var(--ink-mute); margin-top:0.6mm; }
   .sched-group{ grid-column:1 / -1; font-weight:700; font-size:9px; line-height:1.25; letter-spacing:.14em; text-transform:uppercase; color:var(--ink); padding:2mm 3.6mm 1.4mm; border-bottom:1px solid var(--rule); background:${STAFF.surfaceHover}; }
 

@@ -604,14 +604,28 @@ describe('schedule of booked items', () => {
     expect(html).toContain('A discount of 10% has been agreed on the booking as a whole')
   })
 
-  it('never prints the booking-level discount reason', () => {
+  it('prints the booking-level discount with the reason it was given', () => {
     const html = generateContractHTML(
       baseData(makeBooking([space], {
-        discount_type: 'percent', discount_amount: 10, discount_reason: 'reg',
+        discount_type: 'fixed', discount_amount: 20, discount_reason: 'Discounting to remove the VAT',
       } as Partial<PrivateBookingWithDetails>)),
     )
-    expect(html).not.toContain('Reason:')
-    expect(html).not.toContain('reg</')
+    expect(html).toContain('<span class="fin-sub">Reason: Discounting to remove the VAT</span>')
+    expect(html).toContain('The reason given for it: Discounting to remove the VAT.')
+  })
+
+  it('escapes the discount reason and prints no reason line when none was given', () => {
+    const withTag = generateContractHTML(
+      baseData(makeBooking([space], {
+        discount_type: 'percent', discount_amount: 10, discount_reason: '<b>loyal</b> & regular',
+      } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(withTag).toContain('Reason: &lt;b&gt;loyal&lt;/b&gt; &amp; regular')
+    const without = generateContractHTML(
+      baseData(makeBooking([space], { discount_type: 'percent', discount_amount: 10, discount_reason: '  ' } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(without).not.toContain('Reason:')
+    expect(without).not.toContain('The reason given for it')
   })
 
   it('makes the five-row tie-out subtract exactly, in integer pence', () => {
@@ -689,20 +703,81 @@ describe('schedule of booked items', () => {
     expect(html).toContain('No booking and damage deposit is payable for this event.')
   })
 
-  it('splits into a second schedule sheet above six items', () => {
-    const items = Array.from({ length: 7 }, (_, i) =>
+  // Lorna Wright's booking on 10 November 2026: seven short lines in three groups and a
+  // fixed discount with a reason. The old flat cap of six put the seventh line on a sheet
+  // of its own.
+  const lornaItems = (): PrivateBookingItem[] => [
+    makeItem({ item_type: 'space', description: 'Entire Pub', quantity: 4.5, unit_price: 200, line_total: 0, discount_type: 'percent', discount_value: 100, display_order: 0 }),
+    priced({ item_type: 'other', description: 'DJ', quantity: 5, unit_price: 55, display_order: 1 }),
+    priced({ item_type: 'catering', description: 'Burger Buffet', quantity: 60, unit_price: 11, notes: '25 Beef, 25 Chicken, 10 Vegetarian, served with chips', package: { name: 'Burger Buffet', pricing_model: 'per_head' } as never, display_order: 2 }),
+    priced({ item_type: 'other', description: 'Margarita Pizza', quantity: 4, unit_price: 10.83, display_order: 3 }),
+    priced({ item_type: 'other', description: 'Pepperoni Pizza', quantity: 5, unit_price: 11.67, display_order: 4 }),
+    priced({ item_type: 'other', description: 'Vegetarian Pizza', quantity: 4, unit_price: 11.67, display_order: 5 }),
+    priced({ item_type: 'other', description: 'Vegan Pizza', quantity: 1, unit_price: 11.67, notes: 'No cheese', display_order: 6 }),
+  ]
+
+  it('keeps seven short lines and the totals on one schedule sheet', () => {
+    const html = generateContractHTML(
+      baseData(makeBooking(lornaItems(), {
+        discount_type: 'fixed', discount_amount: 182.5, discount_reason: 'Discounting to remove the VAT',
+      } as Partial<PrivateBookingWithDetails>)),
+    )
+    expect(sheetCount(html)).toBe(5)
+    expect(html).not.toContain('Other charges (continued)')
+    expect(html).not.toContain('Schedule of booked items (1 of')
+  })
+
+  it('fits more plain lines on one sheet than the old flat cap of six', () => {
+    const items = Array.from({ length: 10 }, (_, i) =>
+      priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
+    )
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    expect(sheetCount(html)).toBe(5)
+  })
+
+  it('splits onto a second schedule sheet when the lines will not fit with the totals', () => {
+    const items = Array.from({ length: 25 }, (_, i) =>
       priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
     )
     const html = generateContractHTML(baseData(makeBooking(items)))
     expect(sheetCount(html)).toBe(6)
+    expect(html).toContain('Schedule of booked items (1 of 2)')
+    expect(html).toContain('Other charges (continued)')
+    // Every line is printed exactly once across the two sheets.
+    for (let i = 1; i <= 25; i += 1) expect(countOf(html, `>Charge ${i}<`)).toBe(1)
   })
 
-  it('puts the tie-out on the last schedule sheet only', () => {
-    const items = Array.from({ length: 7 }, (_, i) =>
+  it('shares the lines evenly over two sheets instead of leaving one alone above the totals', () => {
+    const items = Array.from({ length: 13 }, (_, i) =>
+      priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
+    )
+    const html = generateContractHTML(baseData(makeBooking(items)))
+    expect(sheetCount(html)).toBe(6)
+    const lastSheet = html.slice(html.lastIndexOf('Schedule of booked items'))
+    const rowsOnLast = (lastSheet.match(/>Charge \d+</g) || []).length
+    expect(rowsOnLast).toBeGreaterThanOrEqual(5)
+    expect(rowsOnLast).toBeLessThanOrEqual(8)
+  })
+
+  it('costs long notes as taller rows, so fewer fit on a sheet', () => {
+    const note = 'There will be an additional charge of £200 if the room is not cleared by the agreed time, payable on the night by card. '.repeat(1)
+    const short = Array.from({ length: 12 }, (_, i) =>
+      priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
+    )
+    const long = short.map((item) => ({ ...item, notes: note }))
+    expect(sheetCount(generateContractHTML(baseData(makeBooking(short))))).toBe(5)
+    expect(sheetCount(generateContractHTML(baseData(makeBooking(long))))).toBe(6)
+  })
+
+  it('puts the tie-out on the last schedule sheet only, with at least one line above it', () => {
+    const items = Array.from({ length: 25 }, (_, i) =>
       priced({ item_type: 'other', description: `Charge ${i + 1}`, quantity: 1, unit_price: 10, display_order: i }),
     )
     const html = generateContractHTML(baseData(makeBooking(items)))
     expect(countOf(html, 'Sum of items listed above (excl. VAT)')).toBe(1)
+    const lastSheet = html.slice(html.lastIndexOf('Schedule of booked items'))
+    expect(lastSheet.indexOf('Charge 25')).toBeGreaterThan(-1)
+    expect(lastSheet.indexOf('Charge 25')).toBeLessThan(lastSheet.indexOf('Sum of items listed above'))
   })
 
   it('never emits the strings the existing near-miss assertions guard', () => {

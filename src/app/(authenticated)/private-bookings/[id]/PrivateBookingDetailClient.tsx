@@ -1524,7 +1524,7 @@ function DiscountModal({
           />
         </Field>
 
-        <Field label="Reason for Discount">
+        <Field label="Reason for Discount" hint="Printed on the customer's contract next to the discount, so write it as you would say it to them.">
           <Textarea
             value={reason}
             onChange={(e) => setReason(e.target.value)}
