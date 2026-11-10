@@ -76,7 +76,8 @@ function signature(action: ManifestAction): string {
 }
 
 function summary(action: ManifestAction): string {
-  return action.doc.split('\n').find((line) => line.trim().length > 0)?.trim() ?? ''
+  // The first line with words in it: some comments open with a ruled line of dashes.
+  return action.doc.split('\n').find((line) => /[A-Za-z]/.test(line))?.trim() ?? ''
 }
 
 export function findActions(input: { query?: string; area?: string; readOnly?: boolean; limit?: number }): CallToolResult {
