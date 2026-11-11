@@ -290,7 +290,9 @@ describe('table-payment success, client-completed path', () => {
     await act(async () => {
       await paypal.props?.createOrder()
     })
-    expect(screen.getByText('Processing payment, please wait…')).toBeInTheDocument()
+    // PayPal's form is open now: nothing is processing yet and the buttons stay usable.
+    expect(screen.queryByText('Processing payment, please wait…')).not.toBeInTheDocument()
+    expect(paypal.props?.disabled).toBe(false)
 
     await act(async () => {
       await paypal.props?.onApprove()
@@ -326,15 +328,47 @@ describe('table-payment success, client-completed path', () => {
       'Complete your deposit payment'
     )
 
-    // Backing out of PayPal returns to idle rather than stranding the guest.
+    // Backing out of PayPal leaves the guest at idle rather than stranded.
     await act(async () => {
       await paypal.props?.createOrder()
     })
-    expect(screen.getByText('Processing payment, please wait…')).toBeInTheDocument()
     await act(async () => {
       paypal.props?.onCancel()
     })
     expect(screen.queryByText('Processing payment, please wait…')).not.toBeInTheDocument()
+    expect(paypal.props?.disabled).toBe(false)
+  })
+
+  // PayPal's inline card form opens inside its buttons. Disabling them from createOrder faded the
+  // form to 38% and the pointer-events guard blocked typing, so card payers could not pay
+  // (found 11 November 2026). Only the capture, after approval, may lock them.
+  it('keeps the card form usable until PayPal approves, and locks the buttons only during capture', async () => {
+    let finishCapture: (value: { success: boolean }) => void = () => undefined
+    const captureAction = vi.fn(
+      () => new Promise<{ success: boolean }>((resolve) => { finishCapture = resolve })
+    )
+    render(<TablePaymentClient {...idleProps} captureAction={captureAction} />)
+    const wrapper = screen.getByTestId('paypal-buttons').parentElement!.parentElement!
+
+    await act(async () => {
+      await paypal.props?.createOrder()
+    })
+    expect(paypal.props?.disabled).toBe(false)
+    expect(wrapper).not.toHaveClass('pointer-events-none')
+
+    let approval: Promise<void> | undefined
+    await act(async () => {
+      approval = paypal.props?.onApprove()
+    })
+    expect(paypal.props?.disabled).toBe(true)
+    expect(wrapper).toHaveClass('pointer-events-none')
+    expect(screen.getByText('Processing payment, please wait…')).toBeInTheDocument()
+
+    await act(async () => {
+      finishCapture({ success: true })
+      await approval
+    })
+    expectSuccessPresentation()
   })
 
   it('shows the cancelled notice and the hold-expired problem in place of the buttons', () => {

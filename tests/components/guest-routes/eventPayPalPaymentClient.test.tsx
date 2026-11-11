@@ -9,6 +9,8 @@ import { EVENT_PAYMENT_CAPTURE_FALLBACK, EVENT_PAYMENT_START_FALLBACK } from '@/
  */
 
 type CapturedProps = {
+  disabled: boolean
+  onCancel: () => void
   createOrder: () => Promise<string>
   onApprove: (data: { orderID?: string }) => Promise<void>
   onError: (error: unknown) => void
@@ -122,5 +124,48 @@ describe('the guest event payment page', () => {
     })
 
     expect(screen.getByRole('status')).toHaveTextContent('Your booking is confirmed')
+  })
+
+  // PayPal's inline card form opens inside its buttons. The page disabled them (38% opacity) and
+  // blocked pointer events from the first click, so a card payer saw a faded form they could not
+  // type in (a tasting night guest, 10 and 11 November 2026). Only the capture may lock them.
+  it('keeps the card form usable until PayPal approves, and locks the buttons only during capture', async () => {
+    fetchMock.mockResolvedValueOnce(answer(200, { orderId: 'ORDER-1' }))
+    renderClient()
+    const wrapper = screen.getByTestId('paypal-buttons').parentElement!.parentElement!
+
+    await act(async () => {
+      await expect(paypal.props!.createOrder()).resolves.toBe('ORDER-1')
+    })
+    expect(paypal.props!.disabled).toBe(false)
+    expect(wrapper).not.toHaveClass('pointer-events-none')
+    expect(screen.queryByText('Processing payment, please wait.')).toBeNull()
+
+    let finishCapture: (value: unknown) => void = () => undefined
+    fetchMock.mockReturnValueOnce(new Promise((resolve) => { finishCapture = resolve }))
+    let approval: Promise<void> | undefined
+    await act(async () => {
+      approval = paypal.props!.onApprove({ orderID: 'ORDER-1' })
+    })
+    expect(paypal.props!.disabled).toBe(true)
+    expect(wrapper).toHaveClass('pointer-events-none')
+    expect(screen.getByText('Processing payment, please wait.')).toBeInTheDocument()
+
+    await act(async () => {
+      finishCapture(answer(200, { success: true, state: 'confirmed' }))
+      await approval
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('Your booking is confirmed')
+  })
+
+  it('leaves the buttons usable when the guest closes PayPal without paying', async () => {
+    fetchMock.mockResolvedValueOnce(answer(200, { orderId: 'ORDER-1' }))
+    renderClient()
+
+    await act(async () => {
+      await paypal.props!.createOrder()
+      paypal.props!.onCancel()
+    })
+    expect(paypal.props!.disabled).toBe(false)
   })
 })
