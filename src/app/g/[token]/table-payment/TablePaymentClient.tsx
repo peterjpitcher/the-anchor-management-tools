@@ -159,8 +159,10 @@ export function TablePaymentClient({
                 : 'This hold has expired. Please call us to arrange a new booking.'}
             </GuestAlert>
           ) : (
-            // The pointer-events guard stops a second tap reaching PayPal while
-            // the capture is running.
+            // The pointer-events guard stops a second tap reaching PayPal while the capture is
+            // running. It starts at approval, never at createOrder: PayPal's inline card form opens
+            // inside these buttons, and guarding it from the first click left the form faded and
+            // untypeable for card payers (found 11 November 2026 on the event payment page).
             <div className={cn('flex flex-col gap-3', paymentState === 'paying' && 'pointer-events-none')}>
               {paymentState === 'error' && (
                 <GuestAlert
@@ -197,12 +199,12 @@ export function TablePaymentClient({
                 {/* PayPal's own button. Never restyle it: this style prop is fixed. */}
                 <PayPalButtons
                   style={{ layout: 'vertical', shape: 'rect' }}
+                  // Disabled only while the approved payment is captured. PayPal shows disabled
+                  // buttons at 38% opacity, and its card form sits inside them.
                   disabled={paymentState === 'paying'}
-                  createOrder={() => {
-                    setPaymentState('paying')
-                    return Promise.resolve(orderId)
-                  }}
+                  createOrder={() => Promise.resolve(orderId)}
                   onApprove={async () => {
+                    setPaymentState('paying')
                     try {
                       const result = await captureAction(orderId)
                       if (result.success) {

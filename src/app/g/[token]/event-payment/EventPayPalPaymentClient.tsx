@@ -88,14 +88,12 @@ export function EventPayPalPaymentClient({
   }
 
   return (
-    // The pointer-events guard stays: it stops a second tap reaching PayPal
-    // while an order is being created or captured.
-    <div
-      className={cn(
-        'flex flex-col gap-3',
-        (paymentState === 'creating' || paymentState === 'paying') && 'pointer-events-none'
-      )}
-    >
+    // The pointer-events guard covers only the capture, after PayPal has approved the payment, so
+    // a second tap cannot start another payment while we take this one. It must not cover order
+    // creation or approval: PayPal's inline card form opens inside these buttons, and guarding it
+    // left the form faded and untypeable, so card payers could not pay (a tasting night guest,
+    // 10 and 11 November 2026). The website's checkout had the same fault, fixed 7 November.
+    <div className={cn('flex flex-col gap-3', paymentState === 'paying' && 'pointer-events-none')}>
       {paymentState === 'error' && (
         <GuestAlert
           tone="problem"
@@ -139,7 +137,9 @@ export function EventPayPalPaymentClient({
         */}
         <PayPalButtons
           style={{ layout: 'vertical', shape: 'rect' }}
-          disabled={paymentState === 'creating' || paymentState === 'paying'}
+          // Disabled only while the approved payment is captured. PayPal shows disabled buttons at
+          // 38% opacity, and its card form sits inside them.
+          disabled={paymentState === 'paying'}
           createOrder={async () => {
             failed.current = false
             setPaymentState('creating')
@@ -156,7 +156,8 @@ export function EventPayPalPaymentClient({
               throw new Error(message)
             }
             setOrderId(data.orderId)
-            setPaymentState('paying')
+            // Back to idle: the guest is now filling in PayPal's form, which must stay usable.
+            setPaymentState('idle')
             return data.orderId
           }}
           onApprove={async (data) => {
@@ -166,6 +167,7 @@ export function EventPayPalPaymentClient({
               return
             }
 
+            setPaymentState('paying')
             let response: Response
             try {
               response = await fetch(`/g/${encodeURIComponent(token)}/event-payment/paypal/capture-order`, {
