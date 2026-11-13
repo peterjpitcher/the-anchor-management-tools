@@ -60,6 +60,10 @@ import {
 } from '@/services/private-bookings/deposit-confirmation'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { contactPhoneDiffersNote } from '@/services/private-bookings/contact-sync'
+import {
+  resolvePrivateBookingCancellationReason,
+  type PrivateBookingCancellationReasonInput,
+} from '@/lib/private-bookings/cancellation-reasons'
 
 // Helper function to extract string values from FormData
 const getString = (formData: FormData, key: string): string | undefined => {
@@ -1278,9 +1282,13 @@ export async function recordFinalPayment(bookingId: string, formData: FormData) 
 // Cancel a private booking and notify customer by SMS.
 // For sub-30-day cancellations with a paid deposit, SOP §14 requires a
 // manager retention decision (0..deposit + reason) — pass it via `retention`.
+// `reason` is required: one of the fixed codes in
+// src/lib/private-bookings/cancellation-reasons.ts (date_unavailable, price, group_too_big,
+// no_reply, chose_elsewhere, duplicate_or_test, other), with an optional note that "other" must
+// carry. Checked here, not only in the dialogs, so no caller can cancel without saying why.
 export async function cancelPrivateBooking(
   bookingId: string,
-  reason?: string,
+  reason: PrivateBookingCancellationReasonInput,
   retention?: { retainedAmount: number; reason: string } | null,
   capture?: {
     channel?: 'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
@@ -1311,6 +1319,11 @@ export async function cancelPrivateBooking(
     }
   }
 
+  const resolvedReason = resolvePrivateBookingCancellationReason(reason)
+  if (!resolvedReason.ok) {
+    return { error: resolvedReason.error }
+  }
+
   // Get current user
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -1318,7 +1331,7 @@ export async function cancelPrivateBooking(
   try {
     const result = await PrivateBookingService.cancelBooking(
       bookingId,
-      reason || '',
+      resolvedReason.stored,
       user?.id || undefined,
       (retention || capture || costsKept)
         ? { retentionDecision: retention ?? null, capture: capture ?? null, costsKept: costsKept ?? null }

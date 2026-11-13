@@ -91,11 +91,11 @@ describe('private booking actions SMS meta propagation', () => {
       ],
     } as any)
 
-    const result = await cancelPrivateBooking('booking-1', 'staff_cancelled')
+    const result = await cancelPrivateBooking('booking-1', { code: 'no_reply' })
 
     expect(PrivateBookingService.cancelBooking).toHaveBeenCalledWith(
       'booking-1',
-      'staff_cancelled',
+      'no_reply',
       'user-1',
       undefined
     )

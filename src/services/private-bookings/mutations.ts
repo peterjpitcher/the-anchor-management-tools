@@ -79,6 +79,7 @@ import {
   type CancellationVariant,
 } from '@/lib/private-bookings/cancellation-variant';
 import { refundDueByIso } from '@/lib/private-bookings/refund-due';
+import { CANCELLATION_REASON_REQUIRED_MESSAGE } from '@/lib/private-bookings/cancellation-reasons';
 import { closeCancelledBookingInvoices, type CancelledBookingInvoiceOutcome } from './cancellation-invoices';
 
 // ---------------------------------------------------------------------------
@@ -2106,6 +2107,12 @@ export async function cancelBooking(
     throw new Error('Booking cannot be cancelled');
   }
 
+  // A cancellation always says why (growth review, 13 November 2026). The blank used to be stored
+  // as "Cancelled by staff", which told nobody why an enquiry was lost.
+  if (!reason || !reason.trim()) {
+    throw new Error(CANCELLATION_REASON_REQUIRED_MESSAGE);
+  }
+
   // 1b. The money first, all checked before the booking is touched (BK-065): the outcome, the
   // manager's retention decision and any costs kept, and so the refund owed and the one message.
   // SOP §14: for sub-30-day cancellations with a paid deposit, retention up to the full deposit is
@@ -2167,7 +2174,7 @@ export async function cancelBooking(
   const cancellationReceivedAt = capture?.receivedAt || nowIso;
   const cancellationFields = {
     status: 'cancelled',
-    cancellation_reason: reason || 'Cancelled by staff',
+    cancellation_reason: reason,
     cancelled_at: nowIso,
     cancellation_channel: capture?.channel ?? null,
     cancellation_received_at: cancellationReceivedAt,
@@ -2282,7 +2289,7 @@ export async function cancelBooking(
         metadata: {
           template: variant.templateKey,
           event_date: eventDate,
-          reason: reason || 'staff_cancelled',
+          reason,
           financial_outcome: variant.outcome,
           refund_amount: variant.refundAmount,
           retained_amount: variant.retainedAmount,
@@ -2356,7 +2363,7 @@ export async function cancelBooking(
     operation_status: 'success',
     additional_info: {
       action: 'cancellation',
-      reason: reason || 'staff_cancelled',
+      reason,
       ...(capture?.channel ? { cancellation_channel: capture.channel } : {}),
       cancellation_received_at: cancellationReceivedAt,
       ...(retentionDecision

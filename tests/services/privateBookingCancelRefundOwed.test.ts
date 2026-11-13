@@ -110,6 +110,19 @@ describe('cancelling a private hire with money due back', () => {
     expect(vi.mocked(sendPrivateBookingMessage).mock.calls[0][0].sms.trigger_type).toBe('booking_cancelled_partial_refund')
   })
 
+  it('stores the reason given, and refuses a cancellation with none', async () => {
+    seed(bookingRow())
+
+    await expect(PrivateBookingService.cancelBooking('booking-1', '  ', 'user-1')).rejects.toThrow(
+      'Choose why this booking is being cancelled',
+    )
+    expect(stored().status).not.toBe('cancelled')
+
+    await PrivateBookingService.cancelBooking('booking-1', 'price: Half the quote', 'user-1')
+
+    expect(stored()).toMatchObject({ status: 'cancelled', cancellation_reason: 'price: Half the quote' })
+  })
+
   it('records nothing owed when no money changed hands', async () => {
     vi.mocked(getPrivateBookingCancellationOutcome).mockResolvedValue({
       outcome: 'no_money', refund_amount: 0, retained_amount: 0, deposit_deduction: 0, max_retainable: 0,
