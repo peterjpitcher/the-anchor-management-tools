@@ -24,7 +24,7 @@ import { GET } from '@/app/api/menu/route'
 
 // The allowlist is module-private in the route (Next.js forbids extra exports
 // from route files), so it is asserted through behaviour rather than imported.
-const EXPECTED_ALLOWLIST = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks', 'hot_drinks']
+const EXPECTED_ALLOWLIST = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'hot_drinks']
 
 const TODAY = getTodayIsoDate()
 
@@ -41,6 +41,9 @@ const menusByCode: Record<string, MenuRow> = {
   kids: { id: 'menu-kids', name: 'Kids Menu' },
   christmas: { id: 'menu-christmas', name: 'Christmas Menu' },
   hot_drinks: { id: 'menu-hot-drinks', name: 'Hot Drinks' },
+  // The till-imported Drinks menu exists in the database. It is in the fixture so
+  // the tests prove the allowlist blocks it, not merely that the row is missing.
+  drinks: { id: 'menu-drinks-till', name: 'Drinks' },
 }
 
 /** Records which menu code each table was filtered by, so the test can assert propagation. */
@@ -321,6 +324,41 @@ describe('GET /api/menu menu code allowlist', () => {
     const body = await readJson(response)
     expect(body.data.menu_code).toBe('hot_drinks')
     expect(body.data.menu_name).toBe('Hot Drinks')
+  })
+
+  it('does not serve the till-imported drinks menu, answering exactly as for an unknown code', async () => {
+    const unknown = await GET(new Request('http://localhost/api/menu?menu=secret_internal') as any)
+    const unknownBody = await readJson(unknown)
+
+    for (const spelling of ['drinks', 'DRINKS', '%20Drinks%20']) {
+      requestedMenuCodes = []
+      requestedMenuIds = []
+      const response = await GET(new Request(`http://localhost/api/menu?menu=${spelling}`) as any)
+
+      expect(response.status).toBe(400)
+      // The database is never asked for it, so nothing about the menu can leak.
+      expect(requestedMenuCodes).toHaveLength(0)
+      expect(requestedMenuIds).toHaveLength(0)
+      // Identical to an unknown code, so the response does not reveal it exists.
+      expect(await readJson(response)).toEqual(unknownBody)
+    }
+
+    // The error lists the menus that are public; the till menu is not among them.
+    const allowed = unknownBody.error.message.split('Allowed values: ')[1].split(', ')
+    expect(allowed).toEqual(EXPECTED_ALLOWLIST)
+    expect(allowed).not.toContain('drinks')
+  })
+
+  it('still serves the public food and hot drinks menus', async () => {
+    for (const code of ['website_food', 'kids', 'christmas', 'hot_drinks']) {
+      requestedMenuCodes = []
+      const response = await GET(new Request(`http://localhost/api/menu?menu=${code}`) as any)
+
+      expect(response.status).toBe(200)
+      const body = await readJson(response)
+      expect(body.data.menu_code).toBe(code)
+      expect(body.data.sections.length).toBeGreaterThan(0)
+    }
   })
 
   it('reports allergen_verified as a strict boolean, false unless verified', async () => {
