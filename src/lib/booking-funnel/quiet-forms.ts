@@ -1,5 +1,5 @@
 import { escapeHtml } from '@/lib/cron/alerting'
-import { formatDateInLondon, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
+import { formatDateInLondon, shiftIsoDate, toLocalIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import { STAFF } from '@/lib/brand/palette'
 import { funnelKeyIds } from '@/lib/booking-funnel/daily-summary'
 import type { BookingForm } from '@/lib/booking-funnel/events'
@@ -25,9 +25,9 @@ type AdminClient = ReturnType<typeof createAdminClient>
 /** The forms watched. The event booking form has its own daily summary lines and is not listed. */
 export const QUIET_FORM_WATCH: readonly BookingForm[] = ['private_hire_enquiry']
 
-export const QUIET_FORM_WINDOW_DAYS = 7
-export const QUIET_FORM_MIN_SUBMITS = 2
-export const QUIET_FORM_MIN_STARTS = 5
+const QUIET_FORM_WINDOW_DAYS = 7
+const QUIET_FORM_MIN_SUBMITS = 2
+const QUIET_FORM_MIN_STARTS = 5
 
 const QUIET_FORM_LABELS: Record<string, string> = { private_hire_enquiry: 'Private hire enquiry form' }
 
@@ -40,14 +40,14 @@ export type QuietFormCounts = {
   started: number
   submitPressed: number
   sent: number
-  /** Started or submit pressed on the last day counted: whether anything new happened. */
-  freshSignals: number
+  /** The London date of the newest started or submit pressed signal counted, or null for none. */
+  latestSignalDate: string | null
 }
 
-export type QuietFormReason = 'submits_without_sent' | 'starts_without_sent'
+type QuietFormReason = 'submits_without_sent' | 'starts_without_sent'
 
 /** Why a form counts as quiet, or null when it does not. Opens play no part. */
-export function quietFormReason(counts: Pick<QuietFormCounts, 'started' | 'submitPressed' | 'sent'>): QuietFormReason | null {
+function quietFormReason(counts: Pick<QuietFormCounts, 'started' | 'submitPressed' | 'sent'>): QuietFormReason | null {
   if (counts.sent > 0) return null
   if (counts.submitPressed >= QUIET_FORM_MIN_SUBMITS) return 'submits_without_sent'
   if (counts.started >= QUIET_FORM_MIN_STARTS) return 'starts_without_sent'
@@ -55,13 +55,19 @@ export function quietFormReason(counts: Pick<QuietFormCounts, 'started' | 'submi
 }
 
 /**
- * Whether to email today. The form must be quiet, and something must have happened on the last
- * day counted: one bad afternoon is one email, not the same email every morning for a week, and a
- * form still failing as people keep trying is reported each day it happens.
+ * The once-only key for an alert, or null when the form is not quiet. It is the date of the newest
+ * signal, not the date of the run: one bad afternoon is one email, not the same email every
+ * morning for a week; a form still failing as people keep trying is reported again each day
+ * something new arrives; and an alert that could not be sent (email down, a missed run) is still
+ * owed the next morning, for as long as the signals stay inside the seven days.
  */
-export function quietFormNeedsAlert(counts: QuietFormCounts): boolean {
-  return quietFormReason(counts) !== null && counts.freshSignals > 0
+export function quietFormAlertKey(counts: QuietFormCounts): string | null {
+  if (quietFormReason(counts) === null || !counts.latestSignalDate) return null
+  return `website-quiet-form:${counts.form}:${counts.latestSignalDate}`
 }
+
+/** How long a sent alert is remembered: longer than the days counted, so it cannot be sent twice. */
+export const QUIET_FORM_CLAIM_TTL_HOURS = (QUIET_FORM_WINDOW_DAYS + 2) * 24
 
 function londonMidnightIso(date: string): string {
   const instant = whenLondonClockReaches(date, '00:00')
@@ -79,7 +85,6 @@ export async function loadQuietFormCounts(supabase: AdminClient, form: string, l
   const dayAfter = shiftIsoDate(lastDate, 1)
   if (!from || !dayAfter) throw new Error(`Not a date: ${lastDate}`)
   const startIso = londonMidnightIso(from)
-  const lastDayIso = londonMidnightIso(lastDate)
   const endIso = londonMidnightIso(dayAfter)
 
   const keys = await funnelKeyIds(supabase)
@@ -99,15 +104,32 @@ export async function loadQuietFormCounts(supabase: AdminClient, form: string, l
     return count ?? 0
   }
 
-  const [opened, started, submitPressed, sent, freshSignals] = await Promise.all([
+  const newestSignal = async (): Promise<string | null> => {
+    const { data, error } = await supabase
+      .from('booking_funnel_events')
+      .select('occurred_at')
+      .eq('stage', 'form')
+      .eq('route', form)
+      .in('reason_code', ['started', 'submit_pressed'])
+      .in('api_key_id', keys)
+      .gte('occurred_at', startIso)
+      .lt('occurred_at', endIso)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+    if (error) throw new Error(`Could not read the newest ${form} signal: ${error.message}`)
+    const occurredAt = ((data ?? []) as Array<{ occurred_at: string }>)[0]?.occurred_at
+    return occurredAt ? toLocalIsoDate(new Date(occurredAt)) : null
+  }
+
+  const [opened, started, submitPressed, sent, latestSignalDate] = await Promise.all([
     countStep(['opened'], startIso),
     countStep(['started'], startIso),
     countStep(['submit_pressed'], startIso),
     countStep(['sent'], startIso),
-    countStep(['started', 'submit_pressed'], lastDayIso),
+    newestSignal(),
   ])
 
-  return { form, from, to: lastDate, opened, started, submitPressed, sent, freshSignals }
+  return { form, from, to: lastDate, opened, started, submitPressed, sent, latestSignalDate }
 }
 
 export type QuietFormEmail = { subject: string; html: string; text: string }

@@ -7,10 +7,11 @@ import {
 } from '@/lib/api/idempotency'
 import { buildDailyFunnelEmail, loadDailyFunnelSummary, summaryNeedsSending } from '@/lib/booking-funnel/daily-summary'
 import {
+  QUIET_FORM_CLAIM_TTL_HOURS,
   QUIET_FORM_WATCH,
   buildQuietFormEmail,
   loadQuietFormCounts,
-  quietFormNeedsAlert,
+  quietFormAlertKey,
 } from '@/lib/booking-funnel/quiet-forms'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { withCronRun } from '@/lib/cron/run-recorder'
@@ -51,22 +52,23 @@ type AdminClient = ReturnType<typeof createAdminClient>
 type QuietFormOutcome = { form: string; alert: 'sent' | 'already_sent' | 'not_needed' | 'failed'; error?: string }
 
 /**
- * One email per quiet form per London day. Never throws: a count that cannot be made or an email
- * that does not send is reported in the run's answer, which fails the run so it is seen.
+ * At most one email per quiet form a day, and one per day of new signals (see quietFormAlertKey).
+ * Never throws: a count that cannot be made or an email that does not send is reported in the
+ * run's answer, which fails the run so it is seen, and the alert is still owed on the next run.
  */
 async function alertQuietForms(supabase: AdminClient, yesterday: string): Promise<QuietFormOutcome[]> {
   const outcomes: QuietFormOutcome[] = []
   for (const form of QUIET_FORM_WATCH) {
     try {
       const counts = await loadQuietFormCounts(supabase, form, yesterday)
-      if (!quietFormNeedsAlert(counts)) {
+      const onceKey = quietFormAlertKey(counts)
+      if (!onceKey) {
         outcomes.push({ form, alert: 'not_needed' })
         continue
       }
 
-      const onceKey = `website-quiet-form:${form}:${yesterday}`
       const requestHash = computeIdempotencyRequestHash({ onceKey })
-      const claim = await claimIdempotencyKey(supabase, onceKey, requestHash, CLAIM_TTL_HOURS)
+      const claim = await claimIdempotencyKey(supabase, onceKey, requestHash, QUIET_FORM_CLAIM_TTL_HOURS)
       if (claim.state !== 'claimed') {
         outcomes.push({ form, alert: 'already_sent' })
         continue
@@ -75,10 +77,10 @@ async function alertQuietForms(supabase: AdminClient, yesterday: string): Promis
       const email = buildQuietFormEmail(counts)
       const sent = await sendEmail({ to: MANAGER_ALERT_RECIPIENT, subject: email.subject, html: email.html, text: email.text })
       if (sent.success) {
-        await persistIdempotencyResponse(supabase, onceKey, requestHash, { state: 'emailed' }, CLAIM_TTL_HOURS)
+        await persistIdempotencyResponse(supabase, onceKey, requestHash, { state: 'emailed' }, QUIET_FORM_CLAIM_TTL_HOURS)
         outcomes.push({ form, alert: 'sent' })
       } else {
-        // Freed, so the next run today tries again.
+        // Freed, so the next run tries again, today or tomorrow.
         await releaseIdempotencyClaim(supabase, onceKey, requestHash)
         outcomes.push({ form, alert: 'failed', error: `The alert email was not sent: ${sent.error ?? 'unknown'}` })
       }

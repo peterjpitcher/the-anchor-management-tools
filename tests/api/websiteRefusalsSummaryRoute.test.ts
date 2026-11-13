@@ -176,14 +176,63 @@ describe('GET /api/cron/website-refusals-summary', () => {
       expect(quietSubjects()).toHaveLength(0)
     })
 
-    it('does not repeat itself on a later day when nothing new has happened', async () => {
-      // Both presses were on Tuesday 20 October; nothing since. Told once, on the 21st.
+    it('tells the manager once about one bad afternoon, not every morning for a week', async () => {
+      // Both presses were on Tuesday 20 October; nothing since.
       seed([signal('submit_pressed', '2026-10-20T10:00:00.000Z'), signal('submit_pressed', '2026-10-20T10:05:00.000Z')])
 
-      const response = await GET(request())
+      vi.setSystemTime(new Date('2026-10-21T08:00:00.000Z'))
+      const wednesday = await GET(request())
+      vi.setSystemTime(new Date('2026-10-22T08:00:00.000Z'))
+      const thursday = await GET(request())
+      vi.setSystemTime(new Date('2026-10-27T08:00:00.000Z'))
+      const nextTuesday = await GET(request())
+      // Wednesday 28 October: the presses are now more than seven days old.
+      vi.setSystemTime(new Date('2026-10-28T08:00:00.000Z'))
+      const afterTheWeek = await GET(request())
 
-      expect(await response.json()).toMatchObject({ quietForms: [{ form: 'private_hire_enquiry', alert: 'not_needed' }] })
-      expect(quietSubjects()).toHaveLength(0)
+      expect(await wednesday.json()).toMatchObject({ quietForms: [{ alert: 'sent' }] })
+      expect(await thursday.json()).toMatchObject({ quietForms: [{ alert: 'already_sent' }] })
+      expect(await nextTuesday.json()).toMatchObject({ quietForms: [{ alert: 'already_sent' }] })
+      expect(await afterTheWeek.json()).toMatchObject({ quietForms: [{ alert: 'not_needed' }] })
+      expect(quietSubjects()).toHaveLength(1)
+    })
+
+    it('tells the manager again when people keep trying on a later day', async () => {
+      seed([
+        signal('submit_pressed', '2026-10-20T10:00:00.000Z'),
+        signal('submit_pressed', '2026-10-20T10:05:00.000Z'),
+        signal('started', '2026-10-22T19:00:00.000Z'),
+      ])
+
+      vi.setSystemTime(new Date('2026-10-21T08:00:00.000Z'))
+      await GET(request())
+      vi.setSystemTime(new Date('2026-10-23T08:00:00.000Z'))
+      await GET(request())
+
+      expect(quietSubjects()).toHaveLength(2)
+    })
+
+    it('still sends an alert the next morning when it could not be sent on the day, with nothing new since', async () => {
+      seed([signal('submit_pressed', '2026-10-20T10:00:00.000Z'), signal('submit_pressed', '2026-10-20T10:05:00.000Z')])
+
+      vi.setSystemTime(new Date('2026-10-21T08:00:00.000Z'))
+      sendEmail.mockResolvedValueOnce({ success: false, error: 'provider down' } as never)
+      const failed = await GET(request())
+      vi.setSystemTime(new Date('2026-10-22T08:00:00.000Z'))
+      const nextMorning = await GET(request())
+
+      expect(failed.status).toBe(502)
+      expect(await nextMorning.json()).toMatchObject({ success: true, quietForms: [{ form: 'private_hire_enquiry', alert: 'sent' }] })
+      expect(quietSubjects()).toHaveLength(2)
+    })
+
+    it('dates a signal by the London day it arrived on', async () => {
+      // 23:30 UTC on Saturday 24 October is 00:30 BST on Sunday 25 October, the last day counted.
+      seed([signal('submit_pressed', '2026-10-24T23:30:00.000Z'), signal('submit_pressed', '2026-10-24T23:31:00.000Z')])
+
+      await GET(request())
+
+      expect([...claims.keys()]).toContain('website-quiet-form:private_hire_enquiry:2026-10-25')
     })
 
     it('still sends the daily summary when the quiet form count cannot be made, and fails the run', async () => {
