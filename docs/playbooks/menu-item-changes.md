@@ -156,16 +156,16 @@ Where: Menu Management, Dishes tab (`/menu-management/dishes`).
 
 ## Worked example: adding decaf coffee
 
-Decaf coffee is a hot drink, so it goes on the **Hot Drinks** menu. Hot Drinks today has Americano, Latte, Cappuccino, Hot Chocolate and six teas (including Decaffeinated Tea), all at £3.00, but no decaf coffee.
+Our decaf coffee is **instant decaf**, not espresso, so it is one item, "Decaf Coffee (instant)", made with instant granules: there is no decaf latte or cappuccino. It is priced the same as tea, **£3.00** (Peter, 13 November 2026). It goes on the **Hot Drinks** menu, which today has Americano, Latte, Cappuccino, Hot Chocolate and six teas (including Decaffeinated Tea), all at £3.00.
 
-1. **Ingredients** (A1): check for a decaf coffee ingredient on the Ingredients tab. If there is none, press **New Ingredient**, name it (for example "Decaf coffee beans"), set Purchase Department to Bar, add the supplier, pack size, pack cost and portions per pack. Check whether milk is already an ingredient, with the Milk allergen ticked.
-2. **Dish** (A2): Dishes tab, **New Dish**. Name "Decaf Coffee" (or one dish per style, such as "Decaf Latte", if they are priced differently). Selling Price: the price Peter sets. Composition: add the decaf coffee ingredient, plus milk if it is served with milk. Menus: Menu "Hot Drinks", Category "Hot Drinks", a Sort Order that puts it next to the Americano. Save.
+1. **Ingredients** (A1): check for a decaf coffee ingredient on the Ingredients tab. If there is none, press **New Ingredient**, name it "Instant decaf coffee granules", set Purchase Department to Bar, add the supplier, pack size, pack cost and portions per pack. Check whether milk is already an ingredient, with the Milk allergen ticked.
+2. **Dish** (A2): Dishes tab, **New Dish**. Name "Decaf Coffee (instant)", so staff and customers can see it is instant. Selling Price: £3.00, the same as tea. Composition: add the instant decaf granules, plus milk if it is served with milk. Menus: Menu "Hot Drinks", Category "Hot Drinks", a Sort Order that puts it next to the Americano. Save.
 3. **Allergens** (A3): if it is served with milk, the dish should now show Milk. Verify the allergens.
 4. **GP** (A4): check the GP% against the target.
 5. **Website** (A5): decaf coffee will **not** appear on the website. No hot drinks are shown there today. Getting it there needs a developer job.
 6. **Print** (A7): the next menu reprint needs it. Export the Hot Drinks CSV and reprint the drinks allergen PDF (Download PDF, Allergen Report, Drinks).
-7. **Till** (A8): add Decaf Coffee in Tabology at the same price, next to the other coffees. [Peter to confirm the steps.]
+7. **Till** (A8): add "Decaf Coffee (instant)" in Tabology at £3.00, next to the other coffees. [Peter to confirm the steps.]
 8. **Google** (A9): nothing changes automatically. Optional social post.
-9. **Team** (A10): tell the bar it is available and how it is made.
+9. **Team** (A10): tell the bar it is available and that it is instant decaf (granules, not the coffee machine).
 
 Note: in the app, all ten existing hot drinks (Americano, Latte, Cappuccino, Hot Chocolate and the teas) currently show **no allergens, a cost of £0.00 and unverified allergens**, because no ingredients are linked to them. A latte contains milk. Adding the ingredients to those dishes (A1 to A3) would fix their allergen records and their GP.
