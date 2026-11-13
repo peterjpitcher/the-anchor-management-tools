@@ -208,3 +208,13 @@ WHERE conrelid = 'public.customer_consents'::regclass
 ```
 
 `public_event_waitlist` must be in the first and `event_waitlist` in the second. If either is missing, a sign-up fails closed with a 503 and nothing is stored.
+
+## Gates (run in this worktree, 13 November 2026, Node 20)
+
+- `npm run lint`: clean, zero warnings.
+- `npx tsc --noEmit` (with `NODE_OPTIONS=--max-old-space-size=8192`, as CLAUDE.md says): clean. `npm run typecheck:tests`: clean.
+- `npm test` (Europe/London): 1,770 files, 19,839 passed, 2 skipped.
+- `npm run test:utc`: 1,770 files, 19,839 passed, 2 skipped.
+- `npm run build` (uncached, 8 GB heap): exit 0; `/api/event-interest` is in the route list.
+- Database job: `npm run test:pg` runs the 70 `scripts/testing/*-postgres.py` harnesses on a throwaway local Postgres. 69 passed; `event-communal-payment-confirm-postgres.py` failed once with "deadlock detected" and passed when run again on its own. This branch changes no SQL, so that is a flake in the harness, not something this work caused. There is no `test:db` script.
+- No migration in this branch, so `scripts/security/assert-anon-surface.ts` and a types regeneration were not needed.
