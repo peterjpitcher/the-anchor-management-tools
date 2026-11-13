@@ -18,6 +18,9 @@ Use this index to find the canonical documentation for The Anchor Management Too
 - [Table bookings phase 1 discovery](./reports/table-bookings-phase1-discovery.md) – table-bookings discovery report.
 - [Main menu items](./reports/main-menu-items.md) – generated active menu item copy.
 
+## Playbooks
+- [Menu item changes](./playbooks/menu-item-changes.md): how to add a menu item (app, website, print, till, Google) and how to take one off without losing its history.
+
 ## Development Workflow
 - [Contributing](./CONTRIBUTING.md) – project structure, coding standards, branch strategy, and PR expectations.
 - [Testing](./TESTING.md) – current automated test status, manual smoke checks, and how to add new coverage.
