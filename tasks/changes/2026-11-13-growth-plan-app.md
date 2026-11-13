@@ -45,9 +45,9 @@ What changed:
 - `src/lib/booking-funnel/daily-summary.ts`: label "Private hire enquiry form". A blocked private hire form with reason `network` (or any reason other than the ordinary ones) sends the daily summary, exactly as for the event form.
 - `src/lib/booking-funnel/quiet-forms.ts` (new) and the cron route: the quiet-form alert.
 
-The alert: over the seven London days ending yesterday, for form `private_hire_enquiry`, counted only for API keys that can make bookings: at least 2 `submit_pressed` and no `sent`, or at least 5 `started` and no `sent`. Opens are never counted towards either. One email to `manager@the-anchor.pub` (`MANAGER_ALERT_RECIPIENT`), claimed once per form per London day through the idempotency table. It runs before the daily summary and catches its own errors, so neither email can stop the other. If the count cannot be made or the email does not send, the run answers 502 and the run recorder emails `CRON_ALERT_EMAIL`; a failed send frees the claim so the next run retries.
+The alert: over the seven London days ending yesterday, for form `private_hire_enquiry`, counted only for API keys that can make bookings: at least 2 `submit_pressed` and no `sent`, or at least 5 `started` and no `sent`. Opens are never counted towards either. One email to `manager@the-anchor.pub` (`MANAGER_ALERT_RECIPIENT`). The job runs once a day, so it can send at most one a day. It runs before the daily summary and catches its own errors, so neither email can stop the other. If the count cannot be made or the email does not send, the run answers 502 and the run recorder emails `CRON_ALERT_EMAIL`; a failed send frees the claim, so the alert goes out on the next run, the same day or the next morning.
 
-Assumption: the alert goes out only when a new `started` or `submit_pressed` arrived on the last day counted. Without that, one bad afternoon would send the same email every morning for a week.
+Assumption (owner to confirm): the once-only claim is keyed on the London date of the newest `started` or `submit_pressed` signal, and kept for nine days. So one bad afternoon is one email, not the same email every morning for a week; a form that people keep trying and failing on is reported again each day something new arrives; and once the signals are more than seven days old the alert stops.
 
 ### Website contract for B
 
@@ -118,7 +118,8 @@ Rules worth knowing:
 - Someone who has opted out of marketing on a channel is never opted back in from this form (owner decision D31). If no channel can be registered the answer is 409 with a message to call.
 - A typed email is registered only when it is the address on the customer's record. A matched customer's email is never overwritten from a public form (BK-077), so when a mobile matches an existing customer with a different or no email, only texts are registered.
 - A landline or non-UK number cannot be texted: with an email it becomes an email sign-up, without one it is refused.
-- An email-only sign-up creates a customer with no phone number.
+- An email-only sign-up creates a customer with no phone number, with `sms_opt_in` and `marketing_sms_opt_in` false and `sms_status` active, as migration `20260819170814_customers_optional_mobile.sql` requires. No other code creates one today, so this path is proven on the test database only.
+- An email is matched exactly as stored. The app lower-cases addresses on every save, so that is normally the same thing. An old or imported address stored with capital letters would not match, the unique index would refuse a second customer, and the sign-up would answer 503 rather than guess.
 
 ### Website contract for D
 

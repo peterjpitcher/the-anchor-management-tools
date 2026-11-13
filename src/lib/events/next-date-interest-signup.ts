@@ -18,7 +18,7 @@ import type { Database } from '@/types/database.generated'
 
 type AdminClient = SupabaseClient<Database, 'public'>
 
-export type InterestChannel = 'sms' | 'email'
+type InterestChannel = 'sms' | 'email'
 
 export type InterestCategory = { id: string; slug: string; name: string }
 
@@ -86,9 +86,11 @@ async function ensureCustomerForEmail(supabase: AdminClient, email: string, firs
       first_name: firstName,
       last_name: '',
       email,
-      // No number, so nothing can be texted or sent by WhatsApp. Marketing email is switched on by
-      // the consent record, not here.
+      // No number, so nothing can be texted or sent by WhatsApp. sms_opt_in defaults to true, so
+      // a customer with no phone must say false outright (migration 20260819170814, which made
+      // the number optional). Marketing email is switched on by the consent record, not here.
       sms_opt_in: false,
+      sms_status: 'active',
       marketing_sms_opt_in: false,
       whatsapp_opt_in: false,
       marketing_whatsapp_opt_in: false,

@@ -34,7 +34,7 @@ export type PrivateBookingCancellationReasonInput = {
 export const PRIVATE_BOOKING_CANCELLATION_NOTE_MAX_LENGTH = 300
 
 export const CANCELLATION_REASON_REQUIRED_MESSAGE = 'Choose why this booking is being cancelled'
-export const CANCELLATION_NOTE_REQUIRED_MESSAGE = 'Add a short note saying why this booking is being cancelled'
+const CANCELLATION_NOTE_REQUIRED_MESSAGE = 'Add a short note saying why this booking is being cancelled'
 
 function findReason(code: unknown) {
   return typeof code === 'string'
