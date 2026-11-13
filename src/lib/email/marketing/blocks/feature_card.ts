@@ -49,7 +49,7 @@ export const featureCard = defineBlock<FeatureCardData>({
   schema: featureCardSchema,
   sample: {
     image: null,
-    heading: 'Sunday roast, carved fresh to order',
+    heading: 'Sunday roast',
     body: 'A card for one offer or one dish. Gold top-accent, photograph, short paragraph, one link out.',
     link_label: 'See the Sunday roast',
     link_url: 'https://www.the-anchor.pub/sunday-roast',

@@ -210,7 +210,7 @@ describe('the Sunday pre-order, claimed and denied', () => {
     // Both of these were live in the September what's-on email, and both are true.
     'Sunday roast, no pre-order needed',
     'There is nothing to order in advance and no Saturday cutoff.',
-    'Roasts are carved fresh every Sunday from 1pm to 6pm, with no pre-order and no Saturday cutoff.',
+    'Sunday roasts are served from 1pm to 6pm, with no pre-order and no Saturday cutoff.',
     'We do not take a Sunday roast pre-order any more.',
     // The widened rule must still let these through. The first is the replacement message now
     // live on the row above; the last is the group deposit, which is £10 a head at 15 or more on
@@ -296,5 +296,24 @@ describe('the checker itself', () => {
   it('gives the same answer when run twice on the same text', () => {
     const text = 'Indulge in our gluten-free lamb shank since 1866.'
     expect(checkHouseStyle(text)).toEqual(checkHouseStyle(text))
+  })
+})
+
+describe('the roast is not carved fresh, 13 November 2026', () => {
+  it.each([
+    // The first was live in the December round-up, the second in both return-visit emails.
+    'Carved fresh every Sunday up to 20 December, 1pm to 6pm.',
+    "Sunday's what we live for. Roasts are carved fresh from 1pm.",
+    'Sunday roast, carved fresh to order',
+    'Sun 6 Dec, 12pm to 5pm. Carved to order.',
+    '28-day topside, carved when you order it.',
+    'Roasted pork leg sliced to order with Bramley apple sauce.',
+  ])('treats "%s" as an error', (text) => {
+    expect(houseStyleErrors(text).map((f) => f.rule)).toContain('roast-carved-fresh')
+  })
+
+  it('passes the replacement wording', () => {
+    expect(houseStyleErrors("Sunday's what we live for. Roasts start at 1pm, the kitchen serves until 6pm.").map((f) => f.rule)).not.toContain('roast-carved-fresh')
+    expect(houseStyleErrors('28-day topside. Comes with a fluffy Yorkshire pudding.').map((f) => f.rule)).not.toContain('roast-carved-fresh')
   })
 })

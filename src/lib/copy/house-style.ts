@@ -190,6 +190,16 @@ const BANNED_CLAIMS: Rule[] = [
       'after the event. It is never taken off the bill, and it replaces the group deposit. SSOT §11, §16.',
   },
   {
+    rule: 'roast-carved-fresh',
+    severity: 'error',
+    // The owner said on 13 November 2026 that the roast is not carved fresh. The December
+    // round-up and the two return-visit emails had all said it was.
+    pattern: /\bcarved (?:fresh|to order|when you order)|\bsliced to order\b/gi,
+    message:
+      'The roast is not carved fresh (owner, 13 November 2026). Describe the dish without ' +
+      'saying how it is carved or sliced. Website SSOT §4 and §14.',
+  },
+  {
     rule: 'retired-pie-roast',
     severity: 'error',
     pattern: /\bpie roasts?\b/gi,
