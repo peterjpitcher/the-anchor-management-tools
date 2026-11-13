@@ -6,11 +6,12 @@ import { getTodayIsoDate } from '@/lib/dateUtils';
 import { isNewToday, toIsoDate } from '@/lib/menu/new-product-window';
 
 // Public menu codes this endpoint is allowed to serve.
-// Strict allowlist: anything not listed here is rejected with a 400 so that an
+// hot_drinks feeds the Hot Drinks section of the website's /drinks page
+// (approved 13 November 2026). Strict allowlist: anything not listed here is rejected with a 400 so that an
 // arbitrary menu code can never be probed through the public API.
 // Kept module-private because Next.js route files may only export route handlers
 // and a fixed set of route config values.
-const PUBLIC_MENU_CODES = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks'] as const;
+const PUBLIC_MENU_CODES = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks', 'hot_drinks'] as const;
 type PublicMenuCode = (typeof PUBLIC_MENU_CODES)[number];
 
 const DEFAULT_PUBLIC_MENU_CODE: PublicMenuCode = 'website_food';
@@ -164,6 +165,10 @@ export async function GET(_request: NextRequest) {
         calories: dish.calories,
         dietary_info: dish.dietary_flags || [],
         allergens: dish.allergen_flags || [],
+        // True only once a person has pressed Verify Allergens on the dish.
+        // Consumers must not present an unverified dish's allergen or dietary
+        // data as complete; null (never verified) is reported as false.
+        allergen_verified: dish.allergen_verified === true,
         is_available: dish.is_active,
         is_special: dish.is_special,
         // Whole-day inclusive, same comparison as the availability window above,
