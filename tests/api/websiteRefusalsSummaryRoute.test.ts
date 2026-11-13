@@ -107,6 +107,111 @@ describe('GET /api/cron/website-refusals-summary', () => {
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
+  describe('the quiet form alert', () => {
+    // The run is on Monday 26 October 2026, so the seven days counted are 19 to 25 October.
+    const signal = (step: string, occurredAt: string, extra: Record<string, unknown> = {}) => ({
+      occurred_at: occurredAt,
+      stage: 'form',
+      route: 'private_hire_enquiry',
+      reason_code: step,
+      ...extra,
+    })
+    const quietSubjects = () =>
+      (sendEmail.mock.calls as unknown as Array<[{ subject: string; to: string; text: string }]>)
+        .map(([options]) => options)
+        .filter((options) => options.subject.startsWith('Private hire enquiry form'))
+
+    it('emails the manager inbox once when submit was pressed twice and nothing was sent', async () => {
+      seed([
+        signal('opened', '2026-10-20T10:00:00.000Z'),
+        signal('started', '2026-10-20T10:01:00.000Z'),
+        signal('submit_pressed', '2026-10-20T10:02:00.000Z'),
+        signal('submit_pressed', '2026-10-25T15:00:00.000Z'),
+      ])
+
+      const first = await GET(request())
+      const second = await GET(request())
+
+      expect(await first.json()).toMatchObject({ success: true, emailed: false, quietForms: [{ form: 'private_hire_enquiry', alert: 'sent' }] })
+      expect(await second.json()).toMatchObject({ quietForms: [{ form: 'private_hire_enquiry', alert: 'already_sent' }] })
+      expect(quietSubjects()).toHaveLength(1)
+      expect(quietSubjects()[0]).toMatchObject({
+        to: 'manager@the-anchor.pub',
+        subject: 'Private hire enquiry form: submit was pressed 2 times and none was sent in the last 7 days',
+      })
+      expect(quietSubjects()[0].text).toContain('From Monday 19 October to Sunday 25 October')
+      expect(quietSubjects()[0].text).toContain('- Submit pressed: 2.')
+    })
+
+    it('emails when five visitors started the form and nothing was sent', async () => {
+      seed(['19', '20', '21', '22', '25'].map((day) => signal('started', `2026-10-${day}T12:00:00.000Z`)))
+
+      await GET(request())
+
+      expect(quietSubjects().map((options) => options.subject)).toEqual([
+        'Private hire enquiry form: 5 visitors started it and none was sent in the last 7 days',
+      ])
+    })
+
+    it('never fires on opens alone, however many', async () => {
+      seed(Array.from({ length: 400 }, (_, index) => signal('opened', `2026-10-25T10:${String(index % 60).padStart(2, '0')}:00.000Z`)))
+
+      const response = await GET(request())
+
+      expect(await response.json()).toMatchObject({ quietForms: [{ form: 'private_hire_enquiry', alert: 'not_needed' }] })
+      expect(sendEmail).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['one submit press and four starts', [signal('submit_pressed', '2026-10-25T10:00:00.000Z'), ...['21', '22', '23', '24'].map((day) => signal('started', `2026-10-${day}T12:00:00.000Z`))]],
+      ['an enquiry that was sent', [signal('submit_pressed', '2026-10-24T10:00:00.000Z'), signal('submit_pressed', '2026-10-25T10:00:00.000Z'), signal('sent', '2026-10-25T10:00:05.000Z')]],
+      ['submit presses more than seven days old', [signal('submit_pressed', '2026-10-18T10:00:00.000Z'), signal('submit_pressed', '2026-10-18T11:00:00.000Z')]],
+      ['signals from the event booking form', [signal('submit_pressed', '2026-10-25T10:00:00.000Z', { route: 'event_booking' }), signal('submit_pressed', '2026-10-25T11:00:00.000Z', { route: 'event_booking' })]],
+      ['signals sent with a test key', [signal('submit_pressed', '2026-10-25T10:00:00.000Z', { api_key_id: 'test-key' }), signal('submit_pressed', '2026-10-25T11:00:00.000Z', { api_key_id: 'test-key' })]],
+    ])('sends nothing for %s', async (_label, events) => {
+      seed(events)
+
+      await GET(request())
+
+      expect(quietSubjects()).toHaveLength(0)
+    })
+
+    it('does not repeat itself on a later day when nothing new has happened', async () => {
+      // Both presses were on Tuesday 20 October; nothing since. Told once, on the 21st.
+      seed([signal('submit_pressed', '2026-10-20T10:00:00.000Z'), signal('submit_pressed', '2026-10-20T10:05:00.000Z')])
+
+      const response = await GET(request())
+
+      expect(await response.json()).toMatchObject({ quietForms: [{ form: 'private_hire_enquiry', alert: 'not_needed' }] })
+      expect(quietSubjects()).toHaveLength(0)
+    })
+
+    it('still sends the daily summary when the quiet form count cannot be made, and fails the run', async () => {
+      seed([{ occurred_at: '2026-10-25T10:00:00.000Z', stage: 'failed', route: 'api/table-bookings', reason_code: 'UPSTREAM_NOT_OK' }])
+      // The first read of the run is the quiet form check's list of API keys.
+      db.failNext({ table: 'api_keys', operation: 'select', message: 'database down', times: 1 })
+
+      const response = await GET(request())
+      const body = await response.json()
+
+      expect(response.status).toBe(502)
+      expect(body).toMatchObject({ success: false, emailed: true, quietForms: [{ form: 'private_hire_enquiry', alert: 'failed' }] })
+      expect(sendEmail).toHaveBeenCalledTimes(1)
+    })
+
+    it('frees the day for a retry when the alert email does not send', async () => {
+      seed([signal('submit_pressed', '2026-10-25T10:00:00.000Z'), signal('submit_pressed', '2026-10-25T11:00:00.000Z')])
+      sendEmail.mockResolvedValueOnce({ success: false, error: 'provider down' } as never)
+
+      const failed = await GET(request())
+      const retried = await GET(request())
+
+      expect(failed.status).toBe(502)
+      expect(await retried.json()).toMatchObject({ success: true, quietForms: [{ form: 'private_hire_enquiry', alert: 'sent' }] })
+      expect(quietSubjects()).toHaveLength(2)
+    })
+  })
+
   it('fails the run and frees the day for a retry when the email does not send', async () => {
     seed([{ occurred_at: '2026-10-25T10:00:00.000Z', stage: 'failed', route: 'api/table-bookings', reason_code: 'UPSTREAM_NOT_OK' }])
     sendEmail.mockResolvedValueOnce({ success: false, error: 'provider down' } as never)

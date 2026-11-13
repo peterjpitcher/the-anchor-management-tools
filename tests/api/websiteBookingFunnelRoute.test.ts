@@ -147,6 +147,38 @@ describe('POST /api/website/booking-funnel', () => {
     expect(db.rows('booking_funnel_events')).toHaveLength(0)
   })
 
+  it('records the private hire enquiry form with the same steps, and nothing a visitor typed', async () => {
+    for (const step of ['opened', 'started', 'submit_pressed', 'sent'] as const) {
+      const response = await POST(post({ type: 'form', form: 'private_hire_enquiry', step, page: '/private-hire' }))
+      expect(response.status).toBe(202)
+    }
+    await POST(post({ type: 'form', form: 'private_hire_enquiry', step: 'blocked', reason: 'network', page: '/christmas-parties' }))
+
+    const rows = db.rows('booking_funnel_events')
+    expect(rows.map((row) => [row.stage, row.route, row.reason_code, row.upstream_code, row.page_path])).toEqual([
+      ['form', 'private_hire_enquiry', 'opened', null, '/private-hire'],
+      ['form', 'private_hire_enquiry', 'started', null, '/private-hire'],
+      ['form', 'private_hire_enquiry', 'submit_pressed', null, '/private-hire'],
+      ['form', 'private_hire_enquiry', 'sent', null, '/private-hire'],
+      ['form', 'private_hire_enquiry', 'blocked', 'network', '/christmas-parties'],
+    ])
+  })
+
+  it.each([
+    ['a name on a private hire signal', { type: 'form', form: 'private_hire_enquiry', step: 'started', name: 'Alice Booker' }],
+    ['a message on a private hire signal', { type: 'form', form: 'private_hire_enquiry', step: 'sent', message: 'Party for 140' }],
+    ['a made-up step', { type: 'form', form: 'private_hire_enquiry', step: 'abandoned' }],
+    ['a made-up reason', { type: 'form', form: 'private_hire_enquiry', step: 'blocked', reason: 'too_expensive' }],
+  ])('refuses %s without recording or echoing it', async (_label, body) => {
+    const response = await POST(post(body))
+    const text = await response.text()
+
+    expect(response.status).toBe(400)
+    expect(text).not.toContain('Alice')
+    expect(text).not.toContain('140')
+    expect(db.rows('booking_funnel_events')).toHaveLength(0)
+  })
+
   it('refuses a body that is not JSON', async () => {
     expect((await POST(post('not json'))).status).toBe(400)
   })

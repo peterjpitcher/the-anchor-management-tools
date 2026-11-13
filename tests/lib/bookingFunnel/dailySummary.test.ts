@@ -122,6 +122,39 @@ describe('loadDailyFunnelSummary', () => {
 })
 
 describe('buildDailyFunnelEmail', () => {
+  it('lists the private hire enquiry form beside the event booking form, and a lost enquiry sends the summary', async () => {
+    const form = (route: string, step: string, upstream: string | null = null) => ({
+      id: `${route}-${step}-${upstream ?? ''}`,
+      api_key_id: KEYS[0].id,
+      source: 'website',
+      occurred_at: '2026-10-25T12:00:00.000Z',
+      stage: 'form',
+      route,
+      reason_code: step,
+      upstream_code: upstream,
+    })
+    const db = createFakeDb({
+      api_keys: KEYS,
+      booking_funnel_events: [
+        form('event_booking', 'opened'),
+        form('private_hire_enquiry', 'opened'),
+        form('private_hire_enquiry', 'started'),
+        form('private_hire_enquiry', 'submit_pressed'),
+        form('private_hire_enquiry', 'blocked', 'network'),
+      ],
+    })
+    const summary = await loadDailyFunnelSummary(db.client as never, '2026-10-25')
+    const email = buildDailyFunnelEmail(summary, null)
+
+    expect(summaryNeedsSending(summary)).toBe(true)
+    expect(email.text).toContain('- Event booking form: opened 1, started filling in 0, submit pressed 0, sent 0.')
+    expect(email.text).toContain('- Private hire enquiry form: opened 1, started filling in 1, submit pressed 1, sent 0.')
+    expect(email.text).toContain('- Private hire enquiry form: the booking was lost on the way to us. 1 time.')
+    for (const part of [email.subject, email.html, email.text]) {
+      expect(part).not.toMatch(/undefined|NaN|Invalid Date/)
+    }
+  })
+
   it('renders fixture data in plain English with no undefined, NaN, Invalid Date or long dash', async () => {
     const db = createFakeDb({ api_keys: KEYS, booking_funnel_events: EVENTS })
     const summary = await loadDailyFunnelSummary(db.client as never, '2026-10-25')

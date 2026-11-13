@@ -30,8 +30,13 @@ export const FUNNEL_PAGE_PATTERN = /^(\/[A-Za-z0-9._~:-]*)+$/
  * finished after it had held that visitor up (2 November 2026). The website now reports a held-up
  * check only for a visitor who had started, because on 1 November a crawler that never typed a
  * thing opened the form 316 times and was counted as 308 guests held up.
+ *
+ * `private_hire_enquiry` covers the website's private hire enquiry forms (growth review of 13
+ * November 2026), with the same steps and reasons; `page` says which page the form was on. A week
+ * of starts or submit presses with nothing sent raises the quiet-form alert (quiet-forms.ts).
  */
-export const BOOKING_FORMS = ['event_booking'] as const
+export const BOOKING_FORMS = ['event_booking', 'private_hire_enquiry'] as const
+export type BookingForm = (typeof BOOKING_FORMS)[number]
 export const BOOKING_FORM_STEPS = ['opened', 'started', 'submit_pressed', 'blocked', 'recovered', 'sent'] as const
 export const BOOKING_FORM_REASONS = ['missing_fields', 'no_security_token', 'server_refused', 'network'] as const
 
