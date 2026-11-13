@@ -203,7 +203,7 @@ function renderBookingSheetPage(
         <div class="promo-text">
           <p class="promo-kicker">Every Sunday &middot; 1pm to 6pm</p>
           <h3 class="promo-title">Why not book in for this Sunday?</h3>
-          <p class="promo-copy">Carved fresh to order, piled high with all the trimmings. <b>Bookings aren't required, but they're recommended.</b></p>
+          <p class="promo-copy">Piled high with all the trimmings. <b>Bookings aren't required, but they're recommended.</b></p>
           <div class="promo-list">
             ${menuItems.map((item) => (
               `<div class="promo-item"><span class="nm">${escapeHtml(item.name)}</span>${item.badge ? `<span class="vg">${escapeHtml(item.badge)}</span>` : ''}${item.price ? `<span class="pr">${escapeHtml(item.price)}</span>` : ''}</div>`

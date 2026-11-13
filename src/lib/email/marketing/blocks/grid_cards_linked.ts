@@ -145,7 +145,7 @@ export const gridCardsLinkedThreeSample: GridCardsLinkedData = {
     {
       image: { src: '', alt: 'Sunday roast', width: 166, height: 166 },
       heading: 'Sunday roast',
-      body: 'Sun 6 Dec, 12pm to 5pm. Carved to order.',
+      body: 'Sun 6 Dec, 12pm to 5pm.',
       cta_label: 'Book →',
       url: 'https://www.the-anchor.pub/sunday-roast',
     },
@@ -168,7 +168,7 @@ export const gridCardsLinked = defineBlock<GridCardsLinkedData>({
       {
         image: { src: '', alt: 'Sunday roast', width: 258, height: 258 },
         heading: 'Sunday roast',
-        body: 'Sun 6 Dec, 12pm to 5pm. Carved fresh to order, no pre-order needed.',
+        body: 'Sun 6 Dec, 12pm to 5pm. No pre-order needed.',
         cta_label: 'Book a table →',
         url: 'https://www.the-anchor.pub/sunday-roast',
       },

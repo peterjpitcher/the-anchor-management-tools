@@ -13,7 +13,7 @@
         "heading": "Hi {{first_name|there}}, here's a bigger one",
         "body": [
           "Your last voucher ran out before you had the chance to use it, so here's 25% off your food on your next visit instead.",
-          "Sunday's what we live for. Roasts are carved fresh from 1pm, the kitchen serves until 6pm, and you can arrive up to 5:30pm. There's nothing to order ahead, so you can decide on the day. There are kids roasts too, and the vegan Wellington sits right alongside the beef, pork and turkey.",
+          "Sunday's what we live for. Roasts start at 1pm, the kitchen serves until 6pm, and you can arrive up to 5:30pm. There's nothing to order ahead, so you can decide on the day. There are kids roasts too, and the vegan Wellington sits right alongside the beef, pork and turkey.",
           "Walk-ins are always welcome, but book a table to use your voucher."
         ]
       }
