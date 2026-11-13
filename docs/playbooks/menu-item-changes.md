@@ -12,11 +12,11 @@ The management app (Menu Management) is the master list. What happens next depen
 | Kids Menu (`kids`) | Yes, automatically | /food-menu |
 | Sunday Lunch (`sunday_lunch`) | Yes, automatically | /sunday-roast, /book-table, /food-menu |
 | Christmas Menu (`christmas`) | Prices only | /christmas-parties (the dishes themselves come from the seasonal period list, see step A6) |
-| Hot Drinks (`hot_drinks`) | **No** | Nowhere on the website today |
+| Hot Drinks (`hot_drinks`) | **Yes** | /drinks, Hot Drinks section, about 5 to 8 minutes (since 13 November 2026) |
 | Drinks (`drinks`, imported from the till) | **No** | The website /drinks page is a fixed file, not this list |
 | Condiments | No | Kitchen and costing only |
 
-**Drinks never reach the website on their own.** The /drinks page is written by hand in the website code (`content/menu/drinks.json` in the website repository) and has no hot drinks section. Getting a drink onto the website needs a developer, either to edit that file or to connect the Hot Drinks menu to the website. Ask for that as a separate job.
+**Hot drinks reach the website by themselves; other drinks do not.** Since 13 November 2026 the Hot Drinks section of /drinks is read live from the app's Hot Drinks menu, so a hot drink added, repriced or switched off in the app shows on the website within about 5 to 8 minutes. A hot drink shows its allergens and vegan or vegetarian badges only after Verify Allergens is pressed on it; until then it shows "See menu or contact us for allergen information." The rest of /drinks (beers, wines, spirits and so on) is still written by hand in the website code (`content/menu/drinks.json` in the website repository): changing those needs a developer.
 
 How long the website takes to catch up after you save in the app (food menus only):
 
@@ -73,11 +73,11 @@ Where: the dish's **GP Analysis** tab, or the Overview tab of Menu Management.
 
 - Compare the GP% to the target (shown on the Overview page; set under **Menu Target**). If it is below target, decide on the price before going further.
 
-### A5. Check the website (food menus only)
+### A5. Check the website
 
 - Wait the time in the table above, then open the page for that menu (for example https://www.the-anchor.pub/food-menu).
 - Check the name, price, description, and the vegan, vegetarian and gluten-free pages if the dish should appear there.
-- For a drink: it will not appear. See "First, know where your item will show up".
+- For a hot drink: wait about 5 to 8 minutes, then check the Hot Drinks section of https://www.the-anchor.pub/drinks. Any other drink will not appear: see "First, know where your item will show up".
 
 ### A6. Christmas and other seasonal pre-order menus (only if relevant)
 
@@ -162,7 +162,7 @@ Our decaf coffee is **instant decaf**, not espresso, so it is one item, "Decaf C
 2. **Dish** (A2): Dishes tab, **New Dish**. Name "Decaf Coffee (instant)", so staff and customers can see it is instant. Selling Price: £3.00, the same as tea. Composition: add the instant decaf granules, plus milk if it is served with milk. Menus: Menu "Hot Drinks", Category "Hot Drinks", a Sort Order that puts it next to the Americano. Save.
 3. **Allergens** (A3): if it is served with milk, the dish should now show Milk. Verify the allergens.
 4. **GP** (A4): check the GP% against the target.
-5. **Website** (A5): decaf coffee will **not** appear on the website. No hot drinks are shown there today. Getting it there needs a developer job.
+5. **Website** (A5): about 5 to 8 minutes after saving, check that "Decaf Coffee (instant)" at £3.00 shows in the Hot Drinks section of /drinks. It shows the "contact us for allergen information" line until its allergens are verified.
 6. **Print** (A7): the next menu reprint needs it. Export the Hot Drinks CSV and reprint the drinks allergen PDF (Download PDF, Allergen Report, Drinks).
 7. **Till** (A8): add "Decaf Coffee (instant)" in Tabology at £3.00, next to the other coffees. [Peter to confirm the steps.]
 8. **Google** (A9): nothing changes automatically. Optional social post.
