@@ -8191,8 +8191,8 @@
    },
    {
     "name": "reason",
-    "type": "string",
-    "optional": true
+    "type": "PrivateBookingCancellationReasonInput",
+    "optional": false
    },
    {
     "name": "retention",
@@ -8210,8 +8210,12 @@
     "optional": true
    }
   ],
-  "typeRefs": {},
-  "doc": "Cancel a private booking and notify customer by SMS.\nFor sub-30-day cancellations with a paid deposit, SOP §14 requires a\nmanager retention decision (0..deposit + reason) — pass it via `retention`.",
+  "typeRefs": {
+   "PrivateBookingCancellationReasonInput": "type PrivateBookingCancellationReasonInput = {\n  code: PrivateBookingCancellationReasonCode\n  /** Optional, except for \"Other\", where a short note is required. */\n  note?: string | null\n}",
+   "PrivateBookingCancellationReasonCode": "type PrivateBookingCancellationReasonCode = (typeof PRIVATE_BOOKING_CANCELLATION_REASONS)[number]['code']",
+   "PRIVATE_BOOKING_CANCELLATION_REASONS": "const PRIVATE_BOOKING_CANCELLATION_REASONS = [\n  { code: 'date_unavailable', label: 'Date not available', needsNote: false },\n  { code: 'price', label: 'Price', needsNote: false },\n  { code: 'group_too_big', label: 'Group too big for the space', needsNote: false },\n  { code: 'no_reply', label: 'Customer did not reply', needsNote: false },\n  { code: 'chose_elsewhere', label: 'Customer chose somewhere else', needsNote: false },\n  { code: 'duplicate_or_test', label: 'Duplicate or test enquiry', needsNote: false },\n  { code: 'other', label: 'Other', needsNote: true },\n] as const"
+  },
+  "doc": "Cancel a private booking and notify customer by SMS.\nFor sub-30-day cancellations with a paid deposit, SOP §14 requires a\nmanager retention decision (0..deposit + reason) — pass it via `retention`.\n`reason` is required: one of the fixed codes in\nsrc/lib/private-bookings/cancellation-reasons.ts (date_unavailable, price, group_too_big,\nno_reply, chose_elsewhere, duplicate_or_test, other), with an optional note that \"other\" must\ncarry. Checked here, not only in the dialogs, so no caller can cancel without saying why.",
   "readOnly": false
  },
  {

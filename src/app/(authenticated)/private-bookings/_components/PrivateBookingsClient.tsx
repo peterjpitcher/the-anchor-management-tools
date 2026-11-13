@@ -12,6 +12,11 @@ import {
   getCancellationPreview,
 } from '@/app/actions/privateBookingActions'
 import DeleteBookingButton from '@/components/private-bookings/DeleteBookingButton'
+import { CancellationReasonFields } from '@/components/private-bookings/CancellationReasonFields'
+import {
+  resolvePrivateBookingCancellationReason,
+  type PrivateBookingCancellationReasonCode,
+} from '@/lib/private-bookings/cancellation-reasons'
 import {
   fetchPrivateBookings,
   type PrivateBookingDashboardItem,
@@ -220,6 +225,9 @@ export default function PrivateBookingsClient({
   // customer, so the list shows the same preview the booking page does rather
   // than asking staff to confirm something they cannot see.
   const [cancelPreview, setCancelPreview] = useState<CancellationPreview | null>(null)
+  // Why it is being cancelled: required, from the fixed list (growth review, 13 November 2026).
+  const [cancelReasonCode, setCancelReasonCode] = useState<PrivateBookingCancellationReasonCode | ''>('')
+  const [cancelReasonNote, setCancelReasonNote] = useState('')
   const [cancelPreviewLoading, setCancelPreviewLoading] = useState(false)
   const cancelPreviewRequestRef = useRef<string | null>(null)
   const [extendingHoldId, setExtendingHoldId] = useState<string | null>(null)
@@ -344,6 +352,8 @@ export default function PrivateBookingsClient({
   const handleCancelRequest = async (bookingId: string) => {
     setCancelConfirmBookingId(bookingId)
     setCancelPreview(null)
+    setCancelReasonCode('')
+    setCancelReasonNote('')
     setCancelPreviewLoading(true)
     cancelPreviewRequestRef.current = bookingId
 
@@ -482,7 +492,13 @@ export default function PrivateBookingsClient({
             router.push(`/private-bookings/${cancelConfirmBookingId}`)
             return
           }
-          const result = await cancelPrivateBooking(cancelConfirmBookingId, 'Cancelled from list view')
+          // Thrown so the dialog shows it in place and stays open; the server checks it again.
+          const reason = resolvePrivateBookingCancellationReason({ code: cancelReasonCode, note: cancelReasonNote })
+          if (!reason.ok) throw new Error(reason.error)
+          const result = await cancelPrivateBooking(cancelConfirmBookingId, {
+            code: cancelReasonCode as PrivateBookingCancellationReasonCode,
+            note: cancelReasonNote,
+          })
           if ('error' in result && result.error) throw new Error(result.error)
           toast.success('Booking cancelled and customer notified')
           fetchWithState({ page: currentPage })
@@ -535,6 +551,17 @@ export default function PrivateBookingsClient({
                   </Alert>
                 )}
               </div>
+            )}
+
+            {/* Whenever this dialog can cancel, even if the outcome could not be worked out: the
+                reason is required, so staff must always be able to give it. */}
+            {!cancelPreviewLoading && !cancelNeedsBookingPage && (
+              <CancellationReasonFields
+                code={cancelReasonCode}
+                note={cancelReasonNote}
+                onCodeChange={setCancelReasonCode}
+                onNoteChange={setCancelReasonNote}
+              />
             )}
 
             <p className="text-sm text-text-muted">This cannot be undone.</p>

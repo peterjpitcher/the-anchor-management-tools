@@ -125,6 +125,11 @@ import { formatCurrency } from '@/lib/format'
 import { computeBookingMoney } from '@/lib/private-bookings/vat'
 import { refundStillOwed } from '@/lib/private-bookings/refund-due'
 import { PrivateBookingBilling } from '@/components/private-bookings/PrivateBookingBilling'
+import { CancellationReasonFields } from '@/components/private-bookings/CancellationReasonFields'
+import {
+  resolvePrivateBookingCancellationReason,
+  type PrivateBookingCancellationReasonCode,
+} from '@/lib/private-bookings/cancellation-reasons'
 import { PrivateBookingReceiptPanel } from '@/components/private-bookings/PrivateBookingReceiptPanel'
 import {
   CANCELLATION_OUTCOME_TONE,
@@ -627,6 +632,9 @@ function StatusModal({
     'email' | 'whatsapp' | 'text' | 'phone' | 'in_person' | 'other'
   >('email');
   const [cancelReceivedAt, setCancelReceivedAt] = useState('');
+  // Why it is being cancelled: required, from the fixed list (growth review, 13 November 2026).
+  const [cancelReasonCode, setCancelReasonCode] = useState<PrivateBookingCancellationReasonCode | ''>('');
+  const [cancelReasonNote, setCancelReasonNote] = useState('');
 
   // Reset state when modal opens / changes booking.
   useEffect(() => {
@@ -643,6 +651,8 @@ function StatusModal({
       setCostsReason('');
       setCancelChannel('email');
       setCancelReceivedAt(toLondonDateTimeLocalValue(new Date()));
+      setCancelReasonCode('');
+      setCancelReasonNote('');
     }
   }, [isOpen, currentStatus]);
 
@@ -739,6 +749,13 @@ function StatusModal({
       costsKept = { amount: parsedCosts, reason: costsReason.trim() };
     }
 
+    // The reason is required; the server action checks it again.
+    const cancelReason = resolvePrivateBookingCancellationReason({ code: cancelReasonCode, note: cancelReasonNote });
+    if (newStatus === 'cancelled' && !cancelReason.ok) {
+      toast.error(cancelReason.error);
+      return;
+    }
+
     // SOP §14: record how and when the cancellation reached us.
     const capture =
       newStatus === 'cancelled'
@@ -753,7 +770,13 @@ function StatusModal({
     // retention decision (SOP §14) reaches the service layer.
     const result =
       newStatus === 'cancelled'
-        ? await cancelPrivateBooking(bookingId, undefined, retention, capture, costsKept)
+        ? await cancelPrivateBooking(
+            bookingId,
+            { code: cancelReasonCode as PrivateBookingCancellationReasonCode, note: cancelReasonNote },
+            retention,
+            capture,
+            costsKept,
+          )
         : await updateBookingStatus(bookingId, newStatus);
     if ('success' in result && result.success) {
       // BK-065: an invoice with money on it stays open for a credit note; say so.
@@ -902,6 +925,16 @@ function StatusModal({
                     </div>
                   ) : null}
                 </Alert>
+
+                {/* Always shown when cancelling, even if the outcome could not be worked out: the
+                    reason is required, so staff must always be able to give it. */}
+                <CancellationReasonFields
+                  code={cancelReasonCode}
+                  note={cancelReasonNote}
+                  onCodeChange={setCancelReasonCode}
+                  onNoteChange={setCancelReasonNote}
+                  disabled={isSubmitting}
+                />
 
                 {!previewLoading && cancelPreview && !cancelPreview.error && (
                   <>

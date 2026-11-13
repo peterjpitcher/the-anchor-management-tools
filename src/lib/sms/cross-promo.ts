@@ -7,6 +7,7 @@
  */
 
 import { createAdminClient } from '@/lib/supabase/admin'
+import { loadCategoryInterestAudience } from '@/lib/events/next-date-interest'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { formatDateInLondon, startOfLondonDayUtc, parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import { sendSMS } from '@/lib/twilio'
@@ -592,6 +593,10 @@ export async function sendCrossPromoForEvent(
   }
 
   // 2. Load audience
+  const maxRecipients = Math.max(
+    1,
+    Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
+  )
   const { data: audience, error: audienceError } = await db.rpc('get_cross_promo_audience', {
     p_event_id: event.id,
     p_category_id: event.category_id,
@@ -614,10 +619,7 @@ export async function sendCrossPromoForEvent(
       : underTextCap
         ? EVENT_PROMO_TEXT_CAP
         : EVENT_PROMO_MAX_EVENTS_PER_WINDOW,
-    p_max_recipients: Math.max(
-      1,
-      Math.min(options?.maxRecipients ?? EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT, EVENT_PROMO_MAX_RECIPIENTS_PER_EVENT)
-    ),
+    p_max_recipients: maxRecipients,
   })
 
   if (audienceError) {
@@ -629,6 +631,32 @@ export async function sendCrossPromoForEvent(
   }
 
   let audienceRows = (audience as CrossPromoAudienceRow[] | null) ?? []
+
+  // Visitors who asked to be told when the next night of this kind is on (growth review, 13
+  // November 2026). The audience function only knows guests who have been before, so they are read
+  // here and go first: they asked. Only in the modes whose text limits are counted below, in this
+  // file, because the function's own frequency filter never saw them; the older 7-day intro, whose
+  // only limit is inside the function, leaves them out. They are this kind of night's audience,
+  // so they count as a category match, and every later check (email reach, the text limits)
+  // applies to them as to anyone else. A failed read leaves the audience as it was.
+  if (regularsOnly || underTextCap) {
+    const signedUp = await loadCategoryInterestAudience(db, {
+      categoryId: event.category_id,
+      eventId: event.id,
+      excludeCustomerIds: audienceRows.map((row) => row.customer_id),
+    })
+    if (signedUp && signedUp.length > 0) {
+      const signedUpRows: CrossPromoAudienceRow[] = signedUp.map((row) => ({
+        ...row,
+        last_event_category: null,
+        times_attended: null,
+        audience_type: 'category_match',
+        last_event_name: null,
+      }))
+      audienceRows = [...signedUpRows, ...audienceRows].slice(0, maxRecipients)
+    }
+  }
+
   if (audienceRows.length === 0) {
     logger.info('Cross-promo: no eligible audience for event', {
       metadata: { eventId: event.id, mode },

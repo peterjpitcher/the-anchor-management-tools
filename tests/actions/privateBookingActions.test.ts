@@ -689,34 +689,66 @@ describe('privateBookingActions', () => {
   // cancelPrivateBooking
   // -------------------------------------------------------------------------
   describe('cancelPrivateBooking', () => {
-    it('should cancel a booking with reason', async () => {
+    const reason = { code: 'chose_elsewhere' as const }
+
+    it('should cancel a booking with a reason from the list', async () => {
       const expectedResult = { success: true }
       mockedCancelBooking.mockResolvedValue(expectedResult)
 
-      const result = await cancelPrivateBooking('booking-1', 'Customer changed plans')
+      const result = await cancelPrivateBooking('booking-1', reason)
 
       expect(result).toEqual(expectedResult)
-      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'Customer changed plans', 'user-1', undefined)
+      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'chose_elsewhere', 'user-1', undefined)
     })
 
-    it('should pass empty string when no reason given', async () => {
+    it('should store the note after the reason code', async () => {
       mockedCancelBooking.mockResolvedValue({ success: true })
 
-      await cancelPrivateBooking('booking-1')
+      await cancelPrivateBooking('booking-1', { code: 'price', note: '  Wanted it for half   the quote ' })
 
-      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', '', 'user-1', undefined)
+      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'price: Wanted it for half the quote', 'user-1', undefined)
+    })
+
+    it.each([
+      ['no reason at all', undefined],
+      ['a blank code', { code: '' }],
+      ['a code that is not on the list', { code: 'cancelled_by_staff' }],
+      ['free text in place of a reason', 'Cancelled from list view'],
+    ])('should refuse %s, on the server, before anything is cancelled', async (_label, badReason) => {
+      const result = await cancelPrivateBooking('booking-1', badReason as never)
+
+      expect(result).toEqual({ error: 'Choose why this booking is being cancelled' })
+      expect(mockedCancelBooking).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['no note', { code: 'other' }],
+      ['a blank note', { code: 'other', note: '   ' }],
+    ])('should refuse "other" with %s', async (_label, badReason) => {
+      const result = await cancelPrivateBooking('booking-1', badReason as never)
+
+      expect(result).toEqual({ error: 'Add a short note saying why this booking is being cancelled' })
+      expect(mockedCancelBooking).not.toHaveBeenCalled()
+    })
+
+    it('should accept "other" with a note', async () => {
+      mockedCancelBooking.mockResolvedValue({ success: true })
+
+      await cancelPrivateBooking('booking-1', { code: 'other', note: 'Venue flooded' })
+
+      expect(mockedCancelBooking).toHaveBeenCalledWith('booking-1', 'other: Venue flooded', 'user-1', undefined)
     })
 
     it('should pass a retention decision through to the service (SOP §14)', async () => {
       mockedCancelBooking.mockResolvedValue({ success: true })
 
       const retention = { retainedAmount: 100, reason: 'Supplier costs already incurred' }
-      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', retention)
+      const result = await cancelPrivateBooking('booking-1', reason, retention)
 
       expect(result).toEqual({ success: true })
       expect(mockedCancelBooking).toHaveBeenCalledWith(
         'booking-1',
-        'Customer cancelled',
+        'chose_elsewhere',
         'user-1',
         { retentionDecision: retention, capture: null, costsKept: null }
       )
@@ -727,7 +759,7 @@ describe('privateBookingActions', () => {
         Promise.resolve(action === 'edit')
       )
 
-      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', {
+      const result = await cancelPrivateBooking('booking-1', reason, {
         retainedAmount: 100,
         reason: 'Supplier costs',
       })
@@ -743,12 +775,12 @@ describe('privateBookingActions', () => {
       mockedCancelBooking.mockResolvedValue({ success: true })
 
       const retention = { retainedAmount: 0, reason: 'Nothing to retain' }
-      const result = await cancelPrivateBooking('booking-1', 'Customer cancelled', retention)
+      const result = await cancelPrivateBooking('booking-1', reason, retention)
 
       expect(result).toEqual({ success: true })
       expect(mockedCancelBooking).toHaveBeenCalledWith(
         'booking-1',
-        'Customer cancelled',
+        'chose_elsewhere',
         'user-1',
         { retentionDecision: retention, capture: null, costsKept: null }
       )
@@ -757,7 +789,7 @@ describe('privateBookingActions', () => {
     it('should return error when permission denied', async () => {
       mockedPermission.mockResolvedValue(false)
 
-      const result = await cancelPrivateBooking('booking-1')
+      const result = await cancelPrivateBooking('booking-1', reason)
 
       expect(result).toEqual({ error: 'You do not have permission to cancel private bookings' })
       expect(mockedCancelBooking).not.toHaveBeenCalled()
@@ -766,7 +798,7 @@ describe('privateBookingActions', () => {
     it('should handle service error', async () => {
       mockedCancelBooking.mockRejectedValue(new Error('Cannot cancel completed booking'))
 
-      const result = await cancelPrivateBooking('booking-1')
+      const result = await cancelPrivateBooking('booking-1', reason)
 
       expect(result).toEqual({ success: false, error: 'Cannot cancel completed booking' })
     })

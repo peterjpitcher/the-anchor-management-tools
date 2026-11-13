@@ -239,7 +239,10 @@ const REASON_LABELS: Record<string, string> = {
   BLOCKED: 'no table could be found',
 }
 
-const FORM_LABELS: Record<string, string> = { event_booking: 'Event booking form' }
+const FORM_LABELS: Record<string, string> = {
+  event_booking: 'Event booking form',
+  private_hire_enquiry: 'Private hire enquiry form',
+}
 const STEP_LABELS: Record<string, string> = {
   opened: 'opened',
   started: 'started filling in',

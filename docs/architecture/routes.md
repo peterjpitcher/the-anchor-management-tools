@@ -127,6 +127,7 @@ Auth legend: **session** = `auth.getUser()`; **rbac** = `checkUserPermission`; *
 | `/api/customers/lookup` | GET | `src/app/api/customers/lookup/route.ts` |
 | `/api/event-bookings` | POST | `src/app/api/event-bookings/route.ts` |
 | `/api/event-categories` | GET, OPTIONS | `src/app/api/event-categories/route.ts` |
+| `/api/event-interest` | POST | `src/app/api/event-interest/route.ts` |
 | `/api/event-waitlist` | POST | `src/app/api/event-waitlist/route.ts` |
 | `/api/events`, `/api/events/[id]`, `/api/events/recurring`, `/api/events/today` | GET, OPTIONS | `src/app/api/events/**/route.ts` |
 | `/api/external/create-booking` | POST | `src/app/api/external/create-booking/route.ts` |
