@@ -9,9 +9,18 @@ import { isNewToday, toIsoDate } from '@/lib/menu/new-product-window';
 // hot_drinks feeds the Hot Drinks section of the website's /drinks page
 // (approved 13 November 2026). Strict allowlist: anything not listed here is rejected with a 400 so that an
 // arbitrary menu code can never be probed through the public API.
+//
+// Private by default: a menu is only served here once it is added to this list.
+// The till-imported Drinks menu (code 'drinks') is deliberately NOT listed. It
+// holds the full till stock and prices, which the owner does not publish, and no
+// consumer reads it (removed 13 November 2026). A request for it gets exactly the
+// same 400 as any unknown code, so the response does not reveal that it exists.
+// Staff screens read it through the session-authenticated menu-management
+// actions, which this list does not affect.
+//
 // Kept module-private because Next.js route files may only export route handlers
 // and a fixed set of route config values.
-const PUBLIC_MENU_CODES = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks', 'hot_drinks'] as const;
+const PUBLIC_MENU_CODES = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'hot_drinks'] as const;
 type PublicMenuCode = (typeof PUBLIC_MENU_CODES)[number];
 
 const DEFAULT_PUBLIC_MENU_CODE: PublicMenuCode = 'website_food';
