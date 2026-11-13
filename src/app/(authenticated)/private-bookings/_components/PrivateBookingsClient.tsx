@@ -553,7 +553,9 @@ export default function PrivateBookingsClient({
               </div>
             )}
 
-            {cancelPreview && !cancelPreview.error && !cancelNeedsBookingPage && (
+            {/* Whenever this dialog can cancel, even if the outcome could not be worked out: the
+                reason is required, so staff must always be able to give it. */}
+            {!cancelPreviewLoading && !cancelNeedsBookingPage && (
               <CancellationReasonFields
                 code={cancelReasonCode}
                 note={cancelReasonNote}

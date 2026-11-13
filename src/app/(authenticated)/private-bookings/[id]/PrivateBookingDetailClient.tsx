@@ -926,15 +926,18 @@ function StatusModal({
                   ) : null}
                 </Alert>
 
+                {/* Always shown when cancelling, even if the outcome could not be worked out: the
+                    reason is required, so staff must always be able to give it. */}
+                <CancellationReasonFields
+                  code={cancelReasonCode}
+                  note={cancelReasonNote}
+                  onCodeChange={setCancelReasonCode}
+                  onNoteChange={setCancelReasonNote}
+                  disabled={isSubmitting}
+                />
+
                 {!previewLoading && cancelPreview && !cancelPreview.error && (
                   <>
-                    <CancellationReasonFields
-                      code={cancelReasonCode}
-                      note={cancelReasonNote}
-                      onCodeChange={setCancelReasonCode}
-                      onNoteChange={setCancelReasonNote}
-                      disabled={isSubmitting}
-                    />
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                       <Field
                         label="How was the cancellation received?"
