@@ -24,7 +24,7 @@ import { GET } from '@/app/api/menu/route'
 
 // The allowlist is module-private in the route (Next.js forbids extra exports
 // from route files), so it is asserted through behaviour rather than imported.
-const EXPECTED_ALLOWLIST = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks']
+const EXPECTED_ALLOWLIST = ['website_food', 'kids', 'sunday_lunch', 'christmas', 'drinks', 'hot_drinks']
 
 const TODAY = getTodayIsoDate()
 
@@ -40,6 +40,7 @@ const menusByCode: Record<string, MenuRow> = {
   website_food: { id: 'menu-website-food', name: 'Website Food Menu' },
   kids: { id: 'menu-kids', name: 'Kids Menu' },
   christmas: { id: 'menu-christmas', name: 'Christmas Menu' },
+  hot_drinks: { id: 'menu-hot-drinks', name: 'Hot Drinks' },
 }
 
 /** Records which menu code each table was filtered by, so the test can assert propagation. */
@@ -100,6 +101,7 @@ function buildAdminClient() {
           data: [
             {
               dish_id: 'dish-1',
+              allergen_verified: true,
               name: 'Priced dish',
               description: 'Has a price',
               selling_price: '23.00',
@@ -114,6 +116,7 @@ function buildAdminClient() {
             },
             {
               dish_id: 'dish-2',
+              allergen_verified: null,
               name: 'Unpriced dish',
               description: 'Awaiting costing',
               selling_price: null,
@@ -128,6 +131,7 @@ function buildAdminClient() {
             },
             {
               dish_id: 'dish-3',
+              allergen_verified: false,
               name: 'Last day today',
               description: 'Final day of its window',
               selling_price: '25.00',
@@ -305,5 +309,31 @@ describe('GET /api/menu menu code allowlist', () => {
     expect(names).toContain('Last day today')
     expect(names).not.toContain('Window closed yesterday')
     expect(names).not.toContain('Window opens tomorrow')
+  })
+
+  it('accepts menu=hot_drinks and resolves the Hot Drinks menu', async () => {
+    const response = await GET(new Request('http://localhost/api/menu?menu=hot_drinks') as any)
+
+    expect(response.status).toBe(200)
+    expect(requestedMenuCodes[0]).toBe('hot_drinks')
+    expect(requestedMenuIds[0]).toBe('menu-hot-drinks')
+
+    const body = await readJson(response)
+    expect(body.data.menu_code).toBe('hot_drinks')
+    expect(body.data.menu_name).toBe('Hot Drinks')
+  })
+
+  it('reports allergen_verified as a strict boolean, false unless verified', async () => {
+    const response = await GET(new Request('http://localhost/api/menu?menu=christmas') as any)
+    const body = await readJson(response)
+
+    const byName = Object.fromEntries(
+      body.data.sections[0].items.map((item: any) => [item.name, item.allergen_verified]),
+    )
+
+    expect(byName['Priced dish']).toBe(true)
+    // Never verified (null in the view) must read as unverified, not missing.
+    expect(byName['Unpriced dish']).toBe(false)
+    expect(byName['Last day today']).toBe(false)
   })
 })
