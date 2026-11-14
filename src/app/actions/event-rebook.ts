@@ -215,8 +215,11 @@ const rebookSchema = z.object({
   payment: z.enum(['link', 'cash', 'card_terminal']),
   /** For cash or card: the amount staff confirmed on screen (BK-217). */
   confirmedAmount: z.number().nonnegative().optional(),
-  /** For cash or card: the door price (default, EV-02) or the online price (owner, 10 November 2026). */
-  price: z.enum(['door', 'online']).optional().default('door'),
+  /**
+   * For cash or card: the online price or the door price. Left out, a rebook takes the online price
+   * when the event has a lower one, otherwise the door price (owner, 14 November 2026).
+   */
+  price: z.enum(['door', 'online']).optional(),
 }).refine((value) => value.payment === 'link' || value.confirmedAmount !== undefined, {
   message: 'Confirm the amount taken before rebooking.',
   path: ['confirmedAmount'],
@@ -336,7 +339,8 @@ export async function rebookLapsedEventBooking(input: {
     }
 
     // Cash or card: check the figure staff confirmed before anything is booked (BK-217).
-    const giveOnlinePrice = payment !== 'link' && parsed.data.price === 'online'
+    const priceChoice = parsed.data.price ?? (loaded.onlineUnitPrice !== null ? 'online' : 'door')
+    const giveOnlinePrice = payment !== 'link' && priceChoice === 'online'
     if (giveOnlinePrice && loaded.onlineUnitPrice === null) {
       return { error: 'This event has no lower online price. Take the door price instead.' }
     }

@@ -28,8 +28,9 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
   const [ticketsText, setTicketsText] = useState('')
   const [keep, setKeep] = useState<string[]>([])
   const [payment, setPayment] = useState<RebookPaymentChoice>('link')
-  // At the bar staff may give the online price instead of the door price (owner, 10 November 2026).
-  const [giveOnlinePrice, setGiveOnlinePrice] = useState(false)
+  // A rebook at the bar takes the online price unless staff untick it (owner, 14 November 2026):
+  // the guest was booked online, so the door price is the exception here.
+  const [giveOnlinePrice, setGiveOnlinePrice] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   // A sent link stays on screen to read out or copy, as Add Booking does (BK-033).
@@ -41,7 +42,7 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
     setSubmitError(null)
     setOutcome(null)
     setPayment('link')
-    setGiveOnlinePrice(false)
+    setGiveOnlinePrice(true)
     if (!bookingId) return
     let cancelled = false
     getEventRebookPreview(bookingId)
@@ -239,7 +240,7 @@ export function RebookBookingDialog({ bookingId, onClose, onDone }: RebookBookin
           {onlineOffered && preview.onlineUnitPrice != null && (
             <Checkbox
               label={`Give the online price: ${formatMoney(preview.onlineUnitPrice)} a ticket instead of ${formatMoney(preview.doorUnitPrice)}`}
-              description="The door price is the usual rule. This is noted on the payment."
+              description="Ticked by default for a rebook. Untick to take the door price. This is noted on the payment."
               checked={giveOnlinePrice}
               onChange={setGiveOnlinePrice}
               disabled={submitting || Boolean(outcome)}
