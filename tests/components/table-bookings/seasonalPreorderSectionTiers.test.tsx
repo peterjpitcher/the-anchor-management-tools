@@ -312,3 +312,33 @@ describe('SeasonalPreorderSection after the cutoff', () => {
     expect(screen.getByText(/As a manager you can still change any seat/)).toBeInTheDocument()
   })
 })
+
+describe('SeasonalPreorderSection before the guest opens the food link', () => {
+  // A Christmas booking taken on the website without food has no seat rows until the organiser
+  // opens their food link. Staff read the old "Seats do not match" warning as a broken booking.
+  function awaiting(): PreorderOrder {
+    return { ...order([0, 0, 0, 0], []), partySize: 4 }
+  }
+
+  it('shows a waiting note, not the mismatch warning, while choices are open', () => {
+    renderCard(awaiting())
+
+    expect(screen.queryByText('Seats do not match the party size')).not.toBeInTheDocument()
+    expect(screen.getByText('Waiting for the guest to choose food')).toBeInTheDocument()
+    expect(screen.getByText('Seats for all 4 guests appear when the organiser opens their food link.')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Start the Pre-Order' })).toBeInTheDocument()
+  })
+
+  it('still warns once choices have closed with no seats', () => {
+    renderCard(awaiting(), { closed: true, canRecordLate: true })
+
+    expect(screen.getByText('Seats do not match the party size')).toBeInTheDocument()
+    expect(screen.queryByText('Waiting for the guest to choose food')).not.toBeInTheDocument()
+  })
+
+  it('still warns when a booking with seats has the wrong number', () => {
+    renderCard({ ...order([0, 0, 0], [seat(1, 0, []), seat(2, 0, []), seat(3, 0, [])]), partySize: 4 })
+
+    expect(screen.getByText('Seats do not match the party size')).toBeInTheDocument()
+  })
+})
