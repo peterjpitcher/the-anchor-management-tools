@@ -143,9 +143,14 @@ export function SpecialHoursModal({
   const [sundayLunchCloses, setSundayLunchCloses] = useState('')
   const [note, setNote] = useState('')
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfigItem[]>([])
+  // Only rows someone has changed are checked. A stored regular slot may run past
+  // the kitchen close (it gates drinks too, see reconcileScheduleConfig), and that
+  // must not block a save that only changes the note.
+  const [servicesEdited, setServicesEdited] = useState(false)
 
   // Initialize state when modal opens or date changes
   useEffect(() => {
+    setServicesEdited(false)
     if (initialData) {
       setIsClosed(initialData.is_closed)
       setIsKitchenClosed(initialData.is_kitchen_closed || false)
@@ -257,7 +262,7 @@ export function SpecialHoursModal({
 
     // Services only govern food while the kitchen is open; on a kitchen-closed
     // date they are carried through as before and not checked here.
-    if (showServices && validateServiceWindows(services, kitchenOpens, kitchenCloses).length > 0) {
+    if (showServices && servicesEdited && validateServiceWindows(services, kitchenOpens, kitchenCloses).length > 0) {
       toast.error('Fix the food service times before saving.')
       return
     }
@@ -496,11 +501,12 @@ export function SpecialHoursModal({
                   variant="secondary"
                   size="sm"
                   icon={<Icon name="plus" size={14} />}
-                  onClick={() =>
+                  onClick={() => {
+                    setServicesEdited(true)
                     setScheduleConfig(
                       applyServiceWindows(scheduleConfig, withAddedService(services, kitchenOpens, kitchenCloses)),
                     )
-                  }
+                  }}
                 >
                   Add a Service
                 </Button>
@@ -516,7 +522,10 @@ export function SpecialHoursModal({
               kitchenOpens={kitchenOpens || null}
               kitchenCloses={kitchenCloses || null}
               editable={canManage}
-              onChange={next => setScheduleConfig(applyServiceWindows(scheduleConfig, next))}
+              onChange={next => {
+                setServicesEdited(true)
+                setScheduleConfig(applyServiceWindows(scheduleConfig, next))
+              }}
             />
           </div>
         )}

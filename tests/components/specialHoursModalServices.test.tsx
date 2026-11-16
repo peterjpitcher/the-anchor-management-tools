@@ -108,6 +108,15 @@ describe('SpecialHoursModal food services', () => {
     expect(updateSpecialHours).not.toHaveBeenCalled()
   })
 
+  it('saves a stored drinks slot past kitchen close when the services were not touched', async () => {
+    const late = [{ name: 'drinks', starts_at: '16:00', ends_at: '22:00', capacity: 50, booking_type: 'regular' }]
+    renderModal(exception({ schedule_config: late }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(updateSpecialHours).toHaveBeenCalled())
+    expect(savedConfig()).toEqual(late)
+  })
+
   it('hides services and carries them through untouched when the kitchen is closed', async () => {
     const dinner = [{ name: 'Dinner', starts_at: '16:00', ends_at: '21:00', capacity: 50, booking_type: 'regular' }]
     renderModal(
