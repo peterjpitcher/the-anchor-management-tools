@@ -140,6 +140,14 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     query.eq('final_status', 'failed').gte('updated_at', last24h)
   )
 
+  // Emails the provider refused or that never left: a bad API key, a rate limit, a refused
+  // sender. Suppressed addresses and bounces have their own statuses and are not counted here.
+  // Nothing watched this before: on 13 and 14 November 2026 some 750 sends failed over 33 hours
+  // while every figure in this report stayed at zero.
+  const failedEmailSends24h = await countRows('email_messages', (query) =>
+    query.eq('direction', 'outbound').eq('status', 'failed').gte('created_at', last24h)
+  )
+
   const inboundEmail48h = await countRows('email_messages', (query) =>
     query.eq('direction', 'inbound').gte('received_at', last48h)
   )
@@ -160,6 +168,7 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
     deliveries24h,
     fallbackRate,
     undeliveredGuestMessages24h,
+    failedEmailSends24h,
   }
 
   const issues: CommunicationHealthIssue[] = []
@@ -225,6 +234,16 @@ export async function runCommunicationsHealthCheck(): Promise<CommunicationHealt
       label: 'Undelivered guest messages (see Settings, SMS failures)',
       count: undeliveredGuestMessages24h,
       threshold: 1,
+    })
+  }
+
+  const emailFailureThreshold = envNumber('COMMS_EMAIL_SEND_FAILURE_THRESHOLD', 3)
+  if (failedEmailSends24h >= emailFailureThreshold) {
+    issues.push({
+      key: 'email_send_failures',
+      label: 'Emails that failed to send (see the email log)',
+      count: failedEmailSends24h,
+      threshold: emailFailureThreshold,
     })
   }
 

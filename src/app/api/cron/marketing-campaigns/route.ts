@@ -27,6 +27,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { sendEmail } from '@/lib/email/emailService'
+import { isProviderCredentialFailure } from '@/lib/email/provider-credential-failure'
 import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension'
 import {
   getOrCreateContactUnsubscribeUrl,
@@ -226,6 +227,44 @@ async function releaseClaim(
   await cancelVoucherIfRecipientFailed(supabase, recipientId)
 }
 
+/**
+ * Hand a claimed recipient back without spending the attempt the claim counted.
+ *
+ * For a recipient nothing was sent to through no fault of theirs: the provider is refusing our
+ * key, or the run ran out of time before reaching them. Released the
+ * ordinary way, each run would use up one of a recipient's three attempts, and a recipient out
+ * of attempts is failed for good: that is how the whole Tinsel & Tipples reminder was lost on
+ * 13 November 2026 while the key was invalid. The count is read and written back guarded on
+ * the value read, so a concurrent change is left alone.
+ */
+async function holdClaim(
+  supabase: SupabaseClient<any, 'public', any>,
+  recipientId: string,
+  error: string,
+  backoffSeconds: number = RETRY_BACKOFF_SECONDS
+): Promise<void> {
+  const { data, error: readError } = await supabase
+    .from('marketing_campaign_recipients')
+    .select('attempt_count')
+    .eq('id', recipientId)
+    .maybeSingle()
+  const attempts = Number((data as { attempt_count?: number } | null)?.attempt_count ?? 0)
+  if (!readError && attempts > 0) {
+    const { error: writeError } = await supabase
+      .from('marketing_campaign_recipients')
+      .update({ attempt_count: attempts - 1 })
+      .eq('id', recipientId)
+      .eq('attempt_count', attempts)
+    if (writeError) {
+      logger.error('Marketing cron could not give a held recipient its attempt back', {
+        error: new Error(writeError.message),
+        metadata: { recipientId },
+      })
+    }
+  }
+  await releaseClaim(supabase, recipientId, 'retryable', error, backoffSeconds)
+}
+
 async function finaliseSend(
   supabase: SupabaseClient<any, 'public', any>,
   recipientId: string,
@@ -304,6 +343,7 @@ async function handle(request: NextRequest) {
     completed: 0,
     vouchersIssued: 0,
     closureSkipped: 0,
+    held: 0,
   }
 
   // 2. Recover leases left behind by a run that died mid-batch.
@@ -353,6 +393,8 @@ async function handle(request: NextRequest) {
   const campaignCache = new Map<string, CampaignLoad>()
   let claimError: string | null = null
   let deadlineReached = false
+  /** Set when the provider refused our credentials: the reason, and the run stops. */
+  let providerHold: string | null = null
 
   while (!deadlineReached) {
     if (elapsed() > RUN_DEADLINE_MS) {
@@ -381,10 +423,12 @@ async function handle(request: NextRequest) {
 
       // 4a. Deadline budget. Everything still claimed is handed straight back with a zero
       // backoff so the next run picks it up immediately rather than waiting out the lease.
+      // Nothing was tried for these, so the attempt the claim counted is returned: fourteen
+      // recipients were failed for good on 13 November 2026 by running out of attempts here.
       if (elapsed() > RUN_DEADLINE_MS) {
         deadlineReached = true
         for (const pending of batch.slice(index)) {
-          await releaseClaim(supabase, pending.id, 'retryable', 'Run deadline reached', 0)
+          await holdClaim(supabase, pending.id, 'Run deadline reached', 0)
           result.deferred++
         }
         break
@@ -589,6 +633,19 @@ async function handle(request: NextRequest) {
           continue
         }
 
+        // The provider is refusing our own credentials, so every send in the queue would fail
+        // the same way. This recipient and the rest of the batch go back with their attempt
+        // returned, and the run stops: the queue is held, as it is for a kill switch, until
+        // the key works again.
+        if (isProviderCredentialFailure(sendResult)) {
+          providerHold = sendResult.error || 'The email provider refused our credentials'
+          for (const pending of batch.slice(index)) {
+            await holdClaim(supabase, pending.id, providerHold)
+            result.held++
+          }
+          break
+        }
+
         const message = sendResult.error || 'Unknown send failure'
         const failureClass = classifySendFailure(message, sendResult.code)
         await releaseClaim(
@@ -612,6 +669,8 @@ async function handle(request: NextRequest) {
         result.failed++
       }
     }
+
+    if (providerHold) break
 
     // A short batch means the queue is drained for now, so stop rather than spin.
     if (batch.length < batchSize) break
@@ -646,6 +705,17 @@ async function handle(request: NextRequest) {
     ...result,
     lifecycleGate: { open: lifecycleGate.open, closedDays: lifecycleGate.closedDays },
     elapsedMs: elapsed(),
+  }
+
+  // The queue is held and nobody has been emailed. The alert email will fail for the same
+  // reason, and that failure is what texts the operations mobile (see raiseEmailFault).
+  if (providerHold) {
+    await reportCronFailure('marketing-campaigns', new Error(providerHold), {
+      stage: 'send',
+      effect: 'The marketing queue is held until the email provider accepts our key. No recipient has lost an attempt.',
+      held: result.held,
+    })
+    return NextResponse.json({ ...body, held: 'provider_credentials', error: providerHold }, { status: 503 })
   }
 
   // A failing claim RPC means the queue itself is broken, which is worth a cron alert. The

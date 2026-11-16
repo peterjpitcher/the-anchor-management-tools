@@ -81,6 +81,7 @@ export async function notifyEventPaymentOutcome(
       eventId: owner.eventId,
       customerId: owner.customerId,
       retriesLater: input.retriesLater,
+      textWithheld: !textAllowed,
       email: () => sendEventPaymentConfirmationEmail(supabase, {
         bookingId: input.bookingId,
         amount: input.amount,

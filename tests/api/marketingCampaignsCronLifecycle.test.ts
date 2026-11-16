@@ -61,6 +61,8 @@ type Call = { kind: 'rpc' | 'from'; name: string; args?: unknown; op?: string; v
 
 interface FakeState {
   recipientStatus: string
+  /** Attempts the claim has counted against the recipient. */
+  attemptCount: number
   voucherId: string | null
   voucherStatus: string
   issueResult: Record<string, unknown>
@@ -100,11 +102,16 @@ function fakeDb(state: FakeState) {
       }
       if (table === 'marketing_campaign_recipients') {
         if (call.op === 'update') {
-          state.recipientStatus = (call.values as { status: string }).status
+          const values = call.values as { status?: string; attempt_count?: number }
+          if (values.status !== undefined) state.recipientStatus = values.status
+          if (values.attempt_count !== undefined) state.attemptCount = values.attempt_count
           return { data: { id: RECIPIENT_ID }, error: null }
         }
         if (call.op === 'count') return { data: null, count: 0, error: null }
-        return { data: { status: state.recipientStatus, voucher_id: state.voucherId }, error: null }
+        return {
+          data: { status: state.recipientStatus, voucher_id: state.voucherId, attempt_count: state.attemptCount },
+          error: null,
+        }
       }
       if (table === 'vouchers') {
         return { data: { voucher_number: 'AN-2611-0007', status: state.voucherStatus }, error: null }
@@ -139,6 +146,7 @@ function fakeDb(state: FakeState) {
         if (claimed) return { data: [], error: null }
         claimed = true
         state.recipientStatus = 'sending'
+        state.attemptCount += 1
         return {
           data: [
             {
@@ -192,6 +200,7 @@ describe('marketing cron, return-visit campaigns', () => {
 
     state = {
       recipientStatus: 'pending',
+      attemptCount: 0,
       voucherId: null,
       voucherStatus: 'issued',
       issueResult: {
@@ -317,5 +326,39 @@ describe('marketing cron, return-visit campaigns', () => {
     expect((await response.json()).skipped).toBe('email_suspended')
     expect(createAdminClient).not.toHaveBeenCalled()
     expect(sendEmail).not.toHaveBeenCalled()
+  })
+
+  it('holds the queue when the provider refuses our key: the attempt is given back and the run stops', async () => {
+    // Resend's answer on 13 November 2026, when a campaign of 266 failed for good in half an hour.
+    vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'API key is invalid', providerStatus: 403 } as never)
+
+    const response = await GET(new NextRequest('http://localhost/api/cron/marketing-campaigns'))
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body.held).toBe('provider_credentials')
+    expect(body.failed).toBe(0)
+    // The claim counted one attempt; the hold returned it, so no number of held runs can fail them.
+    expect(state.attemptCount).toBe(0)
+    expect(state.recipientStatus).toBe('pending')
+    expect(rpcCalls('release_marketing_claim')[0].args).toMatchObject({ p_failure_class: 'retryable', p_error: 'API key is invalid' })
+    expect(rpcCalls('claim_marketing_recipients')).toHaveLength(1)
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'marketing-campaigns',
+      expect.any(Error),
+      expect.objectContaining({ stage: 'send', held: 1 })
+    )
+  })
+
+  it('an ordinary failure still spends the attempt', async () => {
+    vi.mocked(sendEmail).mockResolvedValue({ success: false, error: 'Internal server error', providerStatus: 500 } as never)
+
+    const response = await GET(new NextRequest('http://localhost/api/cron/marketing-campaigns'))
+    const body = await response.json()
+
+    expect(response.status).toBe(200)
+    expect(body.held).toBe(0)
+    expect(body.failed).toBe(1)
+    expect(state.attemptCount).toBe(1)
   })
 })

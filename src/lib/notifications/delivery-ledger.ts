@@ -84,6 +84,38 @@ export async function createNotificationDelivery(input: {
   }
 }
 
+/**
+ * Whether a message with this template has already reached the guest for this event booking.
+ * False when the ledger cannot be read: a caller deciding whether to stay quiet must not.
+ */
+export async function hasSentEventDelivery(input: {
+  client?: AdminClient
+  templateKey: string
+  eventBookingId: string
+}): Promise<boolean> {
+  try {
+    const client = input.client ?? createAdminClient()
+    const { data, error } = await (client.from('notification_deliveries') as any)
+      .select('id')
+      .eq('template_key', input.templateKey)
+      .eq('metadata->>event_booking_id', input.eventBookingId)
+      .in('final_status', ['sent', 'delivered', 'fallback_sent'])
+      .limit(1)
+    if (error) {
+      logger.warn('Earlier deliveries for an event message could not be read', {
+        metadata: { templateKey: input.templateKey, ...describeError(error) },
+      })
+      return false
+    }
+    return Array.isArray(data) && data.length > 0
+  } catch (error) {
+    logger.warn('Earlier deliveries for an event message could not be read', {
+      metadata: { templateKey: input.templateKey, ...describeError(error) },
+    })
+    return false
+  }
+}
+
 export async function recordNotificationAttempt(input: {
   client?: AdminClient
   deliveryId: string | null

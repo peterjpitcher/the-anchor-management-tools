@@ -16,6 +16,7 @@ vi.mock('@/lib/supabase/admin', () => ({
   }),
 }))
 const ledger = vi.hoisted(() => ({
+  hasSentEventDelivery: vi.fn().mockResolvedValue(false),
   createNotificationDelivery: vi.fn().mockResolvedValue('delivery-1'),
   recordNotificationAttempt: vi.fn(),
   updateNotificationDelivery: vi.fn(),
@@ -70,5 +71,23 @@ describe('notifyEventPaymentOutcome', () => {
       customerId: null,
       metadata: expect.objectContaining({ event_booking_id: 'booking-1', event_id: null }),
     }))
+  })
+
+  it('a repeat notice for a guest with no email is not logged as an undelivered message', async () => {
+    // First call: the text is allowed, the guest has no email, the text sender finds no number.
+    await notifyEventPaymentOutcome({} as never, { bookingId: 'booking-1', outcome: 'confirmed' })
+    expect(ledger.updateNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({ finalStatus: 'failed' }))
+
+    vi.clearAllMocks()
+    ledger.createNotificationDelivery.mockResolvedValue('delivery-2')
+    // The first notice is on the ledger as sent (the guest's text, in the live case).
+    ledger.hasSentEventDelivery.mockResolvedValue(true)
+
+    // The repeat (PayPal's already_confirmed): the text is withheld, so there is nothing to send.
+    const outcome = await notifyEventPaymentOutcome({} as never, { bookingId: 'booking-1', outcome: 'confirmed', textAllowed: false })
+
+    expect(outcome.status).toBe('no_channel')
+    expect(ledger.createNotificationDelivery).not.toHaveBeenCalled()
+    expect(ledger.updateNotificationDelivery).not.toHaveBeenCalled()
   })
 })

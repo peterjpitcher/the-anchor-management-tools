@@ -6,6 +6,8 @@ import { Resend } from 'resend';
 import { getEmailSuppressionStatus, recordEmailMessage } from '@/lib/email/logging';
 import { htmlToPlainText } from '@/lib/email/plain-text';
 import { currentEmailSuspensionReason, EMAIL_SUSPENSION_SWITCHES } from '@/lib/email/suspension';
+import { textOpsAboutEmailFault } from '@/lib/ops-alerts/email-fault-text';
+import { isProviderCredentialFailure } from '@/lib/email/provider-credential-failure';
 
 export interface EmailOptions {
   to: string;
@@ -277,11 +279,36 @@ export async function sendEmail(options: EmailOptions): Promise<EmailSendResult>
   }
 
   const provider = options.provider ?? getEmailProvider();
-  if (provider === 'resend') {
-    return sendEmailViaResend(options);
-  }
+  const result = provider === 'resend'
+    ? await sendEmailViaResend(options)
+    : await sendEmailViaGraph(options);
+  await raiseEmailFault(options, result);
+  return result;
+}
 
-  return sendEmailViaGraph(options);
+/** The inboxes the app's own alerts go to. An email to one of these that fails is a lost alert. */
+function isAlertInbox(to: string): boolean {
+  const address = to.trim().toLowerCase();
+  return [process.env.CRON_ALERT_EMAIL, process.env.COMMS_ALERT_EMAIL]
+    .some((inbox) => Boolean(inbox) && inbox!.trim().toLowerCase() === address);
+}
+
+/**
+ * Email is how every alert travels, so when email itself is broken a person is told by text
+ * instead (at most once an hour for each reason). Two cases: the provider is refusing our
+ * credentials, or an email to the alert inbox could not be sent. A kill switch, a suppressed
+ * address and a refused recipient are not faults and text nobody.
+ */
+async function raiseEmailFault(options: EmailOptions, result: EmailSendResult): Promise<void> {
+  if (result.success) return;
+  if (isProviderCredentialFailure(result)) {
+    await textOpsAboutEmailFault('provider_rejected_key');
+    return;
+  }
+  if (result.code === 'recipient_rejected' || result.code === 'recipient_suppressed' || result.code === 'email_suspended') return;
+  if (isAlertInbox(options.to)) {
+    await textOpsAboutEmailFault('alert_email_failed');
+  }
 }
 
 /**
@@ -296,6 +323,14 @@ function resolveTextPart(options: EmailOptions): string | undefined {
   if (!options.html) return undefined;
   const derived = htmlToPlainText(options.html);
   return derived || undefined;
+}
+
+/** How many times a send refused for "too many requests" is asked again, and the first wait. */
+const RATE_LIMIT_RETRIES = 2;
+const RATE_LIMIT_WAIT_MS = 1100;
+
+function isRateLimited(error: unknown): boolean {
+  return Boolean(error) && (error as { statusCode?: unknown }).statusCode === 429;
 }
 
 async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResult> {
@@ -359,9 +394,18 @@ async function sendEmailViaResend(options: EmailOptions): Promise<EmailSendResul
     }
 
     submitted = true;
-    const { data, error } = options.idempotencyKey
-      ? await client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
-      : await client.emails.send(resendPayload as any);
+    const submit = () => options.idempotencyKey
+      ? client.emails.send(resendPayload as any, { idempotencyKey: options.idempotencyKey })
+      : client.emails.send(resendPayload as any);
+    let response = await submit();
+    // "Too many requests" is a definite refusal, so nothing was sent and asking again is safe.
+    // Resend allows ten requests a second: a job that emails a dozen people at once (the weekly
+    // rota) loses the last one or two without this, and nothing sent them again.
+    for (let retry = 0; retry < RATE_LIMIT_RETRIES && isRateLimited(response.error); retry++) {
+      await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_WAIT_MS * (retry + 1)));
+      response = await submit();
+    }
+    const { data, error } = response;
 
     if (error) {
       const statusCode = (error as { statusCode?: unknown }).statusCode;

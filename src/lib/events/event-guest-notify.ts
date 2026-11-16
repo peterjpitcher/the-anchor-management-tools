@@ -32,6 +32,7 @@
 import { logger } from '@/lib/logger'
 import {
   createNotificationDelivery,
+  hasSentEventDelivery,
   recordNotificationAttempt,
   updateNotificationDelivery,
 } from '@/lib/notifications/delivery-ledger'
@@ -89,6 +90,16 @@ export type EventMessageInput = {
    * undelivered for staff to follow up.
    */
   retriesLater?: boolean
+  /**
+   * The caller withheld the text because this is a repeat of a notice it believes has gone
+   * already (PayPal's second word on a payment). When there is no email to send either, and the
+   * ledger shows this message did reach the guest for this booking, there is nothing to deliver
+   * and nothing is recorded. Without this the repeat was logged as a message that reached
+   * nobody, seconds after the guest's text had arrived, and raised a comms health alert each
+   * time (11 and 15 November 2026). When the ledger shows no earlier message, the first notice
+   * never went, and this one is recorded as undelivered like any other.
+   */
+  textWithheld?: boolean
 }
 
 function describe(error: unknown): string {
@@ -191,8 +202,15 @@ export async function sendEventMessageEmailFirst(input: EventMessageInput): Prom
   else if (state.emailTried || state.textTried) status = 'failed'
   else status = 'no_channel'
 
+  // A repeat with its text withheld and no email to send: nothing new, provided the first
+  // notice is on the ledger as having reached the guest.
+  const repeatOfSentMessage =
+    status === 'no_channel' &&
+    input.textWithheld === true &&
+    (await hasSentEventDelivery({ templateKey: input.templateKey, eventBookingId: input.bookingId }))
+
   // Nothing new happened for an already-sent message, or a deferred one the caller retries.
-  if (status === 'already_sent' || (status === 'deferred' && input.retriesLater === true)) {
+  if (status === 'already_sent' || (status === 'deferred' && input.retriesLater === true) || repeatOfSentMessage) {
     return { status, channel, emailed: state.emailed, texted: state.texted, fallbackUsed, smsMeta: state.smsMeta }
   }
 

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 const ledger = vi.hoisted(() => ({
+  hasSentEventDelivery: vi.fn(),
   createNotificationDelivery: vi.fn(),
   recordNotificationAttempt: vi.fn(),
   updateNotificationDelivery: vi.fn(),
@@ -23,6 +24,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   ledger.createNotificationDelivery.mockResolvedValue('delivery-1')
   ledger.updateNotificationDelivery.mockResolvedValue(true)
+  ledger.hasSentEventDelivery.mockResolvedValue(false)
 })
 
 describe('sendEventMessageEmailFirst', () => {
@@ -120,6 +122,51 @@ describe('sendEventMessageEmailFirst', () => {
     expect(ledger.createNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({
       metadata: expect.objectContaining({ undelivered_reason: 'no_channel' }),
     }))
+    expect(ledger.updateNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({ finalStatus: 'failed' }))
+  })
+
+  it('records nothing for a repeat whose text was withheld, when the first notice reached the guest', async () => {
+    // PayPal's second notice for a payment whose text went seconds earlier (15 November 2026):
+    // it was logged as a message that reached nobody and raised a comms health alert.
+    ledger.hasSentEventDelivery.mockResolvedValue(true)
+    const email = vi.fn().mockResolvedValue({ success: false, skipped: true })
+
+    const outcome = await sendEventMessageEmailFirst({ ...base, email, text: null, textWithheld: true })
+
+    expect(outcome.status).toBe('no_channel')
+    expect(ledger.hasSentEventDelivery).toHaveBeenCalledWith({ templateKey: 'event_payment_confirmed', eventBookingId: 'booking-1' })
+    expect(ledger.createNotificationDelivery).not.toHaveBeenCalled()
+    expect(ledger.updateNotificationDelivery).not.toHaveBeenCalled()
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('records a withheld text as undelivered when no earlier notice reached the guest', async () => {
+    // The first call died before it told anyone: this repeat is the only trace the guest heard nothing.
+    ledger.hasSentEventDelivery.mockResolvedValue(false)
+    const email = vi.fn().mockResolvedValue({ success: false, skipped: true })
+
+    const outcome = await sendEventMessageEmailFirst({ ...base, email, text: null, textWithheld: true })
+
+    expect(outcome.status).toBe('no_channel')
+    expect(ledger.updateNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({ finalStatus: 'failed' }))
+    expect(logger.error).toHaveBeenCalled()
+  })
+
+  it('does not consult the ledger for an ordinary message with nowhere to go', async () => {
+    const email = vi.fn().mockResolvedValue({ success: false, skipped: true })
+
+    await sendEventMessageEmailFirst({ ...base, email, text: null })
+
+    expect(ledger.hasSentEventDelivery).not.toHaveBeenCalled()
+    expect(ledger.updateNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({ finalStatus: 'failed' }))
+  })
+
+  it('still records a withheld text when the email was tried and failed', async () => {
+    const email = vi.fn().mockResolvedValue({ success: false, error: 'provider down' })
+
+    const outcome = await sendEventMessageEmailFirst({ ...base, email, text: null, textWithheld: true })
+
+    expect(outcome.status).toBe('failed')
     expect(ledger.updateNotificationDelivery).toHaveBeenCalledWith(expect.objectContaining({ finalStatus: 'failed' }))
   })
 

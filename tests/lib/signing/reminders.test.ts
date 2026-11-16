@@ -85,6 +85,83 @@ describe('the daily signing run', () => {
     expect(mocks.alert).not.toHaveBeenCalled()
   })
 
+  describe('a signer whose address we cannot email', () => {
+    const blocked = Object.assign(new Error('The email was not sent: we cannot email this address'), { code: 'recipient_suppressed' })
+    const seedBlocked = (): void =>
+      seed(
+        [{ id: 'contract', status: 'part_signed', title: 'Private booking contract', sent_at: daysAgo(4), expires_at: inDays(26), created_by: 'user-1', subject_type: 'private_booking', subject_id: 'pb-1', final_pdf_path: null, completion_applied_at: null }],
+        [
+          { id: 'p-blocked', document_id: 'contract', status: 'pending', name: 'Alex Guest', email: 'blocked@example.com', reminder_count: 0, role: 'customer' },
+          { id: 'p-fine', document_id: 'contract', status: 'pending', name: 'Jo Guest', email: 'fine@example.com', reminder_count: 0, role: 'customer' },
+        ]
+      )
+    const resendRefusingBlocked = (): void => {
+      mocks.resend.mockImplementation(async ({ partyId }: { partyId: string }) => {
+        if (partyId === 'p-blocked') throw blocked
+      })
+    }
+
+    it('tells whoever sent it once, stops trying, and does not call it a failed run', async () => {
+      seedBlocked()
+      resendRefusingBlocked()
+
+      const run = await runSigningReminders(NOW)
+
+      expect(run).toMatchObject({ remindersSent: 1, addressBlocked: 1, errors: [] })
+      expect(mocks.alert).not.toHaveBeenCalled()
+      const notice = mocks.sendEmail.mock.calls[0][0]
+      expect(notice).toMatchObject({
+        to: 'sender@example.test',
+        subject: 'Cannot email the signer: Private booking contract (Sam Example)',
+        commType: 'signing_staff_notice',
+      })
+      for (const output of [notice.text, notice.html]) {
+        expect(output).toContain('Alex Guest')
+        expect(output).toContain('Sign in Person')
+        expect(output).not.toMatch(/undefined|Invalid Date|NaN/)
+      }
+      expect(notice.text).toContain('https://management.example.test/employees/emp-1')
+      // Marked as fully reminded, so tomorrow's run leaves them alone. No trail line: nothing was sent.
+      expect(db.rows('signing_parties').find((row) => row.id === 'p-blocked')?.reminder_count).toBe(2)
+      expect(db.rows('signing_events')).toEqual([])
+
+      // The literal second run: nobody is tried, nobody is told again.
+      vi.clearAllMocks()
+      mocks.closure.mockResolvedValue(null)
+      resendRefusingBlocked()
+      const second = await runSigningReminders(new Date(NOW.getTime() + 24 * 60 * 60 * 1000))
+      expect(mocks.resend).not.toHaveBeenCalledWith(expect.objectContaining({ partyId: 'p-blocked' }))
+      expect(mocks.sendEmail).not.toHaveBeenCalled()
+      expect(second).toMatchObject({ addressBlocked: 0, errors: [] })
+    })
+
+    it('reports it and tries again tomorrow when staff could not be told', async () => {
+      seedBlocked()
+      resendRefusingBlocked()
+      mocks.sendEmail.mockResolvedValue({ success: false, error: 'API key is invalid' })
+
+      const run = await runSigningReminders(NOW)
+
+      expect(run.addressBlocked).toBe(0)
+      expect(run.errors).toEqual([expect.stringContaining('telling staff that p-blocked cannot be emailed: notice not sent: API key is invalid')])
+      expect(mocks.alert).toHaveBeenCalledTimes(1)
+      expect(db.rows('signing_parties').find((row) => row.id === 'p-blocked')?.reminder_count).toBe(0)
+    })
+
+    it('any other failed reminder is still reported and tried again', async () => {
+      seedBlocked()
+      mocks.resend.mockImplementation(async ({ partyId }: { partyId: string }) => {
+        if (partyId === 'p-blocked') throw Object.assign(new Error('The email could not be sent: provider down'), { code: 'email_failed' })
+      })
+
+      const run = await runSigningReminders(NOW)
+
+      expect(run.addressBlocked).toBe(0)
+      expect(run.errors).toEqual(['reminding p-blocked: The email could not be sent: provider down'])
+      expect(mocks.sendEmail).not.toHaveBeenCalled()
+    })
+  })
+
   it('never chases a training document: the training daily job is its only chaser', async () => {
     seed(
       [

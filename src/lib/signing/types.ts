@@ -115,6 +115,12 @@ export const SIGNING_EXPIRY_DAYS = 30
 /** Days after sending on which an unsigned party is reminded (owner decision, 12 October 2026). */
 export const SIGNING_REMINDER_DAYS = [3, 7] as const
 
+/**
+ * The code on the error a link email raises when the address is on the suppression list (it
+ * bounced, or the person marked one of our emails as spam). Sending again is refused the same way.
+ */
+export const SIGNING_ADDRESS_BLOCKED = 'recipient_suppressed'
+
 export interface SigningDocumentRow {
   id: string
   kind: SigningKind

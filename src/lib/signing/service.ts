@@ -25,6 +25,7 @@ import { describeSigningSubject } from './subjects'
 import { buildSigningUrl, generateSigningToken, hashSigningToken, isWellFormedSigningToken, sha256Hex } from './tokens'
 import {
   SIGNED_DOCUMENTS_BUCKET,
+  SIGNING_ADDRESS_BLOCKED,
   SIGNING_OPEN_STATUSES,
   type SigningDocumentRow,
   type SigningEventName,
@@ -1586,7 +1587,7 @@ export async function resendSigningLink(input: {
     throw new SigningError('busy', 'A new link was sent to this person a moment ago. Check before sending another.')
   }
 
-  let sent: { success: boolean; error?: string; uncertain?: boolean }
+  let sent: { success: boolean; error?: string; code?: EmailSendCode; uncertain?: boolean }
   try {
     sent = await sendSigningLinkEmail({
       document,
@@ -1650,6 +1651,15 @@ export async function resendSigningLink(input: {
           partyId: party.id,
         })
       }
+    }
+    if (!sent.uncertain && sent.code === 'recipient_suppressed') {
+      // Definite, and it will be refused the same way every time: the address bounced, or the
+      // person marked one of our emails as spam. Its own code, so the daily job can stop
+      // trying and tell staff once instead of failing every morning until the request expires.
+      throw new SigningError(
+        SIGNING_ADDRESS_BLOCKED,
+        'The email was not sent: we cannot email this address, because it bounced or they marked one of our emails as spam. Ring them, or use Sign in Person.'
+      )
     }
     throw new SigningError(
       'email_failed',
