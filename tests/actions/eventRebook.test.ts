@@ -276,13 +276,13 @@ describe('rebookLapsedEventBooking', () => {
   })
 
   it('refuses cash at a figure staff did not see, before anything is booked', async () => {
-    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160 })
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160, price: 'door' })
     expect(result).toEqual({ error: 'The amount to take is now £180.00. Check it and try again.' })
     expect(service.createBooking).not.toHaveBeenCalled()
   })
 
-  it('records cash at the bar at the door price, with no payment link sent', async () => {
-    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
+  it('records cash at the bar at the door price when staff choose it, with no payment link sent', async () => {
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180, price: 'door' })
     expect(service.createBooking.mock.calls[0][0]).toMatchObject({ shouldSendSms: false, skipPendingPaymentMessage: true, customerId: 'customer-rupi' })
     expect(service.createBooking.mock.calls[0][0].attendees).toBeUndefined()
     expect(eventsActions.markEventBookingPaidManually).toHaveBeenCalledWith({ bookingId: 'booking-new', method: 'cash', confirmedAmount: 180, price: 'door' })
@@ -296,6 +296,18 @@ describe('rebookLapsedEventBooking', () => {
     expect(result).toMatchObject({ success: true, data: { state: 'confirmed', payment_recorded: true } })
   })
 
+  it('takes the online price when no price is chosen (owner, 14 November 2026: Rupi was charged £180 by default)', async () => {
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160 })
+    expect(eventsActions.markEventBookingPaidManually).toHaveBeenCalledWith({ bookingId: 'booking-new', method: 'cash', confirmedAmount: 160, price: 'online' })
+    expect(result).toMatchObject({ success: true, data: { state: 'confirmed', payment_recorded: true } })
+  })
+
+  it('refuses the door figure when no price is chosen, before anything is booked', async () => {
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
+    expect(result).toEqual({ error: 'The amount to take is now £160.00. Check it and try again.' })
+    expect(service.createBooking).not.toHaveBeenCalled()
+  })
+
   it('refuses £180 at the online price before anything is booked', async () => {
     const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180, price: 'online' })
     expect(result).toEqual({ error: 'The amount to take is now £160.00. Check it and try again.' })
@@ -304,7 +316,7 @@ describe('rebookLapsedEventBooking', () => {
 
   it('says the booking is made but the payment is not, when recording the cash fails', async () => {
     eventsActions.markEventBookingPaidManually.mockResolvedValue({ error: 'Failed to confirm manual payment.' })
-    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160 })
     expect(result).toMatchObject({
       success: true,
       data: {
@@ -321,14 +333,14 @@ describe('rebookLapsedEventBooking', () => {
       success: true,
       data: { state: 'manual_review', reason: 'capacity_unavailable_after_capture', booking_id: 'booking-new', payment_id: 'pay-new', sms_sent: false },
     })
-    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 180 })
+    const result = await rebookLapsedEventBooking({ bookingId: RUPI_ID, seats: 4, payment: 'cash', confirmedAmount: 160 })
     expect(result).toMatchObject({
       success: true,
       data: {
         state: 'pending_payment',
         payment_recorded: true,
         payment_error: null,
-        needs_review: 'The £180.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.',
+        needs_review: 'The £160.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.',
       },
     })
   })

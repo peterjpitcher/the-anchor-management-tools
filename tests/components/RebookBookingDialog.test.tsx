@@ -60,28 +60,29 @@ describe('RebookBookingDialog', () => {
     }))
   })
 
-  it('shows the door price to take for cash and sends that figure', async () => {
+  it('takes the online price for cash by default and sends that figure (owner, 14 November 2026)', async () => {
     const onClose = vi.fn()
     const onDone = vi.fn()
     render(<RebookBookingDialog bookingId="booking-helen" onClose={onClose} onDone={onDone} />)
     await screen.findByLabelText('Tickets')
+    expect(screen.queryByLabelText(/Give the online price/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
-    expect(screen.getByText('Take £90.00: 2 tickets at £45.00, the door price.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
-    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 90, seats: 2, price: 'door' })))
+    expect(screen.getByLabelText('Give the online price: £40.00 a ticket instead of £45.00')).toBeChecked()
+    expect(screen.getByText('Take £80.00: 2 tickets at £40.00, the online price.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £80.00' }))
+    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 80, seats: 2, price: 'online' })))
     await waitFor(() => expect(onClose).toHaveBeenCalled())
     expect(onDone).toHaveBeenCalled()
   })
 
-  it('lets staff give the online price at the bar and sends that figure (owner, 10 November 2026)', async () => {
+  it('lets staff untick the online price to take the door price', async () => {
     render(<RebookBookingDialog bookingId="booking-helen" onClose={vi.fn()} onDone={vi.fn()} />)
     await screen.findByLabelText('Tickets')
-    expect(screen.queryByLabelText(/Give the online price/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
     fireEvent.click(screen.getByLabelText('Give the online price: £40.00 a ticket instead of £45.00'))
-    expect(screen.getByText('Take £80.00: 2 tickets at £40.00, the online price.')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £80.00' }))
-    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 80, price: 'online' })))
+    expect(screen.getByText('Take £90.00: 2 tickets at £45.00, the door price.')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
+    await waitFor(() => expect(actions.rebookLapsedEventBooking).toHaveBeenCalledWith(expect.objectContaining({ payment: 'cash', confirmedAmount: 90, price: 'door' })))
   })
 
   it('offers no online price when the event has none', async () => {
@@ -110,13 +111,13 @@ describe('RebookBookingDialog', () => {
     render(<RebookBookingDialog bookingId="booking-helen" onClose={vi.fn()} onDone={vi.fn()} />)
     await screen.findByLabelText('Tickets')
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
-    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £80.00' }))
     expect(await screen.findByText(/Use Cash Paid on the new booking/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
   })
 
   it('stays open and says a manager must check it when the cash is recorded but the booking is not confirmed', async () => {
-    const review = 'The £90.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.'
+    const review = 'The £80.00 is recorded, but the booking is not confirmed because no place was free. A manager needs to check it; it shows as waiting for payment until then.'
     actions.rebookLapsedEventBooking.mockResolvedValue({
       success: true,
       data: { booking_id: 'new', state: 'pending_payment', next_step_url: null, manage_booking_url: null, details_to_follow: false, payment_recorded: true, payment_error: null, needs_review: review },
@@ -126,7 +127,7 @@ describe('RebookBookingDialog', () => {
     render(<RebookBookingDialog bookingId="booking-helen" onClose={onClose} onDone={onDone} />)
     await screen.findByLabelText('Tickets')
     fireEvent.click(screen.getByLabelText('Cash at the bar now'))
-    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £90.00' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Rebook and Record £80.00' }))
     expect(await screen.findByText(review)).toBeInTheDocument()
     expect(onDone).toHaveBeenCalled()
     expect(onClose).not.toHaveBeenCalled()
