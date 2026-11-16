@@ -370,9 +370,13 @@ export default function SeasonalPreorderSection({
   const editable = canEdit && preorderEnabled && (!closed || canRecordLate)
   const recordingLate = editable && closed
   const completeness = useMemo(() => getPreorderCompleteness(order), [order])
-  const seatsMismatched = order.covers.length !== order.partySize
   /** A Christmas booking on the food link: every seat has a tier, a name and an allergy answer. */
   const tiered = Array.isArray(order.courseCounts)
+  // A Christmas booking taken without food has no seats until the guest opens their food link (or
+  // staff start it). That is the normal state while choices are open, not a fault, so it gets a
+  // quiet note instead of the mismatch warning. Once choices close, no seats is a real gap again.
+  const awaitingGuestChoices = tiered && order.covers.length === 0 && !closed
+  const seatsMismatched = order.covers.length !== order.partySize && !awaitingGuestChoices
   // Kids mains, which are 1 course only (A1). From the period's menu facts, withdrawn dishes included.
   const childOptionIds = useMemo(
     () => new Set((order.menuItems ?? []).filter((item) => item.isChildOption).map((item) => item.id)),
@@ -690,7 +694,20 @@ export default function SeasonalPreorderSection({
           </Alert>
         )}
 
-        {order.covers.length === 0 ? (
+        {awaitingGuestChoices ? (
+          <Empty
+            size="sm"
+            title="Waiting for the guest to choose food"
+            description={`Seats for all ${order.partySize} guests appear when the organiser opens their food link.`}
+            action={
+              editable ? (
+                <Button size="sm" variant="secondary" onClick={handleSync} loading={syncing} disabled={syncing}>
+                  Start the Pre-Order
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : order.covers.length === 0 ? (
           <Empty size="sm" title="No seats set up yet" description="Nothing has been chosen for this booking." />
         ) : (
           <ul className="divide-y divide-border">
