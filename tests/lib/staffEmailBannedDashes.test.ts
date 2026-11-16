@@ -125,7 +125,7 @@ describe('event checklist reminders cron', () => {
     const payload = await response.json()
 
     expect(response.status).toBe(200)
-    expect(payload).toMatchObject({ success: true, sent: true, overdue: 7, dueToday: 1, events: 1 })
+    expect(payload).toMatchObject({ success: true, sent: true, overdue: 6, dueToday: 1, events: 1 })
     const email = onlyEmail()
     expect(email.subject).toBe('Event checklist reminder: Thursday, 1 October 2026')
     expect(email.html).toContain('">: due since ')

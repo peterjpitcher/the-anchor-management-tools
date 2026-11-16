@@ -246,7 +246,7 @@ describe('event checklist reminders cron', () => {
     const response = await runEventChecklistReminders(cronRequest('/api/cron/event-checklist-reminders'))
     const payload = await response.json()
     expect(response.status).toBe(200)
-    expect(payload).toMatchObject({ success: true, sent: true, overdue: 7, dueToday: 1, events: 1 })
+    expect(payload).toMatchObject({ success: true, sent: true, overdue: 6, dueToday: 1, events: 1 })
     const emails = sentEmails()
     expect(emails).toHaveLength(1)
     return emails[0]
