@@ -6,6 +6,12 @@ import { createSpecialHours, updateSpecialHours, deleteSpecialHours, getBusiness
 import { hoursImpactNoticeFrom, type HoursImpactNotice } from './HoursImpactDialog'
 import { SpecialHours, ScheduleConfigItem } from '@/types/business-hours'
 import { formatDateInLondon, toLocalIsoDate } from '@/lib/dateUtils'
+import {
+  applyServiceWindows,
+  readServiceWindows,
+  validateServiceWindows,
+} from '@/lib/business-hours/service-windows'
+import { ServiceWindowList, withAddedService } from './FoodServiceEditor'
 
 /** Minutes since midnight from "HH:MM" or "HH:MM:SS". Null when unparseable. */
 function toMinutes(value: string | null | undefined): number | null {
@@ -137,9 +143,14 @@ export function SpecialHoursModal({
   const [sundayLunchCloses, setSundayLunchCloses] = useState('')
   const [note, setNote] = useState('')
   const [scheduleConfig, setScheduleConfig] = useState<ScheduleConfigItem[]>([])
+  // Only rows someone has changed are checked. A stored regular slot may run past
+  // the kitchen close (it gates drinks too, see reconcileScheduleConfig), and that
+  // must not block a save that only changes the note.
+  const [servicesEdited, setServicesEdited] = useState(false)
 
   // Initialize state when modal opens or date changes
   useEffect(() => {
+    setServicesEdited(false)
     if (initialData) {
       setIsClosed(initialData.is_closed)
       setIsKitchenClosed(initialData.is_kitchen_closed || false)
@@ -241,8 +252,21 @@ export function SpecialHoursModal({
     }
   }
 
+  // The ordinary food services (lunch, dinner) for this date. Sunday lunch keeps
+  // its own control below and is left untouched by these rows.
+  const services = readServiceWindows(scheduleConfig)
+  const showServices = !isClosed && !isKitchenClosed
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    // Services only govern food while the kitchen is open; on a kitchen-closed
+    // date they are carried through as before and not checked here.
+    if (showServices && servicesEdited && validateServiceWindows(services, kitchenOpens, kitchenCloses).length > 0) {
+      toast.error('Fix the food service times before saving.')
+      return
+    }
+
     setLoading(true)
 
     const formData = new FormData()
@@ -463,6 +487,46 @@ export function SpecialHoursModal({
                   </div>
                 </div>
              </div>
+          </div>
+        )}
+
+        {/* Food services: a split day (lunch, a break, then dinner) inside the kitchen hours */}
+        {showServices && (
+          <div>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <SubHeading as="h3">Food Service Times</SubHeading>
+              {canManage && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon name="plus" size={14} />}
+                  onClick={() => {
+                    setServicesEdited(true)
+                    setScheduleConfig(
+                      applyServiceWindows(scheduleConfig, withAddedService(services, kitchenOpens, kitchenCloses)),
+                    )
+                  }}
+                >
+                  Add a Service
+                </Button>
+              )}
+            </div>
+            <p className="mb-2 text-sm text-text-muted">
+              When food can be booked, inside the kitchen hours. Add a second service for a break in
+              the middle, for example lunch 12:00 to 15:00 and dinner 16:00 to 21:00.
+            </p>
+            <ServiceWindowList
+              dayLabel={formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long' })}
+              services={services}
+              kitchenOpens={kitchenOpens || null}
+              kitchenCloses={kitchenCloses || null}
+              editable={canManage}
+              onChange={next => {
+                setServicesEdited(true)
+                setScheduleConfig(applyServiceWindows(scheduleConfig, next))
+              }}
+            />
           </div>
         )}
 

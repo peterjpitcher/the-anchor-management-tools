@@ -55,9 +55,6 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
         if (day.is_closed || day.is_kitchen_closed) return null
 
         const services = readServiceWindows(day.schedule_config)
-        const problems = validateServiceWindows(services, day.kitchen_opens, day.kitchen_closes)
-        const gaps = describeGaps(services, day.kitchen_opens, day.kitchen_closes)
-        const generalProblem = problems.find(p => p.index === null)
 
         return (
           <Card key={day.day_of_week} padding="sm">
@@ -74,104 +71,152 @@ export function FoodServiceEditor({ hours, editable, onChange }: FoodServiceEdit
                   variant="secondary"
                   size="sm"
                   icon={<Icon name="plus" size={14} />}
-                  onClick={() =>
-                    update(day, [
-                      ...services,
-                      {
-                        name: services.length === 0 ? 'food service' : 'dinner',
-                        starts_at: toClock(day.kitchen_opens),
-                        ends_at: toClock(day.kitchen_closes),
-                      },
-                    ])
-                  }
+                  onClick={() => update(day, withAddedService(services, day.kitchen_opens, day.kitchen_closes))}
                 >
                   Add a Service
                 </Button>
               )}
             </div>
 
-            {generalProblem && (
-              <Alert tone="warning" className="mb-2">
-                {generalProblem.message}
-              </Alert>
-            )}
-
-            {services.length === 0 ? (
-              <p className="text-sm text-text-muted">
-                No services set, so food is bookable across the whole kitchen window.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {services.map((service, index) => {
-                  const problem = problems.find(p => p.index === index)
-                  return (
-                    <div key={index} className="space-y-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Input
-                          aria-label={`${DAY_NAMES[day.day_of_week]} service ${index + 1} name`}
-                          value={service.name}
-                          placeholder="lunch"
-                          disabled={!editable}
-                          className="w-32"
-                          onChange={e => {
-                            const next = [...services]
-                            next[index] = { ...service, name: e.target.value }
-                            update(day, next)
-                          }}
-                        />
-                        <Input
-                          type="time"
-                          aria-label={`${DAY_NAMES[day.day_of_week]} service ${index + 1} start`}
-                          value={service.starts_at}
-                          disabled={!editable}
-                          className="w-32"
-                          onChange={e => {
-                            const next = [...services]
-                            next[index] = { ...service, starts_at: e.target.value }
-                            update(day, next)
-                          }}
-                        />
-                        <span className="text-sm text-text-muted">to</span>
-                        <Input
-                          type="time"
-                          aria-label={`${DAY_NAMES[day.day_of_week]} service ${index + 1} end`}
-                          value={service.ends_at}
-                          disabled={!editable}
-                          className="w-32"
-                          onChange={e => {
-                            const next = [...services]
-                            next[index] = { ...service, ends_at: e.target.value }
-                            update(day, next)
-                          }}
-                        />
-                        {editable && (
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            aria-label={`Remove ${DAY_NAMES[day.day_of_week]} service ${index + 1}`}
-                            onClick={() => update(day, services.filter((_, i) => i !== index))}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                      {problem && <p className="text-xs text-danger-fg">{problem.message}</p>}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {gaps.length > 0 && problems.length === 0 && (
-              <p className="mt-2 text-xs text-text-muted">
-                Not bookable: {gaps.join(', ')}.
-              </p>
-            )}
+            <ServiceWindowList
+              dayLabel={DAY_NAMES[day.day_of_week]}
+              services={services}
+              kitchenOpens={day.kitchen_opens}
+              kitchenCloses={day.kitchen_closes}
+              editable={editable}
+              onChange={next => update(day, next)}
+            />
           </Card>
         )
       })}
       </CardBody>
+    </>
+  )
+}
+
+/** A new service row, pre-filled with the kitchen hours so it is never blank. */
+export function withAddedService(
+  services: ServiceWindowInput[],
+  kitchenOpens: string | null,
+  kitchenCloses: string | null,
+): ServiceWindowInput[] {
+  return [
+    ...services,
+    {
+      name: services.length === 0 ? 'food service' : 'dinner',
+      starts_at: toClock(kitchenOpens),
+      ends_at: toClock(kitchenCloses),
+    },
+  ]
+}
+
+interface ServiceWindowListProps {
+  /** "Tuesday", or the date, used to give each control its screen reader name. */
+  dayLabel: string
+  services: ServiceWindowInput[]
+  kitchenOpens: string | null
+  kitchenCloses: string | null
+  editable: boolean
+  onChange: (services: ServiceWindowInput[]) => void
+}
+
+/**
+ * One day's food services as editable rows, with the problems and gaps under
+ * them. Shared by the weekly schedule and the special-date form so a split day
+ * (lunch, a break, then dinner) is entered the same way in both.
+ */
+export function ServiceWindowList({
+  dayLabel,
+  services,
+  kitchenOpens,
+  kitchenCloses,
+  editable,
+  onChange,
+}: ServiceWindowListProps) {
+  const problems = validateServiceWindows(services, kitchenOpens, kitchenCloses)
+  const gaps = describeGaps(services, kitchenOpens, kitchenCloses)
+  const generalProblem = problems.find(p => p.index === null)
+
+  return (
+    <>
+      {generalProblem && (
+        <Alert tone="warning" className="mb-2">
+          {generalProblem.message}
+        </Alert>
+      )}
+
+      {services.length === 0 ? (
+        <p className="text-sm text-text-muted">
+          No services set, so food is bookable across the whole kitchen window.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {services.map((service, index) => {
+            const problem = problems.find(p => p.index === index)
+            return (
+              <div key={index} className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Input
+                    aria-label={`${dayLabel} service ${index + 1} name`}
+                    value={service.name}
+                    placeholder="lunch"
+                    disabled={!editable}
+                    className="w-32"
+                    onChange={e => {
+                      const next = [...services]
+                      next[index] = { ...service, name: e.target.value }
+                      onChange(next)
+                    }}
+                  />
+                  <Input
+                    type="time"
+                    aria-label={`${dayLabel} service ${index + 1} start`}
+                    value={service.starts_at}
+                    disabled={!editable}
+                    className="w-32"
+                    onChange={e => {
+                      const next = [...services]
+                      next[index] = { ...service, starts_at: e.target.value }
+                      onChange(next)
+                    }}
+                  />
+                  <span className="text-sm text-text-muted">to</span>
+                  <Input
+                    type="time"
+                    aria-label={`${dayLabel} service ${index + 1} end`}
+                    value={service.ends_at}
+                    disabled={!editable}
+                    className="w-32"
+                    onChange={e => {
+                      const next = [...services]
+                      next[index] = { ...service, ends_at: e.target.value }
+                      onChange(next)
+                    }}
+                  />
+                  {editable && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      aria-label={`Remove ${dayLabel} service ${index + 1}`}
+                      onClick={() => onChange(services.filter((_, i) => i !== index))}
+                    >
+                      Remove
+                    </Button>
+                  )}
+                </div>
+                {problem && <p className="text-xs text-danger-fg">{problem.message}</p>}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {gaps.length > 0 && problems.length === 0 && (
+        <p className="mt-2 text-xs text-text-muted">
+          Not bookable: {gaps.join(', ')}.
+        </p>
+      )}
     </>
   )
 }

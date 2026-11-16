@@ -1019,60 +1019,6 @@ export default function RotaGrid({
 
   return (
     <>
-      {/* The week in figures. A figure that is good or bad news takes its tone's colour. */}
-      <StatGrid columns={4}>
-        <Stat
-          label="Status"
-          value={weekStatusLabel}
-          hint={week.published_at ? formatDateInLondon(week.published_at, { day: '2-digit', month: '2-digit', year: 'numeric' }) : undefined}
-          tone={ROTA_STAT_TONE[weekStatusTone]}
-        />
-        <Stat
-          label="Hours"
-          value={formatHours(totalScheduledHours)}
-          hint={`${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`}
-        />
-        <Stat
-          label="Open"
-          value={openShifts.length}
-          hint={openShifts.length > 0 ? 'Available' : 'None'}
-          tone={ROTA_STAT_TONE[openShiftsTone]}
-        />
-        <Stat
-          label="People"
-          value={`${scheduledEmployeeCount}/${employees.length}`}
-          hint={publishStatusDetail}
-          tone={hasPendingChanges ? ROTA_STAT_TONE[ROTA_WEEK_PUBLISH_TONE.unpublished_changes] : 'default'}
-        />
-        {periodSummary && (
-          <Stat
-            label="Wages"
-            value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
-            hint={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
-            tone={ROTA_STAT_TONE[wagesTone]}
-          />
-        )}
-        {periodSummary && (
-          <Stat
-            label="Target"
-            value={canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}
-            hint={periodSummary.payrollPeriod.label}
-          />
-        )}
-        {periodSummary && (
-          <Stat
-            label="Wage %"
-            value={wageShareVisible ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
-            hint={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
-              ? `${LABOUR_SHARE_LABEL[wageShareState]}, limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`
-              : `Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
-            tone={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
-              ? ROTA_STAT_TONE[LABOUR_SHARE_TONE[wageShareState]]
-              : 'default'}
-          />
-        )}
-      </StatGrid>
-
       <DndContext
         sensors={sensors}
         onDragStart={handleDragStart}
@@ -1578,6 +1524,60 @@ export default function RotaGrid({
           <span className="flex items-center gap-1.5"><span className="inline-block h-3 w-3 rounded-sm border border-danger-border bg-danger-soft" /> Wage % over target</span>
         </CardBody>
       </Card>
+
+      {/* The week in figures, below the schedule so the grid sits at the top of the page. A figure that is good or bad news takes its tone's colour. */}
+      <StatGrid columns={4}>
+        <Stat
+          label="Status"
+          value={weekStatusLabel}
+          hint={week.published_at ? formatDateInLondon(week.published_at, { day: '2-digit', month: '2-digit', year: 'numeric' }) : undefined}
+          tone={ROTA_STAT_TONE[weekStatusTone]}
+        />
+        <Stat
+          label="Hours"
+          value={formatHours(totalScheduledHours)}
+          hint={`${activeShifts.length} active shift${activeShifts.length === 1 ? '' : 's'}`}
+        />
+        <Stat
+          label="Open"
+          value={openShifts.length}
+          hint={openShifts.length > 0 ? 'Available' : 'None'}
+          tone={ROTA_STAT_TONE[openShiftsTone]}
+        />
+        <Stat
+          label="People"
+          value={`${scheduledEmployeeCount}/${employees.length}`}
+          hint={publishStatusDetail}
+          tone={hasPendingChanges ? ROTA_STAT_TONE[ROTA_WEEK_PUBLISH_TONE.unpublished_changes] : 'default'}
+        />
+        {periodSummary && (
+          <Stat
+            label="Wages"
+            value={canViewSpend ? formatMoney(periodSummary.weekTotals.estimatedCost) : 'Hidden'}
+            hint={canViewSpend ? `${uncostedShiftCount} uncosted` : undefined}
+            tone={ROTA_STAT_TONE[wagesTone]}
+          />
+        )}
+        {periodSummary && (
+          <Stat
+            label="Target"
+            value={canViewSalesTargets ? formatMoney(periodSummary.weekTotals.salesTarget) : 'Hidden'}
+            hint={periodSummary.payrollPeriod.label}
+          />
+        )}
+        {periodSummary && (
+          <Stat
+            label="Wage %"
+            value={wageShareVisible ? formatPercent(periodSummary.weekTotals.wagePercent) : 'Hidden'}
+            hint={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
+              ? `${LABOUR_SHARE_LABEL[wageShareState]}, limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`
+              : `Limit ${periodSummary.weekTotals.targetPercent.toFixed(1)}%`}
+            tone={wageShareVisible && periodSummary.weekTotals.wagePercent !== null
+              ? ROTA_STAT_TONE[LABOUR_SHARE_TONE[wageShareState]]
+              : 'default'}
+          />
+        )}
+      </StatGrid>
 
       {/* Shift detail modal */}
       {selectedShift && (
