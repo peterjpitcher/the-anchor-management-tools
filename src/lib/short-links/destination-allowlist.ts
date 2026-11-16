@@ -57,6 +57,37 @@ function isAllowedShortLinkDestination(value: string): boolean {
   ))
 }
 
+/**
+ * Staff-created links (the Short links screen and its UTM variants) may point at any website
+ * (owner decision, 16 November 2026). Only signed-in staff with short_links manage can reach
+ * this path, so the redirector is not an open redirect for outsiders. Still refuses anything
+ * that is not a plain web address: other schemes and addresses carrying a username or password.
+ */
+export function assertValidShortLinkDestination(value: string): string {
+  const trimmed = value.trim()
+  let parsed: URL
+  try {
+    parsed = new URL(trimmed)
+  } catch {
+    throw new Error('Short links must point to a valid web address')
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error('Short links must point to an http or https web address')
+  }
+  if (!normalizeHost(parsed.hostname)) {
+    throw new Error('Short links must point to a valid web address')
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('Short links cannot point to an address containing a username or password')
+  }
+  return trimmed
+}
+
+/**
+ * Automated paths (marketing email tracking, guest and SMS links, the API-key Meta ads route)
+ * keep the host allowlist: their destinations are not chosen by a signed-in member of staff.
+ */
 export function assertAllowedShortLinkDestination(value: string): string {
   const trimmed = value.trim()
   if (!isAllowedShortLinkDestination(trimmed)) {

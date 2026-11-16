@@ -142,16 +142,45 @@ describe('ShortLinkService', () => {
     expect(mockRpc).toHaveBeenCalled()
   })
 
-  it('rejects destinations outside the short-link allowlist', async () => {
+  it('lets staff create a short link to any website', async () => {
+    mockMaybeSingle
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: { id: 'id-ext' }, error: null })
+    mockRpcSingle.mockResolvedValue({
+      data: { short_code: 'ext123', full_url: 'https://l.the-anchor.pub/ext123' },
+      error: null,
+    })
+
+    const result = await ShortLinkService.createShortLink({
+      name: 'Supplier page',
+      destination_url: 'https://www.example.org/some/page?x=1',
+      link_type: 'custom' as any,
+      metadata: {},
+      expires_at: null,
+    })
+
+    expect(result.short_code).toBe('ext123')
+    expect(mockRpc).toHaveBeenCalledWith(
+      'create_short_link',
+      expect.objectContaining({ p_destination_url: 'https://www.example.org/some/page?x=1' }),
+    )
+  })
+
+  it.each([
+    ['javascript:alert(1)', /http or https/],
+    ['ftp://files.example.org/a', /http or https/],
+    ['not a url', /valid web address/],
+    ['https://user:pass@example.org/', /username or password/],
+  ])('refuses %s as a short link destination', async (destination, message) => {
     await expect(
       ShortLinkService.createShortLink({
         name: 'Bad Link',
-        destination_url: 'https://evil.example/phish',
+        destination_url: destination,
         link_type: 'custom' as any,
         metadata: {},
         expires_at: null,
       })
-    ).rejects.toThrow(/approved Anchor or Orange Jelly domains/)
+    ).rejects.toThrow(message)
     expect(mockRpc).not.toHaveBeenCalled()
   })
 

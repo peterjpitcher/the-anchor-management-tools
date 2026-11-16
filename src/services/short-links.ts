@@ -3,7 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { z } from 'zod';
 import { buildShortLinkUrl } from '@/lib/short-links/base-url';
-import { assertAllowedShortLinkDestination } from '@/lib/short-links/destination-allowlist';
+import { assertAllowedShortLinkDestination, assertValidShortLinkDestination } from '@/lib/short-links/destination-allowlist';
 import { resolveShortLinkName } from '@/lib/short-links/names';
 import type { ShortLinkVariantChannel } from '@/lib/short-links/variants';
 import {
@@ -434,7 +434,7 @@ export class ShortLinkService {
     already_exists: boolean;
   }> {
     const supabase = await createClient();
-    const destinationUrl = assertAllowedShortLinkDestination(data.destination_url);
+    const destinationUrl = assertValidShortLinkDestination(data.destination_url);
     const linkName = resolveShortLinkName(data.name, destinationUrl);
 
     const existing = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
@@ -587,7 +587,7 @@ export class ShortLinkService {
 
   static async updateShortLink(input: UpdateShortLinkInput) {
     const supabase = createAdminClient();
-    const destinationUrl = assertAllowedShortLinkDestination(input.destination_url);
+    const destinationUrl = assertValidShortLinkDestination(input.destination_url);
     const linkName = resolveShortLinkName(input.name, destinationUrl);
 
     const conflict = await this.findShortLinkByDestinationUrl(supabase, destinationUrl);
@@ -885,7 +885,7 @@ export class ShortLinkService {
 
     if (parentError || !parent) throw new Error('Parent link not found');
 
-    const utmDestination = assertAllowedShortLinkDestination(
+    const utmDestination = assertValidShortLinkDestination(
       buildUtmUrl(parent.destination_url, channel, parent.name || parent.id)
     );
     const variantName = buildVariantName(parent.name || `/${parent.id.slice(0, 6)}`, channel.label);
