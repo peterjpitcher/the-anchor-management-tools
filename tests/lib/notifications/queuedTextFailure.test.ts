@@ -62,6 +62,42 @@ describe('a queued text that fails for good', () => {
     expect(db.writes).toEqual([])
   })
 
+  it('marks the delivery for the failed job\'s booking, not the newest one for the guest', async () => {
+    // Two confirmations for two event bookings, queued in the same minute; the earlier one fails.
+    seed([
+      delivery({ id: 'first', template_key: 'event_payment_confirmed', created_at: '2026-11-13T21:44:40.100Z', metadata: { event_booking_id: 'booking-a' } }),
+      delivery({ id: 'second', template_key: 'event_payment_confirmed', created_at: '2026-11-13T21:44:41.500Z', metadata: { event_booking_id: 'booking-b' } }),
+    ])
+
+    const marked = await markQueuedTextUndelivered({
+      ...failure,
+      templateKey: 'event_payment_confirmed',
+      jobMetadata: { template_key: 'event_payment_confirmed', event_booking_id: 'booking-a' },
+    })
+
+    expect(marked).toBe(true)
+    const rows = db.rows('notification_deliveries')
+    expect(rows.find((row) => row.id === 'first')?.final_status).toBe('failed')
+    expect(rows.find((row) => row.id === 'second')?.final_status).toBe('sent')
+  })
+
+  it('touches nothing when every delivery in the window names a different booking', async () => {
+    seed([delivery({ metadata: { table_booking_id: 'booking-b' } })])
+
+    const marked = await markQueuedTextUndelivered({ ...failure, jobMetadata: { table_booking_id: 'booking-a' } })
+
+    expect(marked).toBe(false)
+    expect(db.writes).toEqual([])
+  })
+
+  it('takes a delivery that names no booking when nothing names this one', async () => {
+    // The table booking confirmation's delivery row carries no booking id.
+    seed([delivery()])
+
+    expect(await markQueuedTextUndelivered({ ...failure, jobMetadata: { table_booking_id: 'booking-a' } })).toBe(true)
+    expect(db.rows('notification_deliveries')[0].final_status).toBe('failed')
+  })
+
   it('does nothing without a customer, a template or a queue time', async () => {
     seed([delivery()])
 

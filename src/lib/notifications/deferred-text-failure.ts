@@ -15,8 +15,31 @@ import { recordNotificationAttempt, updateNotificationDelivery } from '@/lib/not
  * The job does not carry the delivery's id, so the delivery is found by what does identify it:
  * the same customer and template, a text as the channel that "reached" the guest, written in
  * the moments before the job was queued. A delivery whose email got through is never matched,
- * because its channel is email. Never throws: the job has already failed.
+ * because its channel is email.
+ *
+ * Two texts with one template can be queued for one guest in the same minute (confirmations
+ * for two bookings). The job's booking ids settle which is which: a delivery that names the
+ * same booking is the one, and a delivery that names a different booking is never touched.
+ * Some deliveries name no booking; one of those is taken only when nothing names this one.
+ * Never throws: the job has already failed.
  */
+const BOOKING_KEYS = ['event_booking_id', 'table_booking_id', 'private_booking_id', 'parking_booking_id'] as const
+
+type Candidate = { id: string; metadata: Record<string, unknown> | null }
+
+/** 'same' when it names one of the job's bookings, 'other' when it names a different one. */
+function bookingMatch(candidate: Candidate, job: Record<string, unknown>): 'same' | 'other' | 'unnamed' {
+  let match: 'same' | 'other' | 'unnamed' = 'unnamed'
+  for (const key of BOOKING_KEYS) {
+    const wanted = job[key]
+    const found = candidate.metadata?.[key]
+    if (typeof wanted !== 'string' || !wanted || typeof found !== 'string' || !found) continue
+    if (found !== wanted) return 'other'
+    match = 'same'
+  }
+  return match
+}
+
 const BEFORE_QUEUE_MS = 2 * 60 * 1000
 const AFTER_QUEUE_MS = 10 * 1000
 
@@ -26,6 +49,8 @@ export async function markQueuedTextUndelivered(input: {
   /** When the job was queued (its created_at). */
   queuedAt: string
   error: string
+  /** The job's metadata, for the booking ids that tell two deliveries apart. */
+  jobMetadata?: Record<string, unknown> | null
 }): Promise<boolean> {
   if (!input.customerId || !input.templateKey) return false
   const queuedMs = Date.parse(input.queuedAt)
@@ -42,8 +67,7 @@ export async function markQueuedTextUndelivered(input: {
       .gte('created_at', new Date(queuedMs - BEFORE_QUEUE_MS).toISOString())
       .lte('created_at', new Date(queuedMs + AFTER_QUEUE_MS).toISOString())
       .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .limit(20)
     if (error) {
       logger.error('Could not look up the delivery behind a failed queued text', {
         error: new Error(error.message),
@@ -51,7 +75,12 @@ export async function markQueuedTextUndelivered(input: {
       })
       return false
     }
-    const delivery = data as { id: string; metadata: Record<string, unknown> | null } | null
+    const job = input.jobMetadata ?? {}
+    const candidates = ((data ?? []) as Candidate[])
+      .map((candidate) => ({ candidate, match: bookingMatch(candidate, job) }))
+      .filter((entry) => entry.match !== 'other')
+    // Newest first already; a delivery that names this booking beats one that names none.
+    const delivery = (candidates.find((entry) => entry.match === 'same') ?? candidates[0])?.candidate ?? null
     if (!delivery) return false
 
     const { count } = await (client.from('notification_attempts') as any)

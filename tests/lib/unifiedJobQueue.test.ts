@@ -629,6 +629,7 @@ describe('UnifiedJobQueue failures a retry cannot fix (BK-214)', () => {
       templateKey: 'table_booking_confirmed',
       queuedAt: '2026-11-13T21:44:41.871Z',
       error: 'Invalid phone number format',
+      jobMetadata: { template_key: 'table_booking_confirmed' },
     })
   })
 

@@ -1147,6 +1147,7 @@ export class UnifiedJobQueue {
           templateKey: typeof metadata.template_key === 'string' ? metadata.template_key : null,
           queuedAt: job.created_at,
           error: errorMessage,
+          jobMetadata: metadata,
         })
       }
 
