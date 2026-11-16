@@ -140,4 +140,35 @@ describe('communications fallback-rate alert', () => {
 
     expect(report.issues.map((issue) => issue.key)).not.toContain('fallback_rate')
   })
+
+  it('raises an alert when emails are failing to send', async () => {
+    // 13 and 14 November 2026: about 750 sends failed while every figure here stayed at zero.
+    const seen = buildClient((table, filters) =>
+      table === 'email_messages' && hasFilter(filters, 'status', 'eq', 'failed') ? 3 : 0
+    )
+
+    const { runCommunicationsHealthCheck } = await import('@/lib/communications/monitoring')
+    const report = await runCommunicationsHealthCheck()
+
+    const failedQuery = seen.find(
+      (entry) => entry.table === 'email_messages' && hasFilter(entry.filters, 'status', 'eq', 'failed')
+    )
+    expect(hasFilter(failedQuery!.filters, 'direction', 'eq', 'outbound')).toBe(true)
+    expect(hasFilter(failedQuery!.filters, 'created_at', 'gte')).toBe(true)
+    expect(report.metrics.failedEmailSends24h).toBe(3)
+    expect(report.issues).toContainEqual(
+      expect.objectContaining({ key: 'email_send_failures', count: 3, threshold: 3 })
+    )
+  })
+
+  it('stays quiet about a couple of failed sends', async () => {
+    buildClient((table, filters) =>
+      table === 'email_messages' && hasFilter(filters, 'status', 'eq', 'failed') ? 2 : 0
+    )
+
+    const { runCommunicationsHealthCheck } = await import('@/lib/communications/monitoring')
+    const report = await runCommunicationsHealthCheck()
+
+    expect(report.issues.find((issue) => issue.key === 'email_send_failures')).toBeUndefined()
+  })
 })

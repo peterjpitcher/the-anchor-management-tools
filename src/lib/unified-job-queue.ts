@@ -204,7 +204,8 @@ export function isNonRetryableJobError(message: string): boolean {
   return NON_RETRYABLE_JOB_ERRORS.some((pattern) => pattern.test(message))
 }
 
-class FatalSmsSafetyError extends Error {
+/** Exported for tests: a failure that means SMS sending must stop, and whether the text went. */
+export class FatalSmsSafetyError extends Error {
   code: FatalSmsSafetyCode
   smsSent: boolean
 
@@ -1131,6 +1132,22 @@ export class UnifiedJobQueue {
             message: 'Failed to persist job failure state: no row updated',
           }
         }
+      }
+
+      // A queued text that has now failed for good was recorded as sent when it was queued.
+      // Put the guest's delivery right, so staff see a message that reached nobody. Not when
+      // the failure is only that the text went and could not be logged: the guest has it.
+      if (!shouldRetry && job.type === 'send_sms' && fatalError?.smsSent !== true) {
+        const payload = (job.payload ?? {}) as Record<string, unknown>
+        const metadata = (typeof payload.metadata === 'object' && payload.metadata !== null ? payload.metadata : {}) as Record<string, unknown>
+        const rawCustomerId = payload.customer_id ?? payload.customerId
+        const { markQueuedTextUndelivered } = await import('@/lib/notifications/deferred-text-failure')
+        await markQueuedTextUndelivered({
+          customerId: typeof rawCustomerId === 'string' && rawCustomerId.trim() ? rawCustomerId.trim() : null,
+          templateKey: typeof metadata.template_key === 'string' ? metadata.template_key : null,
+          queuedAt: job.created_at,
+          error: errorMessage,
+        })
       }
 
       if (persistenceFatal) {

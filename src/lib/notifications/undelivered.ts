@@ -32,6 +32,7 @@ const REASON_LABELS: Record<string, string> = {
   no_channel: 'No usable email and no mobile that can take texts',
   duplicate_check_unavailable: 'Not sent: the email log could not be read, so nothing was sent in case it had gone already',
   email_and_sms_failed: 'Email and text both failed',
+  queued_text_failed: 'The text was queued (held for quiet hours) and then could not be delivered',
 }
 
 type DeliveryRow = {

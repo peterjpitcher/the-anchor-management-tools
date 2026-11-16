@@ -153,7 +153,7 @@ export function buildSigningCompletedEmail(input: {
 
 /** To the staff member who sent it: someone signed, declined, or the request lapsed. */
 export function buildSigningStaffNoticeEmail(input: {
-  outcome: 'completed' | 'declined' | 'expired'
+  outcome: 'completed' | 'declined' | 'expired' | 'address_blocked'
   title: string
   /** Who the document is about, such as the employee or the booking's customer. */
   subjectLabel: string
@@ -166,6 +166,7 @@ export function buildSigningStaffNoticeEmail(input: {
     completed: `"${input.title}" for ${input.subjectLabel} is fully signed.`,
     declined: `${input.partyName ?? 'A signer'} declined "${input.title}" for ${input.subjectLabel}.`,
     expired: `"${input.title}" for ${input.subjectLabel} was not signed in time and has expired.`,
+    address_blocked: `We cannot email ${input.partyName ?? 'a signer'} about "${input.title}" for ${input.subjectLabel}, and it is still not signed.`,
   }[input.outcome]
   const detail = {
     completed: 'The signed copy, with its signing record, is on the record.',
@@ -173,11 +174,14 @@ export function buildSigningStaffNoticeEmail(input: {
       ? `The reason they gave: ${input.declineReason}`
       : 'They did not give a reason.',
     expired: 'Send it again from the record if it is still needed.',
+    address_blocked:
+      'Their address bounced, or they marked one of our emails as spam, so no reminder can be sent and none will be tried again. Ring them, or use Sign in Person on the record.',
   }[input.outcome]
   const subject = {
     completed: `Signed: ${input.title} (${input.subjectLabel})`,
     declined: `Declined: ${input.title} (${input.subjectLabel})`,
     expired: `Not signed: ${input.title} (${input.subjectLabel})`,
+    address_blocked: `Cannot email the signer: ${input.title} (${input.subjectLabel})`,
   }[input.outcome]
 
   return {

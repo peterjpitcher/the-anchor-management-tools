@@ -124,14 +124,22 @@ describe('sendEmail says why a send was refused', () => {
     })
 
     it('a refused key or a rate limit carries the status', async () => {
-      for (const statusCode of [401, 403, 429]) {
-        resendSend.mockResolvedValue({ data: null, error: { name: 'restricted_api_key', statusCode, message: 'refused' } })
-        const { sendEmail } = await import('@/lib/email/emailService')
+      // A rate limit is asked again after a short wait, so the clock is faked.
+      vi.useFakeTimers()
+      try {
+        for (const statusCode of [401, 403, 429]) {
+          resendSend.mockResolvedValue({ data: null, error: { name: 'restricted_api_key', statusCode, message: 'refused' } })
+          const { sendEmail } = await import('@/lib/email/emailService')
 
-        const result = await sendEmail({ ...message, provider: 'resend' })
+          const pending = sendEmail({ ...message, provider: 'resend' })
+          await vi.runAllTimersAsync()
+          const result = await pending
 
-        expect(result).toMatchObject({ success: false, providerStatus: statusCode })
-        expect(result.code).toBeUndefined()
+          expect(result).toMatchObject({ success: false, providerStatus: statusCode })
+          expect(result.code).toBeUndefined()
+        }
+      } finally {
+        vi.useRealTimers()
       }
     })
 

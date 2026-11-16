@@ -10,6 +10,7 @@ import { finaliseSigningDocument, resendSigningLink } from './service'
 import { findSubjectClosure } from './subject-state'
 import { describeSigningSubject } from './subjects'
 import {
+  SIGNING_ADDRESS_BLOCKED,
   SIGNING_OPEN_STATUSES,
   SIGNING_REMINDER_DAYS,
   type SigningDocumentRow,
@@ -27,6 +28,8 @@ const DAY_MS = 24 * 60 * 60 * 1000
 
 export interface SigningReminderRun {
   remindersSent: number
+  /** Signers whose address we cannot email: staff were told once and reminders stopped. */
+  addressBlocked: number
   /** Requests withdrawn because the record they belong to no longer needs signing. */
   withdrawn: number
   /** Lines added to the trail for a request that was closed without one. */
@@ -48,7 +51,7 @@ export function remindersDue(sentAt: string, now: Date): number {
 
 export async function runSigningReminders(now: Date = new Date()): Promise<SigningReminderRun> {
   const admin = createAdminClient()
-  const run: SigningReminderRun = { remindersSent: 0, withdrawn: 0, trailRepaired: 0, expired: 0, finalised: 0, errors: [] }
+  const run: SigningReminderRun = { remindersSent: 0, addressBlocked: 0, withdrawn: 0, trailRepaired: 0, expired: 0, finalised: 0, errors: [] }
   const note = (what: string, error: unknown): void => {
     const message = error instanceof Error ? error.message : String(error)
     run.errors.push(`${what}: ${message}`)
@@ -127,16 +130,27 @@ export async function runSigningReminders(now: Date = new Date()): Promise<Signi
     try {
       const { data: parties, error } = await admin
         .from('signing_parties')
-        .select('id, email, status, reminder_count, role')
+        .select('id, name, email, status, reminder_count, role')
         .eq('document_id', document.id)
         .eq('status', 'pending')
       if (error) throw new Error(error.message)
-      for (const party of (parties ?? []) as Array<Pick<SigningPartyRow, 'id' | 'email' | 'status' | 'reminder_count' | 'role'>>) {
+      for (const party of (parties ?? []) as BlockablePartyRow[]) {
         if (!party.email || party.role === 'company' || party.reminder_count >= due) continue
         try {
           await resendSigningLink({ partyId: party.id, userId: null, isReminder: true })
           run.remindersSent += 1
         } catch (error) {
+          if (isAddressBlocked(error)) {
+            // Tomorrow's answer would be the same. Tell whoever sent it, once, and stop trying:
+            // a person has to reach this signer another way.
+            try {
+              await stopRemindingBlockedAddress(admin, document, party, now)
+              run.addressBlocked += 1
+            } catch (blockedError) {
+              note(`telling staff that ${party.id} cannot be emailed`, blockedError)
+            }
+            continue
+          }
           note(`reminding ${party.id}`, error)
         }
       }
@@ -229,6 +243,64 @@ export async function runSigningReminders(now: Date = new Date()): Promise<Signi
     }
   }
   return run
+}
+
+type BlockablePartyRow = Pick<SigningPartyRow, 'id' | 'name' | 'email' | 'status' | 'reminder_count' | 'role'>
+
+/** Read by its code, not its class: the error crosses a module the tests replace. */
+function isAddressBlocked(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === SIGNING_ADDRESS_BLOCKED
+}
+
+/**
+ * A signer whose address is on the suppression list (it bounced, or they marked one of our
+ * emails as spam) cannot be reminded, today or on any later day. The job used to try every
+ * morning and report a failure each time, until the request expired a month on.
+ *
+ * Whoever sent the document is told, once, that it is unsigned and the signer cannot be
+ * emailed. Only when that notice has gone is the signer marked as fully reminded, so a notice
+ * that fails is tried again tomorrow and nobody is dropped in silence. No line goes on the
+ * signing trail: no reminder was sent.
+ */
+async function stopRemindingBlockedAddress(
+  admin: ReturnType<typeof createAdminClient>,
+  document: SigningDocumentRow,
+  party: BlockablePartyRow,
+  now: Date
+): Promise<void> {
+  let to: string | null = null
+  if (document.created_by) {
+    const { data } = await admin.auth.admin.getUserById(document.created_by)
+    to = data?.user?.email ?? null
+  }
+  // Nobody sent it (the app made it), or their address could not be read: the alert inbox hears.
+  to = to ?? process.env.CRON_ALERT_EMAIL ?? null
+  if (!to) throw new Error('there is nobody to tell: no sender and no alert inbox')
+
+  const subject = await describeSigningSubject(document)
+  const email = buildSigningStaffNoticeEmail({
+    outcome: 'address_blocked',
+    title: document.title,
+    subjectLabel: subject.label,
+    partyName: party.name,
+    recordUrl: `${getAppUrl()}${subject.path}`,
+  })
+  const result = await sendEmail({
+    to,
+    subject: email.subject,
+    html: email.html,
+    text: email.text,
+    commType: 'signing_staff_notice',
+    metadata: { signing_document_id: document.id, signing_party_id: party.id },
+  })
+  if (!result.success) throw new Error(`notice not sent: ${result.error ?? 'unknown error'}`)
+
+  const { error } = await admin
+    .from('signing_parties')
+    .update({ reminder_count: SIGNING_REMINDER_DAYS.length, updated_at: now.toISOString() })
+    .eq('id', party.id)
+    .eq('status', 'pending')
+  if (error) throw new Error(`staff were told, but the reminders could not be stopped: ${error.message}`)
 }
 
 async function notifySenderOfExpiry(admin: ReturnType<typeof createAdminClient>, document: SigningDocumentRow): Promise<void> {

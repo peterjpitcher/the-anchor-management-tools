@@ -43,8 +43,15 @@ vi.mock('@/lib/sms/promo-context', () => ({
   backfillSmsPromoContextMessageId: promoContextMocks.mockedBackfillSmsPromoContextMessageId,
 }))
 
+const queuedTextMocks = vi.hoisted(() => ({
+  mockedMarkQueuedTextUndelivered: vi.fn(),
+}))
+vi.mock('@/lib/notifications/deferred-text-failure', () => ({
+  markQueuedTextUndelivered: queuedTextMocks.mockedMarkQueuedTextUndelivered,
+}))
+
 import { createAdminClient } from '@/lib/supabase/admin'
-import { UnifiedJobQueue, isNonRetryableJobError } from '@/lib/unified-job-queue'
+import { FatalSmsSafetyError, UnifiedJobQueue, isNonRetryableJobError } from '@/lib/unified-job-queue'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -562,7 +569,8 @@ describe('UnifiedJobQueue failures a retry cannot fix (BK-214)', () => {
     vi.clearAllMocks()
   })
 
-  async function failJobWith(message: string) {
+  async function failJobWith(failure: string | Error) {
+    const message = typeof failure === 'string' ? failure : failure.message
     const updatePayloads: any[] = []
     const maybeSingle = vi
       .fn()
@@ -583,19 +591,19 @@ describe('UnifiedJobQueue failures a retry cannot fix (BK-214)', () => {
     mockedCreateAdminClient.mockResolvedValue({ from })
 
     const queue = UnifiedJobQueue.getInstance()
-    ;(queue as any).executeJob = vi.fn().mockRejectedValue(new Error(message))
+    ;(queue as any).executeJob = vi.fn().mockRejectedValue(typeof failure === 'string' ? new Error(message) : failure)
 
     await (queue as any).processJob({
       id: 'job-9',
       type: 'send_sms',
-      payload: { to: '07', message: 'Hello', customer_id: 'customer-9' },
+      payload: { to: '07', message: 'Hello', customer_id: 'customer-9', metadata: { template_key: 'table_booking_confirmed' } },
       status: 'processing',
       priority: 0,
       attempts: 1,
       max_attempts: 3,
       scheduled_for: new Date().toISOString(),
       processing_token: 'token-9',
-      created_at: new Date().toISOString(),
+      created_at: '2026-11-13T21:44:41.871Z',
       updated_at: new Date().toISOString(),
     })
 
@@ -610,6 +618,39 @@ describe('UnifiedJobQueue failures a retry cannot fix (BK-214)', () => {
   it('still retries an ordinary failure', async () => {
     const failure = await failJobWith('Provider timeout')
     expect(failure).toMatchObject({ status: 'pending', error_message: 'Provider timeout' })
+  })
+
+  it('marks the guest message undelivered when a queued text fails for good', async () => {
+    // Queued as "sent"; on 13 November 2026 one failed overnight and the ledger never changed.
+    await failJobWith('Invalid phone number format')
+
+    expect(queuedTextMocks.mockedMarkQueuedTextUndelivered).toHaveBeenCalledWith({
+      customerId: 'customer-9',
+      templateKey: 'table_booking_confirmed',
+      queuedAt: '2026-11-13T21:44:41.871Z',
+      error: 'Invalid phone number format',
+    })
+  })
+
+  it('leaves the guest message alone when the text went and only its log failed', async () => {
+    const failure = await failJobWith(
+      new FatalSmsSafetyError({
+        code: 'logging_failed',
+        message: 'SMS sent but message persistence failed (logging_failed)',
+        smsSent: true,
+      })
+    )
+
+    // Failed for good, with no retry, yet the guest has the text.
+    expect(failure).toMatchObject({ status: 'failed' })
+
+    expect(queuedTextMocks.mockedMarkQueuedTextUndelivered).not.toHaveBeenCalled()
+  })
+
+  it('leaves the guest message alone while the text will be tried again', async () => {
+    await failJobWith('Provider timeout')
+
+    expect(queuedTextMocks.mockedMarkQueuedTextUndelivered).not.toHaveBeenCalled()
   })
 
   it('recognises the failures a retry cannot fix, and only those', () => {
