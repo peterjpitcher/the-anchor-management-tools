@@ -29,15 +29,16 @@ export interface EventChecklistItem extends EventChecklistDefinition {
 
 const EVENT_LAUNCH_OFFSET_DAYS = -56
 
+// Printed materials are not a task: the artwork is printed once it is uploaded to the event
+// (owner decision, 16 November 2026). Old `design_table_talkers` rows are ignored.
 export const EVENT_CHECKLIST_DEFINITIONS: EventChecklistDefinition[] = [
   { key: 'write_event_brief', label: 'Update All Event Details and Publish', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Admin', required: true, order: 0 },
-  { key: 'design_table_talkers', label: 'Design Printed Materials', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Print File', required: true, order: 1 },
-  { key: 'create_facebook_event', label: 'Create Facebook Event', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Facebook', required: true, order: 2 },
-  { key: 'add_google_business_post', label: 'Add GBP Event Post', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Google', required: true, order: 3 },
-  { key: 'schedule_social_content', label: 'Schedule Social Posts', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 4 },
-  { key: 'schedule_event_email', label: 'Schedule Event Email', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Email', required: true, order: 5 },
-  { key: 'schedule_stories', label: 'Scheduled Stories', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 6 },
-  { key: 'send_whatsapp_reminder', label: 'WhatsApp Reminder (3 Days Before)', offsetDays: -3, channel: 'WhatsApp', required: true, order: 7 }
+  { key: 'create_facebook_event', label: 'Create Facebook Event', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Facebook', required: true, order: 1 },
+  { key: 'add_google_business_post', label: 'Add GBP Event Post', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Google', required: true, order: 2 },
+  { key: 'schedule_social_content', label: 'Schedule Social Posts', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 3 },
+  { key: 'schedule_event_email', label: 'Schedule Event Email', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'Email', required: true, order: 4 },
+  { key: 'schedule_stories', label: 'Scheduled Stories', offsetDays: EVENT_LAUNCH_OFFSET_DAYS, channel: 'FB/IG', required: true, order: 5 },
+  { key: 'send_whatsapp_reminder', label: 'WhatsApp Reminder (3 Days Before)', offsetDays: -3, channel: 'WhatsApp', required: true, order: 6 }
 ]
 
 const EVENT_CHECKLIST_TOTAL_TASKS = EVENT_CHECKLIST_DEFINITIONS.length

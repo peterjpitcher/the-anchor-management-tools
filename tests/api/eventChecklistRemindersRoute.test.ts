@@ -64,7 +64,7 @@ describe('GET /api/cron/event-checklist-reminders', () => {
 
     const response = await run()
 
-    expect(await response.json()).toMatchObject({ success: true, message: 'Nothing overdue', dueToday: 7 })
+    expect(await response.json()).toMatchObject({ success: true, message: 'Nothing overdue', dueToday: 6 })
     expect(sendEmail).not.toHaveBeenCalled()
   })
 
@@ -81,7 +81,7 @@ describe('GET /api/cron/event-checklist-reminders', () => {
 
     const response = await run()
 
-    expect(await response.json()).toMatchObject({ success: true, sent: true, overdue: 7, dueToday: 8 })
+    expect(await response.json()).toMatchObject({ success: true, sent: true, overdue: 6, dueToday: 7 })
     expect(sendEmail).toHaveBeenCalledTimes(1)
     const [options] = vi.mocked(sendEmail).mock.calls[0] as unknown as [{ text: string }]
     expect(options.text).toContain('Bonfire Night')
