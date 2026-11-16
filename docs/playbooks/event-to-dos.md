@@ -83,7 +83,7 @@ Google has not yet approved API access to the Business Profile (reapplication re
 
 Each event gets one guest email, sent 7 days before the event. It goes through the app's marketing campaigns, which check content, banned claims, closure claims and the sending cap, and leave out guests who have already booked.
 
-**Is it already done?** Run `marketing-campaigns.listMarketingCampaigns({})` and look for a campaign whose `event_id` is this event, or whose name starts with the event's name. If it is `scheduled` or `completed`, tick. The full list is large: search the result rather than reading it.
+**Is it already done?** Run `marketing-campaigns.listMarketingCampaigns({ search: '<part of the event name>', pageSize: 200 })` and look for a campaign whose `eventId` is this event. Without `search` the action returns only the newest 25 campaigns, so an older event email would be missed and a duplicate made. If one is `scheduled` or `completed` and its `audienceType` is `customer`, tick.
 
 1. **Content:** start from the nearest earlier event of the same kind in `src/lib/email/marketing/campaigns/<event>-<year>-guests.json` (for example `christmas-jackpot-cash-bingo-2026-guests.json` for a Cash Bingo night). Rewrite it for this event: name, date and weekday, times, price (the online price and the door price where they differ) and image. Link only to `https://www.the-anchor.pub/events/<slug>`: one event link is how the app knows which event the email promotes and skips guests who have booked.
 2. **Names, following the existing pattern:**
@@ -91,14 +91,17 @@ Each event gets one guest email, sent 7 days before the event. It goes through t
    - subject: `<Event name> on <Weekday D Month>`
    - preheader: one line with the price and what the night is
    - `utmCampaign`: `<event-name-slug>-<YYYY-MM-DD>`
-3. **Draft:** `marketing-campaigns.lintMarketingCampaignContent(content)`, then `marketing-campaigns.createMarketingCampaign({ name, subject, preheader, content, utmCampaign })`. A draft sends nothing.
+3. **Draft it with a script, never with `createMarketingCampaign` through MCP.** That action has no audience setting, and the service makes every one-off campaign a **business** email by default, so an event email made that way would go to business contacts and miss the guests (Peter's test email would not show it). Every guest event email so far was made by a one-off script calling `createCampaign` with `audienceType: 'customer'`. Copy `scripts/one-off/create-autumn-winter-event-campaigns-2026.ts` to `scripts/one-off/create-<event-slug>-campaign.ts`, keep only this event in its plan list, and run it:
+   - first with no flags (`npx tsx scripts/one-off/create-<event-slug>-campaign.ts`): a dry run that validates, renders and prints the links, send time and guest audience size; set `CAMPAIGN_PREVIEW_DIR` to get an HTML preview;
+   - then with `RUN_EVENT_CAMPAIGNS_MUTATION=true` only, which creates the draft. Do not set `SCHEDULE_EVENT_CAMPAIGNS` here: scheduling waits for Peter's yes. A draft sends nothing.
+   Then confirm with `marketing-campaigns.getMarketingCampaign(id)` that `audienceType` is `customer`. If it is not, stop and tell Peter.
 4. **Test:** `marketing-campaigns.sendMarketingTestEmail(id)` sends it to Peter's own address only.
 5. **Show Peter** the subject, preheader and send time, and point him at the test email. Wait for his yes.
 6. **Schedule:** `marketing-campaigns.scheduleMarketingCampaign(id, { scheduledFor })`. Send 7 days before the event, on the same weekday: **09:00 London for a midweek event, 12:00 London for a Friday or Saturday one** (the pattern every event email has used; for a Sunday event, ask Peter). Write the offset out: `+00:00` from the last Sunday of October to the last Sunday of March, `+01:00` in British Summer Time. Example: Christmas Jackpot, Wednesday 16 December 2026, is `2026-12-09T09:00:00+00:00`.
-7. **Check:** `marketing-campaigns.getMarketingCampaign(id)` shows `scheduled` at the right time.
+7. **Check:** `marketing-campaigns.getMarketingCampaign(id)` shows `scheduled` at the right time, still with `audienceType` `customer`.
 8. **Tick** `schedule_event_email`.
 
-The live campaign is the source of truth. Committing the JSON to the repository keeps a record but is optional. To change an email that is already scheduled, see "Changing a scheduled email" below.
+The live campaign is the source of truth. Commit the content JSON and the script afterwards in a small PR so the record matches. To change an email that is already scheduled, see "Changing a scheduled email" below.
 
 ## Part 5: Peter's tasks (social posts, stories, WhatsApp)
 
