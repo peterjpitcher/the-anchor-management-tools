@@ -230,8 +230,9 @@ export async function buildGuestShortLink(input: GuestShortLinkInput): Promise<G
 
     return { url: result.full_url, shortened: true }
   } catch (error) {
-    // Includes assertAllowedShortLinkDestination throwing on an off-allowlist
-    // host, which is a deliberate refusal rather than an outage.
+    // Includes assertAllowedShortLinkDestination (inside createShortLinkInternal)
+    // throwing on an off-allowlist host, which is a deliberate refusal rather
+    // than an outage.
     return refuse(longUrl, 'short_link_creation_failed', input, error)
   }
 }
