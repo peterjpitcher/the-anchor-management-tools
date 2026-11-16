@@ -19,6 +19,7 @@ Use this index to find the canonical documentation for The Anchor Management Too
 - [Main menu items](./reports/main-menu-items.md) – generated active menu item copy.
 
 ## Playbooks
+- [Event to-dos](./playbooks/event-to-dos.md): who does each task on the events to-do list, how Claude does the details check, Facebook event, Google post and event email, and how tasks are ticked off.
 - [Menu item changes](./playbooks/menu-item-changes.md): how to add a menu item (app, website, print, till, Google) and how to take one off without losing its history.
 
 ## Development Workflow
