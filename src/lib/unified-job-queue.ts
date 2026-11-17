@@ -48,6 +48,7 @@ export type JobType =
   | 'checklist_email_outbox_process'
   | 'checklist_retention_purge'
   | 'notification_delayed_fallback'
+  | 'send_staff_alert_sms'
 
 const SUPPORTED_JOB_TYPES: JobType[] = [
   'send_sms',
@@ -73,6 +74,7 @@ const SUPPORTED_JOB_TYPES: JobType[] = [
   'checklist_email_outbox_process',
   'checklist_retention_purge',
   'notification_delayed_fallback',
+  'send_staff_alert_sms',
 ]
 
 const STALE_JOB_MINUTES = Number.isFinite(Number(process.env.JOB_QUEUE_STALE_MINUTES))
@@ -257,8 +259,8 @@ export interface JobOptions {
 }
 
 /**
- * Returned by a job handler that has to run again later rather than finish now: today only the
- * delayed fallback, which waits out SMS quiet hours. The queue puts the same row back to pending
+ * Returned by a job handler that has to run again later rather than finish now: the delayed
+ * fallback and a held staff alert text, both of which wait out SMS quiet hours. The queue puts the same row back to pending
  * at `runAt`. Keeping the row keeps its unique key, so a repeat enqueue finds the waiting job
  * instead of adding a second one, and the wait is not counted against the job's attempts.
  */
@@ -1562,6 +1564,17 @@ export class UnifiedJobQueue {
         const outcome = await runDelayedFallbackJob({ deliveryId: payload.deliveryId })
         // Inside quiet hours the job waits for the morning instead of handing sendSMS a text to
         // hold, so the text is rebuilt and checked again when it can actually go.
+        if (outcome.outcome === 'deferred') {
+          return new JobReschedule(new Date(outcome.runAt), outcome)
+        }
+        return outcome
+      }
+
+      case 'send_staff_alert_sms': {
+        // A text to a member of staff held over quiet hours (src/lib/sms/staff-alert.ts). Staff
+        // numbers have no customer record, so the send_sms job, which needs one, cannot carry it.
+        const { runStaffAlertSmsJob } = await import('@/lib/sms/staff-alert')
+        const outcome = await runStaffAlertSmsJob(payload)
         if (outcome.outcome === 'deferred') {
           return new JobReschedule(new Date(outcome.runAt), outcome)
         }

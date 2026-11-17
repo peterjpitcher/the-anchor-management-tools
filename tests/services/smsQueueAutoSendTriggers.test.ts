@@ -71,6 +71,8 @@ describe('every private booking text the app sends is on the auto-send list', ()
   it.each([
     'deposit_request', 'deposit_received', 'final_payment_received', 'booking_confirmed', 'booking_completed',
     'booking_expired', 'hold_extended', 'event_reminder_1d', 'setup_reminder', 'review_request',
+    // The website callback acknowledgement (src/lib/private-bookings/enquiry-texts.ts).
+    'enquiry_ack',
   ])('%s', (trigger) => {
     expect(shouldAutoSendPrivateBookingSms(trigger)).toBe(true)
   })
