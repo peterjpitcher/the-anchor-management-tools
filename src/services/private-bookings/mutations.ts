@@ -883,9 +883,11 @@ export async function createBooking(
   // SMS
   if (booking) {
     if (input.is_web_enquiry) {
-      // Deliberately silent to the customer. The only message that should reach
-      // someone who filled in the enquiry form is a human replying to it. The
-      // manager is notified separately by the calling route.
+      // Nothing is sent from here, and the deposit text stays suppressed: an enquiry is a lead.
+      // Owner decision, 17 November 2026: a website callback request gets one acknowledgement
+      // text, sent by the calling route (/api/private-booking-enquiry, through
+      // src/lib/private-bookings/enquiry-texts.ts) with the staff alerts. The manager is
+      // emailed separately by that route too.
     } else if (requiresDeposit) {
       // Owner decision, 11 September 2026: nothing about the deposit goes at booking time, by
       // any channel. The booking holds the date with its deposit "to be confirmed"

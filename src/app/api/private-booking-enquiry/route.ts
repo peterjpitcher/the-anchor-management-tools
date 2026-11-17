@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
@@ -25,6 +25,11 @@ import { OptionalCommunicationConsentSchema, consentHashPayload } from '@/lib/co
 import { applyBookingContactConsentSafe } from '@/lib/consent/apply-booking-consent-safe'
 import { parseLondonDateTimeLocal } from '@/lib/dateUtils'
 import { getApiKeyAuthState, withApiAuth } from '@/lib/api/auth'
+import { sendWebEnquiryTexts } from '@/lib/private-bookings/enquiry-texts'
+
+// The answer goes back as soon as the enquiry is saved; the callback texts run after it through
+// after(), up to three Twilio calls with retries. This gives that work room.
+export const maxDuration = 60
 
 // Guest-facing wording. Everything this schema rejects is shown to the person
 // filling in the private-hire form on the brand site, so a raw Zod string like
@@ -75,7 +80,11 @@ const EnquirySchema = z.object({
     .preprocess((value) => (typeof value === 'string' ? value.trim().toLowerCase().replace(/\s+/g, '_') : value),
       z.enum(['phone', 'email', 'text', 'no_preference'], { message: 'Please choose how you would like us to reply' }))
     .optional(),
-  communication_consent: OptionalCommunicationConsentSchema
+  communication_consent: OptionalCommunicationConsentSchema,
+  // The visitor pressed "Call me back" on the website's callback form (17 November 2026). Only
+  // then does the enquiry text them an acknowledgement and alert the staff mobiles. Every other
+  // caller sends no flag and stays silent, as before.
+  callback_requested: z.boolean().optional()
 })
 
 /** "19:00" plus 5 hours is "00:00"; the booking function marks a time at or before the start as next day. */
@@ -310,6 +319,7 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
       ...(parsed.data.room_name ? { room_name: parsed.data.room_name } : {}),
       ...(parsed.data.hire_hours ? { hire_hours: parsed.data.hire_hours } : {}),
       ...(parsed.data.reply_preference ? { reply_preference: parsed.data.reply_preference } : {}),
+      ...(parsed.data.callback_requested === true ? { callback_requested: true } : {}),
     })
     const claim = await claimIdempotencyKey(supabase, idempotencyKey, requestHash)
 
@@ -495,6 +505,30 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
         })
       }
 
+      // The callback texts go after the answer, so Twilio never holds up the website (it allows
+      // 10 seconds an attempt). A replay of this enquiry returns at claim.state === 'replay'
+      // above and never reaches here, so a retry cannot text twice. sendWebEnquiryTexts never
+      // throws, and a failed text never changes the answer.
+      const scheduleCallbackTexts = () => {
+        if (parsed.data.callback_requested !== true) return
+        const textBooking = {
+          id: booking.id as string,
+          customerId: (booking.customer_id as string | null | undefined) ?? null,
+          firstName,
+          lastName: lastName ?? null,
+          contactPhone: normalizedPhone,
+          eventType: parsed.data.event_type ?? null,
+        }
+        try {
+          after(() => sendWebEnquiryTexts(textBooking))
+        } catch (scheduleError) {
+          logger.error('Could not schedule the texts for a website callback request', {
+            error: scheduleError instanceof Error ? scheduleError : new Error(String(scheduleError)),
+            metadata: { privateBookingId: booking.id },
+          })
+        }
+      }
+
       try {
         await persistIdempotencyResponse(supabase, idempotencyKey, requestHash, responsePayload)
         claimHeld = false
@@ -507,9 +541,14 @@ async function handleEnquiry(request: NextRequest): Promise<Response> {
             idempotencyKey,
           }
         })
+        // Saved all the same, and the website shows the visitor the thank-you screen, so the texts
+        // still go. The claim was marked committed above (or, failing that, is still held), so a retry
+        // replays or is refused as in progress; it never texts again.
+        scheduleCallbackTexts()
         return NextResponse.json(responsePayload, { status: 202 })
       }
 
+      scheduleCallbackTexts()
       return NextResponse.json(responsePayload, { status: 201 })
     } finally {
       if (claimHeld && !mutationCommitted) {
