@@ -1109,3 +1109,126 @@ export async function updateInvoiceDueDate(formData: FormData) {
     return { error: getErrorMessage(error) }
   }
 }
+
+/** Longest customer reference accepted; a PO number is far shorter. */
+const INVOICE_REFERENCE_MAX_LENGTH = 100
+
+/**
+ * References starting with this belong to the OJ Projects billing run, which
+ * finds its own invoices by them (`OJ Projects 2026-10`). Renaming one would
+ * make the run lose the invoice and raise a duplicate.
+ */
+const OJ_PROJECTS_REFERENCE_PREFIX = 'oj projects'
+
+/**
+ * Change the customer's reference (their PO number) on an invoice after it has
+ * been issued.
+ *
+ * `updateInvoice` refuses anything that is not a draft. A reference is not a
+ * figure: customers often give or correct a PO number after the invoice has
+ * gone out, and their accounts team will not pay without it. An empty value
+ * clears the reference. Nothing is emailed: the copy the customer already
+ * holds keeps the old reference until the invoice is sent again.
+ *
+ * Refused on withdrawn invoices, and on OJ Projects billing invoices, whose
+ * reference is the key the billing run looks them up by.
+ *
+ * Form fields: `invoiceId` and `reference` (up to 100 characters).
+ */
+export async function updateInvoiceReference(formData: FormData) {
+  try {
+    if (!(await checkUserPermission('invoices', 'edit'))) {
+      return { error: 'You do not have permission to edit invoices' }
+    }
+
+    const invoiceId = String(formData.get('invoiceId') || '')
+    const newReference = String(formData.get('reference') || '').trim() || null
+
+    if (!invoiceId) {
+      return { error: 'Invoice ID is required' }
+    }
+    if (newReference && newReference.length > INVOICE_REFERENCE_MAX_LENGTH) {
+      return { error: `A reference can be at most ${INVOICE_REFERENCE_MAX_LENGTH} characters.` }
+    }
+    if (newReference && newReference.toLowerCase().startsWith(OJ_PROJECTS_REFERENCE_PREFIX)) {
+      return { error: 'References starting "OJ Projects" are reserved for the billing run.' }
+    }
+
+    const supabase = await createClient()
+    const [{ data: { user } }, { data: invoice, error: fetchError }] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from('invoices')
+        .select('id, invoice_number, status, reference, internal_notes')
+        .eq('id', invoiceId)
+        .is('deleted_at', null)
+        .single(),
+    ])
+
+    if (!user) return { error: 'Unauthorized' }
+    if (fetchError || !invoice) return { error: 'Invoice not found' }
+
+    if (invoice.status === 'void' || invoice.status === 'written_off') {
+      return { error: 'This invoice has been withdrawn, so its reference cannot be changed.' }
+    }
+
+    const oldReference = (invoice.reference || '').trim() || null
+    if (oldReference && oldReference.toLowerCase().startsWith(OJ_PROJECTS_REFERENCE_PREFIX)) {
+      return { error: 'This is an OJ Projects billing invoice. Its reference is set by the billing run and cannot be changed.' }
+    }
+    if (newReference === oldReference) {
+      return { error: 'That is already the reference.' }
+    }
+
+    const note = `[${getTodayIsoDate()}] Reference changed from ${oldReference ?? 'none'} to ${newReference ?? 'none'}.`
+    const internalNotes = (invoice.internal_notes || '').trim()
+      ? `${invoice.internal_notes}\n\n${note}`
+      : note
+
+    const admin = createAdminClient()
+    const update = admin
+      .from('invoices')
+      .update({
+        reference: newReference,
+        internal_notes: internalNotes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', invoiceId)
+
+    // Guarded on the reference we read, so two people editing at once cannot
+    // silently overwrite each other. A null needs `is`: `eq` never matches it.
+    const guarded = invoice.reference === null
+      ? update.is('reference', null)
+      : update.eq('reference', invoice.reference)
+
+    const { data: updated, error: updateError } = await guarded
+      .select('id, reference')
+      .maybeSingle()
+
+    if (updateError || !updated) {
+      return { error: 'The invoice changed while you were editing it. Reload and try again.' }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'invoice',
+      resource_id: invoiceId,
+      operation_status: 'success',
+      old_values: { reference: oldReference },
+      new_values: {
+        action: 'reference_changed',
+        invoice_number: invoice.invoice_number,
+        reference: newReference,
+      },
+    })
+
+    revalidatePath(`/invoices/${invoiceId}`)
+    revalidatePath('/invoices')
+
+    return { success: true, reference: updated.reference }
+  } catch (error: unknown) {
+    console.error('Error in updateInvoiceReference:', error)
+    return { error: getErrorMessage(error) }
+  }
+}

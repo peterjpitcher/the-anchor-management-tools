@@ -4648,6 +4648,21 @@
   "readOnly": false
  },
  {
+  "name": "invoices.updateInvoiceReference",
+  "module": "invoices",
+  "export": "updateInvoiceReference",
+  "params": [
+   {
+    "name": "formData",
+    "type": "FormData",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Change the customer's reference (their PO number) on an invoice after it has\nbeen issued.\n\n`updateInvoice` refuses anything that is not a draft. A reference is not a\nfigure: customers often give or correct a PO number after the invoice has\ngone out, and their accounts team will not pay without it. An empty value\nclears the reference. Nothing is emailed: the copy the customer already\nholds keeps the old reference until the invoice is sent again.\n\nRefused on withdrawn invoices, and on OJ Projects billing invoices, whose\nreference is the key the billing run looks them up by.\n\nForm fields: `invoiceId` and `reference` (up to 100 characters).",
+  "readOnly": false
+ },
+ {
   "name": "invoices.updateInvoiceStatus",
   "module": "invoices",
   "export": "updateInvoiceStatus",
