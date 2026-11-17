@@ -1133,7 +1133,10 @@ const OJ_PROJECTS_REFERENCE_PREFIX = 'oj projects'
  * Refused on withdrawn invoices, and on OJ Projects billing invoices, whose
  * reference is the key the billing run looks them up by.
  *
- * Form fields: `invoiceId` and `reference` (up to 100 characters).
+ * Form fields: `invoiceId` and `reference` (up to 100 characters). Optional
+ * `expectedReference`: the reference the caller was looking at (empty for
+ * none). When sent, the change is refused if the invoice no longer carries it,
+ * so an editor left open cannot overwrite someone else's correction.
  */
 export async function updateInvoiceReference(formData: FormData) {
   try {
@@ -1143,6 +1146,8 @@ export async function updateInvoiceReference(formData: FormData) {
 
     const invoiceId = String(formData.get('invoiceId') || '')
     const newReference = String(formData.get('reference') || '').trim() || null
+    const expectedRaw = formData.get('expectedReference')
+    const expectedReference = expectedRaw === null ? undefined : String(expectedRaw).trim() || null
 
     if (!invoiceId) {
       return { error: 'Invoice ID is required' }
@@ -1173,6 +1178,9 @@ export async function updateInvoiceReference(formData: FormData) {
     }
 
     const oldReference = (invoice.reference || '').trim() || null
+    if (expectedReference !== undefined && expectedReference !== oldReference) {
+      return { error: 'The invoice changed while you were editing it. Reload and try again.' }
+    }
     if (oldReference && oldReference.toLowerCase().startsWith(OJ_PROJECTS_REFERENCE_PREFIX)) {
       return { error: 'This is an OJ Projects billing invoice. Its reference is set by the billing run and cannot be changed.' }
     }

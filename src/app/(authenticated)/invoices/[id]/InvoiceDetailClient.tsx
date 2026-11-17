@@ -605,6 +605,9 @@ export default function InvoiceDetailClient({
       const formData = new FormData()
       formData.append('invoiceId', invoice.id)
       formData.append('reference', newReference)
+      // What this editor was showing, so a stale dialog cannot overwrite a
+      // reference someone else has corrected in the meantime.
+      formData.append('expectedReference', invoice.reference || '')
       const result = await updateInvoiceReference(formData)
       if (result.error) {
         toast.error(result.error)

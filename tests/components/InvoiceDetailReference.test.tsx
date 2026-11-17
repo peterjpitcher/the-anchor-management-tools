@@ -107,6 +107,7 @@ describe('InvoiceDetailClient reference', () => {
     const sent = mockUpdateInvoiceReference.mock.calls[0][0] as FormData
     expect(sent.get('invoiceId')).toBe('invoice-1')
     expect(sent.get('reference')).toBe('20553782')
+    expect(sent.get('expectedReference')).toBe('20520136')
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(await screen.findByText('20553782')).toBeInTheDocument()

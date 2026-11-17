@@ -180,6 +180,34 @@ describe('updateInvoiceReference', () => {
     expect(result.error).toMatch(/permission/i)
   })
 
+  it('refuses when the invoice no longer carries the reference the editor was showing', async () => {
+    // Someone else saved 20553000 while this dialog was open on 20520136.
+    mockClients(invoice({ reference: '20553000' }))
+    const result = await updateInvoiceReference(
+      form({ invoiceId: INVOICE_ID, reference: '20553782', expectedReference: '20520136' }),
+    )
+    expect(result.error).toMatch(/changed while you were editing/i)
+    expect(lastUpdate).toBeNull()
+  })
+
+  it('refuses when the editor saw no reference but one has since been added', async () => {
+    mockClients(invoice({ reference: '20553000' }))
+    const result = await updateInvoiceReference(
+      form({ invoiceId: INVOICE_ID, reference: '20553782', expectedReference: '' }),
+    )
+    expect(result.error).toMatch(/changed while you were editing/i)
+    expect(lastUpdate).toBeNull()
+  })
+
+  it('saves when the expected reference still matches', async () => {
+    mockClients(invoice())
+    const result = await updateInvoiceReference(
+      form({ invoiceId: INVOICE_ID, reference: '20553782', expectedReference: '20520136' }),
+    )
+    expect(result.error).toBeUndefined()
+    expect(lastUpdate!.reference).toBe('20553782')
+  })
+
   it('reports a concurrent edit rather than silently overwriting it', async () => {
     mockClients(invoice(), null)
     const result = await updateInvoiceReference(form({ invoiceId: INVOICE_ID, reference: '20553782' }))
