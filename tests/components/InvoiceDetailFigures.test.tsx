@@ -37,6 +37,7 @@ vi.mock('@/app/actions/invoices', () => ({
   updateInvoiceStatus: vi.fn(),
   deleteInvoice: vi.fn(),
   updateInvoiceDueDate: vi.fn(),
+  updateInvoiceReference: vi.fn(),
 }))
 
 vi.mock('@/app/actions/oj-projects/invoice-reissue', () => ({

@@ -4,7 +4,7 @@ import { invoiceBalanceDue } from '@/lib/invoices/balance'
 
 import { useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
-import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate } from '@/app/actions/invoices'
+import { createCreditNote, getInvoice, updateInvoiceStatus, deleteInvoice, updateInvoiceDueDate, updateInvoiceReference } from '@/app/actions/invoices'
 import {
   getOjInvoiceReissuePreview,
   reissueOjInvoice,
@@ -285,6 +285,9 @@ export default function InvoiceDetailClient({
   const [newDueDate, setNewDueDate] = useState('')
   const [dueDateReason, setDueDateReason] = useState('')
   const [savingDueDate, setSavingDueDate] = useState(false)
+  const [showReferenceModal, setShowReferenceModal] = useState(false)
+  const [newReference, setNewReference] = useState('')
+  const [savingReference, setSavingReference] = useState(false)
   const [copyingPayLink, setCopyingPayLink] = useState(false)
   const [showVoidConfirm, setShowVoidConfirm] = useState(false)
   // Set when voiding was refused because the invoice has linked OJ Projects items: the second
@@ -579,6 +582,48 @@ export default function InvoiceDetailClient({
       toast.error(err instanceof Error ? err.message : 'Could not update the due date')
     } finally {
       setSavingDueDate(false)
+    }
+  }
+
+  // The customer's reference (their PO number) often arrives or changes after
+  // the invoice has gone out. OJ Projects billing invoices are excluded: the
+  // billing run finds its invoices by their reference.
+  const canChangeReference =
+    canEdit &&
+    !['void', 'written_off'].includes(invoice.status) &&
+    !(invoice.reference || '').trim().toLowerCase().startsWith('oj projects')
+
+  function openReferenceModal() {
+    setNewReference(invoice.reference || '')
+    setShowReferenceModal(true)
+  }
+
+  async function handleSaveReference() {
+    if (savingReference) return
+    setSavingReference(true)
+    try {
+      const formData = new FormData()
+      formData.append('invoiceId', invoice.id)
+      formData.append('reference', newReference)
+      // What this editor was showing, so a stale dialog cannot overwrite a
+      // reference someone else has corrected in the meantime.
+      formData.append('expectedReference', invoice.reference || '')
+      const result = await updateInvoiceReference(formData)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Reference updated')
+      setShowReferenceModal(false)
+      const refreshResult = await getInvoice(invoice.id)
+      if (refreshResult.invoice) {
+        setInvoice(refreshResult.invoice)
+      }
+      router.refresh()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not update the reference')
+    } finally {
+      setSavingReference(false)
     }
   }
 
@@ -1022,6 +1067,18 @@ export default function InvoiceDetailClient({
                 </Button>
               )}
 
+              {canChangeReference && (
+                <Button
+                  variant="secondary"
+                  fullWidth
+                  onClick={openReferenceModal}
+                  disabled={actionLoading || savingReference}
+                  leftIcon={<Icon name="edit" size={16} />}
+                >
+                  {invoice.reference ? 'Change Reference' : 'Add Reference'}
+                </Button>
+              )}
+
               {canShowPaymentLinkActions && (
                 <>
                   {/* There is no separate payment link email any more: every invoice
@@ -1128,6 +1185,55 @@ export default function InvoiceDetailClient({
               overdue chasers.
             </Alert>
           )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={showReferenceModal}
+        onClose={() => {
+          if (!savingReference) setShowReferenceModal(false)
+        }}
+        title={invoice.reference ? 'Change Reference' : 'Add Reference'}
+        width="md"
+        footer={(
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setShowReferenceModal(false)}
+              disabled={savingReference}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => void handleSaveReference()}
+              disabled={savingReference || newReference.trim() === (invoice.reference || '').trim()}
+              loading={savingReference}
+            >
+              Save Reference
+            </Button>
+          </>
+        )}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            {invoice.reference ? (
+              <>
+                Currently{' '}
+                <span className="font-medium text-text">{invoice.reference}</span>.{' '}
+              </>
+            ) : null}
+            The reference prints on the invoice PDF. Changing it does not email
+            the customer, so re-send the invoice if they need the new copy.
+          </p>
+          <Input
+            label="Reference"
+            value={newReference}
+            maxLength={100}
+            onChange={(e) => setNewReference(e.target.value)}
+            placeholder="PO number or reference"
+            disabled={savingReference}
+          />
         </div>
       </Modal>
 

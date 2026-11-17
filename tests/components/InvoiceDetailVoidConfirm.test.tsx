@@ -40,6 +40,7 @@ vi.mock('@/app/actions/invoices', () => ({
   updateInvoiceStatus: (...args: unknown[]) => mockUpdateInvoiceStatus(...args),
   deleteInvoice: vi.fn(),
   updateInvoiceDueDate: vi.fn(),
+  updateInvoiceReference: vi.fn(),
 }))
 
 vi.mock('@/app/actions/oj-projects/invoice-reissue', () => ({
