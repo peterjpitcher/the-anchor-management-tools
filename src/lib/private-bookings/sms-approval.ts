@@ -50,10 +50,6 @@ const PRIVATE_BOOKING_SMS_AUTO_SEND_TRIGGERS = new Set<string>([
   'setup_reminder',
   'review_request',
   'manual',
-  // The one acknowledgement a website callback request gets (owner decision, 17 November 2026;
-  // src/lib/private-bookings/enquiry-texts.ts). It tells the guest we will ring, so it cannot
-  // wait for an approval.
-  'enquiry_ack',
 ]);
 
 /** False for a trigger whose text waits for staff approval. */

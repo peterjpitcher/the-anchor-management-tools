@@ -2,13 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 /**
  * The texts a website callback request sends (owner decision, 17 November 2026): one
- * acknowledgement to the customer through the private booking text queue, and one alert to each
- * staff mobile in PRIVATE_BOOKINGS_ENQUIRY_ALERT_SMS. Nothing here reaches Twilio: the queue and
+ * acknowledgement to the customer through sendSMS, noted on the booking timeline, and one alert to
+ * each staff mobile in PRIVATE_BOOKINGS_ENQUIRY_ALERT_SMS. Nothing here reaches Twilio: sendSMS and
  * the staff alert sender are mocked.
  */
 
-const queueAndSend = vi.hoisted(() => vi.fn())
-vi.mock('@/services/sms-queue', () => ({ SmsQueueService: { queueAndSend } }))
+const auditInsert = vi.hoisted(() => vi.fn())
+const from = vi.hoisted(() => vi.fn(() => ({ insert: auditInsert })))
+vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ from }) }))
 
 const sendStaffAlertSms = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/sms/staff-alert', () => ({ sendStaffAlertSms }))
@@ -21,7 +22,6 @@ vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error }
 
 import {
   ENQUIRY_ACK_TEMPLATE_KEY,
-  ENQUIRY_ACK_TRIGGER_TYPE,
   ENQUIRY_ALERT_NUMBERS_ENV,
   ENQUIRY_STAFF_ALERT_TEMPLATE_KEY,
   buildEnquiryAckText,
@@ -30,7 +30,6 @@ import {
   sendWebEnquiryTexts,
   type WebEnquiryTextBooking,
 } from '@/lib/private-bookings/enquiry-texts'
-import { shouldAutoSendPrivateBookingSms } from '@/lib/private-bookings/sms-approval'
 import { getAppUrl } from '@/lib/env'
 
 const BOOKING: WebEnquiryTextBooking = {
@@ -59,7 +58,8 @@ describe('callback request texts', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     delete process.env[ENQUIRY_ALERT_NUMBERS_ENV]
-    queueAndSend.mockResolvedValue({ success: true, sent: true, queueId: 'q-1' })
+    sendSMS.mockResolvedValue({ success: true, sid: 'SM-test' })
+    auditInsert.mockResolvedValue({ error: null })
     sendStaffAlertSms.mockResolvedValue({ outcome: 'sent' })
   })
 
@@ -130,30 +130,51 @@ describe('callback request texts', () => {
   })
 
   describe('sendWebEnquiryTexts', () => {
-    it('queues one acknowledgement with the right key, trigger, customer and wording', async () => {
+    it('texts one acknowledgement to the customer with the right key and wording', async () => {
       await sendWebEnquiryTexts(BOOKING)
 
-      expect(queueAndSend).toHaveBeenCalledTimes(1)
-      expect(queueAndSend).toHaveBeenCalledWith({
-        booking_id: 'pb-test-1',
-        trigger_type: ENQUIRY_ACK_TRIGGER_TYPE,
-        template_key: 'private_booking_enquiry_ack',
-        message_body: "The Anchor: thanks Alex, we've got your request and we'll call you back. Need us sooner? Call 01753 682707.",
-        customer_phone: '+447700900123',
-        customer_name: 'Alex Example',
-        customer_id: 'cust-test-1',
-        metadata: { template_key: ENQUIRY_ACK_TEMPLATE_KEY, private_booking_id: 'pb-test-1' },
-      })
+      expect(sendSMS).toHaveBeenCalledTimes(1)
+      expect(sendSMS).toHaveBeenCalledWith(
+        '+447700900123',
+        "The Anchor: thanks Alex, we've got your request and we'll call you back. Need us sooner? Call 01753 682707.",
+        {
+          customerId: 'cust-test-1',
+          metadata: { template_key: ENQUIRY_ACK_TEMPLATE_KEY, private_booking_id: 'pb-test-1' },
+        }
+      )
+      expect(ENQUIRY_ACK_TEMPLATE_KEY).toBe('private_booking_enquiry_ack')
+      // Quiet hours, kill switches and safety guards are never skipped.
+      const options = sendSMS.mock.calls[0][2]
+      expect(options).not.toHaveProperty('skipQuietHours')
+      expect(options).not.toHaveProperty('skipSafetyGuards')
     })
 
-    it('sends the acknowledgement straight away rather than waiting for staff approval', () => {
-      expect(shouldAutoSendPrivateBookingSms(ENQUIRY_ACK_TRIGGER_TYPE)).toBe(true)
+    it('notes the acknowledgement on the booking timeline', async () => {
+      await sendWebEnquiryTexts(BOOKING)
+
+      expect(from).toHaveBeenCalledWith('private_booking_audit')
+      expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({
+        booking_id: 'pb-test-1',
+        action: 'sms_sent',
+        field_name: 'sms',
+        new_value: 'private_booking_enquiry_ack',
+      }))
+    })
+
+    it('notes on the timeline when quiet hours held the text for the morning', async () => {
+      sendSMS.mockResolvedValueOnce({ success: true, deferred: true, scheduledFor: '2026-11-18T09:00:00.000Z' })
+      await sendWebEnquiryTexts(BOOKING)
+
+      expect(auditInsert.mock.calls[0][0].metadata).toMatchObject({
+        delivery_state: 'deferred',
+        scheduled_for: '2026-11-18T09:00:00.000Z',
+      })
     })
 
     it('uses the nameless wording when the enquiry had no name', async () => {
       await sendWebEnquiryTexts({ ...BOOKING, firstName: 'Guest', lastName: null })
 
-      expect(queueAndSend.mock.calls[0][0].message_body).toBe(
+      expect(sendSMS.mock.calls[0][1]).toBe(
         "The Anchor: thanks, we've got your request and we'll call you back. Need us sooner? Call 01753 682707."
       )
     })
@@ -194,7 +215,7 @@ describe('callback request texts', () => {
 
     it('still alerts staff, and never throws, when the acknowledgement send rejects', async () => {
       process.env[ENQUIRY_ALERT_NUMBERS_ENV] = STAFF_A
-      queueAndSend.mockRejectedValueOnce(new Error('twilio down'))
+      sendSMS.mockRejectedValueOnce(new Error('twilio down'))
 
       await expect(sendWebEnquiryTexts(BOOKING)).resolves.toBeUndefined()
 
@@ -203,10 +224,11 @@ describe('callback request texts', () => {
         'The acknowledgement text for a website callback request failed',
         expect.objectContaining({ metadata: { privateBookingId: 'pb-test-1' } })
       )
+      expect(auditInsert).toHaveBeenCalledWith(expect.objectContaining({ action: 'sms_failed' }))
     })
 
-    it('logs an acknowledgement the queue reports as not sent', async () => {
-      queueAndSend.mockResolvedValueOnce({ error: 'SMS sending is currently suspended', code: 'sms_suspended' })
+    it('logs an acknowledgement sendSMS refuses, such as under a kill switch', async () => {
+      sendSMS.mockResolvedValueOnce({ success: false, error: 'SMS sending is currently suspended', code: 'sms_suspended' })
 
       await sendWebEnquiryTexts(BOOKING)
 
@@ -231,10 +253,18 @@ describe('callback request texts', () => {
       expect(JSON.stringify(error.mock.calls)).not.toContain(STAFF_B)
     })
 
-    it('never calls Twilio directly', async () => {
+    it('sends the staff alert through the staff path, never as a customer text', async () => {
       process.env[ENQUIRY_ALERT_NUMBERS_ENV] = STAFF_A
       await sendWebEnquiryTexts(BOOKING)
-      expect(sendSMS).not.toHaveBeenCalled()
+      // sendSMS is called once, for the customer; the staff number goes to sendStaffAlertSms.
+      expect(sendSMS).toHaveBeenCalledTimes(1)
+      expect(sendSMS.mock.calls[0][0]).toBe('+447700900123')
+    })
+
+    it('never throws when the timeline note fails', async () => {
+      auditInsert.mockResolvedValueOnce({ error: { message: 'db down' } })
+      await expect(sendWebEnquiryTexts(BOOKING)).resolves.toBeUndefined()
+      expect(error).toHaveBeenCalledWith('Could not note the callback acknowledgement text on the booking', expect.anything())
     })
   })
 })

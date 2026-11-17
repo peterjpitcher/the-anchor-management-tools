@@ -1,4 +1,5 @@
 import { logger } from '@/lib/logger'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { maskPhone } from '@/lib/phone/mask'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
@@ -9,8 +10,10 @@ import { formatPhoneForStorage } from '@/lib/utils'
  *
  * Only when the website says the visitor asked us to call them back (callback_requested on
  * /api/private-booking-enquiry). Two kinds:
- * - one acknowledgement to the customer, through the private booking text queue, so it shows on
- *   the booking's Communications tab like every other private booking text;
+ * - one acknowledgement to the customer, sent with sendSMS against the booking's customer, so it
+ *   is in their message history, and noted on the booking's timeline (private_booking_audit).
+ *   It does not go through the private booking text queue: that table's trigger_type CHECK
+ *   constraint has no value for it, and adding one needs a migration;
  * - one alert to each staff mobile in PRIVATE_BOOKINGS_ENQUIRY_ALERT_SMS, sent as a staff text
  *   (src/lib/sms/staff-alert.ts): no customer record and no customer message history.
  *
@@ -21,7 +24,6 @@ import { formatPhoneForStorage } from '@/lib/utils'
  * throw: each send has its own try/catch and logs a failure at error.
  */
 export const ENQUIRY_ACK_TEMPLATE_KEY = 'private_booking_enquiry_ack'
-export const ENQUIRY_ACK_TRIGGER_TYPE = 'enquiry_ack'
 export const ENQUIRY_STAFF_ALERT_TEMPLATE_KEY = 'private_booking_enquiry_staff_alert'
 export const ENQUIRY_ALERT_NUMBERS_ENV = 'PRIVATE_BOOKINGS_ENQUIRY_ALERT_SMS'
 
@@ -79,31 +81,68 @@ export function parseEnquiryAlertNumbers(raw: string | undefined): string[] {
   return numbers
 }
 
-async function sendAcknowledgement(booking: WebEnquiryTextBooking): Promise<void> {
+/** The booking timeline entry, as the text queue writes one. Logged, never thrown. */
+async function noteAcknowledgementOnBooking(
+  bookingId: string,
+  message: string,
+  sent: boolean,
+  failure: string | null,
+  heldUntil: string | null = null
+): Promise<void> {
   try {
-    const { SmsQueueService } = await import('@/services/sms-queue')
-    const result = (await SmsQueueService.queueAndSend({
-      booking_id: booking.id,
-      trigger_type: ENQUIRY_ACK_TRIGGER_TYPE,
-      template_key: ENQUIRY_ACK_TEMPLATE_KEY,
-      message_body: buildEnquiryAckText(booking.firstName),
-      customer_phone: booking.contactPhone,
-      customer_name: customerName(booking),
-      ...(booking.customerId ? { customer_id: booking.customerId } : {}),
-      metadata: { template_key: ENQUIRY_ACK_TEMPLATE_KEY, private_booking_id: booking.id },
-    })) as Record<string, unknown>
+    const { error: auditError } = await createAdminClient().from('private_booking_audit').insert({
+      booking_id: bookingId,
+      action: sent ? 'sms_sent' : 'sms_failed',
+      field_name: 'sms',
+      new_value: ENQUIRY_ACK_TEMPLATE_KEY,
+      metadata: {
+        trigger: 'web_enquiry_callback',
+        message,
+        // Held by quiet hours: it goes at this time, not now.
+        ...(heldUntil ? { delivery_state: 'deferred', scheduled_for: heldUntil } : {}),
+        ...(failure ? { error: failure } : {}),
+      },
+      performed_by: null,
+    })
+    if (auditError) throw new Error(auditError.message)
+  } catch (error) {
+    logger.error('Could not note the callback acknowledgement text on the booking', {
+      error: error instanceof Error ? error : new Error(String(error)),
+      metadata: { privateBookingId: bookingId },
+    })
+  }
+}
 
-    if (result.sent !== true && result.suppressed !== true) {
+async function sendAcknowledgement(booking: WebEnquiryTextBooking): Promise<void> {
+  const message = buildEnquiryAckText(booking.firstName)
+  try {
+    const { sendSMS } = await import('@/lib/twilio')
+    // Quiet hours, kill switches and safety limits all apply: nothing is skipped. The customer id
+    // keeps it on the right customer and lets quiet hours hold it on our own queue overnight.
+    const result = await sendSMS(booking.contactPhone, message, {
+      ...(booking.customerId ? { customerId: booking.customerId } : {}),
+      metadata: { template_key: ENQUIRY_ACK_TEMPLATE_KEY, private_booking_id: booking.id },
+    })
+
+    if (!result.success) {
+      const failure = result.error ?? 'Acknowledgement text not sent'
       logger.error('The acknowledgement text for a website callback request was not sent', {
-        error: new Error(typeof result.error === 'string' ? result.error : 'Acknowledgement text not sent'),
-        metadata: { privateBookingId: booking.id, code: result.code ?? null },
+        error: new Error(failure),
+        metadata: { privateBookingId: booking.id, code: (result as { code?: string }).code ?? null },
       })
+      await noteAcknowledgementOnBooking(booking.id, message, false, failure)
+      return
     }
+    const heldUntil = (result as { deferred?: boolean; scheduledFor?: string }).deferred
+      ? ((result as { scheduledFor?: string }).scheduledFor ?? null)
+      : null
+    await noteAcknowledgementOnBooking(booking.id, message, true, null, heldUntil)
   } catch (error) {
     logger.error('The acknowledgement text for a website callback request failed', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { privateBookingId: booking.id },
     })
+    await noteAcknowledgementOnBooking(booking.id, message, false, error instanceof Error ? error.message : String(error))
   }
 }
 
