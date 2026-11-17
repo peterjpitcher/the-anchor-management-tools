@@ -159,9 +159,13 @@ async function sendStaffAlert(booking: WebEnquiryTextBooking, to: string, body: 
         source: 'private_booking_enquiry',
       },
     })
-    if (outcome.outcome === 'failed' || outcome.outcome === 'suspended') {
+    if (outcome.outcome === 'failed' || outcome.outcome === 'suspended' || outcome.outcome === 'capped') {
       logger.error('A staff alert for a website callback request was not sent', {
-        error: new Error(outcome.outcome === 'failed' ? outcome.error : 'SMS sending is suspended'),
+        error: new Error(
+          outcome.outcome === 'failed' ? outcome.error
+            : outcome.outcome === 'capped' ? `Staff alert limit reached (${outcome.reason})`
+            : 'SMS sending is suspended'
+        ),
         metadata: { privateBookingId: booking.id, to: maskPhone(to), outcome: outcome.outcome },
       })
     }

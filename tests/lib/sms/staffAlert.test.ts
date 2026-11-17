@@ -15,8 +15,44 @@ vi.mock('@/lib/unified-job-queue', async (importOriginal) => {
   return { ...actual, jobQueue: { enqueue } }
 })
 
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
-vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+/**
+ * A stand-in for private_booking_audit: counts come from `counts` by which window and scope a
+ * query asked for, or `countError` fails every count; inserts are collected.
+ */
+const audit = vi.hoisted(() => ({
+  counts: { globalHour: 0, recipientHour: 0, recipientDay: 0 },
+  countError: null as null | { message: string },
+  inserts: [] as Array<Record<string, unknown>>,
+  insertError: null as null | { message: string },
+}))
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: (table: string) => {
+      if (table !== 'private_booking_audit') throw new Error(`unexpected table ${table}`)
+      const filters: Record<string, unknown> = {}
+      let since = ''
+      const builder: any = {
+        select: () => builder,
+        eq: (column: string, value: unknown) => { filters[column] = value; return builder },
+        gte: (_column: string, value: string) => { since = value; return builder },
+        then: (resolve: (value: unknown) => unknown) => {
+          if (audit.countError) return Promise.resolve({ count: null, error: audit.countError }).then(resolve)
+          const perRecipient = 'metadata->>recipient_hash' in filters
+          const day = Date.now() - Date.parse(since) > 2 * 60 * 60 * 1000
+          const count = !perRecipient ? audit.counts.globalHour : day ? audit.counts.recipientDay : audit.counts.recipientHour
+          return Promise.resolve({ count, error: null }).then(resolve)
+        },
+        insert: (row: Record<string, unknown>) => {
+          audit.inserts.push(row)
+          return Promise.resolve({ error: audit.insertError })
+        },
+      }
+      return builder
+    },
+  }),
+}))
+const { error: logError } = vi.hoisted(() => ({ error: vi.fn() }))
+vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: logError } }))
 
 import { STAFF_ALERT_SMS_JOB_TYPE, runStaffAlertSmsJob, sendStaffAlertSms } from '@/lib/sms/staff-alert'
 import { JobReschedule, UnifiedJobQueue } from '@/lib/unified-job-queue'
@@ -38,6 +74,10 @@ describe('staff alert texts', () => {
     vi.useFakeTimers()
     sendSMS.mockResolvedValue({ success: true, sid: 'SM-test' })
     enqueue.mockResolvedValue({ success: true, jobId: 'job-1' })
+    audit.counts = { globalHour: 0, recipientHour: 0, recipientDay: 0 }
+    audit.countError = null
+    audit.inserts = []
+    audit.insertError = null
   })
 
   afterEach(() => {
@@ -105,6 +145,109 @@ describe('staff alert texts', () => {
 
     sendSMS.mockRejectedValueOnce(new Error('network'))
     expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'failed', error: 'network' })
+  })
+
+  describe('the staff alert cap', () => {
+    // The defaults in src/lib/sms/safety.ts: 120 an hour in all, 3 an hour and 8 a day per number.
+    it('sends under the cap and records one counter row, with no phone number in it', async () => {
+      vi.setSystemTime(DAYTIME)
+      audit.counts = { globalHour: 119, recipientHour: 2, recipientDay: 7 }
+
+      expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'sent' })
+
+      expect(sendSMS).toHaveBeenCalledTimes(1)
+      expect(audit.inserts).toHaveLength(1)
+      expect(audit.inserts[0]).toMatchObject({
+        booking_id: 'pb-test-1',
+        action: 'sms_sent',
+        field_name: 'sms',
+        new_value: 'private_booking_enquiry_staff_alert',
+        metadata: { trigger: 'web_enquiry_staff_alert', recipient_hash: expect.stringMatching(/^[0-9a-f]{24}$/) },
+        performed_by: null,
+      })
+      expect(JSON.stringify(audit.inserts[0])).not.toMatch(/7700900201|900201/)
+    })
+
+    it.each([
+      ['global hourly', { globalHour: 120, recipientHour: 0, recipientDay: 0 }, 'global_hourly_limit'],
+      ['recipient hourly', { globalHour: 0, recipientHour: 3, recipientDay: 3 }, 'recipient_hourly_limit'],
+      ['recipient daily', { globalHour: 0, recipientHour: 0, recipientDay: 8 }, 'recipient_daily_limit'],
+    ])('does not send over the %s limit, and logs it at error', async (_label, counts, reason) => {
+      vi.setSystemTime(DAYTIME)
+      audit.counts = counts
+
+      expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'capped', reason })
+
+      expect(sendSMS).not.toHaveBeenCalled()
+      expect(audit.inserts).toHaveLength(0)
+      expect(logError).toHaveBeenCalledWith(
+        'A staff alert text was not sent: staff alert limit reached or could not be checked',
+        expect.objectContaining({ metadata: expect.objectContaining({ reason }) })
+      )
+      expect(JSON.stringify(logError.mock.calls)).not.toContain(ALERT.to)
+    })
+
+    it('reads the limits from the SMS safety settings', async () => {
+      vi.setSystemTime(DAYTIME)
+      vi.stubEnv('SMS_SAFETY_RECIPIENT_HOURLY_LIMIT', '1')
+      audit.counts = { globalHour: 1, recipientHour: 1, recipientDay: 1 }
+      try {
+        expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'capped', reason: 'recipient_hourly_limit' })
+      } finally {
+        vi.unstubAllEnvs()
+      }
+    })
+
+    it('fails closed: no send when the count cannot be read', async () => {
+      vi.setSystemTime(DAYTIME)
+      audit.countError = { message: 'db down' }
+
+      const outcome = await sendStaffAlertSms(ALERT)
+
+      expect(outcome).toEqual({ outcome: 'failed', error: 'count_failed: db down' })
+      expect(sendSMS).not.toHaveBeenCalled()
+      expect(logError).toHaveBeenCalled()
+    })
+
+    it('does not count a duplicate the idempotency claim suppressed', async () => {
+      vi.setSystemTime(DAYTIME)
+      sendSMS.mockResolvedValueOnce({ success: true, suppressed: true, status: 'suppressed_duplicate' })
+
+      expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'sent' })
+      expect(audit.inserts).toHaveLength(0)
+    })
+
+    it('logs, without throwing, when a sent alert cannot be counted', async () => {
+      vi.setSystemTime(DAYTIME)
+      audit.insertError = { message: 'insert failed' }
+
+      expect(await sendStaffAlertSms(ALERT)).toEqual({ outcome: 'sent' })
+      expect(logError).toHaveBeenCalledWith(
+        'A staff alert text went but could not be counted towards the staff alert limits',
+        expect.anything()
+      )
+    })
+
+    it('applies to the held job send too: over the cap it completes without sending', async () => {
+      vi.setSystemTime(new Date(NEXT_MORNING))
+      audit.counts = { globalHour: 0, recipientHour: 3, recipientDay: 3 }
+
+      expect(await runStaffAlertSmsJob({ to: ALERT.to, message: ALERT.body, metadata: ALERT.metadata })).toEqual({
+        outcome: 'capped',
+        reason: 'recipient_hourly_limit',
+      })
+      expect(sendSMS).not.toHaveBeenCalled()
+    })
+
+    it('makes the held job retry, not send, when the count cannot be read', async () => {
+      vi.setSystemTime(new Date(NEXT_MORNING))
+      audit.countError = { message: 'db down' }
+
+      await expect(runStaffAlertSmsJob({ to: ALERT.to, message: ALERT.body, metadata: ALERT.metadata })).rejects.toThrow(
+        'count_failed'
+      )
+      expect(sendSMS).not.toHaveBeenCalled()
+    })
   })
 
   describe('the send_staff_alert_sms job', () => {

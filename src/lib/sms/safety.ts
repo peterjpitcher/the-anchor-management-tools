@@ -70,7 +70,8 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
   return fallback
 }
 
-function resolveConfig(): SmsSafetyConfig {
+/** The SMS safety limits, read from the environment at call time. Also used by the staff alert cap. */
+export function resolveConfig(): SmsSafetyConfig {
   const isProduction = process.env.NODE_ENV === 'production'
   const allowMissingTablesRequested = parseBooleanEnv('SMS_SAFETY_ALLOW_MISSING_TABLES', !isProduction)
 

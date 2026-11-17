@@ -9,8 +9,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const ADMIN_CLIENT = { __brand: 'admin-client' }
 const auditInsert = vi.hoisted(() => vi.fn())
+// private_booking_audit: the acknowledgement note and the staff alert counter rows are inserts;
+// the staff alert cap counts come back as zero, so every alert here is under the cap.
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: () => ({ ...ADMIN_CLIENT, from: () => ({ insert: auditInsert }) }),
+  createAdminClient: () => ({
+    ...ADMIN_CLIENT,
+    from: () => {
+      const builder: any = {
+        select: () => builder,
+        eq: () => builder,
+        gte: () => builder,
+        then: (resolve: (value: unknown) => unknown) => Promise.resolve({ count: 0, error: null }).then(resolve),
+        insert: auditInsert,
+      }
+      return builder
+    },
+  }),
 }))
 
 // after() runs its callback once the response has gone; here it is collected and run by the test.
@@ -179,6 +193,11 @@ describe('POST /api/private-booking-enquiry callback texts', () => {
     expect(body).toMatch(/^New website enquiry: Alex Example, \+447700900123\. Wake\. They've been told we'll call back the same day\. https?:\/\/.+\/private-bookings\/pb-test-1$/)
     expect(options).toMatchObject({ createCustomerIfMissing: false, skipMessageLogging: true })
     expect(options).not.toHaveProperty('customerId')
+    // One timeline note for the acknowledgement, one counter row for the staff alert.
+    expect(auditInsert.mock.calls.map(([row]) => row.new_value)).toEqual([
+      'private_booking_enquiry_ack',
+      'private_booking_enquiry_staff_alert',
+    ])
   })
 
   it('stays at 201 when the texts reject, and logs each failure', async () => {
