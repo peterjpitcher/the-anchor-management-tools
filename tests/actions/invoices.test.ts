@@ -38,6 +38,7 @@ vi.mock('@/lib/errors', () => ({
 vi.mock('@/services/invoices', () => ({
   InvoiceService: {
     getInvoices: vi.fn(),
+    getInvoiceListRows: vi.fn(),
     getInvoiceById: vi.fn(),
     createInvoice: vi.fn(),
     deleteInvoice: vi.fn(),
@@ -61,6 +62,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { InvoiceService, CreateInvoiceSchema } from '@/services/invoices'
 import {
   getInvoices,
+  getInvoiceListPage,
   getInvoice,
   createInvoice,
   deleteInvoice,
@@ -167,6 +169,37 @@ describe('Invoice actions', () => {
 
       const result = await getInvoices()
       expect(result).toEqual({ error: 'DB timeout' })
+    })
+  })
+
+  describe('getInvoiceListPage', () => {
+    it('refuses without invoices view and never reads the list', async () => {
+      mockedPermission.mockResolvedValue(false)
+
+      const result = await getInvoiceListPage()
+      expect(result).toEqual({ error: 'You do not have permission to view invoices' })
+      expect(mockedPermission).toHaveBeenCalledWith('invoices', 'view')
+      expect(InvoiceService.getInvoiceListRows).not.toHaveBeenCalled()
+    })
+
+    it('passes every filter to the slim list read', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const invoices = [{ id: 'inv-1' }]
+      ;(InvoiceService.getInvoiceListRows as Mock).mockResolvedValue({ invoices, total: 1 })
+
+      const result = await getInvoiceListPage('unpaid', 2, 20, 'INV', 'Acme', '2026-10-01', '2026-10-31')
+      expect(InvoiceService.getInvoiceListRows).toHaveBeenCalledWith(
+        'unpaid', 2, 20, 'INV', 'Acme', '2026-10-01', '2026-10-31'
+      )
+      expect(InvoiceService.getInvoices).not.toHaveBeenCalled()
+      expect(result).toEqual({ invoices, total: 1 })
+    })
+
+    it('returns the error when the read fails', async () => {
+      mockedPermission.mockResolvedValue(true)
+      ;(InvoiceService.getInvoiceListRows as Mock).mockRejectedValue(new Error('DB timeout'))
+
+      expect(await getInvoiceListPage()).toEqual({ error: 'DB timeout' })
     })
   })
 

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation'
-import { checkUserPermission } from '@/app/actions/rbac'
-import { getInvoices, getInvoiceSummary } from '@/app/actions/invoices'
+import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { getInvoiceListPage, getInvoiceSummary } from '@/app/actions/invoices'
 import InvoicesClient from './_components/InvoicesClient'
 import type { InvoiceStatus } from '@/types/invoices'
+import type { ActionType } from '@/types/rbac'
 
 const EMPTY_SUMMARY = {
   total_outstanding: 0,
@@ -52,10 +53,46 @@ function resolveIsoDate(rawDate: string | undefined) {
   return rawDate && ISO_DATE_RE.test(rawDate) ? rawDate : ''
 }
 
+const PAGE_ACTIONS = ['view', 'create', 'edit', 'delete', 'export', 'manage'] as const
+type PageAction = (typeof PAGE_ACTIONS)[number] & ActionType
+
+/**
+ * Answers the six invoice permissions this page needs, exactly as six checkUserPermission calls
+ * would, in one permissions read for nearly every user.
+ *
+ * getCurrentUserModuleActions lists only the permission rows a user's roles hold, while
+ * checkUserPermission also allows a super admin everything and answers no when the lookup
+ * fails. So an action missing from the list is not yet a no: one checkUserPermission call on
+ * the first missing action settles it. If that says no, the user is not a super admin and every
+ * other missing action is a no as well (both read the same cached permission list). If it says
+ * yes, the remaining missing actions are checked one by one, as before.
+ */
+async function resolveInvoicePagePermissions(): Promise<Record<PageAction, boolean>> {
+  const moduleActions = await getCurrentUserModuleActions('invoices')
+  const held = new Set<string>('actions' in moduleActions ? moduleActions.actions : [])
+
+  const result = Object.fromEntries(
+    PAGE_ACTIONS.map((action) => [action, held.has(action)])
+  ) as Record<PageAction, boolean>
+
+  const missing = PAGE_ACTIONS.filter((action) => !result[action])
+  if (missing.length === 0) return result
+
+  const [probe, ...rest] = missing
+  result[probe] = await checkUserPermission('invoices', probe)
+  if (result[probe] && rest.length > 0) {
+    const answers = await Promise.all(rest.map((action) => checkUserPermission('invoices', action)))
+    rest.forEach((action, index) => {
+      result[action] = answers[index]
+    })
+  }
+  return result
+}
+
 export default async function InvoicesPage({ searchParams }: Props) {
   const resolvedSearchParams = await searchParams
-  const canView = await checkUserPermission('invoices', 'view')
-  if (!canView) {
+  const permissions = await resolveInvoicePagePermissions()
+  if (!permissions.view) {
     redirect('/unauthorized')
   }
 
@@ -69,22 +106,9 @@ export default async function InvoicesPage({ searchParams }: Props) {
 
   const limit = 20
 
-  const [
-    invoicesResult,
-    summaryResult,
-    canCreate,
-    canEdit,
-    canDelete,
-    canExport,
-    canManageCatalog,
-  ] = await Promise.all([
-    getInvoices(serviceStatus, page, limit, search, vendorSearch, startDate, endDate),
+  const [invoicesResult, summaryResult] = await Promise.all([
+    getInvoiceListPage(serviceStatus, page, limit, search, vendorSearch, startDate, endDate),
     getInvoiceSummary(),
-    checkUserPermission('invoices', 'create'),
-    checkUserPermission('invoices', 'edit'),
-    checkUserPermission('invoices', 'delete'),
-    checkUserPermission('invoices', 'export'),
-    checkUserPermission('invoices', 'manage'),
   ])
 
   const errorMessages: string[] = []
@@ -117,11 +141,11 @@ export default async function InvoicesPage({ searchParams }: Props) {
       initialError={initialError}
       initialListFailed={Boolean(invoicesResult.error)}
       permissions={{
-        canCreate,
-        canEdit,
-        canDelete,
-        canExport,
-        canManageCatalog,
+        canCreate: permissions.create,
+        canEdit: permissions.edit,
+        canDelete: permissions.delete,
+        canExport: permissions.export,
+        canManageCatalog: permissions.manage,
       }}
     />
   )
