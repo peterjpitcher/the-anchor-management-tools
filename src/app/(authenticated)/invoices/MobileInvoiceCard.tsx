@@ -1,14 +1,14 @@
 import { invoiceBalanceDue } from '@/lib/invoices/balance'
-import type { InvoiceWithDetails } from '@/types/invoices'
+import type { InvoiceListRow } from '@/types/invoices'
 import { Icon } from '@/ds'
 import { Badge } from '@/ds'
 import { IconButton } from '@/ds'
 import { invoiceStatusLabel, invoiceStatusTone } from '@/lib/invoices/status-ui'
 
 interface MobileInvoiceCardProps {
-  invoice: InvoiceWithDetails
-  onClick?: (invoice: InvoiceWithDetails) => void
-  onDownload?: (invoice: InvoiceWithDetails) => void
+  invoice: InvoiceListRow
+  onClick?: (invoice: InvoiceListRow) => void
+  onDownload?: (invoice: InvoiceListRow) => void
   downloadDisabled?: boolean
 }
 

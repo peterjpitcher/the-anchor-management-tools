@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import type { PrivateBookingWithDetails, BookingStatus } from '@/types/private-bookings'
 import { PrivateBookingService } from '@/services/private-bookings'
 import { PermissionService } from '@/services/permission'
@@ -34,10 +34,7 @@ type CalendarBooking = {
 }
 
 export async function fetchPrivateBookings(options: FetchOptions) {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Authentication required' }
@@ -62,10 +59,7 @@ export async function fetchPrivateBookings(options: FetchOptions) {
 }
 
 export async function fetchPrivateBookingsForCalendar() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Authentication required' }

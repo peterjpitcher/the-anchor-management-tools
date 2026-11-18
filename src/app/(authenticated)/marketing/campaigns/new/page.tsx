@@ -8,13 +8,14 @@ import { NewCampaignClient } from './NewCampaignClient'
 export const dynamic = 'force-dynamic'
 
 export default async function NewMarketingCampaignPage() {
-  const canView = await checkUserPermission('marketing', 'view')
+  const [canView, canCreate, canSend] = await Promise.all([
+    checkUserPermission('marketing', 'view'),
+    checkUserPermission('marketing', 'create'),
+    checkUserPermission('marketing', 'send'),
+  ])
   if (!canView) redirect('/unauthorized')
-
-  const canCreate = await checkUserPermission('marketing', 'create')
   if (!canCreate) redirect('/unauthorized')
 
-  const canSend = await checkUserPermission('marketing', 'send')
   const tagsResult = await listMarketingTags()
 
   return <NewCampaignClient tags={tagsResult.data ?? []} canSend={canSend} />

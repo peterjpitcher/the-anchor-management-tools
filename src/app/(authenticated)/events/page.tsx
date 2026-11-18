@@ -1,6 +1,7 @@
+import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getEvents } from '@/app/actions/events'
+import { getCalendarEvents, getEvents } from '@/app/actions/events'
 import { getActiveEventCategories } from '@/app/actions/event-categories'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
 import { listCalendarNotes } from '@/app/actions/calendar-notes'
@@ -12,11 +13,11 @@ import {
   fetchCalendarMarketingSends,
   fetchCalendarSpecialHours,
 } from '@/app/actions/calendar-datasets'
-import { getChecklistTodos } from '@/app/actions/event-checklist'
 import { getTodayIsoDate } from '@/lib/dateUtils'
+import { calendarParkingStartFrom } from '@/lib/events/calendar-events'
 import type { VenueCalendarBooking, VenueCalendarParking } from '@/components/schedule-calendar'
-import EventsClient from './_components/EventsClient'
-import EventTodosWidget from './_components/EventTodosWidget'
+import EventsClient, { type EventsCalendarLayers } from './_components/EventsClient'
+import EventTodosPanel, { EventTodosPanelFallback } from './_components/EventTodosPanel'
 
 export const metadata = {
   title: 'Events',
@@ -25,12 +26,60 @@ export const metadata = {
 // AI SEO generation (generateEventSeoContent, opened from EventDrawer) runs to a ~90s budget; raise past Vercel's 15s default so the function isn't killed mid-generation.
 export const maxDuration = 100
 
+/**
+ * The calendar's secondary layers. Each gates itself and returns 'denied'
+ * rather than an error, so a user who may not see one of them simply does not
+ * get that layer. Not awaited by the page: the promise streams to the client,
+ * so a slow layer no longer holds first paint.
+ */
+async function loadCalendarLayers(): Promise<EventsCalendarLayers> {
+  const [specialHoursResult, birthdaysResult, balanceDuesResult, dailyOpsResult, marketingSendsResult] =
+    await Promise.all([
+      fetchCalendarSpecialHours(),
+      fetchCalendarBirthdays(),
+      fetchCalendarBalanceDues(),
+      fetchCalendarDailyOps(),
+      fetchCalendarMarketingSends(),
+    ])
+
+  return {
+    specialHours: specialHoursResult.data,
+    birthdays: birthdaysResult.data,
+    balanceDues: balanceDuesResult.data,
+    dailyOps: dailyOpsResult.data[0] ?? null,
+    marketingSends: marketingSendsResult.data,
+    warnings: [
+      specialHoursResult.status === 'failed' ? specialHoursResult.message : null,
+      birthdaysResult.status === 'failed' ? birthdaysResult.message : null,
+      balanceDuesResult.status === 'failed' ? balanceDuesResult.message : null,
+      dailyOpsResult.status === 'failed' ? dailyOpsResult.message : null,
+      marketingSendsResult.status === 'failed' ? marketingSendsResult.message : null,
+    ].filter((message): message is string => Boolean(message)),
+  }
+}
+
 export default async function EventsPage() {
-  const canViewEvents = await checkUserPermission('events', 'view')
+  const [canViewEvents, canManageEvents, canManageCalendarNotes] = await Promise.all([
+    checkUserPermission('events', 'view'),
+    checkUserPermission('events', 'manage'),
+    checkUserPermission('settings', 'manage'),
+  ])
 
   if (!canViewEvents) {
     redirect('/unauthorized')
   }
+
+  // Started before the first-view reads are awaited, so they run alongside them.
+  const calendarLayers = loadCalendarLayers().catch(
+    (): EventsCalendarLayers => ({
+      specialHours: [],
+      birthdays: [],
+      balanceDues: [],
+      dailyOps: null,
+      marketingSends: [],
+      warnings: ['Some calendar layers could not be loaded'],
+    }),
+  )
 
   const [
     eventsResult,
@@ -39,39 +88,20 @@ export default async function EventsPage() {
     bookingsResult,
     notesResult,
     parkingResult,
-    todosResult,
-    canManageEvents,
-    canManageCalendarNotes,
-    specialHoursResult,
-    birthdaysResult,
-    balanceDuesResult,
-    dailyOpsResult,
-    marketingSendsResult,
   ] = await Promise.all([
     getEvents({ status: 'all', dateFrom: getTodayIsoDate(), page: 1, pageSize: 25 }),
     getActiveEventCategories(),
-    getEvents({ status: 'all', page: 1, pageSize: 500 }),
+    getCalendarEvents(),
     fetchPrivateBookingsForCalendar(),
     listCalendarNotes(),
     // Live bookings only; a cancelled or expired one is not something the
-    // calendar should show as an arriving car.
-    listParkingBookings({ limit: 500, statuses: ['pending_payment', 'confirmed', 'completed'] }),
-    getChecklistTodos().catch(
-      () =>
-        ({ success: false, error: 'Unable to load outstanding todos' }) as Awaited<
-          ReturnType<typeof getChecklistTodos>
-        >,
-    ),
-    checkUserPermission('events', 'manage'),
-    checkUserPermission('settings', 'manage'),
-    // The datasets the events calendar used to lack. Each gates itself and
-    // returns 'denied' rather than an error, so a user who may not see one of
-    // them simply does not get that layer.
-    fetchCalendarSpecialHours(),
-    fetchCalendarBirthdays(),
-    fetchCalendarBalanceDues(),
-    fetchCalendarDailyOps(),
-    fetchCalendarMarketingSends(),
+    // calendar should show as an arriving car. Arrivals from the first day of
+    // last month onward, not the newest 500 of all time.
+    listParkingBookings({
+      limit: 500,
+      statuses: ['pending_payment', 'confirmed', 'completed'],
+      endingFrom: calendarParkingStartFrom(),
+    }),
   ])
 
   // Same rule as the dashboard: write on events:manage, settings:manage kept as
@@ -91,25 +121,11 @@ export default async function EventsPage() {
       calendarNotesError={notesResult.error ?? null}
       initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
       canManageCalendarNotes={canManageCalendarNotesResolved}
-      initialSpecialHours={specialHoursResult.data}
-      initialBirthdays={birthdaysResult.data}
-      initialBalanceDues={balanceDuesResult.data}
-      initialDailyOps={dailyOpsResult.data[0] ?? null}
-      initialMarketingSends={marketingSendsResult.data}
-      calendarDatasetWarnings={[
-        specialHoursResult.status === 'failed' ? specialHoursResult.message : null,
-        birthdaysResult.status === 'failed' ? birthdaysResult.message : null,
-        balanceDuesResult.status === 'failed' ? balanceDuesResult.message : null,
-        dailyOpsResult.status === 'failed' ? dailyOpsResult.message : null,
-        marketingSendsResult.status === 'failed' ? marketingSendsResult.message : null,
-      ].filter((message): message is string => Boolean(message))}
+      calendarLayers={calendarLayers}
       todosPanel={
-        <EventTodosWidget
-          initialTodos={todosResult.items ?? []}
-          canManage={canManageEvents}
-          todayIso={getTodayIsoDate()}
-          loadError={todosResult.success ? null : todosResult.error ?? 'Unable to load outstanding todos'}
-        />
+        <Suspense fallback={<EventTodosPanelFallback />}>
+          <EventTodosPanel canManage={canManageEvents} />
+        </Suspense>
       }
     />
   )

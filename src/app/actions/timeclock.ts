@@ -7,7 +7,7 @@ import {
   clearPayrollApprovalsForDate,
   payrollApprovalNotClearedWarning,
 } from '@/lib/rota/payroll-approval-invalidation';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { toZonedTime, fromZonedTime, formatInTimeZone } from 'date-fns-tz';
 import { revalidatePath } from 'next/cache';
 import { logAuditEvent } from '@/app/actions/audit';
@@ -69,10 +69,7 @@ async function canUseAuthenticatedTimeclock(): Promise<boolean> {
 }
 
 async function canUseManagerFohKioskTimeclock(): Promise<boolean> {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user?.id || user.email?.toLowerCase() !== MANAGER_IPAD_EMAIL) {
     return false;

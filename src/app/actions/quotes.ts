@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -8,10 +9,12 @@ import { revalidatePath, revalidateTag } from 'next/cache'
 import { getTodayIsoDate, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations'
 import { QuoteService, isQuoteStatusTransitionAllowed } from '@/services/quotes'
+import { displayQuoteStatus, moneyOrZero, summariseQuotes, type QuoteSummary } from '@/lib/quotes/summary'
 import type { 
   Quote, 
   Invoice,
   QuoteWithDetails, 
+  QuoteListItem,
   QuoteStatus,
   InvoiceLineItemInput
 } from '@/types/invoices'
@@ -23,11 +26,6 @@ type QuoteAmountFields = {
   discount_amount?: number | string | null
   vat_amount?: number | string | null
   total_amount?: number | string | null
-}
-
-function moneyOrZero(value: number | string | null | undefined): number {
-  const amount = Number(value ?? 0)
-  return Number.isFinite(amount) ? amount : 0
 }
 
 function normalizeQuoteAmountFields<T extends QuoteAmountFields>(quote: T): T {
@@ -91,32 +89,7 @@ export async function getQuoteSummary() {
       return { error: 'Failed to fetch quote summary' }
     }
 
-    // Calculate summary
-    const summary = {
-      total_pending: 0,
-      total_expired: 0,
-      total_accepted: 0,
-      draft_badge: 0
-    }
-
-    const today = getTodayIsoDate()
-
-    const visibleQuotes = quotes || []
-
-    visibleQuotes.forEach(quote => {
-      if (quote.status === 'draft') {
-        summary.draft_badge++
-      } else if (quote.status === 'sent') {
-        const amount = moneyOrZero(quote.total_amount)
-        if (quote.valid_until < today) {
-          summary.total_expired += amount
-        } else {
-          summary.total_pending += amount
-        }
-      } else if (quote.status === 'accepted') {
-        summary.total_accepted += moneyOrZero(quote.total_amount)
-      }
-    })
+    const summary = summariseQuotes(quotes || [], getTodayIsoDate())
 
     return { summary }
   } catch (error) {
@@ -160,12 +133,87 @@ export async function getQuotes(status?: QuoteStatus) {
     const today = getTodayIsoDate()
     const updatedQuotes = visibleQuotes.map(quote => ({
       ...normalizeQuoteAmountFields(quote),
-      status: quote.status === 'sent' && quote.valid_until < today ? 'expired' as QuoteStatus : quote.status
+      status: displayQuoteStatus(quote.status as QuoteStatus, quote.valid_until, today)
     }))
 
     return { quotes: updatedQuotes as QuoteWithDetails[] }
   } catch (error) {
     console.error('Error in getQuotes:', error)
+    return { error: 'An unexpected error occurred' }
+  }
+}
+
+/**
+ * The Quotes page in one read: the list (optionally one stored status) and the summary figures.
+ *
+ * Every quote is read once with only the fields the list draws. The summary is totalled from the
+ * stored rows before a lapsed sent quote is relabelled expired, so it matches getQuoteSummary
+ * exactly. The status filter is applied to the stored status, as getQuotes does: "sent" still
+ * includes lapsed sent quotes (shown as expired) and "expired" only quotes stored as expired.
+ */
+export async function getQuotesPageData(
+  status?: QuoteStatus
+): Promise<{ quotes?: QuoteListItem[]; summary?: QuoteSummary; error?: string }> {
+  try {
+    const supabase = await createClient()
+
+    const hasPermission = await checkUserPermission('invoices', 'view')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view quotes' }
+    }
+
+    // Paged so the list and summary see every quote, not just the newest 1,000: the status
+    // filter runs here in memory, so a capped read could hide older matching quotes.
+    let rows
+    try {
+      rows = await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from('quotes')
+            .select(`
+              id,
+              quote_number,
+              reference,
+              quote_date,
+              valid_until,
+              status,
+              total_amount,
+              converted_to_invoice_id,
+              vendor:invoice_vendors(id, name)
+            `)
+            .order('quote_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, to),
+        { label: 'quotes page data' }
+      )
+    } catch (error) {
+      console.error('Error fetching quotes page data:', error)
+      return { error: 'Failed to fetch quotes' }
+    }
+
+    const today = getTodayIsoDate()
+    const summary = summariseQuotes(rows, today)
+
+    const quotes: QuoteListItem[] = rows
+      .filter((row) => !status || row.status === status)
+      .map((row) => {
+        const vendor = Array.isArray(row.vendor) ? row.vendor[0] : row.vendor
+        return {
+          id: row.id,
+          quote_number: row.quote_number,
+          reference: row.reference ?? undefined,
+          quote_date: row.quote_date,
+          valid_until: row.valid_until,
+          status: displayQuoteStatus(row.status as QuoteStatus, row.valid_until, today),
+          total_amount: moneyOrZero(row.total_amount),
+          converted_to_invoice_id: row.converted_to_invoice_id ?? undefined,
+          vendor: vendor ? { id: vendor.id, name: vendor.name } : null,
+        }
+      })
+
+    return { quotes, summary }
+  } catch (error) {
+    console.error('Error in getQuotesPageData:', error)
     return { error: 'An unexpected error occurred' }
   }
 }

@@ -13,6 +13,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { logger } from '@/lib/logger'
 import { formBooleanSchema } from '@/lib/forms/formBoolean'
 import { revalidateMaintenanceCounts } from '@/lib/maintenance/counts'
@@ -77,9 +78,7 @@ export interface MaintenanceActionResult<T> {
 async function requireMaintenanceSuperAdmin(): Promise<MaintenanceActor> {
   const supabase = await createClient()
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     throw new Error('Unauthorized')

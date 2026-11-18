@@ -3,7 +3,7 @@
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
 import { fromZonedTime } from 'date-fns-tz'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -261,8 +261,7 @@ interface ActorContext {
 }
 
 async function requireVouchersManage(): Promise<ActorContext | null> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return null
   const allowed = await checkUserPermission('vouchers', 'manage', user.id)
   if (!allowed) return null

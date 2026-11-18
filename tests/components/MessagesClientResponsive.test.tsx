@@ -643,3 +643,38 @@ describe('MessagesClient, accessibility', () => {
     expect(log.getAttribute('aria-label')).toContain('Jane Smith')
   })
 })
+
+describe('MessagesClient, background refresh', () => {
+  // waitFor schedules with setTimeout, which these tests fake, so flush with
+  // advanceTimersByTimeAsync and assert directly instead.
+  afterEach(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+  })
+
+  it('refreshes the inbox every 60 seconds, not every 30', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'visible' })
+
+    render(<MessagesClient />)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getMessages).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getMessages).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(getMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not poll while the tab is hidden', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+
+    render(<MessagesClient />)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(getMessages).toHaveBeenCalledTimes(1)
+
+    await vi.advanceTimersByTimeAsync(180_000)
+    expect(getMessages).toHaveBeenCalledTimes(1)
+  })
+})

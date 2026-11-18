@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 
 /**
  * Insights are for super admins only (spec decision 4): the report holds takings,
@@ -8,7 +9,7 @@ import { createClient } from '@/lib/supabase/server'
 export async function currentUserCanViewInsights(): Promise<boolean> {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { user } = await getCurrentUser()
     if (!user) return false
     const { data, error } = await (supabase.rpc as unknown as (
       fn: string,

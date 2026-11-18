@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
 import { revalidatePath } from 'next/cache'
@@ -147,10 +148,7 @@ type EventsManagePermissionResult =
   | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
 
 async function requireEventsManagePermission(): Promise<EventsManagePermissionResult> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }

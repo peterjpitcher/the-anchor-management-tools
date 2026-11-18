@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   PageLayout,
@@ -23,8 +23,9 @@ import {
   Empty,
   Avatar,
 } from '@/ds'
-import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
-import type { QuoteWithDetails, QuoteStatus } from '@/types/invoices'
+import { getQuotesPageData } from '@/app/actions/quotes'
+import type { QuoteListItem, QuoteStatus } from '@/types/invoices'
+import { emptyQuoteSummary, type QuoteSummary } from '@/lib/quotes/summary'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { quoteStatusLabel, quoteStatusTone } from '@/lib/invoices/status-ui'
 import { financeNav } from '@/app/(authenticated)/invoices/_shared/nav'
@@ -32,13 +33,6 @@ import { financeNav } from '@/app/(authenticated)/invoices/_shared/nav'
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-
-type QuoteSummary = {
-  total_pending: number
-  total_expired: number
-  total_accepted: number
-  draft_badge: number
-}
 
 type PermissionSnapshot = {
   canCreate: boolean
@@ -49,7 +43,7 @@ type PermissionSnapshot = {
 }
 
 type QuotesClientProps = {
-  initialQuotes: QuoteWithDetails[]
+  initialQuotes: QuoteListItem[]
   initialSummary: QuoteSummary
   initialStatus: QuoteStatus | 'all'
   initialError: string | null
@@ -72,12 +66,7 @@ const STATUS_OPTIONS = [
   { value: 'expired', label: 'Expired' },
 ]
 
-const FALLBACK_SUMMARY: QuoteSummary = {
-  total_pending: 0,
-  total_expired: 0,
-  total_accepted: 0,
-  draft_badge: 0,
-}
+const FALLBACK_SUMMARY: QuoteSummary = emptyQuoteSummary()
 
 // ---------------------------------------------------------------------------
 // Component
@@ -108,27 +97,34 @@ export default function QuotesClient({
   // State
   const [statusFilter, setStatusFilter] = useState<QuoteStatus | 'all'>(initialStatus)
   const [searchTerm, setSearchTerm] = useState('')
-  const [quotes, setQuotes] = useState<QuoteWithDetails[]>(initialQuotes)
+  const [quotes, setQuotes] = useState<QuoteListItem[]>(initialQuotes)
   const [summary, setSummary] = useState<QuoteSummary>(initialSummary ?? FALLBACK_SUMMARY)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(initialError)
 
+  // The status the quotes on screen were loaded for. The server sends the first page, so the
+  // first render does not fetch again; a later filter change does. Keyed on the filter rather
+  // than on "first run" because loadData also changes when permissions finish loading. When the
+  // server load failed there is nothing to keep, so the mount load runs as a retry.
+  const loadedStatusRef = useRef<QuoteStatus | 'all' | null>(initialError ? null : initialStatus)
+
   // Reload data when filter changes
   const loadData = useCallback(async () => {
     if (permissionsLoading) return
+    if (loadedStatusRef.current === statusFilter) return
+    loadedStatusRef.current = statusFilter
     setLoading(true)
     setError(null)
     try {
-      const [quotesResult, summaryResult] = await Promise.all([
-        getQuotes(statusFilter === 'all' ? undefined : statusFilter),
-        getQuoteSummary(),
-      ])
-      if (quotesResult.error || !quotesResult.quotes) {
-        throw new Error(quotesResult.error || 'Failed to load quotes')
+      const result = await getQuotesPageData(statusFilter === 'all' ? undefined : statusFilter)
+      if (result.error || !result.quotes) {
+        throw new Error(result.error || 'Failed to load quotes')
       }
-      setQuotes(quotesResult.quotes)
-      setSummary(summaryResult.summary ?? FALLBACK_SUMMARY)
+      setQuotes(result.quotes)
+      setSummary(result.summary ?? FALLBACK_SUMMARY)
     } catch (err) {
+      // A failed load keeps nothing on screen for this filter, so the next run of loadData retries.
+      loadedStatusRef.current = null
       setError(err instanceof Error ? err.message : 'Failed to load data')
     } finally {
       setLoading(false)

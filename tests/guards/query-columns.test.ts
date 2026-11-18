@@ -51,6 +51,11 @@ const READ_BY_HAND: Array<{ file: string; why: UnreadReason; checked: string }> 
     checked: 'The list comes from buildStaffStatusTransitionPlan in src/lib/table-bookings/staff-status-actions.ts. Its six lists name ten table_bookings columns and all ten exist.',
   },
   {
+    file: 'src/services/invoices.ts',
+    why: 'select list is built at run time',
+    checked: 'fetchInvoicePage takes INVOICE_FULL_SELECT (invoices *, invoice_vendors *, credit_notes status and amount_inc_vat) or INVOICE_LIST_SELECT (invoices id, invoice_number, reference, status, invoice_date, due_date, total_amount, paid_amount; invoice_vendors id, name; credit_notes status, amount_inc_vat). Every column exists in database.generated.ts (18 November 2026).',
+  },
+  {
     file: 'src/lib/mcp/records.ts',
     why: 'table is not written in the chain',
     checked: 'The agent bridge reads any table an agent names. validateQuery refuses a table missing from src/lib/mcp/generated/tables.json and any filter or order column that table lacks (10 November 2026).',
@@ -69,6 +74,11 @@ const READ_BY_HAND: Array<{ file: string; why: UnreadReason; checked: string }> 
     file: 'src/services/receipts/receiptQueries.ts',
     why: 'filter column is built at run time',
     checked: 'The sort column is a ReceiptSortColumn: transaction_date, details, amount_in, amount_out or amount_total. receipt_transactions has all five.',
+  },
+  {
+    file: 'src/services/receipts/receiptQueries.ts',
+    why: 'query is not traced to a .from()',
+    checked: 'loadVendorGroupTotals wraps the read in a narrow() callback, so the chain cannot see its .from(). It reads receipt_transactions, selects vendor_name, amount_in, amount_out, amount_total and receipt_files(id), filters vendor_name and orders by id. receipt_transactions has all of these (18 November 2026).',
   },
 ]
 

@@ -3,10 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getMgdQuarter, getCurrentMgdQuarter } from '@/lib/mgd/quarterMapping'
+import { countCollectionsInPeriod } from '@/lib/mgd/collectionCounts'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,10 +79,7 @@ export interface MgdInsightsData {
 async function requireMgdViewPermission(): Promise<
   { userId: string } | { error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const allowed = await checkUserPermission('mgd', 'view', user.id)
@@ -92,10 +91,7 @@ async function requireMgdViewPermission(): Promise<
 async function requireMgdManagePermission(): Promise<
   { userId: string } | { error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const allowed = await checkUserPermission('mgd', 'manage', user.id)
@@ -182,14 +178,32 @@ export async function getReturns(): ActionResult<MgdReturn[]> {
 
   if (error) return { error: error.message }
 
-  // Count collections per return period using date ranges (no FK relationship)
+  // Count collections per return period using date ranges (no FK relationship).
+  // One paged read of every collection date, counted in memory, instead of one
+  // count query per return in series.
+  let collectionDates: string[]
+  try {
+    const rows = await fetchAllRows<{ collection_date: string }>(
+      (from, to) =>
+        db
+          .from('mgd_collections')
+          .select('collection_date')
+          .order('collection_date', { ascending: true })
+          .order('id', { ascending: true })
+          .range(from, to),
+      { label: 'MGD collection dates' }
+    )
+    collectionDates = rows.map((row) => row.collection_date)
+  } catch (readError) {
+    return { error: readError instanceof Error ? readError.message : 'Failed to load collections' }
+  }
+
   const returns: MgdReturn[] = []
   for (const r of data ?? []) {
-    const { count } = await db
-      .from('mgd_collections')
-      .select('*', { count: 'exact', head: true })
-      .gte('collection_date', r.period_start)
-      .lte('collection_date', r.period_end)
+    const count = countCollectionsInPeriod(collectionDates, {
+      period_start: r.period_start as string,
+      period_end: r.period_end as string,
+    })
 
     returns.push({
       id: r.id as string,
@@ -205,7 +219,7 @@ export async function getReturns(): ActionResult<MgdReturn[]> {
       machine_count: (r.machine_count ?? 1) as number,
       created_at: r.created_at as string,
       updated_at: r.updated_at as string,
-      collection_count: count ?? 0,
+      collection_count: count,
     })
   }
 

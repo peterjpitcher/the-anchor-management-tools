@@ -1,6 +1,6 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { SIGNING_KIND_DEFINITIONS, getSigningKind } from './kinds'
 import type { SigningKind, SigningSubjectType } from './types'
 
@@ -18,10 +18,7 @@ export interface SigningStaffUser {
 }
 
 export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return null
 
   const admin = createAdminClient()
@@ -44,6 +41,18 @@ export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
   }
 }
 
+/**
+ * Just the signed-in staff member's id, for reads that need nothing else. Same rule as
+ * getSigningStaffUser (signed in, nothing more), without reading their employee record.
+ */
+export async function getSigningStaffUserId(): Promise<string | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return user?.id ?? null
+}
+
 export async function canSendSigningKind(kind: SigningKind, userId?: string): Promise<boolean> {
   const { sendPermission } = getSigningKind(kind)
   return checkUserPermission(sendPermission.module, sendPermission.action, userId)
@@ -59,4 +68,25 @@ export function signingKindsForSubject(subjectType: SigningSubjectType): Signing
   return Object.values(SIGNING_KIND_DEFINITIONS)
     .filter((definition) => definition.subjectType === subjectType)
     .map((definition) => definition.kind)
+}
+
+/**
+ * The kinds this person may see, from the list given and in the same order. Each distinct
+ * view permission is checked once, all together, rather than once per kind in turn; the answer
+ * for each kind is the same as canViewSigningKind.
+ */
+export async function viewableSigningKinds(kinds: SigningKind[], userId: string): Promise<SigningKind[]> {
+  const checks = new Map<string, Promise<boolean>>()
+  for (const kind of kinds) {
+    const { viewPermission } = getSigningKind(kind)
+    const key = `${viewPermission.module}:${viewPermission.action}`
+    if (!checks.has(key)) checks.set(key, checkUserPermission(viewPermission.module, viewPermission.action, userId))
+  }
+  const keys = Array.from(checks.keys())
+  const results = await Promise.all(keys.map((key) => checks.get(key) as Promise<boolean>))
+  const allowed = new Map(keys.map((key, index) => [key, results[index]]))
+  return kinds.filter((kind) => {
+    const { viewPermission } = getSigningKind(kind)
+    return allowed.get(`${viewPermission.module}:${viewPermission.action}`) === true
+  })
 }

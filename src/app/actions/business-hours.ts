@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -38,10 +38,7 @@ type SettingsManagePermissionResult =
   | { user: SupabaseUser; admin: ReturnType<typeof createAdminClient> }
 
 async function requireSettingsManagePermission(): Promise<SettingsManagePermissionResult> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }

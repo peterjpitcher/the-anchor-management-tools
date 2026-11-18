@@ -13,13 +13,20 @@ import {
 } from '@/services/menu';
 import { getErrorMessage } from '@/lib/errors';
 
-export async function listMenuIngredients() {
+/**
+ * Lists every menu ingredient with its latest prices. By default each ingredient also lists the
+ * dishes it is used in (`dishes`). Pass `{ includeUsage: false }` to skip those reads when only the
+ * ingredient fields are needed; `dishes` is then an empty list. Read-only.
+ */
+export async function listMenuIngredients(options?: { includeUsage?: boolean }) {
   try {
     const hasPermission = await checkUserPermission('menu_management', 'view');
     if (!hasPermission) {
       return { error: 'You do not have permission to view menu ingredients' };
     }
-    const { data } = await MenuService.listIngredients();
+    const { data } = await MenuService.listIngredients(
+      options?.includeUsage === false ? { includeUsage: false } : undefined
+    );
     return { data };
   } catch (error: unknown) {
     console.error('listMenuIngredients unexpected error:', error);

@@ -1736,14 +1736,14 @@
   "params": [
    {
     "name": "params",
-    "type": "{\n  page: number\n  pageSize: number\n  searchTerm: string\n  smsFilter: CustomerSmsFilter\n}",
+    "type": "{\n  page: number\n  pageSize: number\n  searchTerm: string\n  smsFilter: CustomerSmsFilter\n  includeTabCounts?: boolean\n}",
     "optional": false
    }
   ],
   "typeRefs": {
    "CustomerSmsFilter": "type CustomerSmsFilter = 'all' | 'active' | 'deactivated'"
   },
-  "doc": "Server-side customer list fetch with enrichment data (preferences, labels,\nunread message counts).  Used by the Customers page Server Component to\nprovide data for the initial render — no skeleton flash on first visit.",
+  "doc": "Server-side customer list fetch with enrichment data (preferences, labels,\nunread message counts). Used by the Customers page Server Component for the\nfirst render, so there is no skeleton flash on first visit, and by the list\nwhen staff page, search or filter.\n\nThe SMS Active and SMS Deactivated tab counts do not depend on the page, so a\ncaller that already holds them for the same search and filter passes\n`includeTabCounts: false` and gets null for both, saving two full counts.\nLeft out, it defaults to true.",
   "readOnly": true
  },
  {
@@ -3789,6 +3789,21 @@
   "readOnly": false
  },
  {
+  "name": "events.getCalendarEvents",
+  "module": "events",
+  "export": "getCalendarEvents",
+  "params": [
+   {
+    "name": "options",
+    "type": "{\n  dateFrom?: string;\n  dateTo?: string;\n}",
+    "optional": true
+   }
+  ],
+  "typeRefs": {},
+  "doc": "The events calendar's rows for one window of dates (default: the first day of\nthe month twelve months ago to the end of the month twelve months ahead).\nRead-only. Returns only the columns the calendar renders plus `booked_count`\n(seats on active bookings, the same figure getEvents gives); no link clicks\nand no capacity snapshot. Needs events:view.",
+  "readOnly": true
+ },
+ {
   "name": "events.getEventBookingDoorCharge",
   "module": "events",
   "export": "getEventBookingDoorCharge",
@@ -4310,6 +4325,15 @@
   "readOnly": false
  },
  {
+  "name": "insights.refreshInsightsReport",
+  "module": "insights",
+  "export": "refreshInsightsReport",
+  "params": [],
+  "typeRefs": {},
+  "doc": "\"Refresh now\" on the Insights page: drops the cached report so the next render rebuilds it\nfrom live data. Reads nothing and writes no records; it only clears the five-minute cache.\nSame check as the page (super admins only); anyone else is refused and the cache is left alone.",
+  "readOnly": false
+ },
+ {
   "name": "invoice-reminders.getInvoiceEmailHistory",
   "module": "invoice-reminders",
   "export": "getInvoiceEmailHistory",
@@ -4520,6 +4544,53 @@
   ],
   "typeRefs": {},
   "doc": "",
+  "readOnly": true
+ },
+ {
+  "name": "invoices.getInvoiceListPage",
+  "module": "invoices",
+  "export": "getInvoiceListPage",
+  "params": [
+   {
+    "name": "status",
+    "type": "InvoiceStatus | 'unpaid'",
+    "optional": true
+   },
+   {
+    "name": "page",
+    "type": "number",
+    "optional": true
+   },
+   {
+    "name": "limit",
+    "type": "number",
+    "optional": true
+   },
+   {
+    "name": "search",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "vendorSearch",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "startDate",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "endDate",
+    "type": "string",
+    "optional": true
+   }
+  ],
+  "typeRefs": {
+   "InvoiceStatus": "type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue' | 'void' | 'written_off'"
+  },
+  "doc": "Lists invoices for the invoices page: same filters and paging as getInvoices, but each row\ncarries only what the list shows (number, reference, vendor id and name, dates, status, total,\npaid amount and credits for the balance). Use getInvoices for full invoice rows.",
   "readOnly": true
  },
  {
@@ -5992,9 +6063,15 @@
   "name": "menu-management.listMenuIngredients",
   "module": "menu-management",
   "export": "listMenuIngredients",
-  "params": [],
+  "params": [
+   {
+    "name": "options",
+    "type": "{ includeUsage?: boolean }",
+    "optional": true
+   }
+  ],
   "typeRefs": {},
-  "doc": "",
+  "doc": "Lists every menu ingredient with its latest prices. By default each ingredient also lists the\ndishes it is used in (`dishes`). Pass `{ includeUsage: false }` to skip those reads when only the\ningredient fields are needed; `dishes` is then an empty list. Read-only.",
   "readOnly": true
  },
  {
@@ -6921,6 +6998,15 @@
   "readOnly": false
  },
  {
+  "name": "oj-projects/clients.getOJClientOptions",
+  "module": "oj-projects/clients",
+  "export": "getOJClientOptions",
+  "params": [],
+  "typeRefs": {},
+  "doc": "Active clients as `id, name` only, in name order. The overview page needs no more than\nthis for its client filter and labels, so it skips the project count and retainer reads\nthat `getOJClients` makes. Same permission as `getOJClients`.",
+  "readOnly": true
+ },
+ {
   "name": "oj-projects/clients.getOJClients",
   "module": "oj-projects/clients",
   "export": "getOJClients",
@@ -7026,7 +7112,7 @@
   "params": [
    {
     "name": "options",
-    "type": "{\n  vendorId?: string\n  projectId?: string\n  status?: string\n  entryType?: string\n  billing?: string\n  search?: string\n  invoiceSearch?: string\n  startDate?: string\n  endDate?: string\n  limit?: number\n  page?: number\n  pageSize?: number\n}",
+    "type": "{\n  vendorId?: string\n  projectId?: string\n  status?: string\n  entryType?: string\n  billing?: string\n  search?: string\n  invoiceSearch?: string\n  startDate?: string\n  endDate?: string\n  limit?: number\n  page?: number\n  pageSize?: number\n  /**\n   * Ask the database for the exact matching total (default true). Callers that ignore\n   * `total` pass false to skip the count; `total` is then the number of rows returned.\n   */\n  withCount?: boolean\n}",
     "optional": true
    }
   ],
@@ -7524,7 +7610,7 @@
   "params": [
    {
     "name": "options",
-    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n}",
+    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n  /**\n   * Only bookings still running at or after this ISO instant (departing at or\n   * after it), so a stay that began earlier but overlaps the period is kept. The\n   * calendars pass midnight London time on the first day of last month, so they\n   * load what they can show instead of the newest 500 of all time.\n   */\n  endingFrom?: string\n}",
     "optional": true
    }
   ],
@@ -9840,6 +9926,23 @@
    "QuoteStatus": "type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'"
   },
   "doc": "",
+  "readOnly": true
+ },
+ {
+  "name": "quotes.getQuotesPageData",
+  "module": "quotes",
+  "export": "getQuotesPageData",
+  "params": [
+   {
+    "name": "status",
+    "type": "QuoteStatus",
+    "optional": true
+   }
+  ],
+  "typeRefs": {
+   "QuoteStatus": "type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'"
+  },
+  "doc": "The Quotes page in one read: the list (optionally one stored status) and the summary figures.\n\nEvery quote is read once with only the fields the list draws. The summary is totalled from the\nstored rows before a lapsed sent quote is relabelled expired, so it matches getQuoteSummary\nexactly. The status filter is applied to the stored status, as getQuotes does: \"sent\" still\nincludes lapsed sent quotes (shown as expired) and \"expired\" only quotes stored as expired.",
   "readOnly": true
  },
  {

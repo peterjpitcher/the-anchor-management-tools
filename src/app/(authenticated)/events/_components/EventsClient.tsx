@@ -25,7 +25,8 @@ import type {
 import type { Event } from '@/types/database'
 import type { ParkingBookingStatus } from '@/types/parking'
 import type { EventCategory } from '@/types/event-categories'
-import { getEvents, deleteEvent } from '@/app/actions/events'
+import { getEvents, getCalendarEvents, deleteEvent } from '@/app/actions/events'
+import { calendarParkingStartFrom, type CalendarEventRow } from '@/lib/events/calendar-events'
 import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
 import { listCalendarNotes } from '@/app/actions/calendar-notes'
 import { listParkingBookings } from '@/app/actions/parking'
@@ -53,13 +54,36 @@ function getFilenameFromHeaders(headers: Headers): string | null {
   return filenameMatch?.[1] ?? null
 }
 
-function toCalendarEvent(e: Event): VenueCalendarEvent {
+/**
+ * The calendar's secondary layers. The page starts loading them on the server
+ * and streams the promise here, so the calendar paints with its events first and
+ * the layers, with any warnings about them, arrive when they are ready.
+ */
+export interface EventsCalendarLayers {
+  specialHours: VenueCalendarSpecialHours[]
+  birthdays: VenueCalendarEmployeeBirthday[]
+  balanceDues: VenueCalendarBalanceDue[]
+  dailyOps: ScheduleDailyOps | null
+  marketingSends: VenueCalendarMarketingSend[]
+  warnings: string[]
+}
+
+const EMPTY_CALENDAR_LAYERS: EventsCalendarLayers = {
+  specialHours: [],
+  birthdays: [],
+  balanceDues: [],
+  dailyOps: null,
+  marketingSends: [],
+  warnings: [],
+}
+
+export function toCalendarEvent(e: CalendarEventRow): VenueCalendarEvent {
   return {
     id: e.id,
     name: e.name,
     date: e.date,
     time: e.time,
-    bookedSeatsCount: (e as Event & { booked_count?: number }).booked_count ?? 0,
+    bookedSeatsCount: e.booked_count ?? 0,
     eventStatus: e.event_status,
     // Content readiness, so the calendar can flag and filter what still needs
     // artwork or copy before it can be published.
@@ -81,7 +105,7 @@ interface EventsClientProps {
     totalPages: number
   }
   categories: EventCategory[]
-  initialCalendarEvents?: Event[]
+  initialCalendarEvents?: CalendarEventRow[]
   initialCalendarBookings?: VenueCalendarBooking[]
   initialCalendarNotes?: VenueCalendarNote[]
   initialCalendarParking?: VenueCalendarParking[]
@@ -95,15 +119,11 @@ interface EventsClientProps {
   /**
    * Datasets the events calendar used to lack entirely, so it looked like a
    * different product from the dashboard's. Each is permission-gated at source;
-   * an empty array here can mean "denied" as well as "none", which is why the
-   * page also passes any failure messages separately.
+   * an empty array can mean "denied" as well as "none", which is why the layers
+   * carry any failure messages separately. Streamed: the calendar renders
+   * without them until the promise settles.
    */
-  initialSpecialHours?: VenueCalendarSpecialHours[]
-  initialBirthdays?: VenueCalendarEmployeeBirthday[]
-  initialBalanceDues?: VenueCalendarBalanceDue[]
-  initialDailyOps?: ScheduleDailyOps | null
-  initialMarketingSends?: VenueCalendarMarketingSend[]
-  calendarDatasetWarnings?: string[]
+  calendarLayers?: Promise<EventsCalendarLayers>
   /**
    * Why the first page of the list, or the calendar's events, could not be loaded. A failed
    * load is shown as a failure, never as an empty list or an empty calendar.
@@ -124,12 +144,7 @@ export default function EventsClient({
   initialCalendarParking,
   canManageCalendarNotes,
   calendarNotesError = null,
-  initialSpecialHours = [],
-  initialBirthdays = [],
-  initialBalanceDues = [],
-  initialDailyOps = null,
-  initialMarketingSends = [],
-  calendarDatasetWarnings = [],
+  calendarLayers,
   initialEventsError = null,
   initialCalendarEventsError = null,
   todosPanel,
@@ -168,6 +183,22 @@ export default function EventsClient({
   const [isExporting, setIsExporting] = useState(false)
   const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [layers, setLayers] = useState<EventsCalendarLayers>(EMPTY_CALENDAR_LAYERS)
+
+  useEffect(() => {
+    if (!calendarLayers) return
+    let live = true
+    Promise.resolve(calendarLayers)
+      .then((loaded) => {
+        if (live) setLayers(loaded)
+      })
+      .catch(() => {
+        if (live) setLayers({ ...EMPTY_CALENDAR_LAYERS, warnings: ['Some calendar layers could not be loaded'] })
+      })
+    return () => {
+      live = false
+    }
+  }, [calendarLayers])
 
   const fetchEvents = useCallback(
     (page: number, currentFilters: EventFilters) => {
@@ -199,10 +230,14 @@ export default function EventsClient({
     () => {
       startTransition(async () => {
         const [eventsResult, bookingsResult, notesResult, parkingResult] = await Promise.all([
-          getEvents({ status: 'all', page: 1, pageSize: 500 }),
+          getCalendarEvents(),
           fetchPrivateBookingsForCalendar(),
           listCalendarNotes(),
-          listParkingBookings({ limit: 500, statuses: CALENDAR_PARKING_STATUSES }),
+          listParkingBookings({
+            limit: 500,
+            statuses: CALENDAR_PARKING_STATUSES,
+            endingFrom: calendarParkingStartFrom(),
+          }),
         ])
         if (eventsResult.data) {
           setCalendarEvents(eventsResult.data.map(toCalendarEvent))
@@ -529,17 +564,17 @@ export default function EventsClient({
                 privateBookings={calendarBookings}
                 calendarNotes={calendarNotes}
                 parkingBookings={calendarParking}
-                specialHours={initialSpecialHours}
-                employeeBirthdays={initialBirthdays}
-                balanceDueDates={initialBalanceDues}
-                marketingSends={initialMarketingSends}
-                dailyOps={initialDailyOps ?? undefined}
+                specialHours={layers.specialHours}
+                employeeBirthdays={layers.birthdays}
+                balanceDueDates={layers.balanceDues}
+                marketingSends={layers.marketingSends}
+                dailyOps={layers.dailyOps ?? undefined}
                 canManageCalendarNotes={canManageCalendarNotes}
                 showFilters
                 onNotesChanged={fetchCalendarData}
                 datasetWarnings={[
                   ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
-                  ...calendarDatasetWarnings,
+                  ...layers.warnings,
                 ]}
               />
             )}

@@ -23785,6 +23785,22 @@ export type Database = {
           phone_number: string
         }[]
       }
+      get_inbox_communications: {
+        Args: { p_recent_limit: number; p_unread_limit: number }
+        Returns: {
+          body_text: string
+          channel: string
+          created_at: string
+          customer_id: string
+          direction: string
+          has_attachments: boolean
+          id: string
+          is_unread_row: boolean
+          read_at: string
+          staff_read_at: string
+          subject: string
+        }[]
+      }
       get_invoice_summary_stats: {
         Args: never
         Returns: {

@@ -208,7 +208,30 @@ const getCachedIsSuperAdmin = (userId: string) =>
     { revalidate: 60, tags: [`permissions-${userId}`] }
   )();
 
+// Cache the names of the user's roles for 60 seconds, for the shell's role label and the
+// super-admin-only nav items. Same RPC, window and tag as getCachedIsSuperAdmin, so a role change
+// clears it. A failed lookup throws rather than caching an empty list (BK-095).
+const getCachedRoleNames = (userId: string) =>
+  unstable_cache(
+    async (): Promise<string[]> => {
+      const admin = createAdminClient();
+      const data = await rpcWithOneRetry('user role names', () =>
+        admin.rpc('get_user_roles', { p_user_id: userId })
+      );
+      return ((data as Array<{ role_name?: string | null }> | null) ?? [])
+        .map((row) => row.role_name)
+        .filter((roleName): roleName is string => Boolean(roleName));
+    },
+    ['user-role-names', userId],
+    { revalidate: 60, tags: [`permissions-${userId}`] }
+  )();
+
 export class PermissionService {
+  /** The user's role names (cached 60 s). Throws PermissionsUnavailableError when the lookup fails. */
+  static async getRoleNames(userId: string): Promise<string[]> {
+    return getCachedRoleNames(userId);
+  }
+
   /**
    * Answers allowed, denied or unavailable. Unavailable is only ever returned when a lookup
    * failed; it never grants anything, so callers that treat it as "no" still fail closed.

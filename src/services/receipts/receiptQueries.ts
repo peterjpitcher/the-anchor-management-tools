@@ -80,7 +80,7 @@ import {
 } from './vendorInsights'
 import { queryReceiptGovernanceItems } from './receiptGovernance'
 import { queryReceiptAiStatus } from './receiptAiReview'
-import { totalVendorGroups, type VendorGroupTotal } from '@/lib/receipts/vendor-group-key'
+import { totalVendorGroups, vendorGroupKey, type VendorGroupTotal } from '@/lib/receipts/vendor-group-key'
 import { RECEIPT_AI_PROMPT_VERSION } from '@/lib/receipts/ai-client'
 
 const RECEIPT_HISTORY_PAGE_SIZE = 1000
@@ -181,7 +181,11 @@ async function readLockDateForDisplay(supabase: AdminClient): Promise<string | n
   }
 }
 
-async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
+/**
+ * @param lockDateRead The lock date already being read by the caller, so `receipt_settings` is
+ * read once per workspace load. Read here when not given.
+ */
+async function fetchSummary(lockDateRead?: Promise<string | null>): Promise<ReceiptWorkspaceSummary> {
   const supabase = createAdminClient()
   const [{ data: statusCounts, error: statusCountsError }, { data: lastBatch }, { data: usageData, error: usageError }, { count: failedJobCount, error: failedJobsError }, { data: bareCount, error: bareCountError }, lockDate] = await Promise.all([
     supabase.rpc('count_receipt_statuses'),
@@ -201,7 +205,7 @@ async function fetchSummary(): Promise<ReceiptWorkspaceSummary> {
       .eq('status', 'failed'),
     // Counted after the lock date, where one is set: a filed period is not waiting for receipts.
     (supabase as any).rpc('count_receipts_completed_without_receipt'),
-    readLockDateForDisplay(supabase),
+    lockDateRead ?? readLockDateForDisplay(supabase),
   ])
 
   const counts = Array.isArray(statusCounts) ? statusCounts[0] : statusCounts
@@ -477,42 +481,87 @@ function applyWorkspaceFilters<Query>(
   return filtered as Query
 }
 
+type VendorTotalRow = {
+  vendor_name: string | null
+  amount_in: number | null
+  amount_out: number | null
+  amount_total: number | null
+}
+
+/** Vendor names per totals read, so the request URL stays short. */
+const VENDOR_TOTALS_NAMES_PER_READ = 25
+
 /**
- * Totals for each vendor group across every payment the filters match, so a group's heading is
- * right whichever page it is on. Read as four narrow columns, in pages. Null when it cannot be
- * read: the list then totals the rows it has and says nothing false.
+ * Totals for the vendor groups on this page, across every payment the filters match, so a
+ * group's heading is right whichever page it is on. Only the groups on the page are totalled:
+ * the list looks up nothing else (the headings and their heat colours are the page's groups).
+ * It used to read every matching payment, which on the all-time view is every payment there is.
+ *
+ * The groups are found by case-insensitive vendor name, plus one read for "Missing vendor" (no name or an
+ * empty one) when the page has such a row. A name holding a double quote or a backslash, which
+ * the filter syntax cannot carry safely, falls back to reading every matching payment.
+ *
+ * Read as four narrow columns, in pages. Null when it cannot be read: the list then totals the
+ * rows it has and says nothing false.
  */
 async function loadVendorGroupTotals(
   supabase: AdminClient,
   filters: ReceiptWorkspaceFilters,
   monthRange: { start: string; end: string } | null,
-  lockDate: string | null
+  lockDate: string | null,
+  pageRows: ReadonlyArray<{ vendor_name?: string | null }>
 ): Promise<Record<string, VendorGroupTotal> | null> {
-  try {
-    const rows = await fetchAllRows<{
-      vendor_name: string | null
-      amount_in: number | null
-      amount_out: number | null
-      amount_total: number | null
-    }>(
+  const pageKeys = new Set(pageRows.map((row) => vendorGroupKey(row.vendor_name)))
+  if (!pageKeys.size) return {}
+
+  const columns = filters.completedWithoutReceipt
+    ? 'vendor_name, amount_in, amount_out, amount_total, receipt_files(id)'
+    : 'vendor_name, amount_in, amount_out, amount_total'
+  const readAll = (narrow: (query: any) => any, label: string) =>
+    fetchAllRows<VendorTotalRow>(
       (from, to) =>
-        applyWorkspaceFilters(
-          (supabase as any)
-            .from('receipt_transactions')
-            .select(
-              filters.completedWithoutReceipt
-                ? 'vendor_name, amount_in, amount_out, amount_total, receipt_files(id)'
-                : 'vendor_name, amount_in, amount_out, amount_total'
-            ),
-          filters,
-          monthRange,
-          lockDate
+        narrow(
+          applyWorkspaceFilters((supabase as any).from('receipt_transactions').select(columns), filters, monthRange, lockDate)
         )
           .order('id', { ascending: true })
           .range(from, to),
-      { label: 'receipt vendor group totals' }
+      { label }
     )
-    return totalVendorGroups(rows)
+
+  // Groups ignore case and surrounding spaces (vendorGroupKey), so the read must too: each name is
+  // matched with a case-insensitive contains, which can only over-match, and the rows are then
+  // kept only when their group key is one of the page's keys. "Tesco" on the page therefore also
+  // totals "tesco" and " Tesco " rows held elsewhere, exactly as the full read did.
+  const names = [
+    ...new Set(
+      pageRows
+        .map((row) => row.vendor_name?.trim())
+        .filter((name): name is string => Boolean(name))
+    ),
+  ]
+  const hasMissingVendor = pageRows.some((row) => !row.vendor_name?.trim())
+
+  try {
+    let rows: VendorTotalRow[]
+    if (names.some((name) => /["\\]/.test(name))) {
+      rows = await readAll((query) => query, 'receipt vendor group totals')
+    } else {
+      const chunks: string[][] = []
+      for (let index = 0; index < names.length; index += VENDOR_TOTALS_NAMES_PER_READ) {
+        chunks.push(names.slice(index, index + VENDOR_TOTALS_NAMES_PER_READ))
+      }
+      const reads = chunks.map((chunk) =>
+        readAll(
+          (query) => query.or(chunk.map((name) => `vendor_name.ilike."*${name}*"`).join(',')),
+          'receipt vendor group totals'
+        )
+      )
+      if (hasMissingVendor) {
+        reads.push(readAll((query) => query.or('vendor_name.is.null,vendor_name.eq.'), 'receipt missing vendor totals'))
+      }
+      rows = (await Promise.all(reads)).flat()
+    }
+    return totalVendorGroups(rows.filter((row) => pageKeys.has(vendorGroupKey(row.vendor_name))))
   } catch (error) {
     console.error('Failed to total the vendor groups for the receipts workspace:', error)
     return null
@@ -540,8 +589,10 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   const sortColumn: ReceiptSortColumn = filters.sortBy ?? defaultSortColumn
   const ascending = filters.sortDirection === 'asc'
 
-  // Only the "completed without a receipt" view is narrowed by the lock date, so only it reads it.
-  const lockDate = filters.completedWithoutReceipt ? await readLockDateForDisplay(supabase) : null
+  // `receipt_settings` is read once: the summary tile and the "completed without a receipt" view
+  // share this read. Only that view is narrowed by the lock date, so only it waits for it here.
+  const lockDateRead = readLockDateForDisplay(supabase)
+  const lockDate = filters.completedWithoutReceipt ? await lockDateRead : null
 
   let baseQuery: any = applyWorkspaceFilters(
     supabase
@@ -568,10 +619,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
   // A unique last key, so two payments that tie on everything else do not swap pages.
   baseQuery = baseQuery.order('id', { ascending: true }).range(offset, offset + pageSize - 1)
 
-  const vendorGroupTotalsQuery = filters.groupByVendor
-    ? loadVendorGroupTotals(supabase, filters, monthRange, lockDate)
-    : Promise.resolve(null)
-
   // The vendor picker offers the vendors that are standing: not merged into another and not
   // deactivated. Those keep their history and are no longer offered. Names on the rows already
   // on screen and names in rules are not added: a name that is not a standing vendor goes
@@ -593,7 +640,11 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     return [] as CanonicalVendorRow[]
   })
 
-  const monthsQuery = supabase.rpc('get_receipt_monthly_summary', {
+  // The month picker needs only which months hold payments. get_receipt_monthly_summary also
+  // ranks every vendor in every month (about 1.4 seconds on 18 November 2026); the status counts
+  // pick their months with the same DISTINCT over the same table (about 50 ms), and the two month
+  // lists matched on production.
+  const monthsQuery = supabase.rpc('get_receipt_monthly_status_counts', {
     limit_months: 1000,
   })
 
@@ -608,7 +659,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     { data: cardMemberRows, error: cardMemberError },
     governance,
     aiStatus,
-    vendorGroupTotals,
   ] = await Promise.all([
     baseQuery,
     supabase
@@ -616,7 +666,7 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
       .select('*')
       .order('priority', { ascending: true })
       .order('created_at', { ascending: true }),
-    fetchSummary(),
+    fetchSummary(lockDateRead),
     canonicalVendorQuery,
     monthsQuery,
     cardMembersQuery,
@@ -626,7 +676,6 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
       console.error('Failed to load AI classification status for receipts workspace:', aiStatusError)
       return null
     }),
-    vendorGroupTotalsQuery,
   ])
 
   if (error) {
@@ -642,15 +691,21 @@ export async function queryReceiptWorkspaceData(filters: ReceiptWorkspaceFilters
     console.error('Failed to load card member list for receipts workspace:', cardMemberError)
   }
 
-  const attemptsByTransaction = await loadAiAttemptsForPage(
-    supabase,
-    (transactions ?? []).map((tx: any) => String(tx.id))
-  )
-
-  const sharedFileCounts = await loadSharedFileCounts(
-    supabase,
-    (transactions ?? []).flatMap((tx: any) => (tx.receipt_files ?? []) as Array<{ transaction_id: string; content_hash: string | null; source?: string | null }>)
-  )
+  // These three need the page's rows and nothing from each other. Each one logs and degrades on
+  // its own failure, so the list still loads.
+  const [attemptsByTransaction, sharedFileCounts, vendorGroupTotals] = await Promise.all([
+    loadAiAttemptsForPage(
+      supabase,
+      (transactions ?? []).map((tx: any) => String(tx.id))
+    ),
+    loadSharedFileCounts(
+      supabase,
+      (transactions ?? []).flatMap((tx: any) => (tx.receipt_files ?? []) as Array<{ transaction_id: string; content_hash: string | null; source?: string | null }>)
+    ),
+    filters.groupByVendor
+      ? loadVendorGroupTotals(supabase, filters, monthRange, lockDate, transactions ?? [])
+      : Promise.resolve(null),
+  ])
 
   const shapedTransactions = (transactions ?? []).map((tx: any) => ({
     ...tx,

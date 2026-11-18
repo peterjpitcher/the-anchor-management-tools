@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { revalidatePath } from 'next/cache';
@@ -106,7 +107,7 @@ type EmployeeLeaveSettings = {
 // Returns true if the current session user IS the employee identified by employeeId
 async function isOwnEmployeeRecord(employeeId: string): Promise<boolean> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return false;
   const { data, error } = await supabase
     .from('employees')

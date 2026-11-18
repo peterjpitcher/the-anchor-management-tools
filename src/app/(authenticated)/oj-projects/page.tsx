@@ -1,7 +1,7 @@
 import { getProjects } from '@/app/actions/oj-projects/projects'
 import { getBillableUnbilledCount, getEntries, getEntryHoursByDate } from '@/app/actions/oj-projects/entries'
 import { getWorkTypes } from '@/app/actions/oj-projects/work-types'
-import { getOJClients } from '@/app/actions/oj-projects/clients'
+import { getOJClientOptions } from '@/app/actions/oj-projects/clients'
 import {
   buildWorkHistorySeries,
   getCurrentMonthEntryDateRange,
@@ -35,9 +35,9 @@ export default async function OJProjectsOverviewPage({
 
   const [projectsRes, entriesRes, workTypesRes, clientsRes, hoursRes, unbilledRes] = await Promise.all([
     getProjects(),
-    getEntries({ ...currentMonthRange, ...vendorFilter }),
+    getEntries({ ...currentMonthRange, ...vendorFilter, withCount: false }),
     getWorkTypes(),
-    getOJClients(),
+    getOJClientOptions(),
     getEntryHoursByDate({ ...workHistoryDates, ...vendorFilter }),
     getBillableUnbilledCount(vendorFilter),
   ])

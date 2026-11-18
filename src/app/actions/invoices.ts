@@ -215,6 +215,42 @@ export async function getInvoices(
   }
 }
 
+/**
+ * Lists invoices for the invoices page: same filters and paging as getInvoices, but each row
+ * carries only what the list shows (number, reference, vendor id and name, dates, status, total,
+ * paid amount and credits for the balance). Use getInvoices for full invoice rows.
+ */
+export async function getInvoiceListPage(
+  status?: InvoiceStatus | 'unpaid',
+  page: number = 1,
+  limit: number = 20,
+  search?: string,
+  vendorSearch?: string,
+  startDate?: string,
+  endDate?: string
+) {
+  try {
+    const hasPermission = await checkUserPermission('invoices', 'view')
+    if (!hasPermission) {
+      return { error: 'You do not have permission to view invoices' }
+    }
+
+    const { invoices, total } = await InvoiceService.getInvoiceListRows(
+      status,
+      page,
+      limit,
+      search,
+      vendorSearch,
+      startDate,
+      endDate
+    )
+    return { invoices, total }
+  } catch (error: unknown) {
+    console.error('Error in getInvoiceListPage:', error)
+    return { error: getErrorMessage(error) }
+  }
+}
+
 export async function getInvoice(invoiceId: string) {
   try {
     const hasPermission = await checkUserPermission('invoices', 'view')

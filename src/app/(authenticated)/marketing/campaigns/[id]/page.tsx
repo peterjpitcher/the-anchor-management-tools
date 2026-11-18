@@ -36,10 +36,11 @@ export default async function MarketingCampaignDetailPage({
   params: Promise<{ id: string }>
   searchParams: Promise<SearchParams>
 }) {
-  const canView = await checkUserPermission('marketing', 'view')
+  const [canView, canSend] = await Promise.all([
+    checkUserPermission('marketing', 'view'),
+    checkUserPermission('marketing', 'send'),
+  ])
   if (!canView) redirect('/unauthorized')
-
-  const canSend = await checkUserPermission('marketing', 'send')
 
   const { id } = await params
   const query = await searchParams

@@ -1269,12 +1269,17 @@ export class TrainingService {
     const client = admin()
     const today = opts.today ?? trainingToday()
     // Someone on notice past their last working day has left, so they are not on the matrix.
-    const employees = (await loadEmployeesByStatus(client, IN_SCOPE_STATUSES)).filter((employee) => !hasLeft(employee, today))
-    const courses = (await loadCourses(client, ['live'])).sort(compareCourses)
+    // Five independent reads, run together.
+    const [inScope, liveCourses, assignments, profiles, rota] = await Promise.all([
+      loadEmployeesByStatus(client, IN_SCOPE_STATUSES),
+      loadCourses(client, ['live']),
+      loadAllAssignments(client),
+      loadProfiles(client, null),
+      loadRecentRotaDepartments(client, null, today),
+    ])
+    const employees = inScope.filter((employee) => !hasLeft(employee, today))
+    const courses = liveCourses.sort(compareCourses)
     const courseById = new Map(courses.map((course) => [course.id, course]))
-    const assignments = await loadAllAssignments(client)
-    const profiles = await loadProfiles(client, null)
-    const rota = await loadRecentRotaDepartments(client, null, today)
 
     const assignmentsByEmployee = new Map<string, TrainingAssignment[]>()
     for (const assignment of assignments) {

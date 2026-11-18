@@ -29,7 +29,7 @@ import {
   IconButton,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
-import type { InvoiceWithDetails, InvoiceStatus } from '@/types/invoices'
+import type { InvoiceListRow, InvoiceStatus } from '@/types/invoices'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { toast } from '@/ds'
 import { downloadInvoicePdf } from '@/lib/invoices/download-pdf'
@@ -61,7 +61,7 @@ type PermissionSnapshot = {
 }
 
 interface InvoicesClientProps {
-  initialInvoices: InvoiceWithDetails[]
+  initialInvoices: InvoiceListRow[]
   initialTotal: number
   initialSummary: InvoiceSummary
   initialStatus: StatusFilter
@@ -246,7 +246,7 @@ export default function InvoicesClient({
     }
   }
 
-  const handleInvoicePdfDownload = useCallback(async (invoice: InvoiceWithDetails) => {
+  const handleInvoicePdfDownload = useCallback(async (invoice: InvoiceListRow) => {
     setDownloadingInvoiceId(invoice.id)
     try {
       await downloadInvoicePdf({ id: invoice.id, invoiceNumber: invoice.invoice_number })

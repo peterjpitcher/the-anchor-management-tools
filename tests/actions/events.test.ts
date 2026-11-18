@@ -33,6 +33,7 @@ vi.mock('@/services/events', () => ({
     deleteEvent: vi.fn(),
     getEventById: vi.fn(),
     getEvents: vi.fn(),
+    getCalendarEvents: vi.fn(),
     getEventFAQs: vi.fn(),
   },
   eventSchema: {
@@ -107,6 +108,7 @@ import { syncPubOpsEventCalendarByEventId } from '@/lib/google-calendar-events'
 import {
   createEvent,
   deleteEvent,
+  getCalendarEvents,
   getEventById,
   getEvents,
   updateEvent,
@@ -571,6 +573,51 @@ describe('Events actions', () => {
 
       const result = await getEvents()
       expect(result).toEqual({ error: 'Query timeout' })
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // getCalendarEvents
+  // -----------------------------------------------------------------------
+
+  describe('getCalendarEvents', () => {
+    it('refuses without events:view and reads nothing', async () => {
+      mockedPermission.mockResolvedValue(false)
+
+      const result = await getCalendarEvents()
+
+      expect(mockedPermission).toHaveBeenCalledWith('events', 'view')
+      expect(result).toEqual({ error: 'Insufficient permissions to view events' })
+      expect(EventService.getCalendarEvents).not.toHaveBeenCalled()
+    })
+
+    it('reads the requested window', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const rows = [{ id: 'e1', booked_count: 4 }]
+      ;(EventService.getCalendarEvents as Mock).mockResolvedValue(rows)
+
+      const result = await getCalendarEvents({ dateFrom: '2026-01-01', dateTo: '2026-12-31' })
+
+      expect(EventService.getCalendarEvents).toHaveBeenCalledWith({ dateFrom: '2026-01-01', dateTo: '2026-12-31' })
+      expect(result).toEqual({ data: rows, window: { dateFrom: '2026-01-01', dateTo: '2026-12-31' } })
+    })
+
+    it('falls back to the default window for a malformed date', async () => {
+      mockedPermission.mockResolvedValue(true)
+      ;(EventService.getCalendarEvents as Mock).mockResolvedValue([])
+
+      const result = await getCalendarEvents({ dateFrom: 'yesterday' })
+
+      expect(result.window?.dateFrom).toMatch(/^\d{4}-\d{2}-01$/)
+      expect(result.window?.dateTo).toMatch(/^\d{4}-\d{2}-\d{2}$/)
+    })
+
+    it('returns an error when the service throws', async () => {
+      mockedPermission.mockResolvedValue(true)
+      ;(EventService.getCalendarEvents as Mock).mockRejectedValue(new Error('Failed to fetch events'))
+
+      const result = await getCalendarEvents()
+      expect(result).toEqual({ error: 'Failed to fetch events' })
     })
   })
 })

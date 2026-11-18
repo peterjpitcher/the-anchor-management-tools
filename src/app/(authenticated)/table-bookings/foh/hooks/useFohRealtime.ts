@@ -63,6 +63,13 @@ export function useFohRealtime(input: {
       }, 500)
     }
 
+    // Only the floor-plan tables are watched live. customers, private_bookings and
+    // private_booking_items were dropped (spec D1, owner approval 18 November 2026): customers is
+    // written by every booking, message and marketing send, and the Realtime WAL polling for these
+    // tables cost more database time than anything else. A renamed customer or a new private hire
+    // now appears on the 60-second poll below instead of instantly. The tables were also taken out
+    // of the supabase_realtime publication (migration 20261118120300), so do not add them back here
+    // without re-adding them there.
     channel = supabase
       .channel(`foh-schedule-live-${date}`)
       .on(
@@ -78,21 +85,6 @@ export function useFohRealtime(input: {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tables' },
-        queueRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'customers' },
-        queueRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'private_bookings' },
-        queueRefresh
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'private_booking_items' },
         queueRefresh
       )
       .on(

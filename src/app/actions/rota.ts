@@ -2,6 +2,7 @@
 
 import { after } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { settleWrite } from '@/lib/supabase/settle-write';
 import { getAppUrl } from '@/lib/env';
@@ -754,7 +755,7 @@ type OwnPortalEmployee = {
  * passed has left, so the portal's shift actions refuse them as they would a former employee.
  */
 async function getOwnPortalEmployee(supabase: Awaited<ReturnType<typeof createClient>>, employeeId?: string): Promise<OwnPortalEmployee | null> {
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return null;
 
   let query = supabase
@@ -1416,7 +1417,7 @@ export async function upsertRotaSalesTargetOverride(input: z.infer<typeof Upsert
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? 'Invalid target override' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const { data, error } = await supabase
@@ -1501,7 +1502,7 @@ export async function createShift(input: z.infer<typeof CreateShiftSchema>): Pro
   if (!parsed.success) return { success: false, error: parsed.error.message };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const { data: week, error: weekError } = await supabase
     .from('rota_weeks')
@@ -1606,7 +1607,7 @@ export async function updateShift(
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const { data: current, error: currentError } = await supabase
     .from('rota_shifts')
@@ -1764,7 +1765,7 @@ export async function deleteShift(shiftId: string): Promise<
   if (!canDelete) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   // Fetch to get week_id before deleting
   const { data: shift } = await supabase
@@ -1875,7 +1876,7 @@ export async function markEmployeeCouldntWork(input: z.infer<typeof MarkEmployee
   if (!parsed.success) return { success: false, error: parsed.error.errors[0]?.message ?? "Invalid Couldn't Work details" };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const { data: week, error: weekError } = await supabase
     .from('rota_weeks')
@@ -2118,7 +2119,7 @@ async function reassignShift(
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   // Fetch current shift to capture original employee
   const { data: current, error: fetchError } = await supabase
@@ -2188,7 +2189,7 @@ async function getEmployeeShifts(
 ): Promise<{ success: true; data: RotaShift[] } | { success: false; error: string }> {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const canView = await checkUserPermission('rota', 'view');
@@ -2229,7 +2230,7 @@ async function getOpenShiftsForPortal(
 ): Promise<{ success: true; data: RotaShift[] } | { success: false; error: string }> {
   const supabase = await createClient();
 
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const { data: ownRecord } = await supabase
@@ -2326,7 +2327,7 @@ export async function acceptPortalShift(shiftId: string): Promise<
   if (!parsed.success) return { success: false, error: 'Invalid shift' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   const employee = await getOwnPortalEmployee(supabase);
   if (!employee) return { success: false, error: 'Unauthorized' };
 
@@ -2427,7 +2428,7 @@ export async function rejectPortalShift(input: z.infer<typeof PortalShiftRejectS
   }
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   const employee = await getOwnPortalEmployee(supabase);
   if (!user || !employee) return { success: false, error: 'Unauthorized' };
 
@@ -2654,7 +2655,7 @@ export async function requestOpenShift(input: z.infer<typeof PortalOpenShiftRequ
   if (!parsed.success) return { success: false, error: 'Invalid shift request' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   const employee = await getOwnPortalEmployee(supabase);
   if (!user || !employee) return { success: false, error: 'Unauthorized' };
 
@@ -2795,7 +2796,7 @@ export async function moveShift(
   if (!canEdit) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   const { data: currentShift, error: shiftError } = await supabase
     .from('rota_shifts')
@@ -2895,12 +2896,12 @@ export async function autoPopulateWeekFromTemplates(
     { data: week, error: weekError },
     { data: templates, error: tErr },
     { data: existing },
-    { data: { user } },
+    { user },
   ] = await Promise.all([
     supabase.from('rota_weeks').select('week_start').eq('id', weekId).single(),
     supabase.from('rota_shift_templates').select('*').eq('is_active', true).not('day_of_week', 'is', null),
     supabase.from('rota_shifts').select('template_id, shift_date').eq('week_id', weekId),
-    supabase.auth.getUser(),
+    getCurrentUser(),
   ]);
 
   if (weekError || !week) return { success: false, error: 'Rota week not found' };
@@ -3028,12 +3029,12 @@ export async function addShiftsFromTemplates(
     { data: week, error: weekError },
     { data: templates, error: tErr },
     { data: existing },
-    { data: { user } },
+    { user },
   ] = await Promise.all([
     supabase.from('rota_weeks').select('week_start').eq('id', weekId).single(),
     supabase.from('rota_shift_templates').select('*').in('id', templateIds),
     supabase.from('rota_shifts').select('template_id, shift_date').eq('week_id', weekId),
-    supabase.auth.getUser(),
+    getCurrentUser(),
   ]);
 
   if (weekError || !week) return { success: false, error: 'Rota week not found' };
@@ -3323,7 +3324,7 @@ export async function publishRotaWeek(weekId: string): Promise<
   if (!canPublish) return { success: false, error: 'Permission denied' };
 
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   // Week metadata first: it decides first publish versus re-publish.
   const { data: weekRow, error: weekError } = await supabase

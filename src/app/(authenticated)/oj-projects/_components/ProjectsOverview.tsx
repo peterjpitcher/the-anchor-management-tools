@@ -37,7 +37,7 @@ import {
 import { Icon } from '@/ds/icons'
 import { usePermissions } from '@/contexts/PermissionContext'
 import { createTimeEntry, createMileageEntry, createOneOffCharge, deleteEntry, updateEntry } from '@/app/actions/oj-projects/entries'
-import type { OJClientSummary } from '@/app/actions/oj-projects/clients'
+import type { OJClientOption } from '@/app/actions/oj-projects/clients'
 import { formatDateDdMmmmYyyy, getTodayIsoDate } from '@/lib/dateUtils'
 import {
   DEFAULT_WORK_HISTORY_DAYS,
@@ -81,7 +81,7 @@ interface ProjectsOverviewProps {
   projects: any[]
   entries: any[]
   workTypes: any[]
-  clients: OJClientSummary[]
+  clients: OJClientOption[]
   selectedVendorId: string
   workHistory: WorkHistoryBucket[]
   workHistoryDays: WorkHistoryRangeDays

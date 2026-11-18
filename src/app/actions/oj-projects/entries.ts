@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -715,10 +716,16 @@ export async function getEntries(options?: {
   limit?: number
   page?: number
   pageSize?: number
+  /**
+   * Ask the database for the exact matching total (default true). Callers that ignore
+   * `total` pass false to skip the count; `total` is then the number of rows returned.
+   */
+  withCount?: boolean
 }) {
   const hasPermission = await checkUserPermission('oj_projects', 'view')
   if (!hasPermission) return { error: 'You do not have permission to view entries' }
 
+  const withCount = options?.withCount !== false
   const pageSize = options?.pageSize ? Math.max(1, Math.min(500, options.pageSize)) : null
   const page = options?.page ? Math.max(1, options.page) : 1
   const supabase = await createClient()
@@ -792,7 +799,7 @@ export async function getEntries(options?: {
         id,
         name
       )
-    `, { count: 'exact' })
+    `, withCount ? { count: 'exact' } : undefined)
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false })
 
@@ -872,21 +879,33 @@ export async function getEntryHoursByDate(options: {
   if (!hasPermission) return { error: 'You do not have permission to view entries' }
 
   const supabase = await createClient()
-  let query = supabase
-    .from('oj_entries')
-    .select('entry_date, duration_minutes_rounded')
-    .eq('entry_type', 'time')
-    .gte('entry_date', options.startDate)
-    .lte('entry_date', options.endDate)
-    .limit(20000)
 
-  if (options.vendorId) query = query.eq('vendor_id', options.vendorId)
+  // A year of entries can pass the 1,000-row ceiling of a single request, which would
+  // silently drop hours from the chart, so page through the whole window. The stable
+  // order keeps pages from overlapping or skipping rows.
+  let rows: Array<{ entry_date: string | null; duration_minutes_rounded: number | null }>
+  try {
+    rows = await fetchAllRows((from, to) => {
+      let query = supabase
+        .from('oj_entries')
+        .select('entry_date, duration_minutes_rounded')
+        .eq('entry_type', 'time')
+        .gte('entry_date', options.startDate)
+        .lte('entry_date', options.endDate)
 
-  const { data, error } = await query
-  if (error) return { error: error.message }
+      if (options.vendorId) query = query.eq('vendor_id', options.vendorId)
+
+      return query
+        .order('entry_date', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to)
+    }, { label: 'Work history hours' })
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Failed to load work history' }
+  }
 
   return {
-    points: (data || []).map((row) => ({
+    points: rows.map((row) => ({
       date: String(row.entry_date || ''),
       hours: Number(row.duration_minutes_rounded || 0) / 60,
     })),

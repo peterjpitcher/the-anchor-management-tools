@@ -11,10 +11,12 @@ import { getRotaNavItems } from '../_shared/nav';
 export const dynamic = 'force-dynamic';
 
 export default async function ShiftTemplatesPage() {
-  const canView = await checkUserPermission('rota', 'view');
+  const [canView, canEdit] = await Promise.all([
+    checkUserPermission('rota', 'view'),
+    checkUserPermission('rota', 'edit'),
+  ]);
   if (!canView) redirect('/');
 
-  const canEdit = await checkUserPermission('rota', 'edit');
   const [result, employeesResult, deptResult, navItems] = await Promise.all([
     getShiftTemplates(),
     getActiveEmployeesForRota(),

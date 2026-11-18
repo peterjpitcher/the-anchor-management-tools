@@ -15,7 +15,7 @@ import {
 import { lintMarketingContent } from '@/lib/email/marketing/registry'
 import { contentHasMergeTokens, mergeCampaignContent } from '@/lib/email/marketing/merge'
 import { renderMarketingEmail } from '@/lib/email/marketing/render'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import type { ActionType } from '@/types/rbac'
 import type {
   MarketingCampaign,
@@ -70,10 +70,7 @@ interface AuthorisedUser {
 }
 
 async function authorise(action: ActionType): Promise<{ user: AuthorisedUser } | { error: string }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) return { error: 'Unauthorized' }
 
