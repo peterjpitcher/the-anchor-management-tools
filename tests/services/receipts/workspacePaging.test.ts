@@ -123,10 +123,16 @@ function mockAdminClient(
           const [from, to] = rangeOf(calls)
           // The vendor group totals read narrows by vendor name: honour those two filters.
           let rows: typeof transactions = transactions
-          const named = calls.find((call) => call.method === 'in' && call.args[0] === 'vendor_name')
+          const named = calls.find(
+            (call) => call.method === 'or' && String(call.args[0]).startsWith('vendor_name.ilike."*')
+          )
           if (named) {
-            const names = named.args[1] as string[]
-            rows = rows.filter((row) => row.vendor_name !== null && names.includes(row.vendor_name))
+            const needles = [...String(named.args[0]).matchAll(/vendor_name\.ilike\."\*(.*?)\*"/g)].map((m) =>
+              m[1].toLowerCase()
+            )
+            rows = rows.filter(
+              (row) => row.vendor_name !== null && needles.some((needle) => row.vendor_name!.toLowerCase().includes(needle))
+            )
           }
           if (calls.some((call) => call.method === 'or' && call.args[0] === 'vendor_name.is.null,vendor_name.eq.')) {
             rows = rows.filter((row) => row.vendor_name === null || row.vendor_name === '')
@@ -325,7 +331,10 @@ describe('receipts workspace paging', () => {
     const totalsReads = stubs.transactionStubs.slice(1)
     expect(totalsReads.length).toBeGreaterThan(0)
     for (const read of totalsReads) {
-      expect(read.calls).toContainEqual({ method: 'in', args: ['vendor_name', pageVendors] })
+      expect(read.calls).toContainEqual({
+        method: 'or',
+        args: [pageVendors.map((name) => `vendor_name.ilike."*${name}*"`).join(',')],
+      })
     }
     // 2,050 matching payments: three pages of 1,000, not the nine of a read of every payment.
     expect(totalsReads.map((stub) => rangeOf(stub.calls))).toEqual([
@@ -338,6 +347,24 @@ describe('receipts workspace paging', () => {
     const expected = Object.fromEntries(pageVendors.map((name) => [name.toLowerCase(), everyPayment[name.toLowerCase()]]))
     expect(result.vendorGroupTotals).toEqual(expected)
     expect(result.vendorGroupTotals?.['vendor 0010']).toEqual({ count: 205, totalIn: 0, totalOut: 2050, totalAmount: 2050 })
+  })
+
+  it('totals a vendor across spellings that differ only in case or surrounding spaces, like the full read', async () => {
+    const transactions = buildTransactions().map((row, index) => {
+      if (row.vendor_name !== 'Vendor 0000') return row
+      if (index % 3 === 1) return { ...row, vendor_name: 'vendor 0000' }
+      if (index % 3 === 2) return { ...row, vendor_name: '  VENDOR 0000 ' }
+      return row
+    })
+    const stubs = mockAdminClient(transactions, buildVendors())
+
+    const result = await queryReceiptWorkspaceData({ groupByVendor: true, page: 1, pageSize: 10 })
+
+    expect(stubs.transactionStubs.length).toBeGreaterThan(1)
+    expect(result.vendorGroupTotals?.['vendor 0000']).toEqual(totalVendorGroups(transactions)['vendor 0000'])
+    expect(result.vendorGroupTotals?.['vendor 0000']?.count).toBe(206)
+    // A contains match over-reads (Vendor 0001 also contains "Vendor 000"); only page groups are kept.
+    expect(Object.keys(result.vendorGroupTotals ?? {})).not.toContain('vendor 0039')
   })
 
   it('totals the "Missing vendor" group over every page when the page has a payment with no vendor', async () => {
@@ -361,7 +388,9 @@ describe('receipts workspace paging', () => {
     const result = await queryReceiptWorkspaceData({ groupByVendor: true, page: 1, pageSize: 10 })
 
     const totalsReads = stubs.transactionStubs.slice(1)
-    expect(totalsReads.some((stub) => stub.calls.some((call) => call.method === 'in'))).toBe(false)
+    expect(
+      totalsReads.some((stub) => stub.calls.some((call) => call.method === 'or' && String(call.args[0]).includes('ilike')))
+    ).toBe(false)
     expect(totalsReads).toHaveLength(9)
     expect(result.vendorGroupTotals?.['joe "the plumber"']).toEqual({ count: 1, totalIn: 0, totalOut: 10, totalAmount: 10 })
     expect(Object.keys(result.vendorGroupTotals ?? {})).toHaveLength(10)

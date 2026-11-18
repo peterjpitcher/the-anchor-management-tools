@@ -489,7 +489,7 @@ type VendorTotalRow = {
 }
 
 /** Vendor names per totals read, so the request URL stays short. */
-const VENDOR_TOTALS_NAMES_PER_READ = 50
+const VENDOR_TOTALS_NAMES_PER_READ = 25
 
 /**
  * Totals for the vendor groups on this page, across every payment the filters match, so a
@@ -497,7 +497,7 @@ const VENDOR_TOTALS_NAMES_PER_READ = 50
  * the list looks up nothing else (the headings and their heat colours are the page's groups).
  * It used to read every matching payment, which on the all-time view is every payment there is.
  *
- * The groups are found by exact vendor name, plus one read for "Missing vendor" (no name or an
+ * The groups are found by case-insensitive vendor name, plus one read for "Missing vendor" (no name or an
  * empty one) when the page has such a row. A name holding a double quote or a backslash, which
  * the filter syntax cannot carry safely, falls back to reading every matching payment.
  *
@@ -528,9 +528,16 @@ async function loadVendorGroupTotals(
       { label }
     )
 
-  // The names as stored, not trimmed: the read matches them exactly.
+  // Groups ignore case and surrounding spaces (vendorGroupKey), so the read must too: each name is
+  // matched with a case-insensitive contains, which can only over-match, and the rows are then
+  // kept only when their group key is one of the page's keys. "Tesco" on the page therefore also
+  // totals "tesco" and " Tesco " rows held elsewhere, exactly as the full read did.
   const names = [
-    ...new Set(pageRows.map((row) => row.vendor_name).filter((name): name is string => Boolean(name?.trim()))),
+    ...new Set(
+      pageRows
+        .map((row) => row.vendor_name?.trim())
+        .filter((name): name is string => Boolean(name))
+    ),
   ]
   const hasMissingVendor = pageRows.some((row) => !row.vendor_name?.trim())
 
@@ -544,7 +551,10 @@ async function loadVendorGroupTotals(
         chunks.push(names.slice(index, index + VENDOR_TOTALS_NAMES_PER_READ))
       }
       const reads = chunks.map((chunk) =>
-        readAll((query) => query.in('vendor_name', chunk), 'receipt vendor group totals')
+        readAll(
+          (query) => query.or(chunk.map((name) => `vendor_name.ilike."*${name}*"`).join(',')),
+          'receipt vendor group totals'
+        )
       )
       if (hasMissingVendor) {
         reads.push(readAll((query) => query.or('vendor_name.is.null,vendor_name.eq.'), 'receipt missing vendor totals'))
