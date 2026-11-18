@@ -10,6 +10,7 @@ import {
   SigningError,
   getSigningDocument,
   getSigningPartyById,
+  listSigningDocumentsByRows,
   listSigningDocumentsForSubject,
   resendSigningLink,
   startInPersonSigning,
@@ -20,13 +21,20 @@ import {
   canSendSigningKind,
   canViewSigningKind,
   getSigningStaffUser,
+  getSigningStaffUserId,
   signingKindsForSubject,
+  viewableSigningKinds,
 } from '@/lib/signing/staff'
-import { describeSigningSubject } from '@/lib/signing/subjects'
+import { describeSigningSubject, describeSigningSubjects } from '@/lib/signing/subjects'
 import { unknownMergeFields } from '@/lib/signing/template-fields'
 import { findMergeFields } from '@/lib/signing/template-render'
 import { listSigningTemplates, templateActivationBlocker } from '@/lib/signing/templates'
-import { SIGNING_SUBJECT_TYPES, type SigningSubjectType, type SigningTemplateRow } from '@/lib/signing/types'
+import {
+  SIGNING_SUBJECT_TYPES,
+  type SigningDocumentRow,
+  type SigningSubjectType,
+  type SigningTemplateRow,
+} from '@/lib/signing/types'
 
 /**
  * Staff actions shared by every kind of signed document: see what has been sent, chase it,
@@ -199,36 +207,34 @@ export async function getSigningOverview(filter: SigningOverviewFilter): Promise
   try {
     const parsed = OverviewFilterSchema.safeParse(filter)
     if (!parsed.success) return { error: 'Unknown filter.' }
-    const user = await getSigningStaffUser()
-    if (!user) return { error: 'Unauthorized' }
+    // Only the id is needed here, so the caller's employee record is not read.
+    const userId = await getSigningStaffUserId()
+    if (!userId) return { error: 'Unauthorized' }
 
-    const visibleKinds: string[] = []
-    for (const subjectType of SIGNING_SUBJECT_TYPES) {
-      for (const kind of signingKindsForSubject(subjectType)) {
-        if (await canViewSigningKind(kind, user.id)) visibleKinds.push(kind)
-      }
-    }
+    const allKinds = SIGNING_SUBJECT_TYPES.flatMap((subjectType) => signingKindsForSubject(subjectType))
+    const visibleKinds = await viewableSigningKinds(allKinds, userId)
     if (visibleKinds.length === 0) return { error: 'Insufficient permissions' }
 
     const admin = createAdminClient()
     const { data, error } = await admin
       .from('signing_documents')
-      .select('id')
+      .select('*')
       .in('kind', visibleKinds)
       .in('status', OVERVIEW_STATUSES[parsed.data])
       .order('created_at', { ascending: false })
       .limit(OVERVIEW_LIMIT + 1)
     if (error) throw new Error(`Could not read signing documents: ${error.message}`)
-    const ids = ((data ?? []) as Array<{ id: string }>).map((row) => row.id)
-    const truncated = ids.length > OVERVIEW_LIMIT
+    const found = (data ?? []) as SigningDocumentRow[]
+    const truncated = found.length > OVERVIEW_LIMIT
 
-    const rows: SigningOverviewRow[] = []
-    for (const id of ids.slice(0, OVERVIEW_LIMIT)) {
-      const document = await getSigningDocument(id)
-      if (!document) continue
-      const subject = await describeSigningSubject(document)
-      rows.push({ document, subjectLabel: subject.label, subjectPath: subject.path })
-    }
+    // One read for every signer and one per subject type, not three reads per document.
+    const documents = await listSigningDocumentsByRows(found.slice(0, OVERVIEW_LIMIT))
+    const subjects = await describeSigningSubjects(documents)
+    const rows: SigningOverviewRow[] = documents.map((document, index) => ({
+      document,
+      subjectLabel: subjects[index].label,
+      subjectPath: subjects[index].path,
+    }))
     return { success: true, data: { rows, truncated } }
   } catch (error) {
     return failure(error)
