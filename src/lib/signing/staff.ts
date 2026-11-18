@@ -46,10 +46,7 @@ export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
  * getSigningStaffUser (signed in, nothing more), without reading their employee record.
  */
 export async function getSigningStaffUserId(): Promise<string | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   return user?.id ?? null
 }
 
