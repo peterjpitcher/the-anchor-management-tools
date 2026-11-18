@@ -361,6 +361,18 @@ export type RecruitmentCandidatesPage = {
 }
 
 /**
+ * Every recruitment_candidates column except cv_text (the full CV text), for list
+ * reads. The recruitment screen never shows cv_text from a list; the code paths
+ * that need it (AI scoring, CV extraction, the interview kit) read the candidate
+ * themselves.
+ */
+const RECRUITMENT_CANDIDATE_LIST_COLUMNS =
+  'id,first_name,last_name,email,email_normalized,phone,phone_e164,location,source,cv_file_path,cv_file_name,cv_mime_type,cv_file_size_bytes,cv_extraction_status,provided_details,extracted_data,cv_summary,right_to_work_status,right_to_work_document_type,right_to_work_checked_at,right_to_work_checked_by,consent_source,consent_at,privacy_notice_version,sms_consent,sms_consent_at,future_recruitment_consent,future_recruitment_consent_at,retention_until,anonymised_at,converted_employee_id,notes,created_by,created_at,updated_at,cv_sha256,phone_normalized'
+
+/** Columns of recruitment_ai_runs the recruitment screen reads (not the raw model output). */
+const RECRUITMENT_AI_RUN_LIST_COLUMNS = 'id, application_id, candidate_id, cost, created_at, model, operation, status'
+
+/**
  * Server-side paginated, searchable, filterable list of candidates (talent pool).
  * Mirrors the getCustomerList shape: parallel exact-count + data queries with
  * .or(ilike) search, .eq/.is filters, and .range() pagination. Used both for the
@@ -380,7 +392,7 @@ export async function getRecruitmentCandidatesPage(
   const orFilter = term ? `first_name.ilike.%${term}%,last_name.ilike.%${term}%,email.ilike.%${term}%` : null
 
   let countQuery = supabase.from('recruitment_candidates').select('id', { count: 'exact', head: true })
-  let dataQuery = supabase.from('recruitment_candidates').select('*')
+  let dataQuery = supabase.from('recruitment_candidates').select(RECRUITMENT_CANDIDATE_LIST_COLUMNS)
 
   if (orFilter) {
     countQuery = countQuery.or(orFilter)
@@ -426,7 +438,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .order('created_at', { ascending: false }),
     supabase
       .from('recruitment_applications')
-      .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
+      .select(`*, candidate:recruitment_candidates(${RECRUITMENT_CANDIDATE_LIST_COLUMNS}), job_posting:recruitment_job_postings(*)`)
       .neq('status', 'talent_pool')
       .order('created_at', { ascending: false })
       .limit(100),
@@ -458,7 +470,7 @@ export async function listRecruitmentAdminData(supabase: GenericClient = createA
       .limit(300),
     supabase
       .from('recruitment_ai_runs')
-      .select('*')
+      .select(RECRUITMENT_AI_RUN_LIST_COLUMNS)
       .order('created_at', { ascending: false })
       .limit(300),
     supabase
@@ -663,7 +675,6 @@ export async function getRecruitmentDashboard(
   const retentionCutoff = addMonths(new Date(), -retentionMonths()).toISOString()
 
   const [
-    recentApplications,
     newApplications,
     fastTrack,
     manualReview,
@@ -672,13 +683,6 @@ export async function getRecruitmentDashboard(
     offers,
     retentionDue,
   ] = await Promise.all([
-    supabase
-      .from('recruitment_applications')
-      .select('*, candidate:recruitment_candidates(*), job_posting:recruitment_job_postings(*)')
-      .is('archived_at', null)
-      .is('duplicate_of_application_id', null)
-      .order('created_at', { ascending: false })
-      .limit(10),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
@@ -704,12 +708,10 @@ export async function getRecruitmentDashboard(
       .in('status', AWAITING_BOOKING_STATUSES as unknown as string[]),
     supabase
       .from('recruitment_candidate_appointments')
-      .select('*, candidate:recruitment_candidates(first_name,last_name,email), application:recruitment_applications(id, status, job_posting:recruitment_job_postings(title))')
+      .select('id', { count: 'exact', head: true })
       .is('archived_at', null)
       .eq('status', 'scheduled')
-      .gte('scheduled_start', nowIso)
-      .order('scheduled_start', { ascending: true })
-      .limit(200),
+      .gte('scheduled_start', nowIso),
     supabase
       .from('recruitment_applications')
       .select('id', { count: 'exact', head: true })
@@ -726,7 +728,6 @@ export async function getRecruitmentDashboard(
   ])
 
   for (const result of [
-    recentApplications,
     newApplications,
     fastTrack,
     manualReview,
@@ -743,15 +744,13 @@ export async function getRecruitmentDashboard(
     fastTrack: fastTrack.count ?? 0,
     manualReview: manualReview.count ?? 0,
     awaitingBooking: awaitingBooking.count ?? 0,
-    upcomingAppointments: upcomingAppointments.data?.length ?? 0,
+    upcomingAppointments: upcomingAppointments.count ?? 0,
     offers: offers.count ?? 0,
     retentionDue: retentionDue.count ?? 0,
   }
 
   return {
     counts,
-    recentApplications: (recentApplications.data ?? []) as RecruitmentApplication[],
-    upcomingAppointments: upcomingAppointments.data ?? [],
     actionItems: [
       { id: 'new', label: 'New applications', count: counts.newApplications, href: '/recruitment?status=new' },
       { id: 'fast_track', label: 'Fast-track candidates', count: counts.fastTrack, href: '/recruitment?recommendation=fast_track' },

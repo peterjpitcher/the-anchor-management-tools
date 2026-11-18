@@ -169,7 +169,8 @@ export type RecruitmentCandidate = {
   cv_mime_type: string | null
   cv_file_size_bytes: number | null
   cv_sha256: string | null
-  cv_text: string | null
+  /** Left out of list reads (candidate pages, application embeds); present when a candidate is read in full. */
+  cv_text?: string | null
   cv_extraction_status: string
   extracted_data?: unknown | null
   provided_details: string | null
@@ -335,7 +336,5 @@ export type RecruitmentDashboard = {
     offers: number
     retentionDue: number
   }
-  recentApplications: RecruitmentApplication[]
-  upcomingAppointments: Array<Record<string, unknown>>
   actionItems: Array<{ id: string; label: string; count: number; href: string }>
 }
