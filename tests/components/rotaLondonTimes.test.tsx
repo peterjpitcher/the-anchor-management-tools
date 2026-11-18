@@ -13,12 +13,14 @@ import { render, screen } from '@testing-library/react'
 import ShiftDetailModal from '@/app/(authenticated)/rota/ShiftDetailModal'
 import RotaGrid from '@/app/(authenticated)/rota/RotaGrid'
 import type { RotaShift, RotaWeek, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota'
+import { getShiftAuditTrail } from '@/app/actions/rota'
 
 vi.mock('@/app/actions/rota', () => ({
   addShiftsFromTemplates: vi.fn(),
   autoPopulateWeekFromTemplates: vi.fn(),
   createShift: vi.fn(),
   deleteShift: vi.fn(),
+  getShiftAuditTrail: vi.fn().mockResolvedValue({ success: true, data: { entries: [], valueLabels: {} } }),
   markEmployeeCouldntWork: vi.fn(),
   markShiftSick: vi.fn(),
   moveShift: vi.fn(),
@@ -129,7 +131,6 @@ describe('ShiftDetailModal London times', () => {
         acceptanceDeciderName="Amanda"
         canEdit={false}
         departments={[]}
-        auditTrail={[auditEntry]}
         rejectionHistory={[rejection]}
         rejectedEmployeeNames={{ 'employee-2': 'Sam Smith' }}
         onClose={vi.fn()}
@@ -151,10 +152,12 @@ describe('ShiftDetailModal London times', () => {
     expect(screen.getByText('1 Oct 2026, 18:05')).toBeInTheDocument()
   })
 
-  it('shows audit trail entries on the London clock', () => {
+  it('shows audit trail entries on the London clock', async () => {
+    // The modal loads its audit history when it opens.
+    vi.mocked(getShiftAuditTrail).mockResolvedValueOnce({ success: true, data: { entries: [auditEntry], valueLabels: {} } })
     renderModal()
 
-    expect(screen.getByText('3 Oct 2026, 00:10')).toBeInTheDocument()
+    expect(await screen.findByText('3 Oct 2026, 00:10')).toBeInTheDocument()
   })
 })
 

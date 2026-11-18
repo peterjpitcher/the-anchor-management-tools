@@ -57,6 +57,7 @@ import {
   markEmployeeCouldntWork,
   markShiftSick,
   getActiveEmployeesForRota,
+  getShiftAuditTrail,
 } from '@/app/actions/rota'
 
 const mockedPermission = checkUserPermission as unknown as Mock
@@ -198,44 +199,220 @@ describe('Rota actions', () => {
       expect(result).toEqual({ success: false, error: 'weekStart must be a Monday' })
     })
 
-    it('should return existing week on unique violation (concurrent insert)', async () => {
-      // First call: view permission, second call: edit permission
-      mockedPermission
-        .mockResolvedValueOnce(true) // view
-        .mockResolvedValueOnce(true) // edit
+    const existingWeek = {
+      id: 'week-1',
+      week_start: '2026-04-06',
+      status: 'draft',
+      published_at: null,
+      published_by: null,
+      has_unpublished_changes: false,
+      created_at: '2026-04-01T00:00:00Z',
+      updated_at: '2026-04-01T00:00:00Z',
+    }
 
-      const existingWeek = {
-        id: 'week-1',
-        week_start: '2026-04-06',
-        status: 'draft',
-        published_at: null,
-        published_by: null,
-        has_unpublished_changes: false,
-        created_at: '2026-04-01T00:00:00Z',
-        updated_at: '2026-04-01T00:00:00Z',
-      }
-
+    /**
+     * A rota_weeks double: `maybeSingle` answers the first read, `single` the read after a
+     * unique violation, and `insert` the write.
+     */
+    function mockWeekTable(options: {
+      firstRead: { data: unknown; error: unknown }
+      insert?: { data: unknown; error: unknown }
+      reread?: { data: unknown; error: unknown }
+    }) {
+      const maybeSingle = vi.fn().mockResolvedValue(options.firstRead)
+      const single = vi.fn().mockResolvedValue(options.reread ?? { data: null, error: null })
+      const insertSingle = vi.fn().mockResolvedValue(options.insert ?? { data: null, error: null })
+      const insert = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: insertSingle }) })
+      const eq = vi.fn().mockReturnValue({ maybeSingle, single })
       const client = mockSupabaseClient()
+      client.from = vi.fn().mockReturnValue({ insert, select: vi.fn().mockReturnValue({ eq }) })
+      return { insert, maybeSingle, single }
+    }
 
-      // Override from() for this specific test
-      client.from = vi.fn().mockReturnValue({
-        insert: vi.fn().mockReturnValue({
-          select: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({
-              data: null,
-              error: { code: '23505', message: 'duplicate key' },
-            }),
-          }),
-        }),
-        select: vi.fn().mockReturnValue({
-          eq: vi.fn().mockReturnValue({
-            single: vi.fn().mockResolvedValue({ data: existingWeek, error: null }),
-          }),
-        }),
+    it('returns an existing week from one read without trying to insert', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const table = mockWeekTable({ firstRead: { data: existingWeek, error: null } })
+
+      const result = await getOrCreateRotaWeek('2026-04-06')
+
+      expect(result).toEqual({ success: true, data: existingWeek })
+      expect(table.insert).not.toHaveBeenCalled()
+      // Only the view check ran: an existing week needs no edit permission.
+      expect(mockedPermission).toHaveBeenCalledTimes(1)
+      expect(mockedPermission).toHaveBeenCalledWith('rota', 'view')
+    })
+
+    it('creates a missing week for an editor', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const table = mockWeekTable({
+        firstRead: { data: null, error: null },
+        insert: { data: existingWeek, error: null },
       })
 
       const result = await getOrCreateRotaWeek('2026-04-06')
+
       expect(result).toEqual({ success: true, data: existingWeek })
+      expect(table.insert).toHaveBeenCalledWith({ week_start: '2026-04-06' })
+      expect(mockedPermission).toHaveBeenCalledWith('rota', 'edit')
+      expect(table.single).not.toHaveBeenCalled()
+    })
+
+    it('refuses to create a missing week for a viewer without edit permission', async () => {
+      mockedPermission
+        .mockResolvedValueOnce(true) // view
+        .mockResolvedValueOnce(false) // edit
+      const table = mockWeekTable({ firstRead: { data: null, error: null } })
+
+      const result = await getOrCreateRotaWeek('2026-04-06')
+
+      expect(result).toEqual({ success: false, error: 'Permission denied' })
+      expect(table.insert).not.toHaveBeenCalled()
+    })
+
+    it('returns the read error rather than inserting when the first read fails', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const table = mockWeekTable({ firstRead: { data: null, error: { code: 'XX000', message: 'read failed' } } })
+
+      const result = await getOrCreateRotaWeek('2026-04-06')
+
+      expect(result).toEqual({ success: false, error: 'read failed' })
+      expect(table.insert).not.toHaveBeenCalled()
+    })
+
+    it('reads the week another request created when the insert hits a unique violation', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const table = mockWeekTable({
+        firstRead: { data: null, error: null },
+        insert: { data: null, error: { code: '23505', message: 'duplicate key' } },
+        reread: { data: existingWeek, error: null },
+      })
+
+      const result = await getOrCreateRotaWeek('2026-04-06')
+
+      expect(result).toEqual({ success: true, data: existingWeek })
+      expect(table.insert).toHaveBeenCalledTimes(1)
+      expect(table.maybeSingle).toHaveBeenCalledTimes(1)
+      expect(table.single).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns any other insert error', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const table = mockWeekTable({
+        firstRead: { data: null, error: null },
+        insert: { data: null, error: { code: '42501', message: 'insert refused' } },
+      })
+
+      const result = await getOrCreateRotaWeek('2026-04-06')
+
+      expect(result).toEqual({ success: false, error: 'insert refused' })
+      expect(table.single).not.toHaveBeenCalled()
+    })
+  })
+
+  // -----------------------------------------------------------------------
+  // getShiftAuditTrail
+  // -----------------------------------------------------------------------
+
+  describe('getShiftAuditTrail', () => {
+    const SHIFT_ID = '11111111-1111-4111-8111-111111111111'
+    const EMPLOYEE_ID = '22222222-2222-4222-8222-222222222222'
+
+    it('refuses without rota view permission and reads nothing', async () => {
+      mockedPermission.mockResolvedValue(false)
+      const client = mockSupabaseClient()
+
+      const result = await getShiftAuditTrail(SHIFT_ID)
+
+      expect(result).toEqual({ success: false, error: 'Permission denied' })
+      expect(client.from).not.toHaveBeenCalled()
+    })
+
+    it('refuses an id that is not a uuid', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const client = mockSupabaseClient()
+
+      const result = await getShiftAuditTrail('not-a-shift')
+
+      expect(result).toEqual({ success: false, error: 'Invalid shift id' })
+      expect(client.from).not.toHaveBeenCalled()
+    })
+
+    it("reads one shift's successful rota audit rows and names the people in them", async () => {
+      mockedPermission.mockResolvedValue(true)
+      const auditRow = {
+        id: 'audit-1',
+        created_at: '2026-10-02T23:10:00Z',
+        user_email: 'manager@example.com',
+        user_id: 'user-9',
+        operation_type: 'update',
+        resource_id: SHIFT_ID,
+        old_values: { employee_id: null },
+        new_values: { employee_id: EMPLOYEE_ID },
+        additional_info: null,
+      }
+      const auditLimit = vi.fn().mockResolvedValue({ data: [auditRow], error: null })
+      const auditOrder = vi.fn().mockReturnValue({ limit: auditLimit })
+      const auditEq = vi.fn()
+      const auditChain = { eq: auditEq, order: auditOrder }
+      auditEq.mockReturnValue(auditChain)
+      const employeesIn = vi.fn().mockResolvedValue({
+        data: [{ employee_id: EMPLOYEE_ID, first_name: 'Amanda', last_name: 'Jones', preferred_name: null }],
+        error: null,
+      })
+      const profilesIn = vi.fn().mockResolvedValue({
+        data: [{ id: 'user-9', full_name: 'Billy', email: 'billy@example.com' }],
+        error: null,
+      })
+      const client = mockSupabaseClient()
+      client.from = vi.fn((table: string) => {
+        if (table === 'audit_logs') return { select: vi.fn().mockReturnValue(auditChain) }
+        if (table === 'employees') return { select: vi.fn().mockReturnValue({ in: employeesIn }) }
+        if (table === 'profiles') return { select: vi.fn().mockReturnValue({ in: profilesIn }) }
+        throw new Error(`unexpected table ${table}`)
+      })
+
+      const result = await getShiftAuditTrail(SHIFT_ID)
+
+      expect(mockedPermission).toHaveBeenCalledWith('rota', 'view')
+      expect(auditEq).toHaveBeenCalledWith('resource_type', 'rota_shift')
+      expect(auditEq).toHaveBeenCalledWith('operation_status', 'success')
+      expect(auditEq).toHaveBeenCalledWith('resource_id', SHIFT_ID)
+      expect(employeesIn).toHaveBeenCalledWith('employee_id', [EMPLOYEE_ID])
+      expect(profilesIn).toHaveBeenCalledWith('id', ['user-9'])
+      expect(result).toEqual({
+        success: true,
+        data: {
+          entries: [{
+            id: 'audit-1',
+            shift_id: SHIFT_ID,
+            created_at: '2026-10-02T23:10:00Z',
+            user_email: 'manager@example.com',
+            user_id: 'user-9',
+            user_name: 'Billy',
+            operation_type: 'update',
+            old_values: { employee_id: null },
+            new_values: { employee_id: EMPLOYEE_ID },
+            additional_info: null,
+          }],
+          valueLabels: { [EMPLOYEE_ID]: 'Amanda' },
+        },
+      })
+    })
+
+    it('returns the error when the audit read fails', async () => {
+      mockedPermission.mockResolvedValue(true)
+      const auditEq = vi.fn()
+      const auditChain = {
+        eq: auditEq,
+        order: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue({ data: null, error: { message: 'audit down' } }) }),
+      }
+      auditEq.mockReturnValue(auditChain)
+      const client = mockSupabaseClient()
+      client.from = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue(auditChain) })
+
+      const result = await getShiftAuditTrail(SHIFT_ID)
+
+      expect(result).toEqual({ success: false, error: 'audit down' })
     })
   })
 

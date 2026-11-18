@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
-import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, DescriptionList, Empty, Field, Input, Modal, Select, toast } from '@/ds';
+import { useEffect, useState, useTransition } from 'react';
+import { Alert, Badge, Button, Card, CardBody, CardHeader, Checkbox, ConfirmDialog, DescriptionList, Empty, Field, Input, Modal, Select, Spinner, toast } from '@/ds';
 import { formatDateTimeInLondon, formatTime12Hour } from '@/lib/dateUtils';
-import { updateShift, deleteShift } from '@/app/actions/rota';
+import { updateShift, deleteShift, getShiftAuditTrail } from '@/app/actions/rota';
 import type { RotaShift, RotaEmployee, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
 import type { Department } from '@/app/actions/budgets';
 import MarkSickModal from './MarkSickModal';
@@ -20,7 +20,7 @@ interface ShiftDetailModalProps {
   canEdit: boolean;
   departments: Department[];
   openShiftRequests?: OpenShiftRequestSummary[];
-  auditTrail?: ShiftAuditTrailEntry[];
+  /** Names for employee ids the page already knows; the audit history brings its own as well. */
   auditValueLabels?: Record<string, string>;
   rejectionHistory?: RejectedShiftRecord[];
   rejectedEmployeeNames?: Record<string, string>;
@@ -151,7 +151,6 @@ export default function ShiftDetailModal({
   canEdit,
   departments,
   openShiftRequests = [],
-  auditTrail = [],
   auditValueLabels = {},
   rejectionHistory = [],
   rejectedEmployeeNames = {},
@@ -179,6 +178,31 @@ export default function ShiftDetailModal({
   const [isPending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showSickModal, setShowSickModal] = useState(false);
+  // The audit history is loaded when the modal opens, not with the rota page: it is only ever
+  // shown here. It loads again after the shift is saved, so the new change appears.
+  const [audit, setAudit] = useState<
+    | { state: 'loading' }
+    | { state: 'error'; message: string }
+    | { state: 'ready'; entries: ShiftAuditTrailEntry[]; valueLabels: Record<string, string> }
+  >({ state: 'loading' });
+
+  useEffect(() => {
+    let cancelled = false;
+    setAudit({ state: 'loading' });
+    getShiftAuditTrail(shift.id)
+      .then(result => {
+        if (cancelled) return;
+        if (result.success) {
+          setAudit({ state: 'ready', entries: result.data.entries, valueLabels: result.data.valueLabels });
+        } else {
+          setAudit({ state: 'error', message: result.error });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setAudit({ state: 'error', message: 'Could not load the change history.' });
+      });
+    return () => { cancelled = true; };
+  }, [shift.id, shift.updated_at]);
 
   const empName = employee
     ? displayName(employee, 'Unknown')
@@ -388,12 +412,21 @@ export default function ShiftDetailModal({
 
             <Card>
               <CardHeader title="Shift Audit Trail" />
-              {auditTrail.length === 0 ? (
+              {audit.state === 'loading' ? (
+                <CardBody className="flex items-center gap-2 text-xs text-text-muted">
+                  <Spinner size="sm" />
+                  <span>Loading the change history</span>
+                </CardBody>
+              ) : audit.state === 'error' ? (
+                <CardBody>
+                  <Alert tone="danger">Could not load the change history: {audit.message}</Alert>
+                </CardBody>
+              ) : audit.entries.length === 0 ? (
                 <Empty size="sm" title="No changes yet" />
               ) : (
                 <CardBody className="space-y-3">
-                  {auditTrail.map(entry => {
-                    const lines = auditLines(entry, auditValueLabels);
+                  {audit.entries.map(entry => {
+                    const lines = auditLines(entry, { ...auditValueLabels, ...audit.valueLabels });
                     return (
                       <div key={entry.id} className="border-l-2 border-border-strong pl-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">

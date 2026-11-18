@@ -14,7 +14,6 @@ import {
   getRotaSummaryForWeek,
   type OpenShiftRequestSummary,
   type RejectedShiftRecord,
-  type ShiftAuditTrailEntry,
 } from '@/app/actions/rota';
 import { getShiftTemplates } from '@/app/actions/rota-templates';
 import { getDepartments } from '@/app/actions/budgets';
@@ -29,8 +28,6 @@ import { getTodayIsoDate } from '@/lib/dateUtils';
 import { displayName } from '@/lib/employees/display-name';
 
 export const dynamic = 'force-dynamic';
-
-const AUDIT_EMPLOYEE_REFERENCE_FIELDS = new Set(['employee_id', 'acceptance_decided_by']);
 
 /**
  * Monday of the week containing the given YYYY-MM-DD date. The arithmetic is done
@@ -61,21 +58,6 @@ type EmployeeNameRow = { first_name: string | null; last_name: string | null; pr
 
 function employeeDisplayName(employee: { first_name: string | null; last_name: string | null; preferred_name?: string | null }): string {
   return displayName(employee, 'Unknown staff member');
-}
-
-function collectAuditEmployeeIds(row: {
-  old_values: Record<string, unknown> | null;
-  new_values: Record<string, unknown> | null;
-}): string[] {
-  const ids: string[] = [];
-  [row.old_values, row.new_values].forEach(values => {
-    if (!values) return;
-    AUDIT_EMPLOYEE_REFERENCE_FIELDS.forEach(field => {
-      const value = values[field];
-      if (typeof value === 'string' && value.length > 0) ids.push(value);
-    });
-  });
-  return ids;
 }
 
 interface RotaPageProps {
@@ -124,7 +106,9 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   });
 
   const weekEnd = days[6];
+  const admin = createAdminClient();
 
+  // Stage one: everything that needs only the week's dates.
   const [
     weekResult,
     employeesResult,
@@ -135,6 +119,7 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     deptResult,
     openingExceptions,
     navItems,
+    { data: rejectedShiftRows },
   ] = await Promise.all([
     getOrCreateRotaWeek(weekStart),
     getActiveEmployeesForRota(weekStart),
@@ -148,6 +133,13 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
     getRotaOpeningExceptions(weekStart, weekEnd),
     // The section tab row, badged the same on every rota page.
     getRotaNavItems(),
+    admin
+      .from('rota_shift_rejections')
+      .select('id, shift_id, employee_id, week_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name, rejection_note, rejected_at, rejected_by, created_at')
+      .gte('shift_date', weekStart)
+      .lte('shift_date', weekEnd)
+      .order('shift_date', { ascending: true })
+      .order('start_time', { ascending: true }),
   ]);
 
   // One header for every state, so a failed load keeps the page's title, week and tabs.
@@ -190,19 +182,30 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
   const leaveDays = leaveDaysResult.success ? leaveDaysResult.data : [];
   const departments = deptResult.success ? deptResult.data : [];
   const dayInfo: Record<string, RotaDayInfo> = dayInfoResult ?? {};
-  const summaryResult = await getRotaSummaryForWeek(weekStart, days, employees);
+  const openShiftIds = shifts.filter(shift => shift.is_open_shift).map(shift => shift.id);
+
+  // Stage two: the reads that need the week row, its shifts or its staff list, all at once. The
+  // shift audit history is not read here: the shift modal loads it when it opens.
+  const [summaryResult, { data: openShiftRequestRows }, { data: publishedShiftRows }] = await Promise.all([
+    getRotaSummaryForWeek(weekStart, days, employees),
+    openShiftIds.length
+      ? supabase
+          .from('rota_open_shift_requests')
+          .select('id, shift_id, employee_id, note, status, requested_at, employees(first_name, last_name, preferred_name)')
+          .in('shift_id', openShiftIds)
+          .order('requested_at', { ascending: false })
+      : Promise.resolve({ data: [] }),
+    week.status === 'published'
+      ? admin
+          .from('rota_published_shifts')
+          .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name')
+          .eq('week_id', week.id)
+      : Promise.resolve({ data: [] }),
+  ]);
   const rotaSummary = summaryResult.success ? summaryResult.data : null;
   const canViewSpend = summaryResult.success ? summaryResult.canViewSpend : false;
   const canViewSalesTargets = summaryResult.success ? summaryResult.canViewSalesTargets : false;
   const canEditSalesTargets = summaryResult.success ? summaryResult.canEditSalesTargets : false;
-  const openShiftIds = shifts.filter(shift => shift.is_open_shift).map(shift => shift.id);
-  const { data: openShiftRequestRows } = openShiftIds.length
-    ? await supabase
-        .from('rota_open_shift_requests')
-        .select('id, shift_id, employee_id, note, status, requested_at, employees(first_name, last_name, preferred_name)')
-        .in('shift_id', openShiftIds)
-        .order('requested_at', { ascending: false })
-    : { data: [] };
 
   type OpenShiftRequestRow = {
     id: string;
@@ -227,90 +230,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
       requested_at: row.requested_at,
     };
   });
-  const shiftIds = shifts.map(shift => shift.id);
-  const admin = createAdminClient();
-  const [{ data: auditRows }, { data: rejectedShiftRows }, { data: publishedShiftRows }] = await Promise.all([
-    shiftIds.length
-      ? admin
-          .from('audit_logs')
-          .select('id, created_at, user_email, user_id, operation_type, resource_id, old_values, new_values, additional_info')
-          .eq('resource_type', 'rota_shift')
-          .eq('operation_status', 'success')
-          .in('resource_id', shiftIds)
-          .order('created_at', { ascending: false })
-          .limit(500)
-      : Promise.resolve({ data: [] }),
-    admin
-      .from('rota_shift_rejections')
-      .select('id, shift_id, employee_id, week_id, shift_date, start_time, end_time, unpaid_break_minutes, department, notes, is_overnight, name, rejection_note, rejected_at, rejected_by, created_at')
-      .gte('shift_date', weekStart)
-      .lte('shift_date', weekEnd)
-      .order('shift_date', { ascending: true })
-      .order('start_time', { ascending: true }),
-    week.status === 'published'
-      ? admin
-          .from('rota_published_shifts')
-          .select('id, employee_id, shift_date, start_time, end_time, unpaid_break_minutes, department, status, notes, is_overnight, is_open_shift, name')
-          .eq('week_id', week.id)
-      : Promise.resolve({ data: [] }),
-  ]);
-
-  type AuditRow = {
-    id: string;
-    created_at: string;
-    user_email: string | null;
-    user_id: string | null;
-    operation_type: string;
-    resource_id: string | null;
-    old_values: Record<string, unknown> | null;
-    new_values: Record<string, unknown> | null;
-    additional_info: Record<string, unknown> | null;
-  };
-
-  const auditRowsList = ((auditRows ?? []) as AuditRow[]).filter(row => Boolean(row.resource_id));
-  const auditEmployeeNames: Record<string, string> = Object.fromEntries(
-    employees.map(employee => [employee.employee_id, employeeDisplayName(employee)]),
-  );
-  const auditEmployeeIds = new Set(auditRowsList.flatMap(collectAuditEmployeeIds));
-  const missingAuditEmployeeIds = [...auditEmployeeIds].filter(employeeId => !auditEmployeeNames[employeeId]);
-  if (missingAuditEmployeeIds.length > 0) {
-    const { data: missingEmployees } = await admin
-      .from('employees')
-      .select('employee_id, first_name, last_name, preferred_name')
-      .in('employee_id', missingAuditEmployeeIds);
-
-    (missingEmployees ?? []).forEach(employee => {
-      auditEmployeeNames[employee.employee_id] = employeeDisplayName(employee);
-    });
-  }
-
-  const auditUserIds = [...new Set(auditRowsList.map(row => row.user_id).filter((id): id is string => Boolean(id)))];
-  const auditUserNames: Record<string, string> = {};
-  if (auditUserIds.length > 0) {
-    const { data: profiles } = await admin
-      .from('profiles')
-      .select('id, full_name, email')
-      .in('id', auditUserIds);
-
-    (profiles ?? []).forEach(profile => {
-      const displayName = profile.full_name || profile.email;
-      if (displayName) auditUserNames[profile.id] = displayName;
-    });
-  }
-
-  const shiftAuditTrail: ShiftAuditTrailEntry[] = auditRowsList
-    .map(row => ({
-      id: row.id,
-      shift_id: row.resource_id!,
-      created_at: row.created_at,
-      user_email: row.user_email,
-      user_id: row.user_id,
-      user_name: row.user_id ? (auditUserNames[row.user_id] ?? null) : null,
-      operation_type: row.operation_type,
-      old_values: row.old_values,
-      new_values: row.new_values,
-      additional_info: row.additional_info,
-    }));
   const rejectedShifts = (rejectedShiftRows ?? []) as RejectedShiftRecord[];
   const publishedShifts = (publishedShiftRows ?? []) as PublishedShiftSnapshot[];
 
@@ -371,8 +290,6 @@ export default async function RotaPage({ searchParams }: RotaPageProps) {
         canViewSalesTargets={canViewSalesTargets}
         canEditSalesTargets={canEditSalesTargets}
         openShiftRequests={openShiftRequests}
-        shiftAuditTrail={shiftAuditTrail}
-        auditValueLabels={auditEmployeeNames}
         selectedShiftId={selectedShiftId}
         rejectedShifts={rejectedShifts}
       />

@@ -34,7 +34,7 @@ import {
 } from '@/ds';
 import { formatDateInLondon, formatTime12Hour, getTodayIsoDate } from '@/lib/dateUtils';
 import { moveShift, autoPopulateWeekFromTemplates, upsertRotaSalesTargetOverride } from '@/app/actions/rota';
-import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord, ShiftAuditTrailEntry } from '@/app/actions/rota';
+import type { RotaWeek, RotaShift, RotaEmployee, LeaveDayWithRequest, OpenShiftRequestSummary, RejectedShiftRecord } from '@/app/actions/rota';
 import type { ShiftTemplate } from '@/app/actions/rota-templates';
 import type { Department } from '@/app/actions/budgets';
 import type { RotaDayInfo } from '@/app/actions/rota-day-info';
@@ -103,8 +103,6 @@ interface RotaGridProps {
   canViewSalesTargets: boolean;
   canEditSalesTargets: boolean;
   openShiftRequests?: OpenShiftRequestSummary[];
-  shiftAuditTrail?: ShiftAuditTrailEntry[];
-  auditValueLabels?: Record<string, string>;
   selectedShiftId?: string;
   rejectedShifts?: RejectedShiftRecord[];
 }
@@ -614,8 +612,6 @@ export default function RotaGrid({
   canViewSalesTargets,
   canEditSalesTargets,
   openShiftRequests = [],
-  shiftAuditTrail = [],
-  auditValueLabels = {},
   selectedShiftId,
   rejectedShifts = [],
 }: RotaGridProps) {
@@ -651,11 +647,9 @@ export default function RotaGrid({
     startNavTransition(() => { router.push(`/rota?week=${week}`); });
   }, [router]);
 
-  // Prefetch adjacent weeks so arrow navigation feels instant
-  useEffect(() => {
-    router.prefetch(`/rota?week=${addWeeks(weekStart, -1)}`);
-    router.prefetch(`/rota?week=${addWeeks(weekStart, 1)}`);
-  }, [weekStart, router]);
+  // Adjacent weeks are deliberately not prefetched: each prefetch was a full server render of
+  // that week (and, for an editor, created its rota_weeks row), so one view cost three renders.
+  // A week's row is now created when somebody first opens it.
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -1588,8 +1582,7 @@ export default function RotaGrid({
           canEdit={canEdit}
           departments={departments}
           openShiftRequests={openShiftRequests.filter(request => request.shift_id === selectedShift.id)}
-          auditTrail={shiftAuditTrail.filter(entry => entry.shift_id === selectedShift.id)}
-          auditValueLabels={auditValueLabels}
+          auditValueLabels={employeeNameRecord}
           rejectionHistory={rejectedShifts.filter(rejection => rejection.shift_id === selectedShift.id)}
           rejectedEmployeeNames={employeeNameRecord}
           onClose={() => setSelectedShift(null)}

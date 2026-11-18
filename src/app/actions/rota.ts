@@ -933,24 +933,34 @@ export async function getOrCreateRotaWeek(weekStart: string): Promise<
 
   const supabase = await createClient();
 
-  // Require edit permission before attempting insert
-  const canCreate = await checkUserPermission('rota', 'edit');
-
   const WEEK_SELECT = 'id, week_start, status, published_at, published_by, has_unpublished_changes, created_at, updated_at';
 
-  // Attempt insert first; if a unique violation occurs (concurrent insert), fall back to select
-  const { data: created, error: insertError } = canCreate
-    ? await supabase
-        .from('rota_weeks')
-        .insert({ week_start: weekStart })
-        .select(WEEK_SELECT)
-        .single()
-    : { data: null, error: { code: '', message: 'Permission denied' } as { code: string; message: string } };
+  // Read first: the week almost always exists already, so a view costs one read and no failed
+  // write. Only a week nobody has opened before is inserted, and only by an editor.
+  const { data: found, error: findError } = await supabase
+    .from('rota_weeks')
+    .select(WEEK_SELECT)
+    .eq('week_start', weekStart)
+    .maybeSingle();
+
+  if (findError) return { success: false, error: findError.message };
+  if (found) return { success: true, data: found as RotaWeek };
+
+  // Require edit permission before attempting insert
+  const canCreate = await checkUserPermission('rota', 'edit');
+  if (!canCreate) return { success: false, error: 'Permission denied' };
+
+  const { data: created, error: insertError } = await supabase
+    .from('rota_weeks')
+    .insert({ week_start: weekStart })
+    .select(WEEK_SELECT)
+    .single();
 
   if (!insertError) return { success: true, data: created as RotaWeek };
 
-  // code 23505 = unique_violation — week already exists (concurrent insert)
-  if (insertError.code === '23505' || insertError.code === '') {
+  // code 23505 = unique_violation: another request created the week between our read and our
+  // insert, so read the row it wrote.
+  if (insertError.code === '23505') {
     const { data: existing, error: selectError } = await supabase
       .from('rota_weeks')
       .select(WEEK_SELECT)
@@ -958,13 +968,117 @@ export async function getOrCreateRotaWeek(weekStart: string): Promise<
       .single();
 
     if (selectError || !existing) {
-      if (!canCreate) return { success: false, error: 'Permission denied' };
       return { success: false, error: selectError?.message ?? 'Rota week not found' };
     }
     return { success: true, data: existing as RotaWeek };
   }
 
   return { success: false, error: insertError.message };
+}
+
+// ---------------------------------------------------------------------------
+// Audit history for one shift (loaded when the shift modal opens)
+// ---------------------------------------------------------------------------
+
+/** Fields in a shift audit row that hold an employee id, labelled with the employee's name. */
+const SHIFT_AUDIT_EMPLOYEE_FIELDS = ['employee_id', 'acceptance_decided_by'] as const;
+
+const ShiftAuditTrailInputSchema = z.string().uuid();
+
+/**
+ * The change history of one rota shift, newest first, for the "Shift Audit Trail" card in the
+ * shift modal. Read-only. Needs rota view, the same permission as the rota page. Returns the
+ * entries plus `valueLabels`, a map from each employee id named in them to that person's name,
+ * so the modal can show names instead of ids.
+ */
+export async function getShiftAuditTrail(shiftId: string): Promise<
+  | { success: true; data: { entries: ShiftAuditTrailEntry[]; valueLabels: Record<string, string> } }
+  | { success: false; error: string }
+> {
+  const canView = await checkUserPermission('rota', 'view');
+  if (!canView) return { success: false, error: 'Permission denied' };
+
+  const parsedId = ShiftAuditTrailInputSchema.safeParse(shiftId);
+  if (!parsedId.success) return { success: false, error: 'Invalid shift id' };
+
+  const admin = createAdminClient();
+  const { data: auditRows, error: auditError } = await admin
+    .from('audit_logs')
+    .select('id, created_at, user_email, user_id, operation_type, resource_id, old_values, new_values, additional_info')
+    .eq('resource_type', 'rota_shift')
+    .eq('operation_status', 'success')
+    .eq('resource_id', parsedId.data)
+    .order('created_at', { ascending: false })
+    .limit(500);
+
+  if (auditError) return { success: false, error: auditError.message };
+
+  type AuditRow = {
+    id: string;
+    created_at: string;
+    user_email: string | null;
+    user_id: string | null;
+    operation_type: string;
+    resource_id: string | null;
+    old_values: Record<string, unknown> | null;
+    new_values: Record<string, unknown> | null;
+    additional_info: Record<string, unknown> | null;
+  };
+  const rows = ((auditRows ?? []) as AuditRow[]).filter(row => Boolean(row.resource_id));
+
+  const employeeIds = new Set<string>();
+  rows.forEach(row => {
+    [row.old_values, row.new_values].forEach(values => {
+      if (!values) return;
+      SHIFT_AUDIT_EMPLOYEE_FIELDS.forEach(field => {
+        const value = values[field];
+        if (typeof value === 'string' && value.length > 0) employeeIds.add(value);
+      });
+    });
+  });
+  const userIds = [...new Set(rows.map(row => row.user_id).filter((id): id is string => Boolean(id)))];
+
+  // Names are a nicety: a failed lookup shows ids rather than failing the history.
+  const [employeesResult, profilesResult] = await Promise.all([
+    employeeIds.size > 0
+      ? admin
+          .from('employees')
+          .select('employee_id, first_name, last_name, preferred_name')
+          .in('employee_id', [...employeeIds])
+      : Promise.resolve({ data: [] as Array<{ employee_id: string; first_name: string | null; last_name: string | null; preferred_name: string | null }> }),
+    userIds.length > 0
+      ? admin
+          .from('profiles')
+          .select('id, full_name, email')
+          .in('id', userIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null; email: string | null }> }),
+  ]);
+
+  const valueLabels: Record<string, string> = {};
+  (employeesResult.data ?? []).forEach(employee => {
+    valueLabels[employee.employee_id] = displayName(employee, 'Unknown staff member');
+  });
+
+  const userNames: Record<string, string> = {};
+  (profilesResult.data ?? []).forEach(profile => {
+    const name = profile.full_name || profile.email;
+    if (name) userNames[profile.id] = name;
+  });
+
+  const entries: ShiftAuditTrailEntry[] = rows.map(row => ({
+    id: row.id,
+    shift_id: row.resource_id!,
+    created_at: row.created_at,
+    user_email: row.user_email,
+    user_id: row.user_id,
+    user_name: row.user_id ? (userNames[row.user_id] ?? null) : null,
+    operation_type: row.operation_type,
+    old_values: row.old_values,
+    new_values: row.new_values,
+    additional_info: row.additional_info,
+  }));
+
+  return { success: true, data: { entries, valueLabels } };
 }
 
 // ---------------------------------------------------------------------------
@@ -3173,13 +3287,25 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   const supabase = await createClient();
 
   // Ordering stays on the legal first/last name so the grid keeps a stable,
-  // predictable order even when someone's preferred name starts elsewhere.
-  const { data: employees, error: empError } = await supabase
-    .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy, status, employment_end_date')
-    .in('status', ['Active', 'Started Separation'])
-    .order('first_name')
-    .order('last_name');
+  // predictable order even when someone's preferred name starts elsewhere. The week's shift
+  // owners (for former employees still on this week) are read at the same time, not after.
+  const [{ data: employees, error: empError }, weekShiftsResult] = await Promise.all([
+    supabase
+      .from('employees')
+      .select('employee_id, first_name, last_name, preferred_name, job_title, separation_shift_policy, status, employment_end_date')
+      .in('status', ['Active', 'Started Separation'])
+      .order('first_name')
+      .order('last_name'),
+    weekStart
+      ? supabase
+          .from('rota_shifts')
+          .select('employee_id')
+          .gte('shift_date', weekStart)
+          .lte('shift_date', addDaysIso(weekStart, 6))
+          .eq('is_open_shift', false)
+          .not('employee_id', 'is', null)
+      : Promise.resolve({ data: [] as Array<{ employee_id: string | null }> }),
+  ]);
 
   if (empError) return { success: false, error: empError.message };
 
@@ -3198,18 +3324,7 @@ export async function getActiveEmployeesForRota(weekStart?: string): Promise<
   // If a week is provided, also include any former employees who have shifts that week
   let formerList: EmpRow[] = [];
   if (weekStart) {
-    const weekEnd = new Date(weekStart + 'T00:00:00');
-    weekEnd.setDate(weekEnd.getDate() + 6);
-    const weekEndStr = weekEnd.toISOString().split('T')[0];
-
-    const { data: weekShifts } = await supabase
-      .from('rota_shifts')
-      .select('employee_id')
-      .gte('shift_date', weekStart)
-      .lte('shift_date', weekEndStr)
-      .eq('is_open_shift', false)
-      .not('employee_id', 'is', null);
-
+    const weekShifts = weekShiftsResult.data;
     const formerIds = [...new Set(
       (weekShifts ?? [])
         .map((s: { employee_id: string | null }) => s.employee_id)
