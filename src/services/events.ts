@@ -15,6 +15,7 @@ import { logger } from '@/lib/logger';
 import { normalizeEventPricingFields, resolveEventPriceAmount } from '@/lib/events/pricing';
 import { formatEventWhenCompactLondon, resolveEventStartIso } from '@/lib/events/event-when';
 import { buildEventBookingStats } from '@/lib/events/stats';
+import type { CalendarEventRow } from '@/lib/events/calendar-events';
 import { fetchAllRows } from '@/lib/supabase/paged-read';
 import {
   AUDITED_EVENT_FIELDS,
@@ -1217,7 +1218,6 @@ export class EventService {
     const clickCountMap: Record<string, number> = {}
     if (eventIds.length > 0) {
       const adminDb = createAdminClient()
-      const orFilter = eventIds.map(id => `metadata.cs.{"event_id":"${id}"}`).join(',')
 
       // One event owns many ad variants, so this read passes the 1,000 rows Supabase
       // returns per request well before the events list itself does: the calendar and
@@ -1230,7 +1230,9 @@ export class EventService {
             adminDb
               .from('short_links')
               .select('metadata, click_count')
-              .or(orFilter)
+              // One indexable condition (idx_short_links_event_id) rather than one
+              // metadata @> condition per event, which forced a full table scan.
+              .in('metadata->>event_id', eventIds)
               .order('id')
               .range(from, to),
           { label: 'event link clicks' }
@@ -1276,6 +1278,39 @@ export class EventService {
         totalPages: count ? Math.ceil(count / pageSize) : 0,
       }
     };
+  }
+
+  /**
+   * The events calendar's rows: only the columns it renders, for one window of
+   * dates. Unlike getEvents it reads no short links and no capacity snapshot,
+   * neither of which the calendar shows; together they cost about two seconds
+   * when run for every event ever held. The seat count is the same totalSeats
+   * figure getEvents reports, built from the embedded bookings.
+   */
+  static async getCalendarEvents(options: { dateFrom: string; dateTo: string }): Promise<CalendarEventRow[]> {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('events')
+      .select(
+        'id, name, date, time, event_status, hero_image_url, poster_image_url, thumbnail_image_url, brief, short_description, long_description, bookings:bookings(seats, status, is_reminder_only, hold_expires_at)'
+      )
+      .gte('date', options.dateFrom)
+      .lte('date', options.dateTo)
+      .order('date', { ascending: true })
+      .order('time', { ascending: true });
+
+    if (error) {
+      logger.error('Error fetching calendar events', { error: error instanceof Error ? error : new Error(String(error)) });
+      throw new Error('Failed to fetch events');
+    }
+
+    return (data || []).map((row) => {
+      const { bookings, ...event } = row as typeof row & {
+        bookings: { seats: number | null; status: string | null; is_reminder_only?: boolean | null; hold_expires_at?: string | null }[] | null
+      }
+      const stats = buildEventBookingStats({}, Array.isArray(bookings) ? bookings : [], []);
+      return { ...event, booked_count: stats.totalSeats } as CalendarEventRow;
+    });
   }
 
   /**
