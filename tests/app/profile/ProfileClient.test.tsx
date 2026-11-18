@@ -37,12 +37,12 @@ beforeEach(() => {
 
 describe('ProfileClient', () => {
   it('shows the name as the avatar card heading', async () => {
-    render(<ProfileClient />)
+    render(<ProfileClient initialProfile={PROFILE} />)
     expect(await screen.findByRole('heading', { level: 3, name: 'Sam Example' })).toBeInTheDocument()
   })
 
   it('opens the photo picker from the Change Photo button and uploads the chosen image', async () => {
-    const { container } = render(<ProfileClient />)
+    const { container } = render(<ProfileClient initialProfile={PROFILE} />)
     const change = await screen.findByRole('button', { name: 'Change Photo' })
     expect(change.tagName).toBe('BUTTON')
 
@@ -72,7 +72,7 @@ describe('ProfileClient', () => {
 
   it('reports a failed upload rather than claiming success', async () => {
     actions.uploadAvatar.mockResolvedValue({ error: 'That image is too large' })
-    const { container } = render(<ProfileClient />)
+    const { container } = render(<ProfileClient initialProfile={PROFILE} />)
     await screen.findByRole('button', { name: 'Change Photo' })
     const input = container.querySelector('input[type="file"]') as HTMLInputElement
 
@@ -80,5 +80,33 @@ describe('ProfileClient', () => {
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('That image is too large'))
     expect(toast.success).not.toHaveBeenCalledWith('Avatar uploaded successfully')
+  })
+
+  it('shows the server-loaded profile without loading it again on mount', async () => {
+    render(<ProfileClient initialProfile={PROFILE} />)
+    expect(screen.getByRole('heading', { level: 3, name: 'Sam Example' })).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Sam Example')).toBeInTheDocument()
+    // Give any mount effect a chance to run.
+    await Promise.resolve()
+    expect(actions.loadProfile).not.toHaveBeenCalled()
+  })
+
+  it('still reloads the profile after an upload', async () => {
+    const { container } = render(<ProfileClient initialProfile={PROFILE} />)
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement
+    await userEvent.upload(input, new File([new Uint8Array(8)], 'me.png', { type: 'image/png' }))
+    await waitFor(() => expect(actions.loadProfile).toHaveBeenCalledTimes(1))
+  })
+
+  it('shows the error with a retry when the server read failed, and the retry loads it', async () => {
+    render(<ProfileClient initialProfile={null} initialError="Failed to load profile" />)
+
+    expect(screen.getByText('We could not load your profile information.')).toBeInTheDocument()
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Failed to load profile'))
+    expect(actions.loadProfile).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /try again|retry/i }))
+    expect(await screen.findByRole('heading', { level: 3, name: 'Sam Example' })).toBeInTheDocument()
+    expect(actions.loadProfile).toHaveBeenCalledTimes(1)
   })
 })
