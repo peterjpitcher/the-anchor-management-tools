@@ -85,6 +85,7 @@ function useQuotes(rows: Row[], options: { afterRead?: () => void } = {}): { row
       const named: ColumnReference[] = []
       let payload: Row = {}
       let returning = false
+      let range: [number, number] | null = null
 
       const run = async (mode: 'one' | 'maybe' | 'many'): Promise<Result> => {
         const missing = named.find(({ table: owner, column }) => !schema.get(owner)?.has(column))
@@ -113,7 +114,8 @@ function useQuotes(rows: Row[], options: { afterRead?: () => void } = {}): { row
             : { data: null, error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' } }
         }
         if (mode === 'maybe') return { data: data[0] ?? null, error: null }
-        return { data, error: null }
+        // Like PostgREST: an unranged read stops at 1,000 rows without saying so.
+        return { data: range ? data.slice(range[0], range[1] + 1) : data.slice(0, 1000), error: null }
       }
 
       const builder = {
@@ -144,6 +146,10 @@ function useQuotes(rows: Row[], options: { afterRead?: () => void } = {}): { row
         },
         order(column: string) {
           named.push({ table, column })
+          return builder
+        },
+        range(from: number, to: number) {
+          range = [from, to]
           return builder
         },
         single: () => run('one'),
@@ -253,6 +259,21 @@ describe('quote reads and delete', () => {
       expect(page.quotes?.map((row) => [row.id, row.status])).toEqual(old.quotes?.map((row) => [row.id, row.status]))
       expect(page.summary).toEqual({ total_pending: 200.5, total_expired: 50, total_accepted: 300, draft_badge: 1 })
     }
+  })
+
+  it('pages past 1,000 quotes so an older matching quote still shows and counts', async () => {
+    const newer = Array.from({ length: 1004 }, (_, i) =>
+      quote(`c3f0c1de-0000-4000-8000-${String(i).padStart(12, '0')}`, 'draft', 1, '2999-12-31', '2026-10-05')
+    )
+    const state = useQuotes([...newer, ...seed()])
+
+    const page = await getQuotesPageData('accepted')
+
+    expect(page.error).toBeUndefined()
+    expect(page.quotes?.map((row) => row.id)).toEqual([ACCEPTED])
+    expect(page.summary?.total_accepted).toBe(300)
+    expect(page.summary?.draft_badge).toBe(1005)
+    expect(state.queries).toHaveLength(2)
   })
 
   it('refuses the page data without the view permission', async () => {

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from './audit'
 import { z } from 'zod'
@@ -161,27 +162,35 @@ export async function getQuotesPageData(
       return { error: 'You do not have permission to view quotes' }
     }
 
-    const { data, error } = await supabase
-      .from('quotes')
-      .select(`
-        id,
-        quote_number,
-        reference,
-        quote_date,
-        valid_until,
-        status,
-        total_amount,
-        converted_to_invoice_id,
-        vendor:invoice_vendors(id, name)
-      `)
-      .order('quote_date', { ascending: false })
-
-    if (error) {
+    // Paged so the list and summary see every quote, not just the newest 1,000: the status
+    // filter runs here in memory, so a capped read could hide older matching quotes.
+    let rows
+    try {
+      rows = await fetchAllRows(
+        (from, to) =>
+          supabase
+            .from('quotes')
+            .select(`
+              id,
+              quote_number,
+              reference,
+              quote_date,
+              valid_until,
+              status,
+              total_amount,
+              converted_to_invoice_id,
+              vendor:invoice_vendors(id, name)
+            `)
+            .order('quote_date', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, to),
+        { label: 'quotes page data' }
+      )
+    } catch (error) {
       console.error('Error fetching quotes page data:', error)
       return { error: 'Failed to fetch quotes' }
     }
 
-    const rows = data || []
     const today = getTodayIsoDate()
     const summary = summariseQuotes(rows, today)
 
