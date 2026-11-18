@@ -20,7 +20,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { createClient } from '@/lib/supabase/server'
-import { deleteQuote, getQuote, getQuoteSummary, getQuotes } from '@/app/actions/quotes'
+import { deleteQuote, getQuote, getQuoteSummary, getQuotes, getQuotesPageData } from '@/app/actions/quotes'
 
 type Row = Record<string, unknown>
 type Result = { data: unknown; error: { code: string; message: string } | null }
@@ -35,6 +35,8 @@ const DRAFT = 'a1f0c1de-0000-4000-8000-000000000001'
 const SENT = 'a1f0c1de-0000-4000-8000-000000000002'
 const LAPSED = 'a1f0c1de-0000-4000-8000-000000000003'
 const ACCEPTED = 'a1f0c1de-0000-4000-8000-000000000004'
+const STORED_EXPIRED = 'a1f0c1de-0000-4000-8000-000000000005'
+const REJECTED = 'a1f0c1de-0000-4000-8000-000000000006'
 
 /** Rows shaped like the live table: every key here is a real `quotes` column. */
 function quote(id: string, status: string, totalAmount: number, validUntil: string, quoteDate: string): Row {
@@ -210,6 +212,57 @@ describe('quote reads and delete', () => {
 
     expect(result.error).toBeUndefined()
     expect(result.quotes?.map((row) => row.id)).toEqual([DRAFT])
+  })
+
+  it('gives the page the same summary as getQuoteSummary from one read, with lapsed and stored-expired quotes', async () => {
+    // A stored `expired` quote and a rejected one add nothing to any figure; a lapsed `sent` one
+    // counts as expired. Summarising the relabelled list instead would count both as expired.
+    const rows = [
+      ...seed(),
+      quote(STORED_EXPIRED, 'expired', 75, '2000-01-01', '2026-09-30'),
+      quote(REJECTED, 'rejected', 40, '2999-12-31', '2026-09-29'),
+    ]
+    useQuotes(rows.map((row) => ({ ...row })))
+    const old = await getQuoteSummary()
+
+    const state = useQuotes(rows.map((row) => ({ ...row })))
+    const result = await getQuotesPageData()
+
+    expect(old.summary).toEqual({ total_pending: 200.5, total_expired: 50, total_accepted: 300, draft_badge: 1 })
+    expect(result.summary).toEqual(old.summary)
+    expect(state.queries).toHaveLength(1)
+    expect(result.quotes?.map((row) => [row.id, row.status])).toEqual([
+      [DRAFT, 'draft'],
+      [SENT, 'sent'],
+      [LAPSED, 'expired'],
+      [ACCEPTED, 'accepted'],
+      [STORED_EXPIRED, 'expired'],
+      [REJECTED, 'rejected'],
+    ])
+  })
+
+  it('filters the page list on the stored status, as getQuotes does, and keeps the summary for every quote', async () => {
+    const rows = [...seed(), quote(STORED_EXPIRED, 'expired', 75, '2000-01-01', '2026-09-30')]
+
+    for (const status of ['draft', 'sent', 'expired'] as const) {
+      useQuotes(rows.map((row) => ({ ...row })))
+      const old = await getQuotes(status)
+      useQuotes(rows.map((row) => ({ ...row })))
+      const page = await getQuotesPageData(status)
+
+      expect(page.quotes?.map((row) => [row.id, row.status])).toEqual(old.quotes?.map((row) => [row.id, row.status]))
+      expect(page.summary).toEqual({ total_pending: 200.5, total_expired: 50, total_accepted: 300, draft_badge: 1 })
+    }
+  })
+
+  it('refuses the page data without the view permission', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValue(false)
+    const state = useQuotes(seed())
+
+    const result = await getQuotesPageData()
+
+    expect(result).toEqual({ error: 'You do not have permission to view quotes' })
+    expect(state.queries).toHaveLength(0)
   })
 
   it('loads one quote for the detail page', async () => {

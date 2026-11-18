@@ -9,9 +9,9 @@ import QuotesClient from '@/app/(authenticated)/quotes/_components/QuotesClient'
 
 const routerPush = vi.hoisted(() => vi.fn())
 const quoteActions = vi.hoisted(() => ({
-  getQuotes: vi.fn(),
-  getQuoteSummary: vi.fn(),
+  getQuotesPageData: vi.fn(),
 }))
+const permissionState = vi.hoisted(() => ({ loading: false }))
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: routerPush }),
@@ -19,7 +19,7 @@ vi.mock('next/navigation', () => ({
 }))
 
 vi.mock('@/contexts/PermissionContext', () => ({
-  usePermissions: () => ({ hasPermission: () => true, loading: false }),
+  usePermissions: () => ({ hasPermission: () => true, loading: permissionState.loading }),
 }))
 
 vi.mock('@/app/actions/quotes', () => quoteActions)
@@ -30,18 +30,19 @@ const permissions = { canCreate: true, canEdit: true, canDelete: true, canExport
 describe('QuotesClient', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    quoteActions.getQuoteSummary.mockResolvedValue({ summary })
+    permissionState.loading = false
   })
 
   it('shows a failed load as an error with no empty state and no empty table card', async () => {
-    quoteActions.getQuotes.mockResolvedValue({ error: 'Database unavailable' })
+    // The server load failed, so the client retries on mount, and that fails too.
+    quoteActions.getQuotesPageData.mockResolvedValue({ error: 'Database unavailable' })
 
     const { container } = render(
       <QuotesClient
         initialQuotes={[]}
         initialSummary={summary}
         initialStatus="all"
-        initialError={null}
+        initialError="Failed to fetch quotes"
         permissions={permissions}
       />,
     )
@@ -56,7 +57,7 @@ describe('QuotesClient', () => {
   })
 
   it('shows the empty state when the load worked and there are no quotes', async () => {
-    quoteActions.getQuotes.mockResolvedValue({ quotes: [] })
+    quoteActions.getQuotesPageData.mockResolvedValue({ quotes: [], summary })
 
     render(
       <QuotesClient
@@ -89,7 +90,7 @@ describe('QuotesClient', () => {
       created_at: '2026-09-01T00:00:00.000Z',
       updated_at: '2026-09-01T00:00:00.000Z',
     }
-    quoteActions.getQuotes.mockResolvedValue({ quotes: [quote] })
+    quoteActions.getQuotesPageData.mockResolvedValue({ quotes: [quote], summary })
 
     render(
       <QuotesClient
@@ -113,7 +114,7 @@ describe('QuotesClient', () => {
   })
 
   it('names the search box for screen readers', () => {
-    quoteActions.getQuotes.mockResolvedValue({ quotes: [] })
+    quoteActions.getQuotesPageData.mockResolvedValue({ quotes: [], summary })
 
     render(
       <QuotesClient
@@ -126,5 +127,71 @@ describe('QuotesClient', () => {
     )
 
     expect(screen.getByRole('textbox', { name: 'Search quotes by number, client or reference' })).toBeInTheDocument()
+  })
+  it('does not fetch again on first mount when the server sent the page, even once permissions finish loading', async () => {
+    permissionState.loading = true
+    const { rerender } = render(
+      <QuotesClient
+        initialQuotes={[]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+    permissionState.loading = false
+    rerender(
+      <QuotesClient
+        initialQuotes={[]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+
+    expect(await screen.findByText('No quotes yet')).toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(quoteActions.getQuotesPageData).not.toHaveBeenCalled()
+  })
+
+  it('loads again when the status filter changes, and again on going back to all', async () => {
+    const drafts = { total_pending: 1, total_expired: 2, total_accepted: 3, draft_badge: 4 }
+    quoteActions.getQuotesPageData.mockResolvedValue({ quotes: [], summary: drafts })
+    render(
+      <QuotesClient
+        initialQuotes={[]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), { target: { value: 'draft' } })
+    await waitFor(() => expect(quoteActions.getQuotesPageData).toHaveBeenCalledWith('draft'))
+    expect(await screen.findByText('4')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), { target: { value: 'all' } })
+    await waitFor(() => expect(quoteActions.getQuotesPageData).toHaveBeenCalledTimes(2))
+    expect(quoteActions.getQuotesPageData).toHaveBeenLastCalledWith(undefined)
+  })
+
+  it('shows a failed filter change as an error', async () => {
+    quoteActions.getQuotesPageData.mockResolvedValue({ error: 'Database unavailable' })
+    render(
+      <QuotesClient
+        initialQuotes={[]}
+        initialSummary={summary}
+        initialStatus="all"
+        initialError={null}
+        permissions={permissions}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), { target: { value: 'sent' } })
+
+    expect(await screen.findByText('Database unavailable')).toBeInTheDocument()
+    expect(screen.queryByText('No quotes match these filters')).not.toBeInTheDocument()
   })
 })

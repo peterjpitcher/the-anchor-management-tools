@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getQuotes, getQuoteSummary } from '@/app/actions/quotes'
+import { getQuotesPageData } from '@/app/actions/quotes'
+import { emptyQuoteSummary } from '@/lib/quotes/summary'
 import QuotesClient from './_components/QuotesClient'
 
 export default async function QuotesPage() {
@@ -9,23 +10,17 @@ export default async function QuotesPage() {
     redirect('/unauthorized')
   }
 
-  const [quotesResult, summaryResult, canCreate, canEdit, canDelete, canExport] = await Promise.all([
-    getQuotes(),
-    getQuoteSummary(),
+  const [pageData, canCreate, canEdit, canDelete, canExport] = await Promise.all([
+    getQuotesPageData(),
     checkUserPermission('invoices', 'create'),
     checkUserPermission('invoices', 'edit'),
     checkUserPermission('invoices', 'delete'),
     checkUserPermission('invoices', 'export'),
   ])
 
-  const initialQuotes = quotesResult.quotes ?? []
-  const initialSummary = summaryResult.summary ?? {
-    total_pending: 0,
-    total_expired: 0,
-    total_accepted: 0,
-    draft_badge: 0,
-  }
-  const initialError = quotesResult.error ?? summaryResult.error ?? null
+  const initialQuotes = pageData.quotes ?? []
+  const initialSummary = pageData.summary ?? emptyQuoteSummary()
+  const initialError = pageData.error ?? null
 
   return (
     <QuotesClient
