@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getAppUrl } from '@/lib/env'
 import { checkUserPermission } from '@/app/actions/rbac'
@@ -119,9 +120,8 @@ const ParkingRateFormSchema = z.object({
 
 export async function createParkingBooking(formData: FormData) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, hasPermission] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
 
@@ -248,8 +248,8 @@ export async function listParkingBookings(options?: {
 }) {
   try {
     const supabase = await createClient()
-    const [{ data: { user } }, canView] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canView] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'view'),
     ])
     if (!user) {
@@ -307,8 +307,8 @@ export async function listParkingBookings(options?: {
 export async function getParkingBookingNotifications(bookingId: string) {
   try {
     const supabase = await createClient()
-    const [{ data: { user } }, canView] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canView] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'view'),
     ])
     if (!user) {
@@ -339,9 +339,8 @@ export async function getParkingBookingNotifications(bookingId: string) {
 
 export async function getParkingRateConfig(): Promise<{ success: true; data: ParkingRateConfig } | { error: string }> {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, canManage] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canManage] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -375,9 +374,8 @@ export async function getParkingRateConfig(): Promise<{ success: true; data: Par
 
 export async function getParkingRateSettings(): Promise<{ success: true; data: ParkingRate } | { error: string }> {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, canManage] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canManage] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -401,9 +399,8 @@ export async function getParkingRateSettings(): Promise<{ success: true; data: P
 
 export async function saveParkingRateConfig(formData: FormData) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, canManage] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canManage] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -459,9 +456,8 @@ export async function saveParkingRateConfig(formData: FormData) {
 
 export async function updateParkingBookingDetails(bookingId: string, formData: FormData) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, hasPermission] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -649,9 +645,8 @@ export async function updateParkingBookingStatus(
   updates: Partial<Pick<ParkingBooking, 'status' | 'payment_status' | 'notes' | 'cancelled_at'>>
 ) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, hasPermission] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -776,9 +771,8 @@ export async function updateParkingBookingStatus(
 
 export async function generateParkingPaymentLink(bookingId: string) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, hasPermission] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {
@@ -856,9 +850,8 @@ export async function generateParkingPaymentLink(bookingId: string) {
 
 export async function markParkingBookingPaid(bookingId: string) {
   try {
-    const supabase = await createClient()
-    const [{ data: { user } }, hasPermission] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, hasPermission] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('parking', 'manage'),
     ])
     if (!user) {

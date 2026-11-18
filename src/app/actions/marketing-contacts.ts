@@ -6,7 +6,7 @@ import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import type { ActionType } from '@/types/rbac'
 import type {
   AudiencePreview,
@@ -53,10 +53,7 @@ interface AuthorisedUser {
 }
 
 async function authorise(action: ActionType): Promise<{ user: AuthorisedUser } | { error: string }> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) return { error: 'Unauthorized' }
 

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
@@ -300,10 +301,7 @@ type ManageContext =
 
 async function requireCustomerManageContext(): Promise<ManageContext> {
   const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError
-  } = await supabase.auth.getUser()
+  const { user, error: authError } = await getCurrentUser()
 
   if (authError || !user) {
     return { error: 'Unauthorized' }

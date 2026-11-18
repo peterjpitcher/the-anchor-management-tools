@@ -44,7 +44,12 @@ type SearchParams = Record<string, string | string[] | undefined>
 const firstValue = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
 export default async function MarketingCampaignsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const canView = await checkUserPermission('marketing', 'view')
+  const [canView, canCreate, canEdit, canManageSettings] = await Promise.all([
+    checkUserPermission('marketing', 'view'),
+    checkUserPermission('marketing', 'create'),
+    checkUserPermission('marketing', 'edit'),
+    checkUserPermission('marketing', 'manage'),
+  ])
   if (!canView) redirect('/unauthorized')
 
   const params = await searchParams
@@ -62,11 +67,6 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
   if (audience) filterQuery.audience = audience
   const pageHref = (nextPage: number) => `/marketing?${new URLSearchParams({ ...filterQuery, page: String(nextPage) })}`
 
-  const [canCreate, canEdit, canManageSettings] = await Promise.all([
-    checkUserPermission('marketing', 'create'),
-    checkUserPermission('marketing', 'edit'),
-    checkUserPermission('marketing', 'manage'),
-  ])
   const layoutProps = marketingLayout('campaigns', { canManageSettings })
 
   const [campaignsResult, settingsResult] = await Promise.all([

@@ -1,7 +1,7 @@
 'use server';
 
 import { z } from 'zod';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { EventService } from '@/services/events';
 import { PrivateBookingService } from '@/services/private-bookings';
@@ -10,8 +10,7 @@ import { checkUserPermission } from '@/app/actions/rbac';
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format')
 
 export async function getDailySummaryAction(date: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) {
     return { success: false, error: 'Not authenticated' };
   }

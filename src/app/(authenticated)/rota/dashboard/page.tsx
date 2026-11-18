@@ -264,17 +264,16 @@ function BudgetCard({
 }
 
 export default async function RotaDashboardPage() {
-  const canView = await checkUserPermission('rota', 'view');
-  if (!canView) redirect('/');
-
   // Cost, pay rates and dates of birth are payroll data. Without payroll:view
   // this page shows hours only, and the pay and date-of-birth queries are never
   // issued at all. Takings follow the cashing-up permission, matching
   // getRotaSummaryForWeek.
-  const [canViewSpend, canViewTakings] = await Promise.all([
+  const [canView, canViewSpend, canViewTakings] = await Promise.all([
+    checkUserPermission('rota', 'view'),
     checkUserPermission('payroll', 'view'),
     checkUserPermission('cashing_up', 'view'),
   ]);
+  if (!canView) redirect('/');
 
   const today = getTodayIsoDate();
   const weekStart = getMondayIsoOfWeek(today);

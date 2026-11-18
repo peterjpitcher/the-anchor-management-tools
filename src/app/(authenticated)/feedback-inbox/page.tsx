@@ -4,10 +4,11 @@ import { getReviewFeedbackList } from '@/app/actions/feedback'
 import { FeedbackInboxClient } from './FeedbackInboxClient'
 
 export default async function FeedbackInboxPage() {
-  const canView = await checkUserPermission('feedback', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('feedback', 'view'),
+    checkUserPermission('feedback', 'manage'),
+  ])
   if (!canView) redirect('/unauthorized')
-
-  const canManage = await checkUserPermission('feedback', 'manage')
 
   const result = await getReviewFeedbackList()
   const loaded = result && 'success' in result ? result.data : null

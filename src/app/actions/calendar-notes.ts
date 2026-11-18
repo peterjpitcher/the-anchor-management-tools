@@ -2,7 +2,7 @@
 
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { getOpenAIConfig } from '@/lib/openai/config'
@@ -281,8 +281,7 @@ async function resolvePermission(
   allowed: boolean,
   deniedMessage: string,
 ): Promise<PermissionContext> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!allowed) {
     return { error: deniedMessage }

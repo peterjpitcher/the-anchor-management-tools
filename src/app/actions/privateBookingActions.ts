@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { getAppUrl } from '@/lib/env'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
@@ -170,10 +171,7 @@ type PrivateBookingsPermissionResult =
 async function requirePrivateBookingsPermission(
   action: PrivateBookingsManageAction
 ): Promise<PrivateBookingsPermissionResult> {
-  const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -245,7 +243,6 @@ export async function getPrivateBooking(
 // Create a new private booking
 export async function createPrivateBooking(formData: FormData) {
   try {
-    const supabase = await createClient()
     const isDateTbd = formData.get('date_tbd') === 'true'
 
     const rawData = {
@@ -321,8 +318,8 @@ export async function createPrivateBooking(formData: FormData) {
       return { error: 'Select an existing customer or enter a phone number' }
     }
 
-    const [{ data: { user } }, canCreate, canManage] = await Promise.all([
-      supabase.auth.getUser(),
+    const [{ user }, canCreate, canManage] = await Promise.all([
+      getCurrentUser(),
       checkUserPermission('private_bookings', 'create'),
       checkUserPermission('private_bookings', 'manage'),
     ])
@@ -434,10 +431,7 @@ export async function updatePrivateBooking(id: string, formData: FormData) {
     return { error: 'You do not have permission to update private bookings' }
   }
 
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -605,10 +599,7 @@ export async function updateBookingStatus(id: string, status: BookingStatus) {
   }
 
   try {
-    const supabase = await createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const { user } = await getCurrentUser()
 
     if (!user) {
       return { error: 'Not authenticated' }
@@ -636,9 +627,8 @@ export async function addPrivateBookingNote(bookingId: string, note: string) {
     return { error: validation.error.errors[0]?.message ?? 'Note validation failed.' }
   }
 
-  const supabase = await createClient()
-  const [{ data: { user } }, canEdit, canManageNotes] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canEdit, canManageNotes] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'edit'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -682,10 +672,7 @@ export async function getBookingDeleteEligibility(bookingId: string): Promise<{
   scheduledCount: number
   reason?: string
 }> {
-  const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return {
@@ -848,8 +835,7 @@ export async function getCancellationPreview(
   preview_body: string | null
   error?: string
 }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return {
@@ -939,8 +925,7 @@ export async function getCompletionPreview(bookingId: string): Promise<{
   preview_body: string | null
   error?: string
 }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) return { preview_body: null, error: 'Unauthorized' }
 
@@ -975,9 +960,8 @@ export async function getCompletionPreview(bookingId: string): Promise<{
 
 // Delete private booking
 export async function deletePrivateBooking(id: string) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canDelete, canManageDelete] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canDelete, canManageDelete] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'delete'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -1146,9 +1130,8 @@ export async function getVendorRate(vendorId: string) {
 
 // Record deposit payment
 export async function recordDepositPayment(bookingId: string, formData: FormData) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canManageDeposits] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canManageDeposits] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'manage_deposits'),
   ])
 
@@ -1216,9 +1199,8 @@ export async function recordDepositPayment(bookingId: string, formData: FormData
 
 // Record a balance payment (partial or full)
 export async function recordFinalPayment(bookingId: string, formData: FormData) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canManageDeposits] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canManageDeposits] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'manage_deposits'),
   ])
 
@@ -1325,8 +1307,7 @@ export async function cancelPrivateBooking(
   }
 
   // Get current user
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     const result = await PrivateBookingService.cancelBooking(
@@ -1363,8 +1344,7 @@ export async function extendBookingHold(bookingId: string, days: 7 | 14 | 30, re
     return { error: 'Please record a reason for extending the hold' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     const result = await PrivateBookingService.extendHold(bookingId, days, user?.id, reason)
@@ -1408,9 +1388,8 @@ export async function applyBookingDiscount(bookingId: string, data: {
   discount_amount: number
   discount_reason: string
 }) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canEdit, canManageDiscount] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canEdit, canManageDiscount] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'edit'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -1454,9 +1433,8 @@ export async function applyBookingDiscount(bookingId: string, data: {
 
 // SMS Queue Management (already using SmsQueueService directly, so no change needed here)
 async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canView] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canView] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'view_sms_queue'),
   ])
 
@@ -1480,9 +1458,8 @@ async function getPrivateBookingSmsQueue(statusFilter?: string[]) {
 }
 
 export async function approveSms(smsId: string) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canApprove] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canApprove] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'approve_sms'),
   ])
 
@@ -1508,9 +1485,8 @@ export async function approveSms(smsId: string) {
 }
 
 export async function rejectSms(smsId: string) {
-  const supabase = await createClient()
-  const [{ data: { user } }, canApprove] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canApprove] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'approve_sms'),
   ])
 
@@ -1536,13 +1512,12 @@ export async function rejectSms(smsId: string) {
 }
 
 export async function sendApprovedSms(smsId: string) {
-  const supabase = await createClient()
   // Gated on approve_sms. The previous pair, private_bookings.send and
   // private_bookings.manage, does not exist in the permissions table, so this
   // action and the Send Now button it backs were refused for every account
   // including super_admin, and approved private-booking SMS could never be sent.
-  const [{ data: { user } }, canSend, canManageSend] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canSend, canManageSend] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'approve_sms'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -1898,8 +1873,7 @@ export async function addBookingItem(data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     const result = await PrivateBookingService.addBookingItem({
@@ -1969,8 +1943,7 @@ export async function updateBookingItem(itemId: string, data: {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     const result = await PrivateBookingService.updateBookingItem(itemId, data);
@@ -2018,8 +1991,7 @@ export async function deleteBookingItem(itemId: string) {
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     const result = await PrivateBookingService.deleteBookingItem(itemId);
@@ -2061,8 +2033,7 @@ export async function reorderBookingItems(bookingId: string, orderedIds: string[
     return { error: 'You do not have permission to modify private bookings' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   try {
     await PrivateBookingService.reorderBookingItems(bookingId, orderedIds);
@@ -2189,8 +2160,7 @@ export async function deleteVendor(id: string) {
 export async function createDepositPaymentOrder(
   bookingId: string
 ): Promise<{ success?: boolean; approveUrl?: string; orderId?: string; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -2322,8 +2292,7 @@ export async function captureDepositPayment(
   bookingId: string,
   orderId: string
 ): Promise<{ success?: boolean; error?: string; warning?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -2525,8 +2494,7 @@ export async function resendCalendarInvite(
     return { error: 'You do not have permission to perform this action' }
   }
 
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) {
     return { error: 'Not authenticated' }
   }
@@ -2601,8 +2569,7 @@ export async function resendCalendarInvite(
 export async function getBookingPortalLink(
   bookingId: string
 ): Promise<{ success?: boolean; url?: string; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }
@@ -2644,8 +2611,7 @@ export async function revokeBookingPortalLinks(
   bookingId: string
 ): Promise<{ success?: boolean; url?: string; error?: string }> {
   if (!z.string().uuid().safeParse(bookingId).success) return { error: 'Booking not found' }
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const hasPermission = await checkUserPermission('private_bookings', 'edit')
@@ -2732,8 +2698,7 @@ export async function confirmPrivateBookingDeposit(
   bookingId: string,
   input: { amount: number | string; reductionReason?: string }
 ): Promise<ConfirmPrivateBookingDepositResult> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const [canManageDeposits, canManage] = await Promise.all([
@@ -2904,8 +2869,7 @@ async function recordDepositPaymentLinkSend(input: {
 export async function sendDepositPaymentLink(
   bookingId: string
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) return { error: 'Not authenticated' }
 
@@ -3033,8 +2997,7 @@ export async function sendDepositPaymentLink(
 export async function editPrivateBookingPayment(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string; warning?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
 
   const canEdit = await checkUserPermission('private_bookings', 'manage', user.id)
@@ -3181,8 +3144,7 @@ export async function editPrivateBookingPayment(
 export async function deletePrivateBookingPayment(
   formData: FormData
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
 
   const canDelete = await checkUserPermission('private_bookings', 'manage', user.id)
@@ -3248,9 +3210,8 @@ export async function sendPrivateBookingSms(
   bookingId: string,
   message: string
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const [{ data: { user } }, canSend, canManage] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canSend, canManage] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'send'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -3332,9 +3293,8 @@ export async function sendPrivateBookingEmail(
   subject: string,
   message: string
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const [{ data: { user } }, canSend, canManage] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ user }, canSend, canManage] = await Promise.all([
+    getCurrentUser(),
     checkUserPermission('private_bookings', 'send'),
     checkUserPermission('private_bookings', 'manage'),
   ])
@@ -3433,8 +3393,7 @@ export async function sendPrivateBookingEmail(
 export async function sendBookingContract(
   bookingId: string
 ): Promise<{ success?: boolean; version?: number; foodAgreementIncluded?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
 
   const canSend = await checkUserPermission('private_bookings', 'generate_contracts')
@@ -3471,8 +3430,7 @@ export async function sendBookingContract(
 export async function markEventSheetGenerated(
   bookingId: string
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const canEdit = await checkUserPermission('private_bookings', 'edit')
@@ -3525,8 +3483,7 @@ export async function closeOutPrivateBooking(
     deposit?: import('@/services/private-bookings/close-out').DepositOutcome | null
   },
 ): Promise<{ success?: boolean; error?: string }> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const [canManage, canManageDeposits] = await Promise.all([

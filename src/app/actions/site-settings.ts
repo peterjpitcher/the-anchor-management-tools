@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { z } from 'zod'
@@ -68,7 +69,7 @@ const SiteSettingsFormSchema = z.object({
 
 export async function getSiteSettings(): Promise<{ settings?: SiteSettings; error?: string }> {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Unauthorized' }
 
   const { data, error } = await supabase

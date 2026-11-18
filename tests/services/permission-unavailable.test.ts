@@ -4,9 +4,15 @@ import type { Mock } from 'vitest'
 // A tiny stand-in for unstable_cache that keeps a value only when the function resolves, which
 // is how Next.js treats a thrown error: nothing is stored (BK-095).
 const cacheStore = new Map<string, unknown>()
+const cacheOptions = new Map<string, { revalidate?: number; tags?: string[] }>()
 vi.mock('next/cache', () => ({
-  unstable_cache: (fn: () => Promise<unknown>, keyParts: string[]) => async () => {
+  unstable_cache: (
+    fn: () => Promise<unknown>,
+    keyParts: string[],
+    options?: { revalidate?: number; tags?: string[] }
+  ) => async () => {
     const key = keyParts.join(':')
+    if (options) cacheOptions.set(key, options)
     if (cacheStore.has(key)) return cacheStore.get(key)
     const value = await fn()
     cacheStore.set(key, value)
@@ -99,5 +105,35 @@ describe('PermissionService when the permission lookup fails (BK-095)', () => {
     await expect(
       PermissionService.getPermissionStatus('table_bookings', 'view', 'user-1')
     ).resolves.toBe('denied')
+  })
+})
+
+describe('PermissionService.getRoleNames (S2)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    cacheStore.clear()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  it('returns the role names from get_user_roles and caches them under their own key', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ role_id: 'a', role_name: 'manager' }, { role_id: 'b', role_name: 'super_admin' }],
+      error: null,
+    })
+    adminWith(rpc)
+
+    await expect(PermissionService.getRoleNames('user-1')).resolves.toEqual(['manager', 'super_admin'])
+    await expect(PermissionService.getRoleNames('user-1')).resolves.toEqual(['manager', 'super_admin'])
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('get_user_roles', { p_user_id: 'user-1' })
+    expect([...cacheStore.keys()]).toEqual(['user-role-names:user-1'])
+    // Same window and tag as the other permission caches, so a role change clears it.
+    expect(cacheOptions.get('user-role-names:user-1')).toEqual({ revalidate: 60, tags: ['permissions-user-1'] })
+  })
+
+  it('throws on a failed lookup and caches nothing', async () => {
+    adminWith(vi.fn().mockResolvedValue(blip))
+    await expect(PermissionService.getRoleNames('user-1')).rejects.toThrow('Could not check permissions')
+    expect(cacheStore.size).toBe(0)
   })
 })

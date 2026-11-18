@@ -1,7 +1,7 @@
 'use server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { eachIsoDateInRange, isValidIsoDate } from '@/lib/dateUtils';
 import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours';
@@ -27,8 +27,7 @@ export async function getRotaWeekDayInfo(
   weekStart: string,
   weekEnd: string,
 ): Promise<Record<string, RotaDayInfo>> {
-  const authClient = await createClient();
-  const { data: { user } } = await authClient.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return {};
   const canView = await checkUserPermission('rota', 'view');
   if (!canView) return {};

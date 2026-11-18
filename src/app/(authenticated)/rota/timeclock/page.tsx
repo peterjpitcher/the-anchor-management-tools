@@ -17,7 +17,14 @@ interface PageProps {
 }
 
 export default async function TimeclockPage({ searchParams }: PageProps) {
-  const canView = await checkUserPermission('timeclock', 'view');
+  // A viewer holding only `payroll:approve` (not `timeclock:edit`) is a
+  // D6-sanctioned editor of timeclock sessions. Pass the flag so the server
+  // actions let them through; the actions still re-verify the permission
+  // server-side, so this never weakens the gate.
+  const [canView, allowPayrollApprove] = await Promise.all([
+    checkUserPermission('timeclock', 'view'),
+    checkUserPermission('payroll', 'approve'),
+  ]);
   if (!canView) redirect('/');
 
   const params = await searchParams;
@@ -52,12 +59,6 @@ export default async function TimeclockPage({ searchParams }: PageProps) {
       </PageLayout>
     );
   }
-
-  // A viewer holding only `payroll:approve` (not `timeclock:edit`) is a
-  // D6-sanctioned editor of timeclock sessions. Pass the flag so the server
-  // actions let them through; the actions still re-verify the permission
-  // server-side, so this never weakens the gate.
-  const allowPayrollApprove = await checkUserPermission('payroll', 'approve');
 
   const monthOptions = buildPayrollMonthOptions(defaultPeriod);
 

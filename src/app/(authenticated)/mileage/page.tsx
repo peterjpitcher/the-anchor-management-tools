@@ -15,9 +15,11 @@ interface MileagePageProps {
 
 /** The trips page (spec 7.1): the address holds the filters, sort and page, and this page loads what it asks for. */
 export default async function MileagePage({ searchParams }: MileagePageProps): Promise<React.JSX.Element> {
-  const canView = await checkUserPermission('mileage', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('mileage', 'view'),
+    checkUserPermission('mileage', 'manage'),
+  ])
   if (!canView) redirect('/unauthorized')
-  const canManage = await checkUserPermission('mileage', 'manage')
 
   const { query, warnings } = parseMileageListQuery(await searchParams)
   const [tripsResult, statsResult, destsResult, driversResult, rangeResult] = await Promise.all([

@@ -6,10 +6,12 @@ import { MILEAGE_DESTINATIONS_LAYOUT } from '../_shared/nav'
 import { DestinationsClient } from '../_components/DestinationsClient'
 
 export default async function MileageDestinationsPage(): Promise<React.JSX.Element> {
-  const canView = await checkUserPermission('mileage', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('mileage', 'view'),
+    checkUserPermission('mileage', 'manage'),
+  ])
   if (!canView) redirect('/unauthorized')
 
-  const canManage = await checkUserPermission('mileage', 'manage')
   const [destinationsResult, distancesResult] = await Promise.all([
     getDestinations(),
     getDistanceEntries(),

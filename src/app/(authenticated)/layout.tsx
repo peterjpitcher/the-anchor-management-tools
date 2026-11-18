@@ -1,6 +1,7 @@
 import { getUserPermissions } from '@/app/actions/rbac';
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { PermissionService } from '@/services/permission';
 import { redirect } from 'next/navigation';
 import AuthenticatedLayout from './AuthenticatedLayout';
 import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable';
@@ -47,30 +48,24 @@ function roleLabelFromNames(roleNames: string[]): string {
 export default async function Layout({ children }: { children: React.ReactNode }) {
   // Guard: ensure user is authenticated before any permissions check.
   // (Middleware is temporarily disabled due to Vercel incident — restored at layout level.)
-  const supabaseAuth = await createClient();
-  const { data: { user: authUser } } = await supabaseAuth.auth.getUser();
+  const { user: authUser } = await getCurrentUser();
   if (!authUser) {
     redirect('/auth/login');
   }
 
-  const permissionsResult = await getUserPermissions();
+  // Permissions and role names do not depend on each other, so look them up together.
+  // Role names resolve the shell's real role label (not a hardcoded "Manager"). They are cached
+  // for 60 s under the permissions-<userId> tag, so a role change clears them. A failed role
+  // lookup shows the neutral label, as the direct read did; it is caught here rather than inside
+  // the cached function, so the failure is never cached.
+  const [permissionsResult, roleNames] = await Promise.all([
+    getUserPermissions(),
+    PermissionService.getRoleNames(authUser.id).catch((): string[] => []),
+  ]);
 
   const initialPermissions = permissionsResult.success && permissionsResult.data
     ? permissionsResult.data
     : [];
-
-  // Resolve the user's role names so the shell can display their real role
-  // (not a hardcoded "Manager"). Uses the admin client to read user_roles.
-  const admin = createAdminClient();
-  const { data: roleRows } = await admin
-    .from('user_roles')
-    .select('roles(name)')
-    .eq('user_id', authUser.id)
-    .returns<UserRoleRow[]>();
-
-  const roleNames = (roleRows ?? [])
-    .map(roleNameFromRow)
-    .filter((roleName): roleName is string => Boolean(roleName));
 
   const userRoleLabel = roleLabelFromNames(roleNames);
   // Read from the role rows themselves, not from the display label, so renaming a
@@ -85,8 +80,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   // Fallback: if the permissions RPC failed, check user_roles directly.
   // This guards against RPC errors allowing portal employees through.
   if (!permissionsResult.success) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const user = authUser;
     if (user) {
       const admin = createAdminClient();
       const { data: roles, error: rolesError } = await admin

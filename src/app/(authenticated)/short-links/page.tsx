@@ -5,10 +5,11 @@ import { ShortLinksClient } from './_components/ShortLinksClient'
 import type { ShortLink } from '@/types/short-links'
 
 export default async function ShortLinksPage() {
-  const canView = await checkUserPermission('short_links', 'view')
+  const [canView, canManage] = await Promise.all([
+    checkUserPermission('short_links', 'view'),
+    checkUserPermission('short_links', 'manage'),
+  ])
   if (!canView) redirect('/unauthorized')
-
-  const canManage = await checkUserPermission('short_links', 'manage')
 
   const now = new Date()
   const currentStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
