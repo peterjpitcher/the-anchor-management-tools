@@ -4325,6 +4325,15 @@
   "readOnly": false
  },
  {
+  "name": "insights.refreshInsightsReport",
+  "module": "insights",
+  "export": "refreshInsightsReport",
+  "params": [],
+  "typeRefs": {},
+  "doc": "\"Refresh now\" on the Insights page: drops the cached report so the next render rebuilds it\nfrom live data. Reads nothing and writes no records; it only clears the five-minute cache.\nSame check as the page (super admins only); anyone else is refused and the cache is left alone.",
+  "readOnly": false
+ },
+ {
   "name": "invoice-reminders.getInvoiceEmailHistory",
   "module": "invoice-reminders",
   "export": "getInvoiceEmailHistory",

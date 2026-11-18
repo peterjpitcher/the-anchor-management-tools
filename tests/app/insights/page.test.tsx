@@ -10,7 +10,13 @@ const mocks = vi.hoisted(() => ({
   build: vi.fn(),
   redirect: vi.fn((path: string) => { throw new Error(`REDIRECT:${path}`) }),
   admin: vi.fn(),
+  cache: null as null | ReturnType<typeof import('../../lib/insights/helpers/fake-next-cache').createFakeNextCache>,
 }))
+vi.mock('next/cache', async () => {
+  const { createFakeNextCache } = await import('../../lib/insights/helpers/fake-next-cache')
+  mocks.cache = createFakeNextCache()
+  return { unstable_cache: mocks.cache.unstable_cache, revalidateTag: mocks.cache.revalidateTag }
+})
 vi.mock('@/lib/insights/access', () => ({ currentUserCanViewInsights: mocks.canView }))
 vi.mock('@/lib/insights/registry', () => ({ buildWeeklyInsights: mocks.build }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: mocks.admin }))
@@ -20,6 +26,7 @@ beforeEach(() => {
   mocks.canView.mockReset()
   mocks.build.mockReset()
   mocks.admin.mockReset()
+  mocks.cache?.reset()
   vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://management.example.test')
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
 })
@@ -49,6 +56,25 @@ describe('Insights page access', () => {
     options.createDb(signal)
     expect(mocks.admin).toHaveBeenCalledWith({ signal })
     expect(renderToStaticMarkup(element)).toContain('Manager Actions This Week')
+  })
+
+  it('serves the cached report to a second render and shows the London time it was worked out', async () => {
+    mocks.canView.mockResolvedValue(true)
+    // Pinned mid-slot so the two renders can never straddle a five-minute boundary.
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-18T12:01:00Z'))
+    // 05:00 UTC on 25 September 2026 is 06:00 in London (BST).
+    mocks.build.mockResolvedValue(buildFixtureReport({ now: new Date('2026-09-25T05:00:00Z') }))
+    const InsightsPage = await loadPage()
+    const first = renderToStaticMarkup(await InsightsPage())
+    const second = renderToStaticMarkup(await InsightsPage())
+    expect(mocks.build).toHaveBeenCalledTimes(1)
+    expect(second).toBe(first)
+    expect(first).toContain('Figures worked out at 06:00')
+    expect(first).toContain('Refresh now')
+    // The access check still runs on every render, before the cache is read.
+    expect(mocks.canView).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 
   it('shows an error, not an empty report, when the build fails', async () => {

@@ -66,6 +66,7 @@ export const ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   'feedback': () => import('@/app/actions/feedback'),
   'gdpr': () => import('@/app/actions/gdpr'),
   'import-messages': () => import('@/app/actions/import-messages'),
+  'insights': () => import('@/app/actions/insights'),
   'invoice-reminders': () => import('@/app/actions/invoice-reminders'),
   'invoicePayPalActions': () => import('@/app/actions/invoicePayPalActions'),
   'invoices': () => import('@/app/actions/invoices'),

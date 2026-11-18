@@ -695,8 +695,10 @@ function compareBookings(a: Booking, b: Booking): number {
 export async function buildPrivateHireSection(ctx: SectionContext): Promise<SectionBuildResult> {
   const { today, next7, next14 } = ctx.windows
   const pipelineEnd = addDays(today, PRIVATE_HIRE.pipelineDays - 1)
+  const pastStart = addDays(today, -PAST_CLOSE_OUT_DAYS)
 
-  const [viewRows, tableRows, pendingTexts, staleOutcomes] = await Promise.all([
+  // One batch: the past close-out reads depend only on today, not on the upcoming rows.
+  const [viewRows, tableRows, pendingTexts, staleOutcomes, pastViewRows, pastTableRows] = await Promise.all([
     fetchAllRows<ViewRow>(
       (from, to) => ctx.db
         .from('private_bookings_with_details')
@@ -727,10 +729,6 @@ export async function buildPrivateHireSection(ctx: SectionContext): Promise<Sect
       { label: 'private hire texts awaiting approval' },
     ),
     readStalePendingOutcomes(ctx.db, ctx.now),
-  ])
-
-  const pastStart = addDays(today, -PAST_CLOSE_OUT_DAYS)
-  const [pastViewRows, pastTableRows] = await Promise.all([
     fetchAllRows<PastViewRow>(
       (from, to) => ctx.db
         .from('private_bookings_with_details')
