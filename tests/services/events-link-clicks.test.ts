@@ -61,10 +61,12 @@ function createLinkClient(options: {
   rows: LinkRow[]
   rangeCalls: RangeCall[]
   pageError?: { message: string }
+  chainOut?: Record<string, ReturnType<typeof vi.fn>>
 }): ReturnType<typeof createAdminClient> {
-  const chain: Record<string, ReturnType<typeof vi.fn>> = {}
+  const chain: Record<string, ReturnType<typeof vi.fn>> = options.chainOut ?? {}
   chain.select = vi.fn(() => chain)
   chain.or = vi.fn(() => chain)
+  chain.in = vi.fn(() => chain)
   chain.order = vi.fn(() => chain)
   chain.range = vi.fn((from: number, to: number) => {
     options.rangeCalls.push([from, to])
@@ -116,6 +118,18 @@ describe('EventService.getEvents link clicks', () => {
     expect(result.events.reduce((sum, event) => sum + event.link_clicks, 0)).toBe(
       rows.reduce((sum, row) => sum + row.click_count, 0)
     )
+  })
+
+  it('reads the links with one indexable event_id condition, not one @> condition per event', async () => {
+    const chainOut: Record<string, ReturnType<typeof vi.fn>> = {}
+    vi.mocked(createAdminClient).mockReturnValue(
+      createLinkClient({ rows: [], rangeCalls: [], chainOut })
+    )
+
+    await EventService.getEvents({ pageSize: 500 })
+
+    expect(chainOut.in).toHaveBeenCalledWith('metadata->>event_id', [...EVENT_IDS])
+    expect(chainOut.or).not.toHaveBeenCalled()
   })
 
   it('includes unexpired payment holds in booked seats and requests their expiry', async () => {

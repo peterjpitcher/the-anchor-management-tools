@@ -3789,6 +3789,21 @@
   "readOnly": false
  },
  {
+  "name": "events.getCalendarEvents",
+  "module": "events",
+  "export": "getCalendarEvents",
+  "params": [
+   {
+    "name": "options",
+    "type": "{\n  dateFrom?: string;\n  dateTo?: string;\n}",
+    "optional": true
+   }
+  ],
+  "typeRefs": {},
+  "doc": "The events calendar's rows for one window of dates (default: the first day of\nthe month twelve months ago to the end of the month twelve months ahead).\nRead-only. Returns only the columns the calendar renders plus `booked_count`\n(seats on active bookings, the same figure getEvents gives); no link clicks\nand no capacity snapshot. Needs events:view.",
+  "readOnly": true
+ },
+ {
   "name": "events.getEventBookingDoorCharge",
   "module": "events",
   "export": "getEventBookingDoorCharge",
@@ -7509,7 +7524,7 @@
   "params": [
    {
     "name": "options",
-    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n}",
+    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n  /**\n   * Only bookings arriving at or after this ISO instant. The calendars pass\n   * midnight London time on the first day of last month, so they load what they\n   * can show instead of the newest 500 of all time.\n   */\n  startFrom?: string\n}",
     "optional": true
    }
   ],

@@ -245,6 +245,12 @@ export async function listParkingBookings(options?: {
   paymentStatus?: ParkingPaymentStatus | 'all'
   search?: string
   limit?: number
+  /**
+   * Only bookings arriving at or after this ISO instant. The calendars pass
+   * midnight London time on the first day of last month, so they load what they
+   * can show instead of the newest 500 of all time.
+   */
+  startFrom?: string
 }) {
   try {
     const supabase = await createClient()
@@ -278,6 +284,14 @@ export async function listParkingBookings(options?: {
 
     if (options?.paymentStatus && options.paymentStatus !== 'all') {
       query = query.eq('payment_status', options.paymentStatus)
+    }
+
+    if (options?.startFrom) {
+      const startFrom = new Date(options.startFrom)
+      if (Number.isNaN(startFrom.getTime())) {
+        return { error: 'Invalid start date for parking bookings' }
+      }
+      query = query.gte('start_at', startFrom.toISOString())
     }
 
     if (options?.search) {

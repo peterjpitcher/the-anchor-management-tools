@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
 import type { Event, EventFAQ } from '@/types/database'
+import { resolveCalendarEventsWindow, type CalendarEventRow, type CalendarEventsWindow } from '@/lib/events/calendar-events'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { EventService, eventSchema, CreateEventInput, UpdateEventInput } from '@/services/events'
 import { EventBookingService } from '@/services/event-bookings'
@@ -709,6 +710,33 @@ export async function getEvents(options?: {
       error: error instanceof Error ? error : new Error(String(error)),
     })
     return { error: getErrorMessage(error, 'Failed to fetch events') };
+  }
+}
+
+/**
+ * The events calendar's rows for one window of dates (default: the first day of
+ * the month twelve months ago to the end of the month twelve months ahead).
+ * Read-only. Returns only the columns the calendar renders plus `booked_count`
+ * (seats on active bookings, the same figure getEvents gives); no link clicks
+ * and no capacity snapshot. Needs events:view.
+ */
+export async function getCalendarEvents(options?: {
+  dateFrom?: string;
+  dateTo?: string;
+}): Promise<{ data?: CalendarEventRow[]; window?: CalendarEventsWindow; error?: string }> {
+  try {
+    const canView = await checkUserPermission('events', 'view')
+    if (!canView) {
+      return { error: 'Insufficient permissions to view events' }
+    }
+    const window = resolveCalendarEventsWindow(options)
+    const data = await EventService.getCalendarEvents(window)
+    return { data, window }
+  } catch (error: unknown) {
+    logger.error('Error fetching calendar events', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return { error: getErrorMessage(error, 'Failed to fetch events') }
   }
 }
 

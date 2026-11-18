@@ -43,6 +43,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import {
   generateParkingPaymentLink,
+  listParkingBookings,
   markParkingBookingPaid,
   saveParkingRateConfig,
   updateParkingBookingDetails,
@@ -414,5 +415,54 @@ describe('Parking actions: a capacity refusal', () => {
     const result = await generateParkingPaymentLink('booking-1')
 
     expect(result).toEqual({ error: staffMessage })
+  })
+})
+
+describe('listParkingBookings arrival window', () => {
+  function mockListClient() {
+    const chain: Record<string, Mock> = {}
+    chain.select = vi.fn(() => chain)
+    chain.order = vi.fn(() => chain)
+    chain.limit = vi.fn(() => chain)
+    chain.eq = vi.fn(() => chain)
+    chain.in = vi.fn(() => chain)
+    chain.or = vi.fn(() => chain)
+    chain.gte = vi.fn(() => chain)
+    chain.then = vi.fn((resolve: (value: unknown) => unknown) => resolve({ data: [], error: null }))
+    mockedCreateClient.mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null }) },
+      from: vi.fn(() => chain),
+    })
+    return chain
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockedPermission.mockResolvedValue(true)
+  })
+
+  it('filters arrivals from the given instant', async () => {
+    const chain = mockListClient()
+
+    const result = await listParkingBookings({ limit: 500, startFrom: '2026-10-01T00:00:00+01:00' })
+
+    expect(result).not.toHaveProperty('error')
+    expect(chain.gte).toHaveBeenCalledWith('start_at', '2026-09-30T23:00:00.000Z')
+  })
+
+  it('adds no arrival filter when none is given', async () => {
+    const chain = mockListClient()
+
+    await listParkingBookings({ limit: 500 })
+
+    expect(chain.gte).not.toHaveBeenCalled()
+  })
+
+  it('refuses an unreadable start rather than loading everything', async () => {
+    mockListClient()
+
+    const result = await listParkingBookings({ startFrom: 'not a date' })
+
+    expect(result).toEqual({ error: 'Invalid start date for parking bookings' })
   })
 })
