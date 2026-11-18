@@ -236,7 +236,7 @@ export default function EventsClient({
           listParkingBookings({
             limit: 500,
             statuses: CALENDAR_PARKING_STATUSES,
-            startFrom: calendarParkingStartFrom(),
+            endingFrom: calendarParkingStartFrom(),
           }),
         ])
         if (eventsResult.data) {

@@ -246,11 +246,12 @@ export async function listParkingBookings(options?: {
   search?: string
   limit?: number
   /**
-   * Only bookings arriving at or after this ISO instant. The calendars pass
-   * midnight London time on the first day of last month, so they load what they
-   * can show instead of the newest 500 of all time.
+   * Only bookings still running at or after this ISO instant (departing at or
+   * after it), so a stay that began earlier but overlaps the period is kept. The
+   * calendars pass midnight London time on the first day of last month, so they
+   * load what they can show instead of the newest 500 of all time.
    */
-  startFrom?: string
+  endingFrom?: string
 }) {
   try {
     const supabase = await createClient()
@@ -286,12 +287,12 @@ export async function listParkingBookings(options?: {
       query = query.eq('payment_status', options.paymentStatus)
     }
 
-    if (options?.startFrom) {
-      const startFrom = new Date(options.startFrom)
-      if (Number.isNaN(startFrom.getTime())) {
+    if (options?.endingFrom) {
+      const endingFrom = new Date(options.endingFrom)
+      if (Number.isNaN(endingFrom.getTime())) {
         return { error: 'Invalid start date for parking bookings' }
       }
-      query = query.gte('start_at', startFrom.toISOString())
+      query = query.gte('end_at', endingFrom.toISOString())
     }
 
     if (options?.search) {

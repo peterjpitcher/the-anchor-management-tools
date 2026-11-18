@@ -441,13 +441,13 @@ describe('listParkingBookings arrival window', () => {
     mockedPermission.mockResolvedValue(true)
   })
 
-  it('filters arrivals from the given instant', async () => {
+  it('keeps stays still running at the given instant, including ones that began earlier', async () => {
     const chain = mockListClient()
 
-    const result = await listParkingBookings({ limit: 500, startFrom: '2026-10-01T00:00:00+01:00' })
+    const result = await listParkingBookings({ limit: 500, endingFrom: '2026-10-01T00:00:00+01:00' })
 
     expect(result).not.toHaveProperty('error')
-    expect(chain.gte).toHaveBeenCalledWith('start_at', '2026-09-30T23:00:00.000Z')
+    expect(chain.gte).toHaveBeenCalledWith('end_at', '2026-09-30T23:00:00.000Z')
   })
 
   it('adds no arrival filter when none is given', async () => {
@@ -461,7 +461,7 @@ describe('listParkingBookings arrival window', () => {
   it('refuses an unreadable start rather than loading everything', async () => {
     mockListClient()
 
-    const result = await listParkingBookings({ startFrom: 'not a date' })
+    const result = await listParkingBookings({ endingFrom: 'not a date' })
 
     expect(result).toEqual({ error: 'Invalid start date for parking bookings' })
   })

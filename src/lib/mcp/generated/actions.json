@@ -7524,7 +7524,7 @@
   "params": [
    {
     "name": "options",
-    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n  /**\n   * Only bookings arriving at or after this ISO instant. The calendars pass\n   * midnight London time on the first day of last month, so they load what they\n   * can show instead of the newest 500 of all time.\n   */\n  startFrom?: string\n}",
+    "type": "{\n  status?: ParkingBookingStatus | 'all'\n  /**\n   * Restrict to several statuses at once. Used by the calendars, which want the\n   * live bookings only: a cancelled or expired booking rendered there as a live\n   * block that no filter could hide.\n   */\n  statuses?: ParkingBookingStatus[]\n  paymentStatus?: ParkingPaymentStatus | 'all'\n  search?: string\n  limit?: number\n  /**\n   * Only bookings still running at or after this ISO instant (departing at or\n   * after it), so a stay that began earlier but overlaps the period is kept. The\n   * calendars pass midnight London time on the first day of last month, so they\n   * load what they can show instead of the newest 500 of all time.\n   */\n  endingFrom?: string\n}",
     "optional": true
    }
   ],

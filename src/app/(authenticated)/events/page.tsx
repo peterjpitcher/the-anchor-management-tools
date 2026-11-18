@@ -100,7 +100,7 @@ export default async function EventsPage() {
     listParkingBookings({
       limit: 500,
       statuses: ['pending_payment', 'confirmed', 'completed'],
-      startFrom: calendarParkingStartFrom(),
+      endingFrom: calendarParkingStartFrom(),
     }),
   ])
 

@@ -85,7 +85,7 @@ describe('EventsClient calendar events failure', () => {
     expect(mockGetEvents).not.toHaveBeenCalled()
     // Its parking read is windowed, not the newest 500 of all time.
     expect(vi.mocked(listParkingBookings)).toHaveBeenCalledWith(
-      expect.objectContaining({ startFrom: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) }),
+      expect.objectContaining({ endingFrom: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/) }),
     )
   })
 })
