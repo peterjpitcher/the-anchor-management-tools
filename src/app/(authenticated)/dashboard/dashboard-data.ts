@@ -17,11 +17,12 @@ import {
   readSpecialHours,
   type CalendarMarketingSend,
 } from '@/lib/calendar/datasets'
-import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays, getISOWeek, setISOWeek } from 'date-fns'
+import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
   type DashboardPrivateBookingBalanceDueSummary as PrivateBookingBalanceDueSummary,
 } from './private-booking-balances'
+import { loadCashingUpFigures } from './cashing-up-figures'
 
 type EventSummary = {
   id: string
@@ -392,7 +393,16 @@ function getBirthdayOccurrencesInRange(input: {
 
 async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnapshot> {
     const supabase = await createAdminClient()
-    const { data: userResult, error: userLookupError } = await supabase.auth.admin.getUserById(userId)
+    // The user lookup and the permissions read are independent (both keyed on the id the caller
+    // already resolved from the session), so run them together. The permissions are still only
+    // used once the user lookup has succeeded.
+    const [
+      { data: userResult, error: userLookupError },
+      { data: permissionsData, error: permissionsError },
+    ] = await Promise.all([
+      supabase.auth.admin.getUserById(userId),
+      supabase.rpc('get_user_permissions', { p_user_id: userId }),
+    ])
 
     const user = userResult?.user ?? null
 
@@ -413,9 +423,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0).toISOString() // Last day of previous month
 
     const permissionsMap = new Map<string, Set<string>>()
-    const { data: permissionsData, error: permissionsError } = await supabase
-      .rpc('get_user_permissions', { p_user_id: user.id })
-
     if (!permissionsError && Array.isArray(permissionsData)) {
       for (const record of permissionsData as PermissionRecord[]) {
         const actions = permissionsMap.get(record.module_name) ?? new Set<string>()
@@ -571,127 +578,10 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const results = await Promise.allSettled([
       cashingUp.permitted ? (async () => {
         try {
-           // Get Site
-           const { data: site } = await supabase.from('sites').select('id').limit(1).single()
-           if (!site) return
-
-          const today = new Date(todayIso)
-          const todayStr = todayIso
-          const weekStart = startOfWeek(today, { weekStartsOn: 1 }) // Monday
-          
-          // Pull this week's sessions up to today to find the latest completed cash-up
-          const { data: thisWeekData } = await supabase.from('cashup_sessions')
-            .select('total_counted_amount, session_date, status')
-            .eq('site_id', site.id)
-            // A voided cash-up stays on record but is out of every total (BK-219).
-            .is('voided_at', null)
-            .gte('session_date', format(weekStart, 'yyyy-MM-dd'))
-            .lte('session_date', todayStr)
-
-          const completedSessions = (thisWeekData ?? []).filter(s => s.status && s.status !== 'draft')
-          const lastCompletedIso = completedSessions.length
-            ? completedSessions.reduce((latest, s) => (s.session_date > latest ? s.session_date : latest), completedSessions[0].session_date)
-            : null
-
-          const lastCompletedDay = lastCompletedIso ? new Date(lastCompletedIso) : null
-          const completedDaysThisWeek = lastCompletedDay && lastCompletedDay >= weekStart
-            ? differenceInCalendarDays(lastCompletedDay, weekStart) + 1
-            : 0
-          cashingUp.completedThrough = completedDaysThisWeek > 0 ? format(lastCompletedDay!, 'EEEE') : null
-          
-          // Ranges (Strings YYYY-MM-DD)
-          const thisWeekStartStr = format(weekStart, 'yyyy-MM-dd')
-          const thisWeekEnd = completedDaysThisWeek > 0 ? lastCompletedDay! : addDays(weekStart, -1)
-          const thisWeekEndStr = format(thisWeekEnd, 'yyyy-MM-dd')
-          
-          const lastWeekStart = subWeeks(weekStart, 1)
-          const lastWeekEnd = addDays(lastWeekStart, 6) // always full Mon–Sun
-          const lastWeekStartStr = format(lastWeekStart, 'yyyy-MM-dd')
-          const lastWeekEndStr = format(lastWeekEnd, 'yyyy-MM-dd')
-
-          // Same ISO week number last year — weekdays align correctly
-          const thisWeekNum = getISOWeek(weekStart)
-          const lastYearDate = new Date(weekStart.getFullYear() - 1, 5, 1) // mid-year seed
-          const lastYearWeekStart = startOfWeek(setISOWeek(lastYearDate, thisWeekNum), { weekStartsOn: 1 })
-          const lastYearEnd = addDays(lastYearWeekStart, 6) // full Mon–Sun
-          const lastYearStartStr = format(lastYearWeekStart, 'yyyy-MM-dd')
-          const lastYearEndStr = format(lastYearEnd, 'yyyy-MM-dd')
-
-          // Slice this week's data to the completed cutoff
-          const thisWeekCompleted = (thisWeekData ?? []).filter(s => s.session_date <= thisWeekEndStr)
-
-          // LOW-002: Parallelise comparison and targets queries — they are
-          // independent of each other (both only depend on site.id).
-          // The thisWeekData query above must run first because its results
-          // determine the date ranges for comparisons.
-          const [lastWeekRes, lastYearRes, targetsRes] = await Promise.all([
-            supabase.from('cashup_sessions')
-              .select('total_counted_amount, session_date')
-              .eq('site_id', site.id)
-              .is('voided_at', null)
-              .gte('session_date', lastWeekStartStr)
-              .lte('session_date', lastWeekEndStr),
-            supabase.from('cashup_sessions')
-              .select('total_counted_amount')
-              .eq('site_id', site.id)
-              .is('voided_at', null)
-              .gte('session_date', lastYearStartStr)
-              .lte('session_date', lastYearEndStr),
-            supabase.from('cashup_targets')
-              .select('*')
-              .eq('site_id', site.id)
-              .order('effective_from', { ascending: false })
-          ])
-          const targets = targetsRes.data
-
-          // Sums — explicit Number() because Supabase returns numeric columns as strings
-          cashingUp.thisWeekTotal = thisWeekCompleted.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0)
-          cashingUp.lastWeekTotal = lastWeekRes.data?.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0) || 0
-          cashingUp.lastYearTotal = lastYearRes.data?.reduce((sum, s) => sum + Number(s.total_counted_amount || 0), 0) || 0
-
-          // Count submitted (only completed range)
-          cashingUp.sessionsSubmittedCount = thisWeekCompleted.filter(s => s.status !== 'draft').length
-
-          // Build daily session data for the revenue chart — last 14 days up to most recent submission
-          const fourteenDaysAgo = format(addDays(today, -13), 'yyyy-MM-dd')
-          const { data: recentSessions } = await supabase.from('cashup_sessions')
-            .select('total_counted_amount, session_date')
-            .eq('site_id', site.id)
-            .is('voided_at', null)
-            .gte('session_date', fourteenDaysAgo)
-            .lte('session_date', todayStr)
-            .neq('status', 'draft')
-            .order('session_date', { ascending: true })
-
-          cashingUp.dailySessions = (recentSessions ?? [])
-            .filter(s => s.session_date)
-            .map(s => {
-              const sessionDate = s.session_date as string
-              const dayOfWeek = new Date(sessionDate + 'T12:00:00').getDay()
-              const dayTarget = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= sessionDate)
-              return {
-                date: sessionDate,
-                amount: Number(s.total_counted_amount || 0),
-                target: dayTarget ? Number(dayTarget.target_amount) : 0,
-              }
-            })
-
-          let targetSum = 0
-          if (completedDaysThisWeek > 0) {
-            let d = new Date(weekStart)
-            while (d <= thisWeekEnd) {
-              const dayIso = format(d, 'yyyy-MM-dd')
-              const dayOfWeek = d.getDay()
-              
-              const target = targets?.find(t => t.day_of_week === dayOfWeek && t.effective_from <= dayIso)
-              if (target) {
-                targetSum += target.target_amount
-              }
-              d = addDays(d, 1)
-            }
-          }
-          cashingUp.thisWeekTarget = targetSum
-
+          // Site, then one parallel batch with a single 14-day sessions read (cashing-up-figures.ts).
+          const figures = await loadCashingUpFigures(supabase, todayIso)
+          if (!figures) return
+          Object.assign(cashingUp, figures)
         } catch (error) {
           console.error('Failed to load cashing up metrics', error)
           cashingUp.error = 'Failed'
@@ -857,11 +747,15 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
           const bookedSeatsByEvent = new Map<string, number>()
           if (summaryEventIds.length > 0) {
+            // No limit: these rows are summed, so a cap would undercount. Measured 18 November
+            // 2026 at 92 rows, far below PostgREST's 1,000-row response cap. The explicit order
+            // keeps the read stable; if this ever nears 1,000 rows, move the sum into SQL.
             const { data: bookingRows, error: bookingRowsError } = await supabase
               .from('bookings')
               .select('event_id, seats, is_reminder_only')
               .in('event_id', summaryEventIds)
               .in('status', BOOKED_STATUSES)
+              .order('id')
 
             if (bookingRowsError) throw bookingRowsError
 
@@ -1290,7 +1184,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             'partially_paid',
             'overdue',
           ]
-          const [unpaidResult, overdueCountResult, allUnpaidResult, overdueListResult, dueTodayListResult] = await Promise.all([
+          const [unpaidResult, allUnpaidResult, overdueListResult, dueTodayListResult] = await Promise.all([
             // Limited unpaid for display in lists
             supabase
               .from('invoices')
@@ -1309,13 +1203,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .in('status', unpaidStatuses)
               .order('due_date', { ascending: true })
               .range(0, 4),
-            // Overdue count (already there)
-            supabase
-              .from('invoices')
-              .select('id', { count: 'exact', head: true })
-              .is('deleted_at', null)
-              .in('status', scheduleStatuses)
-              .lt('due_date', todayIso),
             // Total unpaid value — fetches all rows for JS-side summation.
             // No limit applied since we need the full sum. This should become
             // an RPC aggregate (e.g. get_unpaid_invoice_totals) for efficiency.
@@ -1324,7 +1211,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
               .select('total_amount, paid_amount, credits:credit_notes(status, amount_inc_vat)')
               .is('deleted_at', null)
               .in('status', unpaidStatuses),
-            // NEW: Overdue invoices list (up to 5 for display in today's schedule)
+            // Overdue invoices list (up to 5 for display in today's schedule). Its exact count is
+            // the overdue count: one query with one filter, so the two cannot disagree.
             supabase
               .from('invoices')
               .select(
@@ -1335,7 +1223,8 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   status,
                   due_date,
                   vendor:invoice_vendors(name)
-                `
+                `,
+                { count: 'exact' }
               )
               .is('deleted_at', null)
               .in('status', scheduleStatuses)
@@ -1363,7 +1252,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           ])
 
           if (unpaidResult.error) throw unpaidResult.error
-          if (overdueCountResult.error) throw overdueCountResult.error
           if (allUnpaidResult.error) throw allUnpaidResult.error
           if (overdueListResult.error) throw overdueListResult.error
           if (dueTodayListResult.error) throw dueTodayListResult.error
@@ -1377,7 +1265,7 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             vendor: invoice.vendor ?? null,
           }))
           invoices.unpaidCount = unpaidResult.count ?? invoices.unpaid.length
-          invoices.overdueCount = overdueCountResult.count ?? 0
+          invoices.overdueCount = overdueListResult.count ?? 0
           
           invoices.totalUnpaidValue = (allUnpaidResult.data ?? []).reduce((sum, inv) => {
             const outstanding = invoiceBalanceDue(inv)

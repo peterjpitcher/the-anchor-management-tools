@@ -3597,7 +3597,7 @@
   "export": "countOpenEventPaymentExceptions",
   "params": [],
   "typeRefs": {},
-  "doc": "For the dashboard: how many there are, and the one event they are on when it is one.",
+  "doc": "For the dashboard: how many there are, and the one event they are on when it is one.\n\nA light read of the same rows the full list shows (same permission, filter, order and 100-row\ncap), without the guest names or the two payments reads the list needs for amounts paid. The\nfigures must stay equal to the list's row count and single event id: if the list's query\nchanges, change this one with it (pinned by tests/actions/eventPaymentExceptionsCount.test.ts).",
   "readOnly": true
  },
  {
