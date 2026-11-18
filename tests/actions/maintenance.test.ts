@@ -9,6 +9,10 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/services/permission', () => ({
+  PermissionService: { isSuperAdmin: vi.fn() },
+}))
+
 vi.mock('@/app/actions/audit', () => ({
   logAuditEvent: vi.fn(),
 }))
@@ -37,6 +41,7 @@ vi.mock('@/services/maintenance', async importActual => {
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { logAuditEvent } from '@/app/actions/audit'
+import { PermissionService } from '@/services/permission'
 import * as service from '@/services/maintenance'
 import { MaintenanceServiceError } from '@/services/maintenance'
 import {
@@ -60,7 +65,7 @@ const ITEM_ID = '11111111-1111-1111-1111-111111111111'
 const AREA_ID = '22222222-2222-2222-2222-222222222222'
 const NOTE_ID = '44444444-4444-4444-4444-444444444444'
 
-const rpc = vi.fn()
+const mockedIsSuperAdmin = PermissionService.isSuperAdmin as unknown as Mock
 const getUser = vi.fn()
 
 function signInAs(options: { user: boolean; superAdmin?: boolean; rpcError?: unknown }): void {
@@ -68,11 +73,13 @@ function signInAs(options: { user: boolean; superAdmin?: boolean; rpcError?: unk
     data: { user: options.user ? { id: USER_ID, email: 'boss@the-anchor.pub' } : null },
     error: null,
   })
-  rpc.mockResolvedValue({
-    data: options.rpcError ? null : options.superAdmin === true,
-    error: options.rpcError ?? null,
-  })
-  mockedCreateClient.mockResolvedValue({ auth: { getUser }, rpc })
+  if (options.rpcError) {
+    // The cached lookup throws on a failed read rather than caching false.
+    mockedIsSuperAdmin.mockRejectedValue(options.rpcError)
+  } else {
+    mockedIsSuperAdmin.mockResolvedValue(options.superAdmin === true)
+  }
+  mockedCreateClient.mockResolvedValue({ auth: { getUser } })
 }
 
 const item = {
@@ -192,13 +199,36 @@ describe('maintenance actions, access', () => {
     expectNoServiceCalls()
   })
 
-  it('checks the role with the same predicate the RLS policies use', async () => {
+  it('checks the role through the cached super-admin lookup for the signed-in user', async () => {
     signInAs({ user: true, superAdmin: true })
     ;(service.listMaintenanceAreas as unknown as Mock).mockResolvedValue([])
 
     await getMaintenanceAreas()
 
-    expect(rpc).toHaveBeenCalledWith('is_super_admin', { check_user_id: USER_ID })
+    expect(mockedIsSuperAdmin).toHaveBeenCalledWith(USER_ID)
+  })
+
+  it('refuses a signed-in user who is not a super-admin', async () => {
+    signInAs({ user: true, superAdmin: false })
+
+    const result = await getMaintenanceItems()
+
+    expect(result.error).toBe('Insufficient permissions')
+    expect(result.code).toBe('forbidden')
+    expectNoServiceCalls()
+  })
+
+  it('does not look up the role when there is no session', async () => {
+    signInAs({ user: false })
+
+    await getMaintenanceItems()
+
+    expect(mockedIsSuperAdmin).not.toHaveBeenCalled()
+  })
+
+  it('reports false, not an error, when the role lookup fails', async () => {
+    signInAs({ user: true, rpcError: new Error('Could not check permissions') })
+    await expect(currentUserCanUseMaintenance()).resolves.toBe(false)
   })
 
   it('reports whether the current caller may use the tracker at all', async () => {

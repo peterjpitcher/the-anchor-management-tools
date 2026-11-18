@@ -137,3 +137,40 @@ describe('PermissionService.getRoleNames (S2)', () => {
     expect(cacheStore.size).toBe(0)
   })
 })
+
+describe('PermissionService.isSuperAdmin', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    cacheStore.clear()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+  })
+
+  it('answers true only for the super_admin role and caches the answer for 60 seconds', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: [{ role_id: 'a', role_name: 'manager' }, { role_id: 'b', role_name: 'super_admin' }],
+      error: null,
+    })
+    adminWith(rpc)
+
+    await expect(PermissionService.isSuperAdmin('user-1')).resolves.toBe(true)
+    await expect(PermissionService.isSuperAdmin('user-1')).resolves.toBe(true)
+    expect(rpc).toHaveBeenCalledTimes(1)
+    expect(rpc).toHaveBeenCalledWith('get_user_roles', { p_user_id: 'user-1' })
+    expect(cacheOptions.get('user-is-super-admin:user-1')).toEqual({ revalidate: 60, tags: ['permissions-user-1'] })
+  })
+
+  it('answers false for a user without the role', async () => {
+    adminWith(vi.fn().mockResolvedValue({ data: [{ role_id: 'a', role_name: 'manager' }], error: null }))
+    await expect(PermissionService.isSuperAdmin('user-2')).resolves.toBe(false)
+  })
+
+  it('throws on a failed lookup and never caches false', async () => {
+    const rpc = vi.fn().mockResolvedValue(blip)
+    adminWith(rpc)
+    await expect(PermissionService.isSuperAdmin('user-1')).rejects.toThrow('Could not check permissions')
+    expect(cacheStore.size).toBe(0)
+
+    rpc.mockResolvedValue({ data: [{ role_id: 'b', role_name: 'super_admin' }], error: null })
+    await expect(PermissionService.isSuperAdmin('user-1')).resolves.toBe(true)
+  })
+})
