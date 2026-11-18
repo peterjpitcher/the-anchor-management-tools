@@ -349,28 +349,38 @@ export async function loadHireReadinessFacts(
   const db = options.db ?? createAdminClient()
   const ids = Array.from(new Set(bookingIds.filter(Boolean)))
   const facts = new Map<string, HireReadinessFacts>()
-  const venueRooms = options.rooms ?? (await loadVenueRooms(db))
-  if (ids.length === 0) return { facts, rooms: venueRooms }
+  if (ids.length === 0) {
+    return { facts, rooms: options.rooms ?? (await loadVenueRooms(db)) }
+  }
 
-  const { data: bookings, error: bookingsError } = await db
-    .from('private_bookings')
-    .select('id, status, guest_count, layout, contract_sent_at, contract_accepted_at, deposit_paid_date, deposit_confirmed_at, deposit_waived')
-    .in('id', ids)
+  // The four reads are independent, so they run together. Each error is still checked, in the
+  // same order as before: rooms (which throws), then bookings, booked rooms and history.
+  const [venueRooms, bookingsResult, itemsResult, auditResult] = await Promise.all([
+    options.rooms ? Promise.resolve(options.rooms) : loadVenueRooms(db),
+    db
+      .from('private_bookings')
+      .select('id, status, guest_count, layout, contract_sent_at, contract_accepted_at, deposit_paid_date, deposit_confirmed_at, deposit_waived')
+      .in('id', ids),
+    db
+      .from('private_booking_items')
+      .select('booking_id, space_id')
+      .in('booking_id', ids)
+      .eq('item_type', 'space'),
+    db
+      .from('private_booking_audit')
+      .select('booking_id, action, metadata, performed_by, performed_at')
+      .in('booking_id', ids)
+      .in('action', [CAPACITY_OVERRIDE_ACTION, CONFIRMATION_BLOCKED_ACTION])
+      .order('performed_at', { ascending: false }),
+  ])
+
+  const { data: bookings, error: bookingsError } = bookingsResult
   if (bookingsError) throw new Error(`Could not read the bookings: ${bookingsError.message}`)
 
-  const { data: items, error: itemsError } = await db
-    .from('private_booking_items')
-    .select('booking_id, space_id')
-    .in('booking_id', ids)
-    .eq('item_type', 'space')
+  const { data: items, error: itemsError } = itemsResult
   if (itemsError) throw new Error(`Could not read the booked rooms: ${itemsError.message}`)
 
-  const { data: auditRows, error: auditError } = await db
-    .from('private_booking_audit')
-    .select('booking_id, action, metadata, performed_by, performed_at')
-    .in('booking_id', ids)
-    .in('action', [CAPACITY_OVERRIDE_ACTION, CONFIRMATION_BLOCKED_ACTION])
-    .order('performed_at', { ascending: false })
+  const { data: auditRows, error: auditError } = auditResult
   if (auditError) throw new Error(`Could not read the booking history: ${auditError.message}`)
 
   const roomById = new Map(venueRooms.map((room) => [room.id, room]))
