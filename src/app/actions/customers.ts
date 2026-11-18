@@ -219,7 +219,30 @@ export async function getCustomerList(params: {
     dataQuery,
   ])
 
-  if (smsActiveCountError || smsDeactivatedCountError || dataError) {
+  // A page past the end (a saved URL after the list shrank) is not a failure. With
+  // count: 'exact' PostgREST answers 416 (PGRST103) instead of an empty page, so count the
+  // same filters on their own and return an empty page with the real total, as before.
+  let rangeTotal: number | null = null
+  if (dataError && (dataError as { code?: string }).code === 'PGRST103') {
+    let totalQuery = supabase
+      .from('customers')
+      .select('id', { count: 'exact', head: true })
+      .eq('is_placeholder', false)
+    if (smsFilter === 'deactivated') {
+      totalQuery = totalQuery.in('sms_status', SMS_DEACTIVATED_STATUSES)
+    } else if (smsFilter === 'active') {
+      totalQuery = totalQuery.in('sms_status', SMS_ACTIVE_STATUSES)
+    }
+    if (searchTerm.trim()) {
+      totalQuery = totalQuery.or(buildCustomerSearchFilter(searchTerm.trim()))
+    }
+    const { count: fallbackCount, error: fallbackError } = await totalQuery
+    if (!fallbackError) {
+      rangeTotal = fallbackCount ?? 0
+    }
+  }
+
+  if (smsActiveCountError || smsDeactivatedCountError || (dataError && rangeTotal === null)) {
     console.error('Error fetching customer list:', smsActiveCountError ?? smsDeactivatedCountError ?? dataError)
     return {
       customers: [],
@@ -233,8 +256,8 @@ export async function getCustomerList(params: {
     }
   }
 
-  const customers = (rows ?? []) as Customer[]
-  const totalCount = count ?? 0
+  const customers = (rangeTotal === null ? rows ?? [] : []) as Customer[]
+  const totalCount = rangeTotal ?? count ?? 0
 
   if (customers.length === 0) {
     return {

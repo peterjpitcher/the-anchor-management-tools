@@ -122,6 +122,14 @@ function createFakeClient(tables: Record<string, Row[]>) {
         queries.push(log)
         const matching = (tables[table] ?? []).filter((row) => predicates.every((p) => p(row)))
         const count = log.options?.count === 'exact' ? matching.length : null
+        // PostgREST answers 416 (PGRST103) when an exact-counted range starts past the end.
+        if (count !== null && !log.options?.head && rangeFrom !== null && rangeFrom > 0 && rangeFrom >= count) {
+          return Promise.resolve({
+            data: null,
+            count: null,
+            error: { code: 'PGRST103', message: 'Requested range not satisfiable' },
+          }).then(resolve, reject)
+        }
         const data = log.options?.head
           ? null
           : rangeFrom === null
@@ -221,6 +229,19 @@ describe('getCustomerList', () => {
     // No separate total count any more: only the two tab counts are head queries.
     const headQueries = fake.queries.filter((q) => q.table === 'customers' && q.options?.head)
     expect(headQueries).toHaveLength(2)
+  })
+
+  it('treats a page past the end as an empty page with the real total, not an error', async () => {
+    const result = await getCustomerList({ page: 99, pageSize: 25, searchTerm: 'smith', smsFilter: 'active' })
+
+    const dataQuery = fake.queries.find((q) => q.table === 'customers' && q.options?.count === 'exact' && !q.options?.head)
+    const searchFilter = dataQuery?.orFilters[0] ?? null
+    const expected = await oldCountQuery(TABLES, 'active', searchFilter)
+
+    expect(result.error).toBeUndefined()
+    expect(result.customers).toEqual([])
+    expect(result.totalCount).toBe(expected)
+    expect(result.totalCount).toBeGreaterThan(0)
   })
 
   it('still returns both tab counts by default', async () => {
