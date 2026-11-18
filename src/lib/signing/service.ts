@@ -1472,6 +1472,14 @@ export async function listSigningDocumentsForSeries(
   return attachParties(admin, (data ?? []) as SigningDocumentRow[])
 }
 
+/**
+ * Documents already read in full (the list of every document), with their signers attached in
+ * one read. Same shape and party order as getSigningDocument, without a read per document.
+ */
+export async function listSigningDocumentsByRows(rows: SigningDocumentRow[]): Promise<SigningDocumentSummary[]> {
+  return attachParties(createAdminClient(), rows)
+}
+
 /** Two plain reads rather than an embed, so a second foreign key can never break the list. */
 async function attachParties(admin: AdminClient, documents: SigningDocumentRow[]): Promise<SigningDocumentSummary[]> {
   if (documents.length === 0) return []
