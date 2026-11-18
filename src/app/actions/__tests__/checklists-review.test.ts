@@ -39,10 +39,15 @@ function makeChain(table: string): Record<string, unknown> {
 }
 
 const mockFrom = vi.fn((table: string) => makeChain(table))
-const mockRpc = vi.fn().mockResolvedValue({ data: [{ role_name: 'super_admin' }], error: null })
+const mockIsSuperAdmin = vi.fn().mockResolvedValue(true)
 
 vi.mock('@/lib/supabase/admin', () => ({
-  createAdminClient: vi.fn(() => ({ from: mockFrom, rpc: mockRpc })),
+  createAdminClient: vi.fn(() => ({ from: mockFrom })),
+}))
+
+// The super-admin gate goes through the cached PermissionService lookup.
+vi.mock('@/services/permission', () => ({
+  PermissionService: { isSuperAdmin: (userId: string) => mockIsSuperAdmin(userId) },
 }))
 
 vi.mock('@/app/actions/rbac', () => ({
@@ -84,7 +89,7 @@ function instance(overrides: Record<string, unknown>): Record<string, unknown> {
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(checkUserPermission).mockResolvedValue(true)
-  mockRpc.mockResolvedValue({ data: [{ role_name: 'super_admin' }], error: null })
+  mockIsSuperAdmin.mockResolvedValue(true)
   tableData = {}
   rangeQueue = {}
   eqCalls.length = 0
@@ -100,17 +105,28 @@ describe('getWeeklyReview permission gate', () => {
     expect(result.error).toBe('Insufficient permissions')
     expect(result.data).toBeUndefined()
     expect(mockFrom).not.toHaveBeenCalled()
-    expect(mockRpc).not.toHaveBeenCalled()
+    expect(mockIsSuperAdmin).not.toHaveBeenCalled()
   })
 
   it('returns Insufficient permissions when the user is not a super admin', async () => {
-    mockRpc.mockResolvedValue({ data: [{ role_name: 'manager' }], error: null })
+    mockIsSuperAdmin.mockResolvedValue(false)
 
     const result = await getWeeklyReview('2026-07-22')
 
     expect(result.error).toBe('Insufficient permissions')
     expect(result.data).toBeUndefined()
-    // The role RPC ran (gate), but no table reads happened.
+    // The role lookup ran (gate) for the signed-in user, but no table reads happened.
+    expect(mockIsSuperAdmin).toHaveBeenCalledWith('test-user-id')
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('fails closed when the role lookup itself fails', async () => {
+    mockIsSuperAdmin.mockRejectedValue(new Error('Could not check permissions'))
+
+    const result = await getWeeklyReview('2026-07-22')
+
+    expect(result.error).toBe('Failed to verify permissions')
+    expect(result.data).toBeUndefined()
     expect(mockFrom).not.toHaveBeenCalled()
   })
 })
@@ -294,5 +310,47 @@ describe('getWeeklyReview degradation', () => {
 
     expect(result.data).toBeUndefined()
     expect(result.error).toBe('instances read failed')
+  })
+})
+
+describe('getWeeklyReview range reads', () => {
+  it('starts the generation-run and spot-check reads while the instance read is still pending', async () => {
+    const started: string[] = []
+    let releaseInstances: (value: Resolved) => void = () => {}
+    const instancesPending = new Promise<Resolved>((resolve) => {
+      releaseInstances = resolve
+    })
+    mockFrom.mockImplementation((table: string) => {
+      started.push(table)
+      const chain = makeChain(table)
+      if (table === 'checklist_task_instances') chain.range = vi.fn(() => instancesPending)
+      return chain
+    })
+
+    const pending = getWeeklyReview('2026-07-22')
+    await vi.waitFor(() => {
+      expect(started).toEqual(
+        expect.arrayContaining(['checklist_generation_runs', 'checklist_spot_checks']),
+      )
+    })
+    // The instance read has not answered yet, so the other two were not waiting on it.
+    releaseInstances({ data: [], error: null })
+    const result = await pending
+
+    expect(result.error).toBeUndefined()
+    mockFrom.mockImplementation((table: string) => makeChain(table))
+  })
+
+  it('keeps the warnings in the same order when both enrichment reads fail', async () => {
+    tableData['checklist_generation_runs'] = { data: null, error: { message: 'runs down' } }
+    tableData['checklist_spot_checks'] = { data: null, error: { message: 'spot down' } }
+
+    const result = await getWeeklyReview('2026-07-22')
+
+    expect(result.error).toBeUndefined()
+    expect(result.data?.warnings).toEqual([
+      'Generation health could not be loaded; blank days may be inaccurate.',
+      'Spot-check results could not be loaded; failures are not flagged.',
+    ])
   })
 })
