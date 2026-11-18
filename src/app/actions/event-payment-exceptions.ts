@@ -166,12 +166,37 @@ export async function listEventPaymentExceptions(
   }
 }
 
-/** For the dashboard: how many there are, and the one event they are on when it is one. */
+/**
+ * For the dashboard: how many there are, and the one event they are on when it is one.
+ *
+ * A light read of the same rows the full list shows (same permission, filter, order and 100-row
+ * cap), without the guest names or the two payments reads the list needs for amounts paid. The
+ * figures must stay equal to the list's row count and single event id: if the list's query
+ * changes, change this one with it (pinned by tests/actions/eventPaymentExceptionsCount.test.ts).
+ */
 export async function countOpenEventPaymentExceptions(): Promise<{ count: number; eventId: string | null }> {
-  const result = await listEventPaymentExceptions()
-  const rows = result.data ?? []
-  const eventIds = [...new Set(rows.map((row) => row.eventId))]
-  return { count: rows.length, eventId: eventIds.length === 1 ? eventIds[0] : null }
+  const none = { count: 0, eventId: null }
+  const canView = await checkUserPermission('events', 'view')
+  if (!canView) return none
+
+  try {
+    const supabase = createAdminClient()
+    const { data, error } = await supabase
+      .from('event_payment_exceptions')
+      .select('id, bookings!inner(event_id)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: true })
+      .limit(100)
+    if (error) throw error
+    const rows = (data ?? []) as unknown as Array<{ id: string; bookings: { event_id: string } | null }>
+    const eventIds = [...new Set(rows.map((row) => row.bookings?.event_id ?? ''))]
+    return { count: rows.length, eventId: eventIds.length === 1 ? eventIds[0] : null }
+  } catch (error) {
+    logger.error('Failed to count event payment exceptions', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+    return none
+  }
 }
 
 const ResolveSchema = z.object({
