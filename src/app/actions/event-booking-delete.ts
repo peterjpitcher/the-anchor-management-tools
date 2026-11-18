@@ -2,11 +2,21 @@
 
 import { z } from 'zod'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import { logAuditEvent } from './audit'
+import { AuditService } from '@/services/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
+
+const deleteExpiredEventBookingSchema = z.object({
+  bookingId: z.string().uuid('Invalid booking id.'),
+})
+
+const SETTLED_PAYMENT_STATUSES = new Set(['failed', 'void'])
+
+export type DeleteExpiredEventBookingResult =
+  | { success: true; data: { booking_id: string; event_id: string } }
+  | { error: string }
 
 /**
  * Delete an event booking whose payment hold ran out (status `expired`), so lapsed holds can be
@@ -21,17 +31,6 @@ import { logger } from '@/lib/logger'
  * If PayPal later reports a capture for the deleted booking, the event payment webhook raises it
  * to staff as needing a person (manual review), so money is never taken silently.
  */
-
-const deleteExpiredEventBookingSchema = z.object({
-  bookingId: z.string().uuid('Invalid booking id.'),
-})
-
-const SETTLED_PAYMENT_STATUSES = new Set(['failed', 'void'])
-
-export type DeleteExpiredEventBookingResult =
-  | { success: true; data: { booking_id: string; event_id: string } }
-  | { error: string }
-
 export async function deleteExpiredEventBooking(input: {
   bookingId: string
 }): Promise<DeleteExpiredEventBookingResult> {
@@ -100,8 +99,9 @@ export async function deleteExpiredEventBooking(input: {
       return { error: 'This booking has a payment issue on record, so it cannot be deleted.' }
     }
 
-    // Snapshot before the row goes: the audit trail is the only record left afterwards.
-    await logAuditEvent({
+    // Snapshot before the row goes: the audit trail is the only record left afterwards, so the
+    // delete does not happen unless the snapshot was saved (throws otherwise).
+    await AuditService.logAuditEventOrThrow({
       user_id: user.id,
       user_email: user.email,
       operation_type: 'delete',

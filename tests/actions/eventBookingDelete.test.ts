@@ -6,8 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
  */
 
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn(), revalidateTag: vi.fn() }))
-const audit = vi.hoisted(() => ({ logAuditEvent: vi.fn() }))
-vi.mock('@/app/actions/audit', () => audit)
+const audit = vi.hoisted(() => ({ logAuditEventOrThrow: vi.fn() }))
+vi.mock('@/services/audit', () => ({ AuditService: audit }))
 const rbac = vi.hoisted(() => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/rbac', () => rbac)
 vi.mock('@/lib/supabase/server', () => ({
@@ -119,7 +119,7 @@ describe('deleteExpiredEventBooking', () => {
       ['eq', 'id', BOOKING_ID],
       ['eq', 'status', 'expired'],
     ])
-    expect(audit.logAuditEvent).toHaveBeenCalledWith(
+    expect(audit.logAuditEventOrThrow).toHaveBeenCalledWith(
       expect.objectContaining({
         operation_type: 'delete',
         resource_type: 'event_booking',
@@ -170,7 +170,7 @@ describe('deleteExpiredEventBooking', () => {
 
     expect('error' in result && result.error).toContain(message)
     expect(deleteCall(db.calls)).toBeUndefined()
-    expect(audit.logAuditEvent).not.toHaveBeenCalled()
+    expect(audit.logAuditEventOrThrow).not.toHaveBeenCalled()
   })
 
   it('reports a booking that changed between reading and deleting', async () => {
@@ -180,6 +180,17 @@ describe('deleteExpiredEventBooking', () => {
     const result = await deleteExpiredEventBooking({ bookingId: BOOKING_ID })
 
     expect(result).toEqual({ error: 'This booking changed while you were looking at it. Refresh the page.' })
+  })
+
+  it('does not delete when the audit snapshot cannot be saved', async () => {
+    audit.logAuditEventOrThrow.mockRejectedValueOnce(new Error('Audit log not saved'))
+    const db = fakeDb({})
+    admin.createAdminClient.mockReturnValue(db.client)
+
+    const result = await deleteExpiredEventBooking({ bookingId: BOOKING_ID })
+
+    expect(result).toEqual({ error: 'The booking could not be deleted. Please try again.' })
+    expect(deleteCall(db.calls)).toBeUndefined()
   })
 
   it('reports a booking that no longer exists', async () => {
