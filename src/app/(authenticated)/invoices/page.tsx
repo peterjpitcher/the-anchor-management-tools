@@ -58,7 +58,7 @@ type PageAction = (typeof PAGE_ACTIONS)[number] & ActionType
 
 /**
  * Answers the six invoice permissions this page needs, exactly as six checkUserPermission calls
- * would, in one permissions read for nearly every user.
+ * would, in one or two lookups instead of six (one for a super admin, two for a manager or staff).
  *
  * getCurrentUserModuleActions lists only the permission rows a user's roles hold, while
  * checkUserPermission also allows a super admin everything and answers no when the lookup
