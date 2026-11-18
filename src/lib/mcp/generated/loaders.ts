@@ -46,6 +46,7 @@ export const ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   'employeeQueries': () => import('@/app/actions/employeeQueries'),
   'employeeSeparation': () => import('@/app/actions/employeeSeparation'),
   'event-attendees': () => import('@/app/actions/event-attendees'),
+  'event-booking-delete': () => import('@/app/actions/event-booking-delete'),
   'event-categories': () => import('@/app/actions/event-categories'),
   'event-check-in': () => import('@/app/actions/event-check-in'),
   'event-checklist': () => import('@/app/actions/event-checklist'),

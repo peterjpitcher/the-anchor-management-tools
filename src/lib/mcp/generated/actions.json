@@ -2958,6 +2958,21 @@
   "readOnly": false
  },
  {
+  "name": "event-booking-delete.deleteExpiredEventBooking",
+  "module": "event-booking-delete",
+  "export": "deleteExpiredEventBooking",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  bookingId: string\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "",
+  "readOnly": false
+ },
+ {
   "name": "event-categories.categorizeHistoricalEvents",
   "module": "event-categories",
   "export": "categorizeHistoricalEvents",

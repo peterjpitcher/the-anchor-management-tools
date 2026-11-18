@@ -71,6 +71,7 @@ import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen
 import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
 import { GuestDetailsModal } from './AddGuestDetailsModal'
 import { RebookBookingDialog } from './RebookBookingDialog'
+import { deleteExpiredEventBooking } from '@/app/actions/event-booking-delete'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
 import { EventPromotionContentCard } from '@/components/features/events/EventPromotionContentCard'
@@ -243,6 +244,8 @@ export default function EventDetailClient({
   const [addDetailsBooking, setAddDetailsBooking] = useState<EventBookingRow | null>(null)
   // A lapsed booking being started again (owner, 9 November 2026).
   const [rebookBookingId, setRebookBookingId] = useState<string | null>(null)
+  // A lapsed booking being removed from the list for good (owner, 18 November 2026).
+  const [deletingBookingId, setDeletingBookingId] = useState<string | null>(null)
   const [compBookingId, setCompBookingId] = useState<string | null>(null)
   const [compReason, setCompReason] = useState('')
   const [doorPayment, setDoorPayment] = useState<{
@@ -438,6 +441,20 @@ export default function EventDetailClient({
       }
     })
   }, [cancellingBookingId, event, refreshBookings, cancelRefundInfo, cancelRefundOn, cancelRefundMode, cancelRefundAmount])
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!deletingBookingId) return
+    startTransition(async () => {
+      const result = await deleteExpiredEventBooking({ bookingId: deletingBookingId })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Booking deleted')
+      setDeletingBookingId(null)
+      await refreshBookings()
+    })
+  }, [deletingBookingId, refreshBookings])
 
   // Cash Paid and Card Paid show the amount before anything is recorded, and a comp needs a
   // reason (BK-217). Errors throw so the dialog stays open and shows them.
@@ -715,6 +732,7 @@ export default function EventDetailClient({
                 onChangeTickets={setChangeTicketsBooking}
                 onEditNames={setAddDetailsBooking}
                 onRebook={setRebookBookingId}
+                onDeleteExpired={setDeletingBookingId}
                 transferringBookingId={transferringBookingId}
                 transferTargetEventId={transferTargetEventId}
                 transferEvents={transferEvents}
@@ -855,6 +873,29 @@ export default function EventDetailClient({
         cancelLabel="Keep Booking"
         tone="danger"
         loading={cancelRefundLoading || isPending}
+      />
+
+      {/* Delete an expired booking for good (owner, 18 November 2026). */}
+      <ConfirmDialog
+        open={deletingBookingId !== null}
+        onClose={() => setDeletingBookingId(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete Booking"
+        message={
+          <div className="space-y-2">
+            <p className="text-sm text-text-muted">
+              Delete this expired booking? It disappears from the attendee list for good, along with its unpaid
+              payment attempts and payment link. This cannot be undone.
+            </p>
+            <p className="text-sm text-text-muted">
+              Messages already sent stay on the customer&apos;s record, and the customer is not told.
+            </p>
+          </div>
+        }
+        confirmLabel="Delete Booking"
+        cancelLabel="Keep Booking"
+        tone="danger"
+        loading={isPending}
       />
 
       {/* Comp confirmation dialog: a free booking needs a reason (BK-217). */}
@@ -1242,6 +1283,7 @@ function AttendeesTab({
   onChangeTickets,
   onEditNames,
   onRebook,
+  onDeleteExpired,
   transferringBookingId,
   transferTargetEventId,
   transferEvents,
@@ -1281,6 +1323,7 @@ function AttendeesTab({
   onChangeTickets: (booking: EventBookingRow) => void
   onEditNames: (booking: EventBookingRow) => void
   onRebook: (bookingId: string) => void
+  onDeleteExpired: (bookingId: string) => void
   transferringBookingId: string | null
   transferTargetEventId: string
   transferEvents: Event[]
@@ -1433,11 +1476,24 @@ function AttendeesTab({
     // is offered (owner, 9 November 2026). A lapsed hold can be started again with Rebook.
     if (isCancelled || !isChangeableEventBooking(booking)) {
       const canRebook = booking.status === 'expired' && booking.is_reminder_only !== true
-      return canShowRefund || refundRequestControls || guestDetailsButton || canRebook ? (
+      // An expired booking can also be deleted for good (owner, 18 November 2026); the server
+      // refuses one with a payment, refund, transfer or check-in behind it.
+      const canDelete = booking.status === 'expired'
+      return canShowRefund || refundRequestControls || guestDetailsButton || canRebook || canDelete ? (
         <div className="flex flex-wrap items-center gap-1">
           {canRebook && (
             <Button size="sm" variant="ghost" onClick={() => onRebook(booking.id)}>
               Rebook
+            </Button>
+          )}
+          {canDelete && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => onDeleteExpired(booking.id)}
+              className="text-danger-fg hover:text-danger-fg"
+            >
+              Delete
             </Button>
           )}
           {guestDetailsButton}
