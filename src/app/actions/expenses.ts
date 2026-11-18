@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
-import { getCurrentUser } from '@/lib/audit-helpers'
+import { getCurrentUser } from '@/lib/supabase/current-user'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { getTodayIsoDate } from '@/lib/dateUtils'
@@ -128,15 +129,17 @@ async function requireExpensePermission(action: 'view' | 'manage'): Promise<{
   userId: string
   userEmail: string
 }> {
-  const canDo = await checkUserPermission('expenses', action)
+  // One sign-in lookup, shared with the permission check. A signed-out caller still gets
+  // "Insufficient permissions", as it did when the permission check looked the user up itself.
+  const { user } = await getCurrentUser()
+  if (!user) {
+    throw new Error('Insufficient permissions')
+  }
+  const canDo = await checkUserPermission('expenses', action, user.id)
   if (!canDo) {
     throw new Error('Insufficient permissions')
   }
-  const { user_id, user_email } = await getCurrentUser()
-  if (!user_id) {
-    throw new Error('Unauthorized')
-  }
-  return { userId: user_id, userEmail: user_email ?? '' }
+  return { userId: user.id, userEmail: user.email ?? '' }
 }
 
 function revalidateExpensePaths(): void {
@@ -158,29 +161,39 @@ export async function getExpenses(
     await requireExpensePermission('view')
     const supabase = await createClient()
 
-    let query = supabase
-      .from('expenses')
-      .select('*, expense_files(id)')
-      .order('expense_date', { ascending: false })
+    // Supabase stops at 1,000 rows without saying so, so every page is read. The order ends on
+    // `id` so the page boundaries neither overlap nor skip when several expenses share a date.
+    // The query is rebuilt for each page because a Supabase builder runs only once.
+    let data: Record<string, unknown>[]
+    try {
+      data = await fetchAllRows<Record<string, unknown>>(
+        (from, to) => {
+          let query = supabase
+            .from('expenses')
+            .select('*, expense_files(id)')
+            .order('expense_date', { ascending: false })
+            .order('id', { ascending: false })
 
-    if (filters.dateFrom) {
-      query = query.gte('expense_date', filters.dateFrom)
-    }
-    if (filters.dateTo) {
-      query = query.lte('expense_date', filters.dateTo)
-    }
-    if (filters.companySearch) {
-      query = query.ilike('company_ref', `%${filters.companySearch}%`)
-    }
+          if (filters.dateFrom) {
+            query = query.gte('expense_date', filters.dateFrom)
+          }
+          if (filters.dateTo) {
+            query = query.lte('expense_date', filters.dateTo)
+          }
+          if (filters.companySearch) {
+            query = query.ilike('company_ref', `%${filters.companySearch}%`)
+          }
 
-    const { data, error } = await query
-
-    if (error) {
-      logger.error('Failed to fetch expenses', { error: error as unknown as Error })
+          return query.range(from, to)
+        },
+        { label: 'expenses' }
+      )
+    } catch (error) {
+      logger.error('Failed to fetch expenses', { error: error instanceof Error ? error : new Error(String(error)) })
       return { success: false, error: 'Failed to fetch expenses' }
     }
 
-    const expenses: Expense[] = (data ?? []).map((row: Record<string, unknown>) => ({
+    const expenses: Expense[] = data.map((row: Record<string, unknown>) => ({
       id: row.id as string,
       expense_date: row.expense_date as string,
       company_ref: row.company_ref as string,
