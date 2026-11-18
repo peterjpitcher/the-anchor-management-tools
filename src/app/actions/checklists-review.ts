@@ -11,6 +11,7 @@
 import { checkUserPermission } from './rbac'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { PermissionService } from '@/services/permission'
 import {
   getBusinessWeek,
   assembleWeeklyReview,
@@ -62,16 +63,14 @@ async function requireSuperAdmin(): Promise<{ ok: true } | { error: string }> {
   if ('error' in gate) return { error: gate.error }
 
   // super_admin bypasses permission rows, so an explicit role check is the only way to
-  // restrict a screen to super_admin.
-  const db = createAdminClient()
-  const { data, error } = await (db.rpc as unknown as (
-    fn: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: Array<{ role_name?: string }> | null; error: unknown }>)('get_user_roles', {
-    p_user_id: gate.userId,
-  })
-  if (error) return { error: 'Failed to verify permissions' }
-  const isSuper = (data ?? []).some((r) => r.role_name === 'super_admin')
+  // restrict a screen to super_admin. The cached lookup (60 s, cleared on any role change)
+  // throws on a failed read and never caches false, so a failure still refuses.
+  let isSuper: boolean
+  try {
+    isSuper = await PermissionService.isSuperAdmin(gate.userId)
+  } catch {
+    return { error: 'Failed to verify permissions' }
+  }
   if (!isSuper) return { error: 'Insufficient permissions' }
   return { ok: true }
 }
@@ -131,61 +130,88 @@ export async function getWeeklyReview(
   const db = createAdminClient()
   const warnings: string[] = []
 
+  // Steps 1 to 3 read the same 7-day range and do not depend on each other, so they run
+  // together. Each keeps its own failure handling: instances are a hard error, the other two
+  // degrade to a warning.
+
   // 1. Instances for the 7-day range (hard error if this read fails). Least-privilege
   // column selection; optional department filter. Paginated with a stable order so the
   // range-based paging never skips or repeats a row.
-  let instances: ReviewInstanceInput[]
-  try {
-    instances = await fetchAllRows<ReviewInstanceInput>(() => {
-      let query = db.from('checklist_task_instances').select(INSTANCE_COLUMNS)
-      if (filters?.department) query = query.eq('department', filters.department)
-      return query
-        .gte('business_date', weekStart)
-        .lte('business_date', weekEnd)
-        .order('business_date', { ascending: true })
-        .order('id', { ascending: true })
-    })
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : 'Failed to load checklist instances' }
+  const loadInstances = async (): Promise<{ rows: ReviewInstanceInput[] } | { error: string }> => {
+    try {
+      const rows = await fetchAllRows<ReviewInstanceInput>(() => {
+        let query = db.from('checklist_task_instances').select(INSTANCE_COLUMNS)
+        if (filters?.department) query = query.eq('department', filters.department)
+        return query
+          .gte('business_date', weekStart)
+          .lte('business_date', weekEnd)
+          .order('business_date', { ascending: true })
+          .order('id', { ascending: true })
+      })
+      return { rows }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : 'Failed to load checklist instances' }
+    }
   }
 
   // 2. Per-date generation health. Every weekDate defaults to 'none'; the LATEST run per
   // date wins. A failure here degrades to a warning rather than sinking the whole report.
   const dateHealth: Record<string, DateHealth> = {}
   for (const date of weekDates) dateHealth[date] = 'none'
-  try {
-    const runs = (await db
-      .from('checklist_generation_runs')
-      .select('business_date, status, started_at, finished_at')
-      .gte('business_date', weekStart)
-      .lte('business_date', weekEnd)
-      .order('finished_at', { ascending: false, nullsFirst: false })
-      .order('started_at', { ascending: false })) as { data: GenerationRunRow[] | null; error: unknown }
-    if (runs.error) throw runs.error
-    const seen = new Set<string>()
-    for (const run of runs.data ?? []) {
-      if (seen.has(run.business_date)) continue
-      seen.add(run.business_date)
-      if (dateHealth[run.business_date] !== undefined) {
-        dateHealth[run.business_date] = toDateHealth(run.status)
+  const loadDateHealth = async (): Promise<boolean> => {
+    try {
+      const runs = (await db
+        .from('checklist_generation_runs')
+        .select('business_date, status, started_at, finished_at')
+        .gte('business_date', weekStart)
+        .lte('business_date', weekEnd)
+        .order('finished_at', { ascending: false, nullsFirst: false })
+        .order('started_at', { ascending: false })) as { data: GenerationRunRow[] | null; error: unknown }
+      if (runs.error) throw runs.error
+      const seen = new Set<string>()
+      for (const run of runs.data ?? []) {
+        if (seen.has(run.business_date)) continue
+        seen.add(run.business_date)
+        if (dateHealth[run.business_date] !== undefined) {
+          dateHealth[run.business_date] = toDateHealth(run.status)
+        }
       }
+      return true
+    } catch {
+      return false
     }
-  } catch {
-    warnings.push('Generation health could not be loaded; blank days may be inaccurate.')
   }
 
   // 3. Failed spot checks in range -> Set of the flagged instance ids.
   let failedSpotCheckIds = new Set<string>()
-  try {
-    const spot = (await db
-      .from('checklist_spot_checks')
-      .select('instance_id')
-      .eq('result', 'fail')
-      .gte('business_date', weekStart)
-      .lte('business_date', weekEnd)) as { data: FailedSpotCheckRow[] | null; error: unknown }
-    if (spot.error) throw spot.error
-    failedSpotCheckIds = new Set((spot.data ?? []).map((row) => row.instance_id))
-  } catch {
+  const loadFailedSpotChecks = async (): Promise<boolean> => {
+    try {
+      const spot = (await db
+        .from('checklist_spot_checks')
+        .select('instance_id')
+        .eq('result', 'fail')
+        .gte('business_date', weekStart)
+        .lte('business_date', weekEnd)) as { data: FailedSpotCheckRow[] | null; error: unknown }
+      if (spot.error) throw spot.error
+      failedSpotCheckIds = new Set((spot.data ?? []).map((row) => row.instance_id))
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  const [instancesResult, healthLoaded, spotChecksLoaded] = await Promise.all([
+    loadInstances(),
+    loadDateHealth(),
+    loadFailedSpotChecks(),
+  ])
+  if ('error' in instancesResult) return { error: instancesResult.error }
+  const instances = instancesResult.rows
+  // Pushed in the original order, so the warnings read the same as before.
+  if (!healthLoaded) {
+    warnings.push('Generation health could not be loaded; blank days may be inaccurate.')
+  }
+  if (!spotChecksLoaded) {
     warnings.push('Spot-check results could not be loaded; failures are not flagged.')
   }
 

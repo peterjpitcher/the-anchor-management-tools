@@ -86,7 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // shows only the kinds each person may see; the link is offered to anyone who sees staff.
       { id: 'signatures', label: 'Signatures', icon: 'fileText', href: '/signatures', permission: { module: 'employees', action: 'view' } },
       { id: 'rota', label: 'Rota', icon: 'clock', href: '/rota', permission: { module: 'rota', action: 'view' } },
-      { id: 'checklists', label: 'Checklists', icon: 'check', href: '/checklists/manage', permission: { module: 'checklists', action: 'manage' } },
+      { id: 'checklists', label: 'Checklists', icon: 'check', href: '/checklists/manage/review', permission: { module: 'checklists', action: 'manage' } },
     ],
   },
   {
@@ -199,7 +199,7 @@ interface SidebarNavProps {
 /** Match the whole section even when its landing page is nested. */
 export function isActiveNavPath(pathname: string, href: string): boolean {
   const root = href === '/cashing-up/dashboard' ? '/cashing-up'
-    : href === '/checklists/manage' ? '/checklists' : href
+    : href === '/checklists/manage/review' ? '/checklists' : href
   return pathname === root || (root !== '/' && pathname.startsWith(root + '/'))
 }
 

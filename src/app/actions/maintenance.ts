@@ -12,7 +12,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { logAuditEvent } from '@/app/actions/audit'
-import { createClient } from '@/lib/supabase/server'
+import { PermissionService } from '@/services/permission'
 import { getCurrentUser } from '@/lib/supabase/current-user'
 import { logger } from '@/lib/logger'
 import { formBooleanSchema } from '@/lib/forms/formBoolean'
@@ -76,22 +76,18 @@ export interface MaintenanceActionResult<T> {
  * without the role, matching the wording every other action in this app uses.
  */
 async function requireMaintenanceSuperAdmin(): Promise<MaintenanceActor> {
-  const supabase = await createClient()
-
   const { user } = await getCurrentUser()
 
   if (!user) {
     throw new Error('Unauthorized')
   }
 
-  const { data, error } = await (supabase.rpc as unknown as (
-    fn: string,
-    args: Record<string, unknown>
-  ) => Promise<{ data: unknown; error: unknown }>)('is_super_admin', {
-    check_user_id: user.id,
-  })
-
-  if (error) {
+  // The cached super-admin lookup (60 s, cleared on any role change) applies the same rule as the
+  // SQL is_super_admin function the RLS policies use. A failed read throws and is never cached.
+  let isSuperAdmin: boolean
+  try {
+    isSuperAdmin = await PermissionService.isSuperAdmin(user.id)
+  } catch (error) {
     logger.error('[Maintenance] Could not verify the caller role', {
       error: error instanceof Error ? error : new Error(String(error)),
       metadata: { userId: user.id },
@@ -100,7 +96,7 @@ async function requireMaintenanceSuperAdmin(): Promise<MaintenanceActor> {
     throw new Error('Insufficient permissions')
   }
 
-  if (data !== true) {
+  if (isSuperAdmin !== true) {
     throw new Error('Insufficient permissions')
   }
 

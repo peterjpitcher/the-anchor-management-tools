@@ -6,7 +6,8 @@ import { logAuditEvent } from './audit'
 import { getCurrentUser } from '@/lib/audit-helpers'
 import { getOpenSessions } from './timeclock'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { currentBusinessDate, getChecklistSettings } from '@/lib/checklists/settings'
+import { getChecklistSettings } from '@/lib/checklists/settings'
+import { businessDateOf } from '@/lib/checklists/business-day'
 import { getPublishedShiftsForDate } from '@/lib/checklists/rota'
 import {
   CLOSE_PROMPT_LEAD_MINUTES,
@@ -16,7 +17,7 @@ import {
 import { disambiguatedNames, displayName } from '@/lib/employees/display-name'
 import { isCurrentStaff } from '@/lib/employees/current-staff'
 
-// The business date comes from currentBusinessDate(), which honours
+// The business date comes from businessDateOf() with the settings row, which honours
 // checklist_settings.business_day_start_hour. This file used to compute a plain
 // London calendar date, so the staff screen rolled over at midnight while the
 // engine still held the night's closing tasks live until 05:00.
@@ -78,8 +79,9 @@ export async function getTodayChecklist(
   const canView = await checkUserPermission('checklists', 'view')
   if (!canView) return { error: 'Insufficient permissions' }
 
-  const businessDate = date ?? (await currentBusinessDate())
+  // One settings read serves both the module switch and the business date.
   const settings = await getChecklistSettings()
+  const businessDate = date ?? businessDateOf(new Date(), settings.businessDayStartHour)
   if (!settings.moduleEnabled) {
     return {
       data: {
@@ -96,14 +98,6 @@ export async function getTodayChecklist(
 
   const db = createAdminClient()
 
-  const { data: runs } = await db
-    .from('checklist_generation_runs')
-    .select('status, attempt')
-    .eq('business_date', businessDate)
-    .order('attempt', { ascending: false })
-    .limit(1)
-  const generationStatus = (runs?.[0]?.status as TodayChecklistResult['generationStatus']) ?? 'none'
-
   // The whole business day, always. The staff screen only shows tasks whose window has
   // started (open tasks at open, close tasks close_lead_minutes before close), but that
   // filter is applied below rather than in SQL.
@@ -113,18 +107,30 @@ export async function getTodayChecklist(
   // last rendered before the closing window opened therefore never showed the closing
   // list at all: nothing left on screen to tick, so nothing ever triggered a refetch.
   // Filtering here instead lets the same pass report the next window and what it withheld.
-  const { data: rows, error } = await db
-    .from('checklist_task_instances')
-    .select(
-      `id, checklist_id, title_snapshot, instruction_snapshot, slot, department,
+  //
+  // The latest generation run and the day's tasks do not depend on each other, so they
+  // are read together.
+  const [{ data: runs }, { data: rows, error }] = await Promise.all([
+    db
+      .from('checklist_generation_runs')
+      .select('status, attempt')
+      .eq('business_date', businessDate)
+      .order('attempt', { ascending: false })
+      .limit(1),
+    db
+      .from('checklist_task_instances')
+      .select(
+        `id, checklist_id, title_snapshot, instruction_snapshot, slot, department,
        requires_value, value_unit, value_min, value_max, window_start, due_at, grace_until, state,
        locked_at, completed_by_employee_id, completed_at, was_late, value_recorded,
        value_breach, notes, skip_reason,
        checklists!inner(name, sort_order),
        employees:completed_by_employee_id(first_name, last_name, preferred_name)`,
-    )
-    .eq('business_date', businessDate)
-    .order('due_at', { ascending: true })
+      )
+      .eq('business_date', businessDate)
+      .order('due_at', { ascending: true }),
+  ])
+  const generationStatus = (runs?.[0]?.status as TodayChecklistResult['generationStatus']) ?? 'none'
   if (error) return { error: error.message }
 
   // One `now` for both the filter and the next-window calculation, so they cannot
@@ -425,7 +431,8 @@ export async function getDueChecklistPrompts(): Promise<{ data?: DuePrompt[]; er
 
   const db = createAdminClient()
   const now = new Date()
-  const businessDate = await currentBusinessDate()
+  // Derived from the settings row already read above, rather than reading it a second time.
+  const businessDate = businessDateOf(now, settings.businessDayStartHour)
   const { data, error } = await db
     .from('checklist_task_instances')
     .select('id, title_snapshot, slot, due_at, window_start')
@@ -475,23 +482,26 @@ export async function getAttributionCandidates(input: {
   if (!canView) return { error: 'Insufficient permissions' }
 
   const db = createAdminClient()
-  const { data: employees, error } = await db
-    .from('employees')
-    .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
-    .in('status', ['Active', 'Started Separation'])
+  // The staff list, the open clock-in sessions and the published rota are independent reads.
+  const [{ data: employees, error }, open, shifts] = await Promise.all([
+    db
+      .from('employees')
+      .select('employee_id, first_name, last_name, preferred_name, status, employment_end_date')
+      .in('status', ['Active', 'Started Separation']),
+    getOpenSessions(),
+    getPublishedShiftsForDate(input.date),
+  ])
   if (error) return { error: error.message }
   // Judged on the checklist's own business date, not the clock: someone on notice can still be
   // named on their last working day's checks after midnight, and on nothing after it.
   const current = (employees ?? []).filter((employee) => isCurrentStaff(employee, input.date))
 
-  const open = await getOpenSessions()
   const clockedInAtByEmployeeId = new Map(
     open.success
       ? open.data.map((session) => [session.employee_id as string, session.clock_in_at as string])
       : [],
   )
 
-  const shifts = await getPublishedShiftsForDate(input.date)
   const rosteredIds = new Set(
     shifts.filter((s) => s.department === input.department && s.employeeId).map((s) => s.employeeId as string),
   )

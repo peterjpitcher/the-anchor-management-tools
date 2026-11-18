@@ -300,8 +300,13 @@ describe('section highlighting', () => {
     expect(isActiveNavPath('/cashing-up/weekly', '/cashing-up/dashboard')).toBe(true)
     expect(isActiveNavPath('/cashing-up-old', '/cashing-up/dashboard')).toBe(false)
   })
+  it('links Checklists straight to the weekly review, not the redirecting index', () => {
+    const checklists = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === 'checklists')
+    expect(checklists?.href).toBe('/checklists/manage/review')
+  })
   it('keeps Checklists active outside the manage landing page', () => {
-    expect(isActiveNavPath('/checklists/2026-09-19', '/checklists/manage')).toBe(true)
-    expect(isActiveNavPath('/checklists-extra', '/checklists/manage')).toBe(false)
+    expect(isActiveNavPath('/checklists/2026-09-19', '/checklists/manage/review')).toBe(true)
+    expect(isActiveNavPath('/checklists/manage/setup', '/checklists/manage/review')).toBe(true)
+    expect(isActiveNavPath('/checklists-extra', '/checklists/manage/review')).toBe(false)
   })
 })

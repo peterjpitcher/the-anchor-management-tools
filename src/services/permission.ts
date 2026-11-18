@@ -233,6 +233,16 @@ export class PermissionService {
   }
 
   /**
+   * Whether the user holds the super_admin role (cached 60 s, cleared by the same tag as the
+   * permission list on any role change). Same rule as the SQL `is_super_admin` function the RLS
+   * policies use. Throws PermissionsUnavailableError when the lookup fails, so a failed read is
+   * never cached as false and callers must treat a throw as a refusal.
+   */
+  static async isSuperAdmin(userId: string): Promise<boolean> {
+    return getCachedIsSuperAdmin(userId);
+  }
+
+  /**
    * Answers allowed, denied or unavailable. Unavailable is only ever returned when a lookup
    * failed; it never grants anything, so callers that treat it as "no" still fail closed.
    */
