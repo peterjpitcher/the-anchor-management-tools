@@ -2,13 +2,13 @@ import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { Alert, PageLayout } from '@/ds'
 import { currentUserCanViewInsights } from '@/lib/insights/access'
-import { buildWeeklyInsights } from '@/lib/insights/registry'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { getCachedInsightsReport } from '@/lib/insights/cached-report'
 import type { InsightsReport } from '@/lib/insights/types'
 import { InsightsReportView } from './_components/InsightsReportView'
 import { INSIGHTS_LAYOUT } from './_shared/layout'
 
-// Built from live data on every load: the page is the day-to-day view, so it never serves a cached report.
+// Rendered per request (the access check reads the session). The report itself is cached for
+// five minutes and shared by every viewer (`getCachedInsightsReport`); "Refresh now" clears it.
 export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = { title: 'Insights' }
@@ -26,11 +26,7 @@ export default async function InsightsPage(): Promise<React.JSX.Element> {
     failure = 'The app URL is not configured, so the report cannot build its links.'
   } else {
     try {
-      report = await buildWeeklyInsights({
-        createDb: (signal) => createAdminClient({ signal }),
-        now: new Date(),
-        appUrl,
-      })
+      report = await getCachedInsightsReport(appUrl)
     } catch (error) {
       console.error('[insights] the report could not be built', { errorClass: error instanceof Error ? error.name : typeof error })
       failure = 'The report could not be built. Reload the page to try again.'

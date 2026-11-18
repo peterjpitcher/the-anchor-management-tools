@@ -207,18 +207,20 @@ export async function buildEventsSection(ctx: SectionContext): Promise<SectionBu
 
   const bookingsByEvent = new Map<string, BookingRow[]>()
   const ids = [...bookingEventIds].sort()
-  for (let index = 0; index < ids.length; index += ID_CHUNK) {
-    const chunk = ids.slice(index, index + ID_CHUNK)
-    const rows = await fetchAllRows<BookingRow>(
-      (from, to) => ctx.db
-        .from('bookings')
-        .select('id, event_id, seats, status, hold_expires_at, created_at, cancelled_at')
-        .in('event_id', chunk)
-        .eq('is_reminder_only', false)
-        .order('id')
-        .range(from, to),
-      { label: 'insights event bookings' },
-    )
+  const chunks: string[][] = []
+  for (let index = 0; index < ids.length; index += ID_CHUNK) chunks.push(ids.slice(index, index + ID_CHUNK))
+  // The chunks are read together, then folded in chunk order so the result matches a serial read.
+  const chunkRows = await Promise.all(chunks.map((chunk) => fetchAllRows<BookingRow>(
+    (from, to) => ctx.db
+      .from('bookings')
+      .select('id, event_id, seats, status, hold_expires_at, created_at, cancelled_at')
+      .in('event_id', chunk)
+      .eq('is_reminder_only', false)
+      .order('id')
+      .range(from, to),
+    { label: 'insights event bookings' },
+  )))
+  for (const rows of chunkRows) {
     for (const row of rows) {
       const list = bookingsByEvent.get(row.event_id) ?? []
       list.push(row)

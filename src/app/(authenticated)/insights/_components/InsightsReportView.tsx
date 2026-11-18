@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { Card, CardBody, CardHeader, LinkButton, PageLayout, SubHeading, Table, TableBody, TableCell, TableRow } from '@/ds'
 import { formatDateWithYear, formatDayDate, formatLondonClock, formatWeekday } from '@/lib/insights/format'
 import type { InsightAction, InsightList, InsightSection, InsightSignal, InsightsReport, Rag, SectionStatus } from '@/lib/insights/types'
+import { formatTimeInLondon } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
 import { INSIGHT_STATUS_EMOJI, INSIGHT_STATUS_TEXT, INSIGHT_STATUS_WORD } from '../_shared/status-ui'
 import { INSIGHTS_LAYOUT } from '../_shared/layout'
@@ -228,7 +229,7 @@ export function InsightsReportView({ report }: { report: InsightsReport }): Reac
       subtitle={subtitle}
       headerActions={
         <>
-          <InsightsToolbar />
+          <InsightsToolbar workedOutAt={formatTimeInLondon(generated)} />
           {/*
             Paper only. The app chrome that shows the logo on screen is hidden in print, so the
             printout carries its own (owner decision, 5 October 2026). Loaded eagerly: a lazy
