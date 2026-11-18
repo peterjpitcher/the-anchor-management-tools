@@ -1,6 +1,6 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { createAdminClient } from '@/lib/supabase/admin'; // Still needed for requirePermission helper
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod'; // Zod still needed for form validation that's outside roleSchema
@@ -18,10 +18,7 @@ type UserSummary = Pick<SupabaseUser, 'id' | 'email' | 'created_at' | 'last_sign
 
 // This helper is kept in the action as it authenticates the user and then uses the service to check permissions.
 async function requirePermission(moduleName: ModuleName, action: ActionType): Promise<PermissionCheckResult> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { error: 'Not authenticated' };
@@ -40,9 +37,7 @@ async function requirePermission(moduleName: ModuleName, action: ActionType): Pr
 
 export async function getUserPermissions(userId?: string) {
   try {
-    const supabase = await createClient();
-    
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user } = await getCurrentUser();
     if (!user) return { error: 'Not authenticated' };
     
     const targetUserId = userId || user.id;
@@ -75,8 +70,7 @@ export async function getPermissionStatus(
     return PermissionService.getPermissionStatus(moduleName, action, userId);
   }
 
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
+  const { user, error } = await getCurrentUser();
   if (!user) {
     // A failed auth call is not a real "no" either; the layout has already checked the session.
     return error && !isAuthSessionMissing(error) ? 'unavailable' : 'denied';
@@ -100,9 +94,7 @@ export async function checkUserPermission(
     return await PermissionService.checkUserPermission(moduleName, action, userId);
   }
 
-  const supabase = await createClient();
-
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return false;
 
   return await PermissionService.checkUserPermission(moduleName, action, user.id);
@@ -110,9 +102,7 @@ export async function checkUserPermission(
 
 export async function getCurrentUserModuleActions(moduleName: ModuleName) {
   try {
-    const supabase = await createClient();
-
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user } = await getCurrentUser();
     if (!user) {
       return { error: 'Not authenticated' as const };
     }
@@ -134,11 +124,7 @@ export async function getCurrentUserModuleActions(moduleName: ModuleName) {
 
 export async function getUserRoles(userId?: string) {
   try {
-    const supabase = await createClient();
-
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { user } = await getCurrentUser();
     if (!user) {
       return { error: 'Not authenticated' };
     }

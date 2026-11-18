@@ -32,14 +32,13 @@ export default async function MarketingContactsPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const canView = await checkUserPermission('marketing', 'view')
-  if (!canView) redirect('/unauthorized')
-
-  const [canEdit, canCreate, canManageSettings] = await Promise.all([
+  const [canView, canEdit, canCreate, canManageSettings] = await Promise.all([
+    checkUserPermission('marketing', 'view'),
     checkUserPermission('marketing', 'edit'),
     checkUserPermission('marketing', 'create'),
     checkUserPermission('marketing', 'manage'),
   ])
+  if (!canView) redirect('/unauthorized')
 
   const params = await searchParams
   const search = firstValue(params.search).trim()
