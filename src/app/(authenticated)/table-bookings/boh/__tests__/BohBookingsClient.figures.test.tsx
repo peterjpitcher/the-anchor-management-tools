@@ -245,6 +245,51 @@ describe('BohBookingsClient figures and sorting', () => {
     expect(lostDelta).toHaveTextContent('up')
   })
 
+  it('asks for the previous period as a slim summary and still compares against it', async () => {
+    // The previous period feeds only the comparison figures, so it is fetched with summary=1 and
+    // answered with slim rows (no customer, tables or deposit fields). The figures must not change.
+    const slimPrevious = [
+      { id: '4', booking_date: TODAY, booking_time: '18:00:00', party_size: 2, status: 'confirmed', visual_status: 'confirmed', seated_at: null, left_at: null, no_show_at: null },
+      { id: '5', booking_date: TODAY, booking_time: '19:00:00', party_size: 2, status: 'no_show', visual_status: 'no_show', seated_at: null, left_at: null, no_show_at: null },
+    ]
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/boh/table-bookings?')) {
+        const params = new URLSearchParams(url.split('?')[1])
+        if (params.get('summary') === '1') {
+          return Promise.resolve({
+            ok: true,
+            status: 200,
+            json: async () => ({
+              success: true,
+              data: { view: 'week', summary: true, focus_date: TODAY, range_start_date: TODAY, range_end_date: TODAY, total: 2, bookings: slimPrevious },
+            }),
+          })
+        }
+        return Promise.resolve(listResponse(CURRENT))
+      }
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ success: true, data: {} }) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    render(<BohBookingsClient canEdit canManage />)
+
+    await screen.findByText('Total bookings')
+
+    const listCalls = fetchMock.mock.calls
+      .map(([input]) => String(input))
+      .filter((url) => url.startsWith('/api/boh/table-bookings?'))
+    const summaryCalls = listCalls.filter((url) => new URLSearchParams(url.split('?')[1]).get('summary') === '1')
+    const fullCalls = listCalls.filter((url) => !new URLSearchParams(url.split('?')[1]).has('summary'))
+    expect(summaryCalls).toHaveLength(1)
+    expect(fullCalls).toHaveLength(1)
+    // The summary is for the period before the one on screen, never the current one.
+    expect(new URLSearchParams(summaryCalls[0].split('?')[1]).get('date')).not.toBe(TODAY)
+
+    // Same figures as the full-list comparison: 3 against 2 bookings, 2 against 1 no-shows.
+    expect(within(statFor('Total bookings')).getByText('50%', { exact: false })).toHaveTextContent('up')
+    expect(within(statFor('No-shows + cancellations')).getByText('100%', { exact: false })).toHaveTextContent('up')
+  })
+
   it('sorts from the DS column header buttons and reports the sort to assistive tech', async () => {
     installFetch()
     const user = userEvent.setup()
