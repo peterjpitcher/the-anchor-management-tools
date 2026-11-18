@@ -1955,11 +1955,33 @@ export class EmployeeService {
 
     const applyFilters = <T>(query: T) => applyEmployeeListFilters(query, statusFilter, searchTerm);
 
-    // Single query to get all status counts in one round-trip, then derive tab counts in JS
-    const { data: statusRows, error: statusCountError } = await adminClient
-      .from('employees')
-      .select('status');
+    const readPage = (page: number) => {
+      const from = (page - 1) * pageSize;
+      return applyFilters(
+        adminClient
+          .from('employees')
+          // The filtered total comes back with the page itself, so the list needs no separate count.
+          .select(EMPLOYEE_ROSTER_COLUMNS, { count: 'exact' })
+          .order('employment_start_date', { ascending: true })
+          // Many people share a start date, and Postgres gives no fixed order among equals, so
+          // without a tiebreak the same person could appear on two pages and someone else on none.
+          .order('employee_id', { ascending: true })
+          .range(from, from + pageSize - 1)
+      );
+    };
 
+    // Two stages instead of five. Stage one runs everything that does not depend on the page in
+    // parallel: the tab counts (only the status column of each row), the page with its filtered
+    // total, the holiday year and the leave types. Stage two reads the leave days for the people
+    // on the page.
+    const [statusResult, firstPageResult, holidayYearRange, allowanceConsuming] = await Promise.all([
+      adminClient.from('employees').select('status'),
+      readPage(requestedPage),
+      getCurrentHolidayYearDateRange(adminClient),
+      getAllowanceConsumingTypes(adminClient),
+    ]);
+
+    const { data: statusRows, error: statusCountError } = statusResult;
     if (statusCountError) {
       throw statusCountError;
     }
@@ -1975,46 +1997,40 @@ export class EmployeeService {
     const formerCount = statusMap.get('Former') ?? 0;
     const onboardingCount = statusMap.get('Onboarding') ?? 0;
 
-    // Filtered count for the selected tab + search term
-    const { count, error: countError } = await applyFilters(
-      adminClient.from('employees').select('*', { count: 'exact', head: true })
-    );
+    let pageResult = firstPageResult;
+    // A page past the end (an old link, or the list shrank) comes back empty, or PostgREST refuses
+    // the range outright (PGRST103, with no total). Only then fall back to the old path: count, then
+    // read the last page, so the result is the same as before.
+    const overshot =
+      requestedPage > 1 &&
+      (pageResult.error?.code === 'PGRST103' ||
+        (!pageResult.error && (pageResult.data ?? []).length === 0));
+    if (overshot) {
+      const { count: filteredCount, error: countError } = await applyFilters(
+        adminClient.from('employees').select('*', { count: 'exact', head: true })
+      );
+      if (countError) {
+        throw countError;
+      }
+      const lastPage = Math.max(1, Math.ceil((filteredCount ?? 0) / pageSize));
+      pageResult = await readPage(Math.min(requestedPage, lastPage));
+    }
 
-    if (countError) {
-      throw countError;
+    const { data, error: dataError, count } = pageResult;
+    if (dataError) {
+      throw dataError;
     }
 
     const totalCount = count ?? 0;
     const totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / pageSize);
     const currentPage = totalPages === 0 ? 1 : Math.min(requestedPage, totalPages);
 
-    const from = (currentPage - 1) * pageSize;
-    const to = from + pageSize - 1;
-
-    const { data, error: dataError } = await applyFilters(
-      adminClient
-        .from('employees')
-        .select(EMPLOYEE_ROSTER_COLUMNS)
-        .order('employment_start_date', { ascending: true })
-        // Many people share a start date, and Postgres gives no fixed order among equals, so
-        // without a tiebreak the same person could appear on two pages and someone else on none.
-        .order('employee_id', { ascending: true })
-        .range(from, to)
-    );
-
-    if (dataError) {
-      throw dataError;
-    }
-
     const employees = (data ?? []) as Omit<EmployeeRosterEmployee, 'holiday_days_current_year'>[];
     const employeeIds = employees.map((employee) => employee.employee_id);
     const holidayCounts = new Map<string, number>();
 
     if (employeeIds.length > 0) {
-      const [{ startDate, endDate }, allowanceConsuming] = await Promise.all([
-        getCurrentHolidayYearDateRange(adminClient),
-        getAllowanceConsumingTypes(adminClient),
-      ]);
+      const { startDate, endDate } = holidayYearRange;
 
       type RosterLeaveDay = {
         employee_id?: string | null;
