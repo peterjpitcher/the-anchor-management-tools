@@ -2,8 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { useTransition } from 'react'
-import toast from 'react-hot-toast'
-import { Button } from '@/ds'
+import { Button, toast } from '@/ds'
 import { refreshInsightsReport } from '@/app/actions/insights'
 
 export interface InsightsToolbarProps {
