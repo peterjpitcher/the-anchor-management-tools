@@ -198,9 +198,19 @@ export class MenuService {
   }
 
   // Ingredients ---------------------------------------------------------------------------------------------------
-  static async listIngredients() {
+  /**
+   * Every ingredient with its latest prices. By default each ingredient also carries `dishes`, the
+   * dishes it is used in with their menu placements (three more reads). Pass
+   * `{ includeUsage: false }` when only the ingredient fields are needed: `dishes` is then always an
+   * empty list and only the ingredient view is read.
+   */
+  static async listIngredients(options?: { includeUsage?: boolean }) {
+    const includeUsage = options?.includeUsage !== false;
     const supabase = await createClient();
-    const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: supabase });
+    if (includeUsage) {
+      // Read for parity with the long-standing default path; the result does not use it.
+      await MenuSettingsService.getMenuTargetGp({ client: supabase });
+    }
 
     const ingredientsResult = await supabase
       .from('menu_ingredients_with_prices')
@@ -232,7 +242,7 @@ export class MenuService {
     let usageRows: any[] = [];
     let assignmentRows: any[] = [];
 
-    if (ingredientIds.length > 0) {
+    if (includeUsage && ingredientIds.length > 0) {
       const { data: usageData, error: usageError } = await supabase
         .from('menu_dish_ingredients')
         .select(`
@@ -785,7 +795,6 @@ export class MenuService {
   // Dishes --------------------------------------------------------------------------------------------------------
   static async listDishes(menuCode?: string) {
     const supabase = await createClient();
-    const targetGpPct = await MenuSettingsService.getMenuTargetGp({ client: supabase });
     let query = supabase
       .from('menu_dishes_with_costs')
       .select('*')
@@ -798,7 +807,11 @@ export class MenuService {
       query = query.eq('menu_code', menuCode);
     }
 
-    const { data, error } = await query;
+    // Stage one: the target GP and the dish view do not depend on each other.
+    const [targetGpPct, { data, error }] = await Promise.all([
+      MenuSettingsService.getMenuTargetGp({ client: supabase }),
+      query,
+    ]);
     if (error) {
       console.error('listMenuDishes error:', error);
       throw new Error('Failed to fetch dishes');
@@ -850,98 +863,113 @@ export class MenuService {
     const dishes = Array.from(dishMap.values());
     const dishIds = dishes.map(dish => dish.id);
 
-    let ingredientRows: any[] = [];
-    if (dishIds.length > 0) {
-      const { data: ingredientData, error: ingredientError } = await supabase
-        .from('menu_dish_ingredients')
-        .select(`
-          dish_id,
-          quantity,
-          unit,
-          yield_pct,
-          wastage_pct,
-          cost_override,
-          notes,
-          option_group,
-          inclusion_type,
-          upgrade_price,
-          measure_ml,
-          ingredient:menu_ingredients(
-            id,
-            name,
-            default_unit,
-            storage_type,
-            allergens,
-            dietary_flags,
-            abv
-          )
-        `)
-        .in('dish_id', dishIds);
+    // Stage two: the ingredient chain (rows, then their prices) and the recipe chain (rows, then
+    // their metadata) run side by side. Within each chain the second read needs the first's ids.
+    const loadIngredients = async (): Promise<{ ingredientRows: any[]; priceMap: Map<string, any> }> => {
+      let ingredientRows: any[] = [];
+      if (dishIds.length > 0) {
+        const { data: ingredientData, error: ingredientError } = await supabase
+          .from('menu_dish_ingredients')
+          .select(`
+            dish_id,
+            quantity,
+            unit,
+            yield_pct,
+            wastage_pct,
+            cost_override,
+            notes,
+            option_group,
+            inclusion_type,
+            upgrade_price,
+            measure_ml,
+            ingredient:menu_ingredients(
+              id,
+              name,
+              default_unit,
+              storage_type,
+              allergens,
+              dietary_flags,
+              abv
+            )
+          `)
+          .in('dish_id', dishIds);
 
-      if (ingredientError) {
-        console.error('listMenuDishes ingredients error:', ingredientError);
-      } else {
-        ingredientRows = ingredientData || [];
-      }
-    }
-
-    const ingredientIds = Array.from(
-      new Set(
-        ingredientRows
-          .map(row => row.ingredient?.id)
-          .filter((id): id is string => Boolean(id))
-      )
-    );
-
-    const priceMap = new Map<string, any>();
-    if (ingredientIds.length > 0) {
-      const { data: pricingData, error: pricingError } = await supabase
-        .from('menu_ingredients_with_prices')
-        .select('id, latest_unit_cost, latest_pack_cost, pack_cost, default_unit')
-        .in('id', ingredientIds);
-
-      if (pricingError) {
-        console.error('listMenuDishes ingredient pricing error:', pricingError);
-      } else {
-        (pricingData || []).forEach(entry => {
-          priceMap.set(entry.id, entry);
-        });
-      }
-    }
-
-    let recipeRows: any[] = [];
-    const recipeMetaMap = new Map<string, any>();
-    if (dishIds.length > 0) {
-      const { data: recipeData, error: recipeError } = await supabase
-        .from('menu_dish_recipes')
-        .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group, inclusion_type, upgrade_price')
-        .in('dish_id', dishIds);
-
-      if (recipeError) {
-        console.error('listMenuDishes recipes error:', recipeError);
-      } else {
-        recipeRows = recipeData || [];
+        if (ingredientError) {
+          console.error('listMenuDishes ingredients error:', ingredientError);
+        } else {
+          ingredientRows = ingredientData || [];
+        }
       }
 
-      const recipeIds = Array.from(
-        new Set(recipeRows.map(row => row.recipe_id).filter((id): id is string => Boolean(id)))
+      const ingredientIds = Array.from(
+        new Set(
+          ingredientRows
+            .map(row => row.ingredient?.id)
+            .filter((id): id is string => Boolean(id))
+        )
       );
 
-      if (recipeIds.length > 0) {
-        const { data: recipeDetails, error: recipeDetailsError } = await supabase
-          .from('menu_recipes')
-          .select('id, name, portion_cost, yield_quantity, yield_unit, allergen_flags, dietary_flags, is_active')
-          .in('id', recipeIds);
+      const priceMap = new Map<string, any>();
+      if (ingredientIds.length > 0) {
+        const { data: pricingData, error: pricingError } = await supabase
+          .from('menu_ingredients_with_prices')
+          .select('id, latest_unit_cost, latest_pack_cost, pack_cost, default_unit')
+          .in('id', ingredientIds);
 
-        if (recipeDetailsError) {
-          console.error('listMenuDishes recipe metadata error:', recipeDetailsError);
+        if (pricingError) {
+          console.error('listMenuDishes ingredient pricing error:', pricingError);
         } else {
-          (recipeDetails || []).forEach(recipe => {
-            recipeMetaMap.set(recipe.id, recipe);
+          (pricingData || []).forEach(entry => {
+            priceMap.set(entry.id, entry);
           });
         }
       }
-    }
+
+      return { ingredientRows, priceMap };
+    };
+
+    const loadRecipes = async (): Promise<{ recipeRows: any[]; recipeMetaMap: Map<string, any> }> => {
+      let recipeRows: any[] = [];
+      const recipeMetaMap = new Map<string, any>();
+      if (dishIds.length > 0) {
+        const { data: recipeData, error: recipeError } = await supabase
+          .from('menu_dish_recipes')
+          .select('dish_id, recipe_id, quantity, yield_pct, wastage_pct, cost_override, notes, option_group, inclusion_type, upgrade_price')
+          .in('dish_id', dishIds);
+
+        if (recipeError) {
+          console.error('listMenuDishes recipes error:', recipeError);
+        } else {
+          recipeRows = recipeData || [];
+        }
+
+        const recipeIds = Array.from(
+          new Set(recipeRows.map(row => row.recipe_id).filter((id): id is string => Boolean(id)))
+        );
+
+        if (recipeIds.length > 0) {
+          const { data: recipeDetails, error: recipeDetailsError } = await supabase
+            .from('menu_recipes')
+            .select('id, name, portion_cost, yield_quantity, yield_unit, allergen_flags, dietary_flags, is_active')
+            .in('id', recipeIds);
+
+          if (recipeDetailsError) {
+            console.error('listMenuDishes recipe metadata error:', recipeDetailsError);
+          } else {
+            (recipeDetails || []).forEach(recipe => {
+              recipeMetaMap.set(recipe.id, recipe);
+            });
+          }
+        }
+      }
+
+      return { recipeRows, recipeMetaMap };
+    };
+
+    const [{ ingredientRows, priceMap }, { recipeRows, recipeMetaMap }] = await Promise.all([
+      loadIngredients(),
+      loadRecipes(),
+    ]);
 
     const ingredientsByDish = new Map<string, any[]>();
     ingredientRows.forEach(row => {

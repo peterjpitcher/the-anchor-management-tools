@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from '@/ds'
 import {
@@ -99,6 +99,32 @@ function mapApiDish(raw: Record<string, unknown>, fallbackTarget: number): DishL
   }
 }
 
+/** The dishes read the server page passes in: the `listMenuDishes` result, made plain. */
+export interface MenuOverviewInitialDishes {
+  data: Record<string, unknown>[] | null
+  target_gp_pct: number | null
+  error: string | null
+}
+
+export interface MenuManagementClientProps {
+  initialDishes: MenuOverviewInitialDishes
+  initialMenus: MenuSummary[]
+}
+
+/** Maps a dishes read and resolves the page's target GP, as a fraction. */
+function resolveDishes(rawData: Record<string, unknown>[], apiTarget: number | undefined): { dishes: DishListItem[]; targetGpPct: number } {
+  const mapped = rawData.map((d) => mapApiDish(d, apiTarget ?? 0.7))
+  const resolvedTarget = apiTarget ?? (mapped.length > 0 && typeof mapped[0].target_gp_pct === 'number' ? mapped[0].target_gp_pct : 0.7)
+  const normalised = resolvedTarget > 1 ? resolvedTarget / 100 : resolvedTarget
+  return { dishes: mapped, targetGpPct: normalised }
+}
+
+function initialDishState(initial: MenuOverviewInitialDishes): { dishes: DishListItem[]; targetGpPct: number; error: string | null } {
+  if (initial.error) return { dishes: [], targetGpPct: 0.7, error: initial.error }
+  const { dishes, targetGpPct } = resolveDishes(initial.data ?? [], initial.target_gp_pct ?? undefined)
+  return { dishes, targetGpPct, error: null }
+}
+
 /* ------------------------------------------------------------------ */
 /*  GP% helpers                                                        */
 /* ------------------------------------------------------------------ */
@@ -119,21 +145,26 @@ function computeAvgGp(items: DishListItem[]): number | null {
 /*  Page Component                                                     */
 /* ------------------------------------------------------------------ */
 
-export default function MenuManagementClient(): React.ReactElement {
+export default function MenuManagementClient({ initialDishes, initialMenus }: MenuManagementClientProps): React.ReactElement {
   const router = useRouter()
   const { hasPermission, loading: permissionsLoading } = usePermissions()
 
   // View mode
   const [viewMode, setViewMode] = useState<string>('table')
 
-  // Data state
-  const [dishes, setDishes] = useState<DishListItem[]>([])
+  // Data state: dishes and menus arrive from the server page; ingredients and recipes are only for
+  // the dish drawer and load when it first opens.
+  const [initialState] = useState(() => initialDishState(initialDishes))
+  const [dishes, setDishes] = useState<DishListItem[]>(initialState.dishes)
   const [ingredients, setIngredients] = useState<IngredientSummary[]>([])
   const [recipes, setRecipes] = useState<RecipeSummary[]>([])
-  const [menus, setMenus] = useState<MenuSummary[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [targetGpPct, setTargetGpPct] = useState(0.7)
+  const menus = initialMenus
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(initialState.error)
+  const [targetGpPct, setTargetGpPct] = useState(initialState.targetGpPct)
+  // Set while the drawer's support data is loading or once it has loaded; cleared on a failure so
+  // the next opening tries again.
+  const supportRequestedRef = useRef(false)
 
   // Filter state
   const [selectedMenu, setSelectedMenu] = useState<string>('all')
@@ -154,11 +185,9 @@ export default function MenuManagementClient(): React.ReactElement {
       if (result.error) throw new Error(result.error)
       const rawData = (result.data ?? []) as Record<string, unknown>[]
       const apiTarget = typeof (result as Record<string, unknown>).target_gp_pct === 'number' ? Number((result as Record<string, unknown>).target_gp_pct) : undefined
-      const mapped = rawData.map((d) => mapApiDish(d, apiTarget ?? 0.7))
-      const resolvedTarget = apiTarget ?? (mapped.length > 0 && typeof mapped[0].target_gp_pct === 'number' ? mapped[0].target_gp_pct : 0.7)
-      const normalised = resolvedTarget > 1 ? resolvedTarget / 100 : resolvedTarget
-      setTargetGpPct(normalised)
-      setDishes(mapped)
+      const resolved = resolveDishes(rawData, apiTarget)
+      setTargetGpPct(resolved.targetGpPct)
+      setDishes(resolved.dishes)
       setError(null)
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load dishes'
@@ -169,14 +198,23 @@ export default function MenuManagementClient(): React.ReactElement {
     }
   }, [])
 
+  // The drawer's ingredient and recipe pickers. Ingredients come without their dish usage, which
+  // the drawer never shows. The recipes stay a plain fetch so the two reads run side by side
+  // (server actions from one browser run one at a time).
   const loadSupportData = useCallback(async () => {
     try {
-      const [ingredientRes, recipeRes, menuRes] = await Promise.all([
-        listMenuIngredients(),
+      const [ingredientRes, recipeRes] = await Promise.all([
+        listMenuIngredients({ includeUsage: false }),
         fetch('/api/menu-management/recipes?summary=1').then((r) => r.json()),
-        fetch('/api/menu-management/menus').then((r) => r.json()),
       ])
-      if (ingredientRes.error) console.error('Failed to load ingredients:', ingredientRes.error)
+      if (ingredientRes.error) {
+        console.error('Failed to load ingredients:', ingredientRes.error)
+        supportRequestedRef.current = false
+      }
+      if (recipeRes?.error) {
+        console.error('Failed to load recipes:', recipeRes.error)
+        supportRequestedRef.current = false
+      }
       setIngredients(((ingredientRes.data ?? []) as Record<string, unknown>[]).map((i) => ({
         id: i.id as string, name: i.name as string, default_unit: (i.default_unit as string) || 'portion',
         latest_unit_cost: i.latest_unit_cost != null ? Number(i.latest_unit_cost) : null,
@@ -185,22 +223,28 @@ export default function MenuManagementClient(): React.ReactElement {
         is_active: (i.is_active as boolean) !== false, allergens: (i.allergens as string[]) || [],
         dietary_flags: (i.dietary_flags as string[]) || [], abv: i.abv != null ? Number(i.abv) : null,
       })))
-      setRecipes(((recipeRes.data ?? []) as Record<string, unknown>[]).map((r) => ({
+      setRecipes(((recipeRes?.data ?? []) as Record<string, unknown>[]).map((r) => ({
         id: r.id as string, name: r.name as string, portion_cost: Number(r.portion_cost ?? 0),
         yield_quantity: Number(r.yield_quantity ?? 1), yield_unit: (r.yield_unit as string) || 'portion',
         is_active: (r.is_active as boolean) !== false, allergen_flags: (r.allergen_flags as string[]) || [],
         dietary_flags: (r.dietary_flags as string[]) || [],
       })))
-      setMenus((menuRes.data ?? []) as MenuSummary[])
-    } catch (err) { console.error('loadSupportData error:', err) }
+    } catch (err) {
+      console.error('loadSupportData error:', err)
+      supportRequestedRef.current = false
+    }
   }, [])
 
   useEffect(() => {
     if (permissionsLoading) return
-    if (!hasPermission('menu_management', 'view')) { router.replace('/unauthorized'); return }
-    void loadDishes()
+    if (!hasPermission('menu_management', 'view')) { router.replace('/unauthorized') }
+  }, [permissionsLoading, hasPermission, router])
+
+  useEffect(() => {
+    if (!drawerOpen || supportRequestedRef.current) return
+    supportRequestedRef.current = true
     void loadSupportData()
-  }, [permissionsLoading, hasPermission, router, loadDishes, loadSupportData])
+  }, [drawerOpen, loadSupportData])
 
   // ---- Derived menus/categories ----
 
