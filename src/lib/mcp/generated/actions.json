@@ -5343,6 +5343,21 @@
   "readOnly": true
  },
  {
+  "name": "marketing-campaigns.getMarketingCampaignListStats",
+  "module": "marketing-campaigns",
+  "export": "getMarketingCampaignListStats",
+  "params": [
+   {
+    "name": "ids",
+    "type": "string[]",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Delivery results for a page of campaigns, keyed by campaign id: sent, delivered, opened,\nclicked, unsubscribed and their rates, counted exactly as `getMarketingCampaignStats` counts\nthem but without conversions. Authorises once for the whole page, with the same permission\nas `getMarketingCampaignStats` (marketing view). Read only. Ids that match no campaign are\nleft out of the result.",
+  "readOnly": true
+ },
+ {
   "name": "marketing-campaigns.getMarketingCampaignStats",
   "module": "marketing-campaigns",
   "export": "getMarketingCampaignStats",

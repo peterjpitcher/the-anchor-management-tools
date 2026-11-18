@@ -6,7 +6,7 @@ vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn() }))
 vi.mock('@/app/actions/marketing-campaigns', () => ({
   listMarketingCampaigns: vi.fn(),
   getMarketingSettings: vi.fn(),
-  getMarketingCampaignStats: vi.fn(),
+  getMarketingCampaignListStats: vi.fn(),
 }))
 const push = vi.hoisted(() => vi.fn())
 vi.mock('next/navigation', () => ({ redirect: vi.fn(), useRouter: () => ({ push }) }))
@@ -41,7 +41,7 @@ vi.mock('@/ds', () => ({
 
 import { redirect } from 'next/navigation'
 import { checkUserPermission } from '@/app/actions/rbac'
-import { getMarketingSettings, listMarketingCampaigns } from '@/app/actions/marketing-campaigns'
+import { getMarketingCampaignListStats, getMarketingSettings, listMarketingCampaigns } from '@/app/actions/marketing-campaigns'
 import MarketingCampaignsPage from '../page'
 
 const renderPage = async (params: Record<string, string | string[] | undefined> = {}) =>
@@ -140,9 +140,46 @@ describe('marketing campaign list page', () => {
     expect(screen.getByRole('alert')).not.toHaveTextContent('Settings tab')
   })
 
-  it('stops unauthorised requests before loading campaigns', async () => {
+  it('redirects unauthorised requests before rendering or reading any results', async () => {
+    // The list action runs in the same wave as the view check and refuses on its own
+    // permission check; the page must still redirect rather than render anything.
     vi.mocked(checkUserPermission).mockResolvedValue(false)
+    vi.mocked(listMarketingCampaigns).mockResolvedValue({ error: 'Insufficient permissions' })
     await expect(renderPage()).rejects.toThrow('Redirect: /unauthorized')
-    expect(listMarketingCampaigns).not.toHaveBeenCalled()
+    expect(getMarketingCampaignListStats).not.toHaveBeenCalled()
+  })
+
+  it('asks for results once, for the sent campaigns only, and shows them', async () => {
+    const summary = (sent: number) => ({ recipients: sent + 1, pending: 0, sending: 0, sent, failed: 0, skipped: 1, needsReview: 0 })
+    const item = (id: string, name: string, sent: number, status: 'completed' | 'draft') => ({
+      id, name, subject: `${name} subject`, status, kind: 'one_off' as const, audienceType: 'customer' as const,
+      scheduledFor: status === 'draft' ? null : '2026-10-01T09:00:00.000Z', createdAt: '2026-09-01T09:00:00.000Z', summary: summary(sent),
+    })
+    vi.mocked(listMarketingCampaigns).mockResolvedValue({
+      data: { campaigns: [item('c1', 'October news', 200, 'completed'), item('c2', 'Draft idea', 0, 'draft'), item('c3', 'Quiz night', 40, 'completed')], total: 3 },
+    })
+    const stats = (delivered: number, opened: number, clicked: number, unsubscribed: number, sent: number) => ({
+      delivered, opened, clicked, unsubscribed,
+      rates: { deliveredRate: delivered / sent, openRate: opened / sent, clickRate: clicked / sent, bounceRate: 0, complaintRate: 0, unsubscribeRate: unsubscribed / sent },
+    })
+    vi.mocked(getMarketingCampaignListStats).mockResolvedValue({
+      success: true,
+      data: { c1: stats(190, 80, 10, 2, 200), c3: stats(40, 0, 4, 0, 40) },
+    } as unknown as Awaited<ReturnType<typeof getMarketingCampaignListStats>>)
+
+    await renderPage({ status: 'all' })
+
+    expect(getMarketingCampaignListStats).toHaveBeenCalledTimes(1)
+    expect(getMarketingCampaignListStats).toHaveBeenCalledWith(['c1', 'c3'])
+    const rowOf = (name: string) => screen.getByRole('link', { name }).closest('tr') as HTMLElement
+    expect(rowOf('October news')).toHaveTextContent('190')
+    expect(rowOf('October news')).toHaveTextContent('80')
+    expect(rowOf('Quiz night')).toHaveTextContent('Not tracked')
+    expect(rowOf('Draft idea').textContent).toContain('-')
+  })
+
+  it('does not ask for results when nothing on the page has been sent', async () => {
+    await renderPage()
+    expect(getMarketingCampaignListStats).not.toHaveBeenCalled()
   })
 })

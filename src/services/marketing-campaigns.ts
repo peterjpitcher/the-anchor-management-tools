@@ -27,7 +27,9 @@ import {
 } from '@/lib/email/marketing/registry'
 import {
   audienceToDb,
+  MARKETING_CAMPAIGN_LIST_COLUMNS,
   mapMarketingCampaign,
+  mapMarketingCampaignListItem,
   mapMarketingCampaignRecipient,
   mapMarketingRecipientEngagement,
   mapMarketingSettings,
@@ -39,8 +41,8 @@ import {
   type MarketingCampaignRecipientWithEngagement,
   type MarketingCampaignStats,
   type MarketingCampaignStatus,
+  type MarketingCampaignListItem,
   type MarketingCampaignSummary,
-  type MarketingCampaignWithSummary,
   type MarketingRecipientStatus,
   type MarketingSettings,
 } from '@/types/marketing'
@@ -251,7 +253,7 @@ export interface ListCampaignsOptions {
 }
 
 export interface ListCampaignsResult {
-  campaigns: MarketingCampaignWithSummary[]
+  campaigns: MarketingCampaignListItem[]
   total: number
 }
 
@@ -264,7 +266,9 @@ export async function listCampaigns(
   const pageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, options.pageSize ?? DEFAULT_PAGE_SIZE))
   const from = (page - 1) * pageSize
 
-  let query = supabase.from('marketing_campaigns').select('*', { count: 'exact' })
+  // Only the columns the list shows: `*` carried every campaign's content, link map and
+  // audience JSON for a table of eight fields.
+  let query = supabase.from('marketing_campaigns').select(MARKETING_CAMPAIGN_LIST_COLUMNS, { count: 'exact' })
   if (options.status) query = query.eq('status', options.status)
   if (options.statuses?.length) query = query.in('status', options.statuses)
   if (options.audienceType) query = query.eq('audience_type', options.audienceType)
@@ -290,17 +294,14 @@ export async function listCampaigns(
 
   if (error) throw new Error(error.message)
 
-  const campaigns = (data ?? []).map(mapMarketingCampaign)
+  const rows = data ?? []
   const summaries = await fetchSummaries(
     supabase,
-    campaigns.map((campaign) => campaign.id),
+    rows.map((row) => row.id),
   )
 
   return {
-    campaigns: campaigns.map((campaign) => ({
-      ...campaign,
-      summary: summaries.get(campaign.id) ?? { ...EMPTY_SUMMARY },
-    })),
+    campaigns: rows.map((row) => mapMarketingCampaignListItem(row, summaries.get(row.id) ?? { ...EMPTY_SUMMARY })),
     total: count ?? 0,
   }
 }
@@ -1332,6 +1333,40 @@ export async function getCampaignStats(id: string): Promise<MarketingCampaignSta
   const conversions = await fetchCampaignConversions(supabase, campaign)
 
   return { ...stats, engagement: { ...stats.engagement, ...conversions } }
+}
+
+/**
+ * Delivery results for a page of campaigns, for the campaign list.
+ *
+ * The list used to call `getCampaignStats` once per sent campaign: up to 50 campaign reads, 50
+ * runs of the delivery reads and 50 conversion reads the list never shows. This is one read of
+ * the campaigns (only the two fields the statistics depend on) and one `readCampaignDeliveryStats`
+ * run for all of them, so every figure is counted exactly as the campaign page counts it.
+ * Conversions are left out. Ids that match no campaign get no entry.
+ */
+export async function getCampaignListStats(
+  ids: string[],
+): Promise<Record<string, CampaignDeliveryStats>> {
+  const unique = [...new Set(ids)]
+  if (unique.length === 0) return {}
+  const supabase = createAdminClient()
+
+  const { data, error } = await supabase
+    .from('marketing_campaigns')
+    .select('id, audience_type, scheduled_for')
+    .in('id', unique)
+  if (error) throw new Error(error.message)
+
+  // Coalesced exactly as mapMarketingCampaign does: the unsubscribe count reads the list the
+  // audience type names, and clicks before scheduled_for are treated as tests.
+  const subjects: CampaignStatsSubject[] = (data ?? []).map((row) => ({
+    id: row.id,
+    audienceType: row.audience_type === 'customer' ? 'customer' : 'business',
+    scheduledFor: row.scheduled_for ?? null,
+  }))
+
+  const stats = await readCampaignDeliveryStats(supabase, subjects)
+  return Object.fromEntries(stats)
 }
 
 /**

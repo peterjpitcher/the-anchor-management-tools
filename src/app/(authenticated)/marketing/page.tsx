@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 
 import { checkUserPermission } from '@/app/actions/rbac'
 import {
-  getMarketingCampaignStats,
+  getMarketingCampaignListStats,
   getMarketingSettings,
   listMarketingCampaigns,
 } from '@/app/actions/marketing-campaigns'
@@ -23,7 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/ds'
-import type { MarketingCampaignStats, MarketingCampaignStatus } from '@/types/marketing'
+import type { CampaignDeliveryStats } from '@/services/marketing-campaigns'
+import type { MarketingCampaignStatus } from '@/types/marketing'
 
 import {
   CampaignStatusBadge,
@@ -44,9 +45,6 @@ type SearchParams = Record<string, string | string[] | undefined>
 const firstValue = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value) ?? ''
 
 export default async function MarketingCampaignsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
-  const canView = await checkUserPermission('marketing', 'view')
-  if (!canView) redirect('/unauthorized')
-
   const params = await searchParams
   const search = firstValue(params.search).trim().slice(0, 200)
   const rawStatus = firstValue(params.status)
@@ -62,20 +60,22 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
   if (audience) filterQuery.audience = audience
   const pageHref = (nextPage: number) => `/marketing?${new URLSearchParams({ ...filterQuery, page: String(nextPage) })}`
 
-  const [canCreate, canEdit, canManageSettings] = await Promise.all([
+  // One wave: the permission checks, the list and the settings do not depend on each other.
+  // Both data actions authorise themselves (marketing view), so starting them alongside the
+  // view check exposes nothing, and nothing renders until the check has passed.
+  const [canView, canCreate, canEdit, canManageSettings, campaignsResult, settingsResult] = await Promise.all([
+    checkUserPermission('marketing', 'view'),
     checkUserPermission('marketing', 'create'),
     checkUserPermission('marketing', 'edit'),
     checkUserPermission('marketing', 'manage'),
-  ])
-  const layoutProps = marketingLayout('campaigns', { canManageSettings })
-
-  const [campaignsResult, settingsResult] = await Promise.all([
     listMarketingCampaigns({
       page, pageSize: PAGE_SIZE, search, sort, audienceType: audience || undefined,
       statuses: status === 'upcoming' ? ['draft', 'scheduled'] : status === 'all' ? undefined : [status as MarketingCampaignStatus],
     }),
     getMarketingSettings(),
   ])
+  if (!canView) redirect('/unauthorized')
+  const layoutProps = marketingLayout('campaigns', { canManageSettings })
 
   if (campaignsResult.error || !campaignsResult.data) {
     return (
@@ -94,17 +94,11 @@ export default async function MarketingCampaignsPage({ searchParams }: { searchP
   const settings = settingsResult.data
   const sendingOff = settings ? settings.sendsEnabled === false : false
 
-  // Engagement needs one stats query per campaign, so it is only asked for where a send has
-  // actually happened. A draft has nothing to report and would cost a query to say so.
-  const statsEntries = await Promise.all(
-    campaigns
-      .filter((campaign) => campaign.summary.sent > 0)
-      .map(async (campaign) => {
-        const result = await getMarketingCampaignStats(campaign.id)
-        return [campaign.id, result.data ?? null] as const
-      }),
-  )
-  const statsById = new Map<string, MarketingCampaignStats | null>(statsEntries)
+  // Engagement is only asked for where a send has actually happened: a draft has nothing to
+  // report. One batch read for the whole page; it needs the list's ids, so it follows the list.
+  const sentIds = campaigns.filter((campaign) => campaign.summary.sent > 0).map((campaign) => campaign.id)
+  const statsResult = sentIds.length > 0 ? await getMarketingCampaignListStats(sentIds) : null
+  const statsById = new Map<string, CampaignDeliveryStats>(Object.entries(statsResult?.data ?? {}))
 
   return (
     <PageLayout

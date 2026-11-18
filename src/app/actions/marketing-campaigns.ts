@@ -29,6 +29,7 @@ import {
   getCampaign,
   getCampaignAudienceDrift,
   getCampaignLinkPerformance,
+  getCampaignListStats,
   getCampaignStats,
   getSettings,
   listCampaigns,
@@ -40,6 +41,7 @@ import {
   updateCampaign,
   updateSettings,
   type CampaignAudienceDrift,
+  type CampaignDeliveryStats,
   type CampaignInput,
   type ListCampaignsResult,
   type ListRecipientsResult,
@@ -210,6 +212,32 @@ export async function getMarketingCampaignStats(
     return { success: true, data: await getCampaignStats(id) }
   } catch (error) {
     console.error('Failed to load marketing campaign stats:', error)
+    return { error: failureMessage(error, 'Failed to load campaign results') }
+  }
+}
+
+const listStatsSchema = z.array(z.string().uuid()).max(200)
+
+/**
+ * Delivery results for a page of campaigns, keyed by campaign id: sent, delivered, opened,
+ * clicked, unsubscribed and their rates, counted exactly as `getMarketingCampaignStats` counts
+ * them but without conversions. Authorises once for the whole page, with the same permission
+ * as `getMarketingCampaignStats` (marketing view). Read only. Ids that match no campaign are
+ * left out of the result.
+ */
+export async function getMarketingCampaignListStats(
+  ids: string[],
+): Promise<ActionResult<Record<string, CampaignDeliveryStats>>> {
+  try {
+    const context = await authorise('view')
+    if ('error' in context) return { error: context.error }
+
+    const parsed = listStatsSchema.safeParse(ids)
+    if (!parsed.success) return { error: 'Invalid campaign ids' }
+
+    return { success: true, data: await getCampaignListStats(parsed.data) }
+  } catch (error) {
+    console.error('Failed to load marketing campaign list stats:', error)
     return { error: failureMessage(error, 'Failed to load campaign results') }
   }
 }

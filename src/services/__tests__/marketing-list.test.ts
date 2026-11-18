@@ -56,7 +56,10 @@ describe('listCampaigns filtering and sorting', () => {
       pageSize: 10,
     })
 
-    expect(operations).toContainEqual({ method: 'select', args: ['*', { count: 'exact' }] })
+    expect(operations).toContainEqual({
+      method: 'select',
+      args: ['id, name, subject, status, kind, audience_type, scheduled_for, created_at', { count: 'exact' }],
+    })
     expect(operations).toContainEqual({ method: 'in', args: ['status', ['scheduled', 'draft']] })
     expect(operations).toContainEqual({ method: 'eq', args: ['audience_type', 'business'] })
     expect(operations).toContainEqual({ method: 'range', args: [10, 19] })
