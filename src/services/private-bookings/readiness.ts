@@ -355,23 +355,25 @@ export async function loadHireReadinessFacts(
 
   // The four reads are independent, so they run together. Each error is still checked, in the
   // same order as before: rooms (which throws), then bookings, booked rooms and history.
+  // Each read is started inside an async function, so a client that throws while a query is
+  // being built rejects Promise.all instead of leaving an earlier read's rejection unhandled.
   const [venueRooms, bookingsResult, itemsResult, auditResult] = await Promise.all([
     options.rooms ? Promise.resolve(options.rooms) : loadVenueRooms(db),
-    db
+    (async () => db
       .from('private_bookings')
       .select('id, status, guest_count, layout, contract_sent_at, contract_accepted_at, deposit_paid_date, deposit_confirmed_at, deposit_waived')
-      .in('id', ids),
-    db
+      .in('id', ids))(),
+    (async () => db
       .from('private_booking_items')
       .select('booking_id, space_id')
       .in('booking_id', ids)
-      .eq('item_type', 'space'),
-    db
+      .eq('item_type', 'space'))(),
+    (async () => db
       .from('private_booking_audit')
       .select('booking_id, action, metadata, performed_by, performed_at')
       .in('booking_id', ids)
       .in('action', [CAPACITY_OVERRIDE_ACTION, CONFIRMATION_BLOCKED_ACTION])
-      .order('performed_at', { ascending: false }),
+      .order('performed_at', { ascending: false }))(),
   ])
 
   const { data: bookings, error: bookingsError } = bookingsResult
