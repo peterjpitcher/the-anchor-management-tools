@@ -196,7 +196,9 @@ export function DailyClient({
       return
     }
     let cancelled = false
-    initialMissingDates
+    // A promise passed from a server page arrives as a React Flight thenable whose then()
+    // returns nothing, so wrap it in a real Promise before chaining.
+    Promise.resolve(initialMissingDates)
       .then(dates => {
         if (!cancelled) setMissingDates(dates)
       })

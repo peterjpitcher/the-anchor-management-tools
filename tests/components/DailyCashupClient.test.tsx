@@ -216,6 +216,20 @@ describe('DailyClient', () => {
     expect(screen.getByRole('button', { name: 'Fri 22 May' })).toBeInTheDocument()
   })
 
+  it('accepts a React Flight thenable whose then() returns nothing', async () => {
+    // What the browser receives for a promise passed across the server boundary.
+    const flightThenable = {
+      then(onFulfilled: (dates: string[]) => void) {
+        setTimeout(() => onFulfilled(['2026-05-22']), 0)
+        return undefined
+      },
+    } as unknown as Promise<string[]>
+
+    render(<DailyClient {...baseProps} missingDates={flightThenable} />)
+
+    expect(await screen.findByText('1 missing cashing up entry')).toBeInTheDocument()
+  })
+
   it('shows no missing-dates alert when the streamed list fails', async () => {
     render(<DailyClient {...baseProps} missingDates={Promise.reject(new Error('boom'))} />)
 
