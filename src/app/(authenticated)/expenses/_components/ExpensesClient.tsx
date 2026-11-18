@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useCallback, useTransition, useEffect, useMemo } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useCallback, useTransition, useMemo } from 'react'
 import {
   Button,
   Input,
@@ -61,6 +60,8 @@ const expenseRowKey = (expense: Expense): string => expense.id
 interface ExpensesClientProps {
   initialExpenses: Expense[]
   initialStats: ExpenseStats
+  /** The dates the server already applied to initialExpenses (from the page address). */
+  initialFilters?: ExpenseFilters
 }
 
 // ---------------------------------------------------------------------------
@@ -70,32 +71,16 @@ interface ExpensesClientProps {
 export function ExpensesClient({
   initialExpenses,
   initialStats,
+  initialFilters,
 }: ExpensesClientProps): React.JSX.Element {
-  const searchParams = useSearchParams()
   const [expenses, setExpenses] = useState<Expense[]>(initialExpenses)
   const [stats, setStats] = useState<ExpenseStats>(initialStats)
-  const [filters, setFilters] = useState<ExpenseFilters>(() => {
-    const from = searchParams.get('from') ?? undefined
-    const to = searchParams.get('to') ?? undefined
-    return { dateFrom: from, dateTo: to }
-  })
+  // The server has already applied these filters to initialExpenses, so nothing is refetched on mount.
+  const [filters, setFilters] = useState<ExpenseFilters>(() => ({
+    dateFrom: initialFilters?.dateFrom,
+    dateTo: initialFilters?.dateTo,
+  }))
   const [isPending, startTransition] = useTransition()
-
-  // Apply URL search params as initial filters on mount
-  useEffect(() => {
-    const from = searchParams.get('from')
-    const to = searchParams.get('to')
-    if (from || to) {
-      const initialFilters: ExpenseFilters = {
-        dateFrom: from ?? undefined,
-        dateTo: to ?? undefined,
-      }
-      startTransition(async () => {
-        const result = await getExpenses(initialFilters)
-        if (result.success && result.data) setExpenses(result.data)
-      })
-    }
-  }, [])
 
   // Modal state
   const [showForm, setShowForm] = useState(false)
