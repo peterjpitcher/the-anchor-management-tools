@@ -85,6 +85,8 @@ interface RosterSetup {
   leaveDayPage?: (from: number, to: number) => Result
   holidayYearStartMonth?: number
   holidayYearStartDay?: number
+  /** Overrides the answer to the paged employees read, given the range asked for. */
+  pageRange?: (from: number, to: number, employees: Record<string, unknown>[]) => Result
 }
 
 function setupRoster({
@@ -92,13 +94,17 @@ function setupRoster({
   leaveDayPage = () => ({ data: [], error: null }),
   holidayYearStartMonth = 1,
   holidayYearStartDay = 1,
+  pageRange,
 }: RosterSetup = {}) {
   return recordingClient((table, calls) => {
     if (table === 'employees') {
-      const [columns, options] = (argsOf(calls, 'select')[0] ?? []) as [string, { count?: string } | undefined]
+      const [columns, options] = (argsOf(calls, 'select')[0] ?? []) as [string, { count?: string; head?: boolean } | undefined]
       if (columns === 'status') return { data: employees.map((row) => ({ status: row.status })), error: null }
-      if (options?.count === 'exact') return { count: employees.length, error: null }
-      return { data: employees, error: null }
+      if (options?.head) return { count: employees.length, error: null }
+      const range = argsOf(calls, 'range')[0] as [number, number] | undefined
+      if (range && pageRange) return pageRange(range[0], range[1], employees)
+      const rows = range ? employees.slice(range[0], range[1] + 1) : employees
+      return { data: rows, error: null, count: options?.count === 'exact' ? employees.length : null }
     }
     if (table === 'leave_days') {
       const [from, to] = argsOf(calls, 'range')[0] as [number, number]
@@ -176,6 +182,83 @@ describe('the roster sends only the columns the list shows (FF-06)', () => {
     const [filter] = argsOf(pageRead.calls, 'or')[0] as [string]
     expect(filter).toContain('mobile_number.ilike.%07700%')
     expect(filter).toContain('post_code.ilike.%07700%')
+  })
+})
+
+describe('the roster loads in two stages (spec 5.4)', () => {
+  function employeesNamed(count: number) {
+    return Array.from({ length: count }, (_, index) => fullEmployee(`employee-${String(index + 1).padStart(3, '0')}`, {
+      status: index % 4 === 0 ? 'Former' : index % 4 === 1 ? 'Onboarding' : index % 4 === 2 ? 'Started Separation' : 'Active',
+    }))
+  }
+
+  it('takes the filtered total from the page read itself, with no separate count query', async () => {
+    const { queries } = setupRoster({ employees: employeesNamed(7) })
+
+    const result = await EmployeeService.getEmployeesRoster({ page: 2, pageSize: 3 })
+
+    const employeeReads = queries.filter((query) => query.table === 'employees')
+    // One read for the tab counts (status only) and one for the page; no head-only count.
+    expect(employeeReads.map((query) => argsOf(query.calls, 'select')[0])).toEqual([
+      ['status'],
+      [expect.any(String), { count: 'exact' }],
+    ])
+    expect(argsOf(employeeReads[1].calls, 'range')).toEqual([[3, 5]])
+    expect(result.pagination).toEqual({ page: 2, pageSize: 3, totalCount: 7, totalPages: 3 })
+    expect(result.employees.map((employee) => employee.employee_id)).toEqual(['employee-004', 'employee-005', 'employee-006'])
+    expect(result.statusCounts).toEqual({ all: 7, active: 3, former: 2, onboarding: 2, startedSeparation: 2 })
+  })
+
+  it('starts the holiday year and leave type reads alongside the page, before the leave days', async () => {
+    const { queries } = setupRoster()
+
+    await EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })
+
+    const order = queries.map((query) => query.table)
+    expect(order.slice(0, 2)).toEqual(['employees', 'employees'])
+    expect(order.indexOf('system_settings')).toBeLessThan(order.indexOf('leave_days'))
+    expect(order.indexOf('leave_types')).toBeLessThan(order.indexOf('leave_days'))
+  })
+
+  it('falls back to the last page when the requested page is past the end', async () => {
+    const { queries } = setupRoster({ employees: employeesNamed(5) })
+
+    const result = await EmployeeService.getEmployeesRoster({ page: 9, pageSize: 2 })
+
+    expect(result.pagination).toEqual({ page: 3, pageSize: 2, totalCount: 5, totalPages: 3 })
+    expect(result.employees.map((employee) => employee.employee_id)).toEqual(['employee-005'])
+    const pageReads = queries.filter((query) => query.table === 'employees' && argsOf(query.calls, 'range').length > 0)
+    expect(pageReads.map((query) => argsOf(query.calls, 'range')[0])).toEqual([[16, 17], [4, 5]])
+  })
+
+  it('falls back to the last page when PostgREST refuses the range (PGRST103)', async () => {
+    const all = employeesNamed(5)
+    setupRoster({
+      employees: all,
+      pageRange: (from, to, rows) => (from >= rows.length
+        ? { data: null, count: null, error: { message: 'Requested range not satisfiable', code: 'PGRST103' } as { message: string } }
+        : { data: rows.slice(from, to + 1), count: rows.length, error: null }),
+    })
+
+    const result = await EmployeeService.getEmployeesRoster({ page: 4, pageSize: 2 })
+
+    expect(result.pagination).toEqual({ page: 3, pageSize: 2, totalCount: 5, totalPages: 3 })
+    expect(result.employees.map((employee) => employee.employee_id)).toEqual(['employee-005'])
+  })
+
+  it('returns page 1 with no pages when nobody matches, even from a later page', async () => {
+    setupRoster({ employees: [] })
+
+    const result = await EmployeeService.getEmployeesRoster({ page: 3, pageSize: 50 })
+
+    expect(result.pagination).toEqual({ page: 1, pageSize: 50, totalCount: 0, totalPages: 0 })
+    expect(result.employees).toEqual([])
+  })
+
+  it('throws when the page read fails', async () => {
+    setupRoster({ pageRange: () => ({ data: null, count: null, error: { message: 'boom' } }) })
+
+    await expect(EmployeeService.getEmployeesRoster({ page: 1, pageSize: 50 })).rejects.toMatchObject({ message: 'boom' })
   })
 })
 

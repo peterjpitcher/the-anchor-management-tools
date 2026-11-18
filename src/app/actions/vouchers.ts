@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { fromZonedTime } from 'date-fns-tz'
 import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
+import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getTodayIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
@@ -941,34 +942,73 @@ interface SummaryVoucherRow {
   batch_id: string
 }
 
-export async function getVoucherSummary(): Promise<{ success?: boolean; error?: string; data?: VoucherSummary }> {
+/** The voucher type fields the overview reads; the copy, artwork and terms stay in the database. */
+type SummaryTypeRow = Pick<VoucherTypeRow, 'id' | 'display_title' | 'value_pence' | 'digital_only'>
+
+/** The batch fields the overview reads; the type definitions snapshot can be large and is not used. */
+type SummaryBatchRow = Pick<
+  VoucherBatchRow,
+  'id' | 'created_at' | 'created_by_name' | 'note' | 'total_count' | 'pdf_status' | 'render_error'
+>
+
+export async function getVoucherSummary(): Promise<{
+  success?: boolean
+  error?: string
+  /** True when the caller may not manage vouchers, so the page can send them to /unauthorized. */
+  forbidden?: boolean
+  data?: VoucherSummary
+}> {
   const ctx = await requireVouchersManage()
-  if (!ctx) return { error: 'You do not have permission to view vouchers.' }
+  if (!ctx) return { error: 'You do not have permission to view vouchers.', forbidden: true }
 
   const admin = createAdminClient()
 
   const [typesResult, batchesResult] = await Promise.all([
-    admin.from('voucher_types').select('*').order('sort_order', { ascending: true }),
-    admin.from('voucher_batches').select('*').order('created_at', { ascending: false }),
+    admin
+      .from('voucher_types')
+      .select('id, display_title, value_pence, digital_only')
+      .order('sort_order', { ascending: true }),
+    admin
+      .from('voucher_batches')
+      .select('id, created_at, created_by_name, note, total_count, pdf_status, render_error')
+      .order('created_at', { ascending: false }),
   ])
   if (typesResult.error) return { error: 'Could not load voucher types.' }
   if (batchesResult.error) return { error: 'Could not load voucher batches.' }
 
-  const types = ((typesResult.data ?? []) as VoucherTypeRow[]).map(mapVoucherTypeRow)
-  const batches = ((batchesResult.data ?? []) as VoucherBatchRow[]).map(mapVoucherBatchRow)
+  const types = ((typesResult.data ?? []) as SummaryTypeRow[]).map((row) => ({
+    id: row.id,
+    displayTitle: row.display_title,
+    valuePence: row.value_pence,
+    digitalOnly: row.digital_only,
+  }))
+  const batches = ((batchesResult.data ?? []) as SummaryBatchRow[]).map((row) => ({
+    id: row.id,
+    createdAt: row.created_at,
+    createdByName: row.created_by_name,
+    note: row.note,
+    totalCount: row.total_count,
+    pdfStatus: row.pdf_status,
+    renderError: row.render_error,
+  }))
   const readyBatchIds = new Set(batches.filter((b) => b.pdfStatus === 'ready').map((b) => b.id))
 
-  const vouchers: SummaryVoucherRow[] = []
-  const pageSize = 1000
-  for (let from = 0; from < 50000; from += pageSize) {
-    const { data, error } = await admin
-      .from('vouchers')
-      .select('status, type_id, value_pence, issued_at, expiry_date, redeemed_at, batch_id')
-      .range(from, from + pageSize - 1)
-    if (error) return { error: 'Could not load vouchers.' }
-    const chunk = (data ?? []) as SummaryVoucherRow[]
-    vouchers.push(...chunk)
-    if (chunk.length < pageSize) break
+  // Every voucher, read in pages. Without a fixed order Postgres may hand back the rows of one
+  // page again on the next and skip others, so once the table passed 1,000 rows the totals could
+  // silently drift. Ordering by id keeps each page distinct.
+  let vouchers: SummaryVoucherRow[]
+  try {
+    vouchers = await fetchAllRows<SummaryVoucherRow>(
+      (from, to) =>
+        admin
+          .from('vouchers')
+          .select('status, type_id, value_pence, issued_at, expiry_date, redeemed_at, batch_id')
+          .order('id', { ascending: true })
+          .range(from, to),
+      { maxRows: 50_000, label: 'voucher summary' }
+    )
+  } catch {
+    return { error: 'Could not load vouchers.' }
   }
 
   const todayIso = getTodayIsoDate()

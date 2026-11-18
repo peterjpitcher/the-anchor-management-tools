@@ -27,6 +27,7 @@ import {
   redeemVoucher,
   undoVoucherRedeem,
   cancelVoucher,
+  getVoucherSummary,
 } from '@/app/actions/vouchers'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -376,3 +377,136 @@ describe('createVoucherBatch: email-only vouchers are never printed', () => {
   })
 })
 
+
+describe('getVoucherSummary (spec 5.4)', () => {
+  type Call = { method: string; args: unknown[] }
+
+  function voucher(index: number, overrides: Record<string, unknown> = {}) {
+    return {
+      id: `v-${String(index).padStart(5, '0')}`,
+      status: 'issued',
+      type_id: 't-1',
+      value_pence: 1000,
+      issued_at: '2026-08-10T10:00:00.000Z',
+      expiry_date: '2026-12-31',
+      redeemed_at: null,
+      batch_id: 'b-ready',
+      ...overrides,
+    }
+  }
+
+  /** Answers each table's read; the vouchers read is served in pages from `rows`, honouring range. */
+  function setSummaryAdmin(rows: Record<string, unknown>[], opts: { failPage?: number } = {}) {
+    const queries: Array<{ table: string; calls: Call[] }> = []
+    const from = vi.fn((table: string) => {
+      const calls: Call[] = []
+      queries.push({ table, calls })
+      const builder: Record<string, unknown> = {}
+      for (const method of ['select', 'order', 'range', 'eq']) {
+        builder[method] = (...args: unknown[]) => {
+          calls.push({ method, args })
+          return builder
+        }
+      }
+      builder.then = (onFulfilled: (value: unknown) => unknown, onRejected?: (reason: unknown) => unknown) => {
+        let result: unknown
+        if (table === 'voucher_types') {
+          result = {
+            data: [
+              { id: 't-1', display_title: 'Ten pounds off', value_pence: 1000, digital_only: false },
+              { id: 't-2', display_title: 'Free pudding', value_pence: null, digital_only: true },
+            ],
+            error: null,
+          }
+        } else if (table === 'voucher_batches') {
+          result = {
+            data: [
+              { id: 'b-ready', created_at: '2026-08-01T00:00:00Z', created_by_name: 'Sam', note: null, total_count: 10, pdf_status: 'ready', render_error: null },
+              { id: 'b-pending', created_at: '2026-08-02T00:00:00Z', created_by_name: 'Sam', note: 'New', total_count: 5, pdf_status: 'pending', render_error: null },
+            ],
+            error: null,
+          }
+        } else if (table === 'vouchers') {
+          const range = calls.find((call) => call.method === 'range')?.args as [number, number]
+          const page = Math.floor(range[0] / 1000)
+          result = opts.failPage === page
+            ? { data: null, error: { message: 'timeout' } }
+            : { data: rows.slice(range[0], range[1] + 1), error: null }
+        } else {
+          throw new Error(`Unexpected table ${table}`)
+        }
+        return Promise.resolve(result).then(onFulfilled, onRejected)
+      }
+      return builder
+    })
+    mockedAdmin.mockReturnValue({ from })
+    return { queries }
+  }
+
+  it('reads vouchers in id order, page by page, and counts every row once', async () => {
+    // 2,300 vouchers: 1,000 issued in stock type t-1, then a mix, across three pages.
+    const rows = [
+      ...Array.from({ length: 1000 }, (_, i) => voucher(i)),
+      ...Array.from({ length: 800 }, (_, i) => voucher(1000 + i, { status: 'generated' })),
+      ...Array.from({ length: 300 }, (_, i) => voucher(1800 + i, { status: 'generated', batch_id: 'b-pending' })),
+      ...Array.from({ length: 150 }, (_, i) => voucher(2100 + i, { status: 'redeemed', redeemed_at: '2026-08-05T23:30:00.000Z' })),
+      ...Array.from({ length: 30 }, (_, i) => voucher(2250 + i, { status: 'cancelled', type_id: 't-2' })),
+      ...Array.from({ length: 20 }, (_, i) => voucher(2280 + i, { status: 'expired', type_id: 't-2' })),
+    ]
+    const { queries } = setSummaryAdmin(rows)
+
+    const result = await getVoucherSummary()
+
+    const voucherReads = queries.filter((query) => query.table === 'vouchers')
+    expect(voucherReads.map((query) => query.calls.find((call) => call.method === 'range')?.args)).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ])
+    for (const read of voucherReads) {
+      expect(read.calls.filter((call) => call.method === 'order').map((call) => call.args)).toEqual([['id', { ascending: true }]])
+    }
+
+    expect(result.error).toBeUndefined()
+    const data = result.data!
+    expect(data.totals).toEqual({ inStock: 800, issued: 1000, redeemed: 150, expired: 20, cancelled: 30 })
+    expect(data.tiles).toEqual({ totalInStock: 800, totalOutstanding: 1000, redeemedThisMonth: 150, outstandingValuePence: 1_000_000 })
+    expect(data.stock.map((row) => [row.typeId, row.displayTitle, row.inStock, row.lowStock, row.digitalOnly])).toEqual([
+      ['t-1', 'Ten pounds off', 800, false, false],
+      ['t-2', 'Free pudding', 0, false, true],
+    ])
+    expect(data.notPrintable).toEqual([
+      { batchId: 'b-pending', createdAt: '2026-08-02T00:00:00Z', createdByName: 'Sam', note: 'New', totalCount: 5, pdfStatus: 'pending', renderError: null },
+    ])
+    // Ages run from the real clock, so check that every issued voucher lands in exactly one bucket.
+    expect(data.ageBuckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(1000)
+  })
+
+  it('selects only the type and batch fields the overview uses', async () => {
+    const { queries } = setSummaryAdmin([voucher(1)])
+
+    await getVoucherSummary()
+
+    const selectOf = (table: string) => queries.find((query) => query.table === table)!.calls.find((call) => call.method === 'select')!.args[0]
+    expect(selectOf('voucher_types')).toBe('id, display_title, value_pence, digital_only')
+    expect(selectOf('voucher_batches')).toBe('id, created_at, created_by_name, note, total_count, pdf_status, render_error')
+  })
+
+  it('returns an error rather than partial totals when a page cannot be read', async () => {
+    setSummaryAdmin(Array.from({ length: 1500 }, (_, i) => voucher(i)), { failPage: 1 })
+
+    const result = await getVoucherSummary()
+
+    expect(result).toEqual({ error: 'Could not load vouchers.' })
+  })
+
+  it('refuses without vouchers:manage and says so, so the page can redirect', async () => {
+    mockedPermission.mockResolvedValue(false)
+    setSummaryAdmin([])
+
+    const result = await getVoucherSummary()
+
+    expect(result).toEqual({ error: 'You do not have permission to view vouchers.', forbidden: true })
+    expect(mockedAdmin).not.toHaveBeenCalled()
+  })
+})

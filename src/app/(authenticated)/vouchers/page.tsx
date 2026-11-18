@@ -1,6 +1,5 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { checkUserPermission } from '@/app/actions/rbac'
 import { getVoucherSummary } from '@/app/actions/vouchers'
 import {
   PageLayout,
@@ -59,10 +58,10 @@ function ageBucketHref(bucket: VoucherAgeBucket): string {
 }
 
 export default async function VouchersOverviewPage() {
-  const canManage = await checkUserPermission('vouchers', 'manage')
-  if (!canManage) redirect('/unauthorized')
-
+  // getVoucherSummary checks vouchers:manage itself, so the page relies on that one check rather
+  // than asking the same question twice, and sends anyone it refuses to /unauthorized as before.
   const summaryResult = await getVoucherSummary()
+  if (summaryResult.forbidden) redirect('/unauthorized')
 
   // Hand-Out Mode and Generate are tabs in the row above, so the header repeats neither.
   const layoutProps = {
