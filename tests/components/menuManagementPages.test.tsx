@@ -20,6 +20,7 @@ const listMenuDishesMock = vi.hoisted(() => vi.fn())
 const listMenuIngredientsMock = vi.hoisted(() => vi.fn())
 const listMenuRecipesMock = vi.hoisted(() => vi.fn())
 const getMenuIngredientPricesMock = vi.hoisted(() => vi.fn())
+const getMenuDishDetailMock = vi.hoisted(() => vi.fn())
 
 // Stable, as Next's router is: the Overview re-runs its load effect when the router changes.
 const router = vi.hoisted(() => ({ replace: vi.fn(), push: vi.fn(), refresh: vi.fn() }))
@@ -45,7 +46,7 @@ vi.mock('@/app/actions/menu-management', () => ({
   deleteMenuDish: vi.fn(),
   createMenuDish: vi.fn(),
   updateMenuDish: vi.fn(),
-  getMenuDishDetail: vi.fn(),
+  getMenuDishDetail: getMenuDishDetailMock,
   verifyDishAllergens: vi.fn(),
   deleteMenuIngredient: vi.fn(),
   updateIngredientPackCost: vi.fn(),
@@ -193,6 +194,25 @@ function clearPage(): void {
   vi.clearAllMocks()
 }
 
+/** The Overview as the server page draws it: dishes and menus already read and passed in. */
+function renderOverview(initialDishes: { data: Record<string, unknown>[] | null; target_gp_pct: number | null; error: string | null } = {
+  data: [dish], target_gp_pct: 0.7, error: null,
+}): void {
+  render(
+    <MenuManagementClient
+      initialDishes={initialDishes}
+      initialMenus={[{ id: 'menu-1', code: 'website_food', name: 'Website', categories: [{ id: 'cat-1', code: 'mains', name: 'Mains' }] }]}
+    />,
+  )
+}
+
+/** The Overview's dish table: the one with the active-status column. */
+function overviewDishTable(): HTMLElement {
+  const table = screen.getByRole('columnheader', { name: 'Active status' }).closest('table')
+  if (!table) throw new Error('the Active status column is not in a table')
+  return table
+}
+
 /** The value line of the DS Stat with this label. */
 function statValue(label: string): HTMLElement {
   // A span: the Overview's GP Status filter has an option with the same words.
@@ -221,7 +241,7 @@ describe('Menu tabs follow the page contract: the Overview, read from one render
   beforeAll(() => {
     stubPage()
     pathnameMock.current = '/menu-management'
-    render(<MenuManagementClient />)
+    renderOverview()
   })
 
   afterAll(clearPage)
@@ -246,6 +266,14 @@ describe('Menu tabs follow the page contract: the Overview, read from one render
     expect(screen.queryByText('Set selling prices and assign to menus.')).not.toBeInTheDocument()
   })
 
+  it('Overview: draws the dishes it was given without reading anything on mount', async () => {
+    expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
+    expect(listMenuDishesMock).not.toHaveBeenCalled()
+    expect(listMenuIngredientsMock).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+    expect(within(overviewDishTable()).getAllByRole('button', { name: 'Fish and Chips' }).length).toBeGreaterThan(0)
+  })
+
   it('Overview: the costing figures carry their colour', async () => {
     expect(await screen.findAllByText('Fish and Chips')).not.toHaveLength(0)
     // No dish below target is good news; a dish with no costing needs attention.
@@ -262,13 +290,64 @@ describe('Menu tabs follow the page contract', () => {
 
   it('Overview: a failed first load is an error with a retry, never an empty menu', async () => {
     pathnameMock.current = '/menu-management'
-    listMenuDishesMock.mockResolvedValue({ error: 'Database unavailable' })
-    render(<MenuManagementClient />)
+    renderOverview({ data: null, target_gp_pct: null, error: 'Database unavailable' })
 
     expect(await screen.findByText('Database unavailable')).toBeInTheDocument()
     expectMenuChrome(/^Overview: /)
     expect(within(screen.getByRole('alert')).getByRole('button', { name: 'Try Again' })).toBeInTheDocument()
     expect(screen.queryByText('Total Dishes')).not.toBeInTheDocument()
+  })
+
+  it('Overview: Try Again after a failed first load reads the dishes again', async () => {
+    pathnameMock.current = '/menu-management'
+    renderOverview({ data: null, target_gp_pct: null, error: 'Database unavailable' })
+
+    fireEvent.click(within(await screen.findByRole('alert')).getByRole('button', { name: 'Try Again' }))
+    expect(await screen.findByText('Total Dishes')).toBeInTheDocument()
+    expect(listMenuDishesMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('Overview: the dish drawer loads ingredients and recipes once, on its first opening', async () => {
+    pathnameMock.current = '/menu-management'
+    getMenuDishDetailMock.mockResolvedValue({ data: { dish: { name: 'Fish and Chips', selling_price: 16, is_active: true }, ingredients: [], recipes: [], assignments: [] } })
+    renderOverview()
+    expect(listMenuIngredientsMock).not.toHaveBeenCalled()
+    expect(fetch).not.toHaveBeenCalled()
+
+    fireEvent.click(within(overviewDishTable()).getAllByRole('button', { name: 'Fish and Chips' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(listMenuIngredientsMock).toHaveBeenCalledTimes(1))
+    expect(listMenuIngredientsMock).toHaveBeenCalledWith({ includeUsage: false })
+    expect(fetch).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledWith('/api/menu-management/recipes?summary=1')
+
+    // The dish detail has filled the form, so Cancel closes without an unsaved-changes prompt.
+    expect(await within(dialog).findByDisplayValue('Fish and Chips')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    fireEvent.click(within(overviewDishTable()).getAllByRole('button', { name: 'Fish and Chips' })[0])
+    expect(await screen.findByRole('dialog')).toBeInTheDocument()
+    expect(listMenuIngredientsMock).toHaveBeenCalledTimes(1)
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('Overview: a failed drawer load tries again on the next opening', async () => {
+    pathnameMock.current = '/menu-management'
+    getMenuDishDetailMock.mockResolvedValue({ data: { dish: { name: 'Fish and Chips', selling_price: 16, is_active: true }, ingredients: [], recipes: [], assignments: [] } })
+    listMenuIngredientsMock.mockResolvedValueOnce({ error: 'Ingredients unavailable' })
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    renderOverview()
+
+    fireEvent.click(within(overviewDishTable()).getAllByRole('button', { name: 'Fish and Chips' })[0])
+    const dialog = await screen.findByRole('dialog')
+    await waitFor(() => expect(listMenuIngredientsMock).toHaveBeenCalledTimes(1))
+
+    // The dish detail has filled the form, so Cancel closes without an unsaved-changes prompt.
+    expect(await within(dialog).findByDisplayValue('Fish and Chips')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    fireEvent.click(within(overviewDishTable()).getAllByRole('button', { name: 'Fish and Chips' })[0])
+    await waitFor(() => expect(listMenuIngredientsMock).toHaveBeenCalledTimes(2))
   })
 
   it('Dishes: filters above the table, the allergen report as a header action', async () => {

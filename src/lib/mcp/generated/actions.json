@@ -5992,9 +5992,15 @@
   "name": "menu-management.listMenuIngredients",
   "module": "menu-management",
   "export": "listMenuIngredients",
-  "params": [],
+  "params": [
+   {
+    "name": "options",
+    "type": "{ includeUsage?: boolean }",
+    "optional": true
+   }
+  ],
   "typeRefs": {},
-  "doc": "",
+  "doc": "Lists every menu ingredient with its latest prices. By default each ingredient also lists the\ndishes it is used in (`dishes`). Pass `{ includeUsage: false }` to skip those reads when only the\ningredient fields are needed; `dishes` is then an empty list. Read-only.",
   "readOnly": true
  },
  {
