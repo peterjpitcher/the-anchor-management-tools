@@ -12354,6 +12354,21 @@
   "readOnly": true
  },
  {
+  "name": "rota.getShiftAuditTrail",
+  "module": "rota",
+  "export": "getShiftAuditTrail",
+  "params": [
+   {
+    "name": "shiftId",
+    "type": "string",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "The change history of one rota shift, newest first, for the \"Shift Audit Trail\" card in the\nshift modal. Read-only. Needs rota view, the same permission as the rota page. Returns the\nentries plus `valueLabels`, a map from each employee id named in them to that person's name,\nso the modal can show names instead of ids.",
+  "readOnly": true
+ },
+ {
   "name": "rota.getWeekShifts",
   "module": "rota",
   "export": "getWeekShifts",

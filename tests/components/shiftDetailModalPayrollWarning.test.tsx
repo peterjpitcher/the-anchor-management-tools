@@ -13,6 +13,7 @@ vi.mock('@/app/actions/rota', () => ({
   autoPopulateWeekFromTemplates: vi.fn(),
   createShift: vi.fn(),
   deleteShift: vi.fn(),
+  getShiftAuditTrail: vi.fn().mockResolvedValue({ success: true, data: { entries: [], valueLabels: {} } }),
   markEmployeeCouldntWork: vi.fn(),
   markShiftSick: vi.fn(),
   moveShift: vi.fn(),
