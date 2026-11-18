@@ -12,7 +12,7 @@ import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus, ParkingRate } from '@/types/parking'
-import { calculateParkingPricing } from '@/lib/parking/pricing'
+import { calculateParkingPricing, parkingRateConfigFromRecord } from '@/lib/parking/pricing'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
 import { createPendingParkingBooking } from '@/services/parking'
 import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
@@ -271,7 +271,12 @@ export async function listParkingBookings(options?: {
 
     let query = supabase
       .from('parking_bookings')
-      .select('*')
+      // Every field of the ParkingBooking type, named, so the list no longer pulls the table's
+      // audit columns (created_by, updated_by) or any column added later. The parking page, the
+      // events calendar and agents (through the MCP bridge) read these rows: keep it in step with the type.
+      .select(
+        'id, reference, status, payment_status, calculated_price, override_price, override_reason, pricing_breakdown, start_at, end_at, duration_minutes, customer_id, customer_first_name, customer_last_name, customer_mobile, customer_email, vehicle_registration, vehicle_make, vehicle_model, vehicle_colour, payment_due_at, expires_at, confirmed_at, cancelled_at, completed_at, notes, capacity_override, capacity_override_reason, payment_overdue_notified, start_notification_sent, end_notification_sent, initial_request_sms_sent, unpaid_week_before_sms_sent, unpaid_day_before_sms_sent, paid_start_three_day_sms_sent, paid_end_three_day_sms_sent, created_at, updated_at'
+      )
       .order('start_at', { ascending: false })
       .limit(limit)
 
@@ -373,12 +378,7 @@ export async function getParkingRateConfig(): Promise<{ success: true; data: Par
       return { error: 'Parking rates have not been configured' }
     }
 
-    const config: ParkingRateConfig = {
-      hourlyRate: Number(rateRecord.hourly_rate) || 0,
-      dailyRate: Number(rateRecord.daily_rate) || 0,
-      weeklyRate: Number(rateRecord.weekly_rate) || 0,
-      monthlyRate: Number(rateRecord.monthly_rate) || 0
-    }
+    const config: ParkingRateConfig = parkingRateConfigFromRecord(rateRecord)
 
     return { success: true, data: config }
   } catch (error) {
