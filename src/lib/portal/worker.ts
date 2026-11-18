@@ -1,6 +1,6 @@
 import { hasLeft } from '@/lib/employees/current-staff'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 
 /**
  * Who is using the staff portal. One resolver for every portal feature (documents, training and
@@ -26,10 +26,7 @@ const PORTAL_WORKER_STATUSES = ['Onboarding', 'Active', 'Started Separation'] as
  * never answered as "not linked".
  */
 export async function getPortalWorker(): Promise<PortalWorker | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return null
 
   const admin = createAdminClient()

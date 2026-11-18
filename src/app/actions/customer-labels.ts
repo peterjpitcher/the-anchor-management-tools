@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logAuditEvent } from './audit'
 import { revalidatePath } from 'next/cache'
@@ -30,10 +30,7 @@ type CustomerPermissionResult =
   | { error: string }
 
 async function requireCustomerPermission(action: CustomerPermissionAction): Promise<CustomerPermissionResult> {
-  const supabase = await createClient()
-  const {
-    data: { user }
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
 
   if (!user) {
     return { error: 'Not authenticated' }

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { PermissionService } from '@/services/permission';
 import { CashingUpService } from '@/services/cashing-up.service';
 import { type CashupInsightsPeriod, UpsertCashupSessionDTO } from '@/types/cashing-up';
@@ -19,7 +20,7 @@ function isCashupAlreadyExistsError(error: unknown): boolean {
 
 async function getSessionByIdAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -40,7 +41,7 @@ async function getSessionByIdAction(id: string) {
 
 export async function upsertSessionAction(data: UpsertCashupSessionDTO, existingId?: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -66,7 +67,7 @@ export async function upsertSessionAction(data: UpsertCashupSessionDTO, existing
 
 export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO, existingId?: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) {
     return { success: false, error: 'Unauthorized' };
@@ -150,7 +151,7 @@ export async function upsertAndSubmitSessionAction(data: UpsertCashupSessionDTO,
 
 async function submitSessionAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -170,7 +171,7 @@ async function submitSessionAction(id: string) {
 
 export async function approveSessionAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -190,7 +191,7 @@ export async function approveSessionAction(id: string) {
 
 export async function lockSessionAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -210,7 +211,7 @@ export async function lockSessionAction(id: string) {
 
 export async function unlockSessionAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -238,7 +239,7 @@ export async function voidCashupSession(
   { sessionId, reason }: { sessionId: string; reason: string }
 ): Promise<{ success?: boolean; error?: string }> {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -303,7 +304,7 @@ export async function voidCashupSession(
 
 export async function deleteSessionAction(id: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -328,7 +329,7 @@ export async function deleteSessionAction(id: string) {
 
 export async function getWeeklyDataAction(siteId: string, weekStartDate: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -345,7 +346,7 @@ export async function getWeeklyDataAction(siteId: string, weekStartDate: string)
 
 export async function getDashboardDataAction(siteId?: string, fromDate?: string, toDate?: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
 
   if (!user) return { success: false, error: 'Unauthorized' };
 
@@ -364,7 +365,7 @@ export async function getDashboardDataAction(siteId?: string, fromDate?: string,
 export async function getInsightsDataAction(siteId?: string, year?: number, period?: CashupInsightsPeriod) {
   try {
     const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user } = await getCurrentUser();
 
     if (!user) {
       return { success: false, error: 'Unauthorized' };
@@ -394,7 +395,7 @@ export async function getInsightsDataAction(siteId?: string, year?: number, peri
 
 export async function getDailyTargetAction(siteId: string, date: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);
@@ -411,7 +412,7 @@ export async function getDailyTargetAction(siteId: string, date: string) {
 
 export async function setDailyTargetAction(siteId: string, date: string, amount: number) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'edit', user.id);
@@ -429,7 +430,7 @@ export async function setDailyTargetAction(siteId: string, date: string, amount:
 
 async function updateWeeklyTargetsAction(siteId: string, targets: Record<number, number>, effectiveDate: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'edit', user.id);
@@ -452,7 +453,7 @@ async function updateWeeklyTargetsAction(siteId: string, targets: Record<number,
 
 export async function getWeeklyProgressAction(siteId: string, date: string) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
 
   const hasPermission = await PermissionService.checkUserPermission('cashing_up', 'view', user.id);

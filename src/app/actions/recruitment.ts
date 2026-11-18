@@ -8,7 +8,7 @@ import {
 import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { settleWrite } from '@/lib/supabase/settle-write'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { parseLondonDateTimeLocalToIso } from '@/lib/dateUtils'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
@@ -97,8 +97,7 @@ const EMAIL_STATUS_TRANSITIONS: Partial<Record<RecruitmentTemplateType, {
 }
 
 async function currentUser() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   return user
 }
 

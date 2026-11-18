@@ -1,6 +1,6 @@
 import { checkUserPermission } from '@/app/actions/rbac'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { SIGNING_KIND_DEFINITIONS, getSigningKind } from './kinds'
 import type { SigningKind, SigningSubjectType } from './types'
 
@@ -18,10 +18,7 @@ export interface SigningStaffUser {
 }
 
 export async function getSigningStaffUser(): Promise<SigningStaffUser | null> {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return null
 
   const admin = createAdminClient()

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { getMgdQuarter, getCurrentMgdQuarter } from '@/lib/mgd/quarterMapping'
@@ -77,10 +77,7 @@ export interface MgdInsightsData {
 async function requireMgdViewPermission(): Promise<
   { userId: string } | { error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const allowed = await checkUserPermission('mgd', 'view', user.id)
@@ -92,10 +89,7 @@ async function requireMgdViewPermission(): Promise<
 async function requireMgdManagePermission(): Promise<
   { userId: string } | { error: string }
 > {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const { user } = await getCurrentUser()
   if (!user) return { error: 'Not authenticated' }
 
   const allowed = await checkUserPermission('mgd', 'manage', user.id)

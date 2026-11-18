@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentUser } from '@/lib/supabase/current-user';
 import { getErrorMessage } from '@/lib/errors';
 import { checkUserPermission } from '@/app/actions/rbac';
 import { findMissingCashupDates } from '@/lib/cashing-up/trading-days';
@@ -8,7 +9,7 @@ import { shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils';
 
 export async function getMissingCashupDatesAction(siteId: string, daysBack = 365) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const { user } = await getCurrentUser();
   if (!user) return { success: false, error: 'Unauthorized' };
   const canView = await checkUserPermission('cashing_up', 'view', user.id);
   if (!canView) return { success: false, error: 'Permission denied' };
