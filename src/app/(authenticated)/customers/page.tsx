@@ -18,13 +18,15 @@ interface Props {
 export default async function CustomersPage({ searchParams }: Props) {
   const resolved = await searchParams
 
-  const canView = await checkUserPermission('customers', 'view')
+  // The three checks are independent, so they run together rather than one after another.
+  const [canView, canManage, canSendBulkMessages] = await Promise.all([
+    checkUserPermission('customers', 'view'),
+    checkUserPermission('customers', 'manage'),
+    checkUserPermission('messages', 'send_marketing'),
+  ])
   if (!canView) {
     redirect('/unauthorized')
   }
-
-  const canManage = await checkUserPermission('customers', 'manage')
-  const canSendBulkMessages = await checkUserPermission('messages', 'send_marketing')
 
   const page = Math.max(1, Number(resolved.page) || 1)
   const pageSize = Number(resolved.size) || DEFAULT_PAGE_SIZE

@@ -1736,14 +1736,14 @@
   "params": [
    {
     "name": "params",
-    "type": "{\n  page: number\n  pageSize: number\n  searchTerm: string\n  smsFilter: CustomerSmsFilter\n}",
+    "type": "{\n  page: number\n  pageSize: number\n  searchTerm: string\n  smsFilter: CustomerSmsFilter\n  includeTabCounts?: boolean\n}",
     "optional": false
    }
   ],
   "typeRefs": {
    "CustomerSmsFilter": "type CustomerSmsFilter = 'all' | 'active' | 'deactivated'"
   },
-  "doc": "Server-side customer list fetch with enrichment data (preferences, labels,\nunread message counts).  Used by the Customers page Server Component to\nprovide data for the initial render — no skeleton flash on first visit.",
+  "doc": "Server-side customer list fetch with enrichment data (preferences, labels,\nunread message counts). Used by the Customers page Server Component for the\nfirst render, so there is no skeleton flash on first visit, and by the list\nwhen staff page, search or filter.\n\nThe SMS Active and SMS Deactivated tab counts do not depend on the page, so a\ncaller that already holds them for the same search and filter passes\n`includeTabCounts: false` and gets null for both, saving two full counts.\nLeft out, it defaults to true.",
   "readOnly": true
  },
  {
