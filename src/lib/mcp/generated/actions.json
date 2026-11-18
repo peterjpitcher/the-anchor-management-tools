@@ -2958,6 +2958,21 @@
   "readOnly": false
  },
  {
+  "name": "event-booking-delete.deleteExpiredEventBooking",
+  "module": "event-booking-delete",
+  "export": "deleteExpiredEventBooking",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  bookingId: string\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Delete an event booking whose payment hold ran out (status `expired`), so lapsed holds can be\ncleared off an event's attendee list by hand (owner request, 18 November 2026).\n\nOnly an expired booking with no money and no history behind it can go: any payment that is not\n`failed` or `void`, a refund request, a ticket transfer, a check-in or a payment exception\nrefuses the delete. Its failed payment attempts, pay link and reminders are deleted with it\n(database cascades); messages already sent stay on the customer's record. A snapshot of the\nbooking is written to the audit log first, because the row itself is gone afterwards.\n\nIf PayPal later reports a capture for the deleted booking, the event payment webhook raises it\nto staff as needing a person (manual review), so money is never taken silently.",
+  "readOnly": false
+ },
+ {
   "name": "event-categories.categorizeHistoricalEvents",
   "module": "event-categories",
   "export": "categorizeHistoricalEvents",

@@ -27,7 +27,19 @@ export interface AuditLogParams {
 }
 
 export class AuditService {
+  /**
+   * Writes the audit row and throws if it was not saved. For a change whose audit row is the only
+   * record left afterwards (a permanent delete): the caller must not go ahead without it.
+   */
+  static async logAuditEventOrThrow(params: AuditLogParams): Promise<void> {
+    await AuditService.writeAuditEvent(params, true);
+  }
+
   static async logAuditEvent(params: AuditLogParams) {
+    await AuditService.writeAuditEvent(params, false);
+  }
+
+  private static async writeAuditEvent(params: AuditLogParams, required: boolean): Promise<void> {
     try {
       const supabase = createAdminClient();
       const headersList = await headers();
@@ -73,9 +85,11 @@ export class AuditService {
 
       if (error) {
         console.error('Failed to create audit log:', error);
+        if (required) throw new Error(`Audit log not saved: ${error.message}`);
       }
     } catch (error) {
       console.error('Exception in audit logging:', error);
+      if (required) throw error;
     }
   }
 }
