@@ -6906,6 +6906,15 @@
   "readOnly": false
  },
  {
+  "name": "oj-projects/clients.getOJClientOptions",
+  "module": "oj-projects/clients",
+  "export": "getOJClientOptions",
+  "params": [],
+  "typeRefs": {},
+  "doc": "Active clients as `id, name` only, in name order. The overview page needs no more than\nthis for its client filter and labels, so it skips the project count and retainer reads\nthat `getOJClients` makes. Same permission as `getOJClients`.",
+  "readOnly": true
+ },
+ {
   "name": "oj-projects/clients.getOJClients",
   "module": "oj-projects/clients",
   "export": "getOJClients",
@@ -7011,7 +7020,7 @@
   "params": [
    {
     "name": "options",
-    "type": "{\n  vendorId?: string\n  projectId?: string\n  status?: string\n  entryType?: string\n  billing?: string\n  search?: string\n  invoiceSearch?: string\n  startDate?: string\n  endDate?: string\n  limit?: number\n  page?: number\n  pageSize?: number\n}",
+    "type": "{\n  vendorId?: string\n  projectId?: string\n  status?: string\n  entryType?: string\n  billing?: string\n  search?: string\n  invoiceSearch?: string\n  startDate?: string\n  endDate?: string\n  limit?: number\n  page?: number\n  pageSize?: number\n  /**\n   * Ask the database for the exact matching total (default true). Callers that ignore\n   * `total` pass false to skip the count; `total` is then the number of rows returned.\n   */\n  withCount?: boolean\n}",
     "optional": true
    }
   ],
