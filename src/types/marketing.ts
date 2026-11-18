@@ -419,9 +419,26 @@ export interface MarketingCampaignSummary {
   needsReview: number
 }
 
-export interface MarketingCampaignWithSummary extends MarketingCampaign {
+/**
+ * A campaign as the campaign list shows it. The list read selects only these columns, so the
+ * large JSON columns (`content`, `link_map`, `audience`) are never fetched for a page of 50.
+ * Detail and edit screens read the full row through `getCampaign`.
+ */
+export interface MarketingCampaignListItem {
+  id: string
+  name: string
+  subject: string
+  status: MarketingCampaignStatus
+  kind: MarketingCampaignKind
+  audienceType: MarketingAudienceType
+  scheduledFor: string | null
+  createdAt: string
   summary: MarketingCampaignSummary
 }
+
+/** The columns `mapMarketingCampaignListItem` reads; keep the two in step. */
+export const MARKETING_CAMPAIGN_LIST_COLUMNS =
+  'id, name, subject, status, kind, audience_type, scheduled_for, created_at'
 
 /**
  * What the campaign actually caused, measured first-party.
@@ -622,6 +639,24 @@ export function audienceToDb(audience: MarketingAudience): {
     // Dropping this on an edit would turn a lifecycle campaign into one with no rule, which the
     // database refuses; keeping it means an edit to the copy leaves the audience alone.
     ...(audience.customerFilter ? { customer_filter: audience.customerFilter } : {}),
+  }
+}
+
+/** Maps a row read with `MARKETING_CAMPAIGN_LIST_COLUMNS`, coalescing exactly as `mapMarketingCampaign` does. */
+export function mapMarketingCampaignListItem(
+  row: DbRow,
+  summary: MarketingCampaignSummary,
+): MarketingCampaignListItem {
+  return {
+    id: row.id,
+    name: row.name,
+    subject: row.subject,
+    status: row.status,
+    kind: row.kind === 'lifecycle' ? 'lifecycle' : 'one_off',
+    audienceType: row.audience_type === 'customer' ? 'customer' : 'business',
+    scheduledFor: row.scheduled_for ?? null,
+    createdAt: row.created_at,
+    summary,
   }
 }
 
