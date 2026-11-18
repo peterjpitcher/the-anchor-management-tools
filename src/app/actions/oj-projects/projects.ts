@@ -96,31 +96,33 @@ export async function getProjects(options?: { vendorId?: string; status?: string
   const currentMonthBilledMap = new Map<string, number>()
 
   if (projectIds.length > 0) {
-    const { data: stats } = await supabase
-      .from('oj_project_stats')
-      .select('project_id, total_hours_used, total_spend_ex_vat')
-      .in('project_id', projectIds)
+    // The two reads are independent, so run them together.
+    const { start, nextStart } = getCurrentMonthBounds()
+    const [{ data: stats }, { data: currentMonthEntries }] = await Promise.all([
+      supabase
+        .from('oj_project_stats')
+        .select('project_id, total_hours_used, total_spend_ex_vat')
+        .in('project_id', projectIds),
+      supabase
+        .from('oj_entries')
+        .select(`
+          project_id,
+          entry_type,
+          duration_minutes_rounded,
+          hourly_rate_ex_vat_snapshot,
+          miles,
+          mileage_rate_snapshot,
+          amount_ex_vat_snapshot
+        `)
+        .in('project_id', projectIds)
+        .eq('billable', true)
+        .gte('entry_date', start)
+        .lt('entry_date', nextStart),
+    ])
 
     if (stats) {
       stats.forEach(s => statsMap.set(s.project_id, s))
     }
-
-    const { start, nextStart } = getCurrentMonthBounds()
-    const { data: currentMonthEntries } = await supabase
-      .from('oj_entries')
-      .select(`
-        project_id,
-        entry_type,
-        duration_minutes_rounded,
-        hourly_rate_ex_vat_snapshot,
-        miles,
-        mileage_rate_snapshot,
-        amount_ex_vat_snapshot
-      `)
-      .in('project_id', projectIds)
-      .eq('billable', true)
-      .gte('entry_date', start)
-      .lt('entry_date', nextStart)
 
     if (currentMonthEntries) {
       currentMonthEntries.forEach((entry) => {

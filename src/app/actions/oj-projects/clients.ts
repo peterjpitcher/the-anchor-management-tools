@@ -117,6 +117,39 @@ export async function getOJClients() {
   return { clients }
 }
 
+/** The id and name of a client, for pickers and labels that need nothing else. */
+export type OJClientOption = {
+  id: string
+  name: string
+}
+
+/**
+ * Active clients as `id, name` only, in name order. The overview page needs no more than
+ * this for its client filter and labels, so it skips the project count and retainer reads
+ * that `getOJClients` makes. Same permission as `getOJClients`.
+ */
+export async function getOJClientOptions(): Promise<{ clients?: OJClientOption[]; error?: string }> {
+  const hasPermission = await checkUserPermission('oj_projects', 'view')
+  if (!hasPermission) return { error: 'You do not have permission to view OJ Projects clients' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('invoice_vendors')
+    .select('id, name')
+    .eq('is_active', true)
+    .order('name')
+    .limit(10000)
+
+  if (error) return { error: error.message }
+
+  return {
+    clients: (data || []).map((vendor) => ({
+      id: String(vendor.id),
+      name: String(vendor.name || 'Unknown'),
+    })),
+  }
+}
+
 export async function createOJClient(formData: FormData) {
   const hasPermission = await checkUserPermission('oj_projects', 'create')
   if (!hasPermission) return { error: 'You do not have permission to create OJ clients' }
