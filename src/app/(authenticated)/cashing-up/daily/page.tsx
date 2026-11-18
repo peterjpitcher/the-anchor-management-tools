@@ -41,14 +41,19 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
   dateObj.setDate(diffToMon)
   const weekStart = `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, '0')}-${String(dateObj.getDate()).padStart(2, '0')}`
 
-  const [summaryRes, targetRes, weeklyRes, existingSessionRes, missingRes] = await Promise.all([
+  // The missing-dates check scans a year of trading days. It is not awaited here: the promise
+  // streams to the client, which shows the alert when it lands, so the form is not held up.
+  const missingDatesPromise: Promise<string[]> = getMissingCashupDatesAction(siteId)
+    .then(res => (res.success && res.dates ? res.dates : []))
+    .catch(() => [])
+
+  const [summaryRes, targetRes, weeklyRes, existingSessionRes] = await Promise.all([
     getDailySummaryAction(sessionDate),
     getDailyTargetAction(siteId, sessionDate),
     getWeeklyDataAction(siteId, weekStart),
     CashingUpService.getSessionByDateAndSite(supabase, siteId, sessionDate)
       .then(data => ({ data, error: null }))
       .catch((error: unknown) => ({ data: null, error: getErrorMessage(error) })),
-    getMissingCashupDatesAction(siteId),
   ])
 
   if (existingSessionRes.error) {
@@ -74,7 +79,7 @@ export default async function DailyCashupPage(props: { searchParams: Promise<{ d
       weeklyData={weeklyRes.data ?? []}
       weeklyError={weeklyRes.data ? undefined : weeklyRes.error ?? 'The week could not be loaded'}
       existingSession={existingSession ? JSON.parse(JSON.stringify(existingSession)) : null}
-      missingDates={missingRes.success && missingRes.dates ? missingRes.dates : []}
+      missingDates={missingDatesPromise}
       initialEditMode={initialEditMode}
     />
   )

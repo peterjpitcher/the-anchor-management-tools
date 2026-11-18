@@ -344,7 +344,16 @@ export async function getWeeklyDataAction(siteId: string, weekStartDate: string)
   }
 }
 
-export async function getDashboardDataAction(siteId?: string, fromDate?: string, toDate?: string) {
+/**
+ * Dashboard figures for a date range. `sites` is optional: pass the sites already read (id and
+ * name) to save a re-read; they only label rows with a site name.
+ */
+export async function getDashboardDataAction(
+  siteId?: string,
+  fromDate?: string,
+  toDate?: string,
+  sites?: Array<{ id: string; name: string }>,
+) {
   const supabase = await createClient();
   const { user } = await getCurrentUser();
 
@@ -354,7 +363,7 @@ export async function getDashboardDataAction(siteId?: string, fromDate?: string,
   if (!hasPermission) return { success: false, error: 'Forbidden' };
 
   try {
-    const data = await CashingUpService.getDashboardData(supabase, siteId, fromDate, toDate);
+    const data = await CashingUpService.getDashboardData(supabase, siteId, fromDate, toDate, sites);
     return { success: true, data };
   } catch (error) {
     console.error('Error fetching dashboard data:', error);

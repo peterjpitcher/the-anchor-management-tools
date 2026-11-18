@@ -15,7 +15,7 @@ vi.mock('@/lib/supabase/server', () => ({
     from: () => ({
       select: () => ({
         limit: () => ({
-          single: async () => ({ data: { id: 'site-1' }, error: null }),
+          single: async () => ({ data: { id: 'site-1', name: 'The Anchor' }, error: null }),
         }),
       }),
     }),
@@ -32,6 +32,9 @@ vi.mock('@/app/(authenticated)/cashing-up/dashboard/_components/DashboardClient'
 }))
 
 import CashupDashboardPage from '@/app/(authenticated)/cashing-up/dashboard/page'
+
+// The page reads the site once and passes it to every dashboard call (spec 5.4).
+const SITES = [{ id: 'site-1', name: 'The Anchor' }]
 
 // 00:30 BST on Friday 2 October 2026 in London; still Thursday 1 October in UTC.
 const JUST_AFTER_MIDNIGHT_BST = '2026-10-01T23:30:00Z'
@@ -53,15 +56,15 @@ describe('CashupDashboardPage', () => {
     await CashupDashboardPage({ searchParams: Promise.resolve({ compareYear: '2025' }) })
 
     expect(getDashboardDataAction).toHaveBeenCalledTimes(2)
-    expect(getDashboardDataAction).toHaveBeenNthCalledWith(1, 'site-1', '2026-01-01', '2026-12-31')
-    expect(getDashboardDataAction).toHaveBeenNthCalledWith(2, 'site-1', '2025-01-01', '2025-10-02')
+    expect(getDashboardDataAction).toHaveBeenNthCalledWith(1, 'site-1', '2026-01-01', '2026-12-31', SITES)
+    expect(getDashboardDataAction).toHaveBeenNthCalledWith(2, 'site-1', '2025-01-01', '2025-10-02', SITES)
     expect(getWeeklyProgressAction).toHaveBeenCalledWith('site-1', '2026-10-02')
   })
 
   it('compares the whole of the other year when a past year is selected', async () => {
     await CashupDashboardPage({ searchParams: Promise.resolve({ year: '2025', compareYear: '2024' }) })
 
-    expect(getDashboardDataAction).toHaveBeenNthCalledWith(1, 'site-1', '2025-01-01', '2025-12-31')
-    expect(getDashboardDataAction).toHaveBeenNthCalledWith(2, 'site-1', '2024-01-01', '2024-12-31')
+    expect(getDashboardDataAction).toHaveBeenNthCalledWith(1, 'site-1', '2025-01-01', '2025-12-31', SITES)
+    expect(getDashboardDataAction).toHaveBeenNthCalledWith(2, 'site-1', '2024-01-01', '2024-12-31', SITES)
   })
 })

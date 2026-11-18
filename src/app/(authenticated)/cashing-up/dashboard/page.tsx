@@ -10,8 +10,11 @@ interface PageProps {
 export default async function CashupDashboardPage({ searchParams }: PageProps) {
   const params = await searchParams
   const supabase = await createClient()
-  const { data: site } = await supabase.from('sites').select('id').limit(1).single()
+  const { data: site } = await supabase.from('sites').select('id, name').limit(1).single()
   const siteId = site?.id
+  // Sessions are filtered to this one site, so it is the only name the dashboard can show.
+  // Passed down so each dashboard call (selected and comparison year) does not re-read sites.
+  const sites = site ? [{ id: site.id, name: site.name }] : []
 
   const todayIso = getTodayIsoDate()
   const currentYear = Number(todayIso.slice(0, 4))
@@ -22,7 +25,7 @@ export default async function CashupDashboardPage({ searchParams }: PageProps) {
   const toDate = `${selectedYear}-12-31`
 
   const fetches: Promise<any>[] = [
-    getDashboardDataAction(siteId, fromDate, toDate),
+    getDashboardDataAction(siteId, fromDate, toDate, sites),
     siteId ? getWeeklyProgressAction(siteId, todayIso) : Promise.resolve({ success: false, data: null }),
   ]
 
@@ -32,7 +35,7 @@ export default async function CashupDashboardPage({ searchParams }: PageProps) {
     const compTo = isCurrentYear
       ? `${compareYear}${todayIso.slice(4)}`
       : `${compareYear}-12-31`
-    fetches.push(getDashboardDataAction(siteId, compFrom, compTo))
+    fetches.push(getDashboardDataAction(siteId, compFrom, compTo, sites))
   }
 
   const [dashRes, progressRes, compRes] = await Promise.all(fetches)

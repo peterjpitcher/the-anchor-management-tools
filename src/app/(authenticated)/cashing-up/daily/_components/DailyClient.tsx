@@ -28,7 +28,6 @@ import {
   upsertSessionAction,
   voidCashupSession,
 } from '@/app/actions/cashing-up'
-import { getDailySummaryAction } from '@/app/actions/daily-summary'
 import { getMissingCashupDatesAction } from '@/app/actions/missing-cashups'
 import { format, parseISO } from 'date-fns'
 import type { CashupSalesCategory, CashupSession, CashupStatus, UpsertCashupSessionDTO } from '@/types/cashing-up'
@@ -84,7 +83,11 @@ interface Props {
   /** Why the week at a glance could not be loaded, if it could not. */
   weeklyError?: string
   existingSession: CashupSessionWithVoid | null
-  missingDates: string[]
+  /**
+   * Trading dates with no cash-up. The page passes a promise so the year-long scan streams in
+   * after the form rather than holding up the whole page; a plain array is used as it is.
+   */
+  missingDates: string[] | Promise<string[]>
   initialEditMode: boolean
 }
 
@@ -156,7 +159,9 @@ export function DailyClient({
   initialEditMode,
 }: Props) {
   const router = useRouter()
-  const [missingDates, setMissingDates] = useState<string[]>(initialMissingDates)
+  const [missingDates, setMissingDates] = useState<string[]>(() =>
+    Array.isArray(initialMissingDates) ? initialMissingDates : []
+  )
 
   const [cashValues, setCashValues] = useState<Record<string, string>>(() => getCashValuesFromSession(existingSession))
   const [cashExpected, setCashExpected] = useState(() => amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
@@ -186,7 +191,22 @@ export function DailyClient({
   const fieldsDisabled = isLockedStatus || isVoided || (isReadOnlyStatus && !editMode)
 
   useEffect(() => {
-    setMissingDates(initialMissingDates)
+    if (Array.isArray(initialMissingDates)) {
+      setMissingDates(initialMissingDates)
+      return
+    }
+    let cancelled = false
+    initialMissingDates
+      .then(dates => {
+        if (!cancelled) setMissingDates(dates)
+      })
+      .catch(() => {
+        // Same as before streaming: an unreadable list shows no missing-dates alert.
+        if (!cancelled) setMissingDates([])
+      })
+    return () => {
+      cancelled = true
+    }
   }, [initialMissingDates])
 
   const clearFormFields = useCallback(() => {
@@ -207,6 +227,9 @@ export function DailyClient({
     setEditMode(true)
   }, [])
 
+  // The server page passes dailySummary for this date, and every date change is a router.push
+  // to a fresh server render, so this effect is the only place autoNotes needs setting.
+  // Do not re-fetch the summary on mount: it repeated the server's auth call and bookings reads.
   useEffect(() => {
     setCashValues(getCashValuesFromSession(existingSession))
     setCashExpected(amountInputValue(getBreakdownValue(existingSession, 'CASH', 'expectedAmount')))
@@ -225,16 +248,6 @@ export function DailyClient({
     setEditMode(shouldStartInEditMode(existingSession, initialEditMode))
     setTargetAmount(dailyTarget.toString())
   }, [dailySummary, dailyTarget, existingSession, initialEditMode, sessionDate])
-
-  useEffect(() => {
-    if (sessionDate) {
-      getDailySummaryAction(sessionDate).then(res => {
-        if (res.success && res.summary) {
-          setAutoNotes(res.summary)
-        }
-      })
-    }
-  }, [sessionDate])
 
   const handleCashValueChange = (denomValue: number, inputValue: string) => {
     setCashValues(prev => ({ ...prev, [denomValue.toString()]: inputValue }))
