@@ -4,6 +4,7 @@ import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import type { UserPermission } from '@/types/rbac'
 import { NextResponse } from 'next/server'
 import { logger } from '@/lib/logger'
+import { PermissionService } from '@/services/permission'
 
 type FohPermissionAction = 'view' | 'edit' | 'manage'
 
@@ -23,14 +24,16 @@ export async function requireBohTableBookingPermission(action: FohPermissionActi
     return auth
   }
 
-  const { data: permissions, error } = await auth.supabase.rpc('get_user_permissions', {
-    p_user_id: auth.userId,
-  })
-
-  // Fail closed: if we cannot tell whether this is the FOH-only login, refuse (BK-205).
-  if (error) {
+  // The same list get_user_permissions returns, through the 60-second per-user cache the rest of
+  // the app shares (cleared on any role change), so a busy back-of-house screen no longer makes an
+  // uncached RPC on every request. A failed read throws and is never cached.
+  let permissions: UserPermission[]
+  try {
+    permissions = await PermissionService.getUserPermissions(auth.userId)
+  } catch (error) {
+    // Fail closed: if we cannot tell whether this is the FOH-only login, refuse (BK-205).
     logger.error('BOH permission check could not read the user permissions', {
-      error: new Error(error.message),
+      error: error instanceof Error ? error : new Error(String(error)),
       metadata: { userId: auth.userId, action },
     })
     return {
@@ -39,7 +42,7 @@ export async function requireBohTableBookingPermission(action: FohPermissionActi
     }
   }
 
-  if (isFohOnlyUser((permissions ?? []) as UserPermission[])) {
+  if (isFohOnlyUser(permissions ?? [])) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }),

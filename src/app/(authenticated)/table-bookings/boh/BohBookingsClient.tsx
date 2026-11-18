@@ -234,6 +234,20 @@ type BohBookingsResponse = {
   }
 }
 
+/** The fields the comparison figures read; all that `?summary=1` returns for each booking. */
+type BohMetricBooking = Pick<BohBooking, 'status' | 'visual_status' | 'party_size' | 'seated_at' | 'left_at'>
+
+/** The previous period's slim list from `/api/boh/table-bookings?summary=1`. */
+type BohSummaryResponse = {
+  success?: boolean
+  error?: string
+  data?: {
+    range_start_date: string
+    range_end_date: string
+    bookings: BohMetricBooking[]
+  }
+}
+
 const BOH_AUTO_RETURN_IDLE_MS = 5 * 60 * 1000
 const BOH_AUTO_RETURN_POLL_MS = 30 * 1000
 
@@ -440,18 +454,18 @@ function getSortValue(booking: BohBooking, column: SortColumn): string | number 
   }
 }
 
-function isArrivedBooking(booking: BohBooking): boolean {
+function isArrivedBooking(booking: BohMetricBooking): boolean {
   if (booking.seated_at || booking.left_at) return true
   const status = (booking.visual_status || booking.status || '').toLowerCase()
   return ['seated', 'left', 'completed', 'visited_waiting_for_review', 'review_clicked'].includes(status)
 }
 
-function isLostBooking(booking: BohBooking): boolean {
+function isLostBooking(booking: BohMetricBooking): boolean {
   const status = (booking.visual_status || booking.status || '').toLowerCase()
   return status === 'no_show' || status === 'cancelled'
 }
 
-function calculateMetrics(bookings: BohBooking[]) {
+function calculateMetrics(bookings: BohMetricBooking[]) {
   const totalBookings = bookings.length
   const activeBookings = bookings.filter((booking) => !isLostBooking(booking))
   const totalCovers = activeBookings.reduce((sum, booking) => sum + Math.max(0, Number(booking.party_size || 0)), 0)
@@ -537,7 +551,7 @@ export function BohBookingsClient({
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [bookings, setBookings] = useState<BohBooking[]>([])
-  const [previousPeriodBookings, setPreviousPeriodBookings] = useState<BohBooking[]>([])
+  const [previousPeriodBookings, setPreviousPeriodBookings] = useState<BohMetricBooking[]>([])
   const [searchTerm, setSearchTerm] = useState<string>('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sortColumn, setSortColumn] = useState<SortColumn>('datetime')
@@ -566,9 +580,12 @@ export function BohBookingsClient({
         view
       })
       const previousPeriodDate = shiftFocusDate(focusDate, view === 'day' ? 'week' : view, -1)
+      // The previous period feeds only the five comparison figures, so ask for the slim summary
+      // (status and party size) rather than the full list with its tables and customer details.
       const previousSearchParams = new URLSearchParams({
         date: previousPeriodDate,
-        view
+        view,
+        summary: '1'
       })
 
       const fetchOptions: RequestInit = { cache: 'no-store', signal: options?.signal }
@@ -592,7 +609,7 @@ export function BohBookingsClient({
       setFocusDate(payload.data.focus_date || focusDate)
 
       if (previousResponse) {
-        const previousPayload = (await previousResponse.json()) as BohBookingsResponse
+        const previousPayload = (await previousResponse.json()) as BohSummaryResponse
         if (previousResponse.ok && previousPayload.success && previousPayload.data) {
           setPreviousPeriodBookings(previousPayload.data.bookings || [])
           setPreviousRangeStartDate(previousPayload.data.range_start_date || '')

@@ -268,6 +268,35 @@ async function loadTablesRows(
   return { data: [], error: lastError }
 }
 
+// The columns the previous-period comparison needs: party size for covers, and the fields
+// deriveVisualStatus reads, so the summary's statuses match the full list's exactly.
+const SUMMARY_SELECT = 'id, booking_date, booking_time, party_size, status, payment_status, seated_at, left_at, no_show_at'
+
+/**
+ * The slim rows behind `?summary=1`: the same date range and the same communal-seating exclusion as
+ * the full list, but no customer join and none of the tables, areas, assignments, events, deposit
+ * review or seat allergy reads. The back-of-house screen uses it only for the five comparison
+ * figures against the previous period, which read status, visual status, party size and the
+ * seated and left times.
+ */
+async function loadSummaryRows(
+  supabase: any,
+  input: { startDate: string; endDate: string }
+): Promise<{ data: any[]; error: unknown | null }> {
+  const result = await supabase.from('table_bookings')
+    .select(SUMMARY_SELECT)
+    .gte('booking_date', input.startDate)
+    .lte('booking_date', input.endDate)
+    .or(`cancellation_reason.is.null,cancellation_reason.neq.${CONVERTED_TO_COMMUNAL_REASON}`)
+    .order('booking_date', { ascending: true })
+    .order('booking_time', { ascending: true })
+
+  if (result.error) {
+    return { data: [], error: result.error }
+  }
+  return { data: result.data || [], error: null }
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireBohTableBookingPermission('view')
   if (!auth.ok) {
@@ -279,6 +308,57 @@ export async function GET(request: NextRequest) {
 
   const requestedDate = dateParam && isIsoDate(dateParam) ? dateParam : getLondonDateIso()
   const range = computeRange(requestedDate, view)
+
+  if (request.nextUrl.searchParams.get('summary') === '1') {
+    const summaryLoad = await loadSummaryRows(auth.supabase, {
+      startDate: range.startDate,
+      endDate: range.endDate
+    })
+
+    if (summaryLoad.error) {
+      logger.error('[boh/table-bookings] failed to load the booking summary', {
+        error: summaryLoad.error instanceof Error
+          ? summaryLoad.error
+          : new Error(String((summaryLoad.error as { message?: string } | null)?.message || summaryLoad.error)),
+        metadata: {
+          rangeStart: range.startDate,
+          rangeEnd: range.endDate
+        }
+      })
+      return NextResponse.json({ error: 'Failed to load table bookings' }, { status: 500 })
+    }
+
+    const summaryBookings = summaryLoad.data.map((row) => ({
+      id: row.id,
+      booking_date: row.booking_date,
+      booking_time: row.booking_time,
+      party_size: row.party_size ?? null,
+      status: row.status || null,
+      visual_status: deriveVisualStatus({
+        status: row.status || null,
+        payment_status: row.payment_status || null,
+        seated_at: row.seated_at || null,
+        left_at: row.left_at || null,
+        no_show_at: row.no_show_at || null
+      }),
+      seated_at: row.seated_at || null,
+      left_at: row.left_at || null,
+      no_show_at: row.no_show_at || null
+    }))
+
+    return NextResponse.json({
+      success: true,
+      data: {
+        view,
+        summary: true,
+        focus_date: range.focusDate,
+        range_start_date: range.startDate,
+        range_end_date: range.endDate,
+        total: summaryBookings.length,
+        bookings: summaryBookings
+      }
+    })
+  }
 
   const [bookingsLoad, tablesLoad, tableAreasResult] = await Promise.all([
     loadBookingsRows(auth.supabase, {

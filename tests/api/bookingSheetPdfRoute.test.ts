@@ -15,6 +15,18 @@ const mocks = vi.hoisted(() => ({
 // The real requireBohTableBookingPermission runs, over a mocked module check and permission list,
 // so these tests prove the route refuses the FOH login the same way the day sheets route does.
 vi.mock('@/lib/api/permissions', () => ({ requireModulePermission: mocks.moduleAuth }))
+// The permission list now comes from the cached PermissionService read; it answers from mocks.rpc
+// so each test still sets the list (or a failed read) in one place. A failed read throws, as the
+// real cached read does.
+vi.mock('@/services/permission', () => ({
+  PermissionService: {
+    getUserPermissions: async () => {
+      const { data, error } = await mocks.rpc('get_user_permissions')
+      if (error) throw new Error(error.message)
+      return data ?? []
+    },
+  },
+}))
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }))
 vi.mock('@/lib/table-bookings/booking-sheet-load', () => ({ loadBookingSheetModel: mocks.load }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn(() => ({})) }))

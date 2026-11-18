@@ -21,30 +21,77 @@ const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 export default async function TableBookingsFohPage() {
   const supabase = await createClient()
 
-  const [authResult, viewStatus, canEdit, canViewReports, canManageSettings, permissionsResult] = await Promise.all([
-    supabase.auth.getUser(),
+  // Everything the page needs, in one round: the checks, the super-admin and manage lookups for the
+  // signed-in user, the manager iPad's clock widget data and the trading day. The user-dependent
+  // reads chain off the one auth lookup rather than waiting for the whole first batch. Nothing here
+  // is rendered before the view check below has passed.
+  const authPromise = supabase.auth.getUser()
+  type ClockEmployee = {
+    employee_id: string
+    first_name: string | null
+    last_name: string | null
+    preferred_name: string | null
+  }
+  type ClockSession = import('@/app/actions/timeclock').OpenSessionSummary & { employee_name: string }
+
+  const [
+    authResult,
+    viewStatus,
+    canEdit,
+    canViewReports,
+    canManageSettings,
+    permissionsResult,
+    { isSuperAdmin, canWaiveDeposit },
+    clockWidget,
+    tradingDay,
+  ] = await Promise.all([
+    authPromise,
     getPermissionStatus('table_bookings', 'view'),
     checkUserPermission('table_bookings', 'edit'),
     checkUserPermission('reports', 'view'),
     checkUserPermission('settings', 'manage'),
-    getUserPermissions()
+    getUserPermissions(),
+    authPromise.then(async (result) => {
+      const userId = result.data.user?.id
+      if (!userId) return { isSuperAdmin: false, canWaiveDeposit: false }
+      const admin = createAdminClient()
+      const [{ data: roleRows }, canManage] = await Promise.all([
+        admin
+          .from('user_roles')
+          .select('roles(name)')
+          .eq('user_id', userId),
+        // Waiving a deposit, or marking a pub event, needs table_bookings manage (D18, BK-106), which
+        // the Deputy role holds too; a role-name check refused it.
+        checkUserPermission('table_bookings', 'manage', userId),
+      ])
+      const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
+      return {
+        isSuperAdmin: roles.some((r) => r.roles?.name === 'super_admin'),
+        canWaiveDeposit: canManage,
+      }
+    }),
+    // Clock widget data, for the manager kiosk only.
+    authPromise.then(async (result): Promise<{ employees: ClockEmployee[]; sessions: ClockSession[] }> => {
+      if (result.data.user?.email?.toLowerCase() !== MANAGER_IPAD_EMAIL) {
+        return { employees: [], sessions: [] }
+      }
+      const admin = createAdminClient()
+      const [{ data: emps }, sessionsResult] = await Promise.all([
+        admin.from('employees').select('employee_id, first_name, last_name, preferred_name, status, employment_end_date').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
+        getOpenSessions(),
+      ])
+      const sessions = sessionsResult.success ? (sessionsResult.data as ClockSession[]) : []
+      // As on the kiosk: someone past their last working day is listed only while still clocked in.
+      const employees = onClockScreen(
+        (emps ?? []) as Array<ClockEmployee & { status: string; employment_end_date: string | null }>,
+        new Set(sessions.map((session) => session.employee_id)),
+      ).map(({ employee_id, first_name, last_name, preferred_name }) => ({ employee_id, first_name, last_name, preferred_name }))
+      return { employees, sessions }
+    }),
+    // The service the floor is working: the night before, from midnight until an after-midnight
+    // close (1am on New Year's Eve), otherwise today.
+    resolveTradingDayNow(createAdminClient()),
   ])
-
-  const userId = authResult.data.user?.id
-  let isSuperAdmin = false
-  let canWaiveDeposit = false
-  if (userId) {
-    const admin = createAdminClient()
-    const { data: roleRows } = await admin
-      .from('user_roles')
-      .select('roles(name)')
-      .eq('user_id', userId)
-    const roles = (roleRows as Array<{ roles: { name: string } | null }> | null) ?? []
-    isSuperAdmin = roles.some((r) => r.roles?.name === 'super_admin')
-    // Waiving a deposit, or marking a pub event, needs table_bookings manage (D18, BK-106), which
-    // the Deputy role holds too; a role-name check refused it.
-    canWaiveDeposit = await checkUserPermission('table_bookings', 'manage', userId)
-  }
 
   // A failed lookup is a connection problem, not a refusal: show a retry screen, never Access
   // Denied (BK-095). A real refusal still redirects.
@@ -73,33 +120,9 @@ export default async function TableBookingsFohPage() {
   const contentClassName = useManagerKioskStyle ? '!px-2 sm:!px-3 lg:!px-4 !pt-1' : undefined
   const subtitle = useManagerKioskStyle ? undefined : 'Live swimlane view for table bookings and floor actions'
 
-  // Fetch clock widget data for manager kiosk
-  type ClockEmployee = {
-    employee_id: string
-    first_name: string | null
-    last_name: string | null
-    preferred_name: string | null
-  }
-  type ClockSession = import('@/app/actions/timeclock').OpenSessionSummary & { employee_name: string }
-  let clockWidgetEmployees: ClockEmployee[] = []
-  let clockWidgetSessions: ClockSession[] = []
-  if (useManagerKioskStyle) {
-    const admin = createAdminClient()
-    const [{ data: emps }, sessionsResult] = await Promise.all([
-      admin.from('employees').select('employee_id, first_name, last_name, preferred_name, status, employment_end_date').in('status', ['Active', 'Started Separation']).order('first_name').order('last_name'),
-      getOpenSessions(),
-    ])
-    if (sessionsResult.success) clockWidgetSessions = sessionsResult.data as ClockSession[]
-    // As on the kiosk: someone past their last working day is listed only while still clocked in.
-    clockWidgetEmployees = onClockScreen(
-      (emps ?? []) as Array<ClockEmployee & { status: string; employment_end_date: string | null }>,
-      new Set(clockWidgetSessions.map((session) => session.employee_id)),
-    ).map(({ employee_id, first_name, last_name, preferred_name }) => ({ employee_id, first_name, last_name, preferred_name }))
-  }
-
-  // The service the floor is working: the night before, from midnight until an after-midnight
-  // close (1am on New Year's Eve), otherwise today.
-  const initialDate = (await resolveTradingDayNow(createAdminClient())).date
+  const clockWidgetEmployees = clockWidget.employees
+  const clockWidgetSessions = clockWidget.sessions
+  const initialDate = tradingDay.date
 
   const headerActions = useManagerKioskStyle
     ? (

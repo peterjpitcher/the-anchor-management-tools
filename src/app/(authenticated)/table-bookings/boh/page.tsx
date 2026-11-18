@@ -1,5 +1,8 @@
 import { redirect } from 'next/navigation'
-import { checkUserPermission, getUserPermissions } from '@/app/actions/rbac'
+import { getUserPermissions } from '@/app/actions/rbac'
+import { PermissionService } from '@/services/permission'
+import { getCurrentUser } from '@/lib/supabase/current-user'
+import type { ActionType, ModuleName } from '@/types/rbac'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
 import { createClient } from '@/lib/supabase/server'
 import { BohBookingsClient, type BohViewMode } from './BohBookingsClient'
@@ -21,24 +24,35 @@ export default async function TableBookingsBohPage({ searchParams }: TableBookin
   const initialDate = rawDate && isValidIsoDate(rawDate) ? rawDate : undefined
   const initialView = VIEW_MODES.find((mode) => mode === rawView)
 
-  const [authResult, canView, canEdit, canManage, canViewReports, canManageSettings, canSendMessages, permissionsResult] = await Promise.all([
+  // One permission list and one super-admin answer, both from the shared 60-second cache, instead of
+  // six separate checks that each read both. The answers are the same as checkUserPermission gives:
+  // a super admin holds everything; otherwise the permission must be in the list; a failed read
+  // answers no (the super-admin read failing still lets a listed permission through, as before).
+  const [authResult, permissionsResult, isSuperAdmin] = await Promise.all([
     supabase.auth.getUser(),
-    checkUserPermission('table_bookings', 'view'),
-    checkUserPermission('table_bookings', 'edit'),
-    checkUserPermission('table_bookings', 'manage'),
-    checkUserPermission('reports', 'view'),
-    checkUserPermission('settings', 'manage'),
-    checkUserPermission('messages', 'send_transactional'),
-    getUserPermissions()
+    getUserPermissions(),
+    getCurrentUser()
+      .then(({ user }) => (user ? PermissionService.getRoleNames(user.id) : []))
+      .then((roleNames) => roleNames.includes('super_admin'))
+      .catch(() => false),
   ])
-
-  if (!canView) {
-    redirect('/unauthorized')
-  }
 
   const permissions = permissionsResult.success && permissionsResult.data
     ? permissionsResult.data
     : []
+  const has = (moduleName: ModuleName, action: ActionType): boolean =>
+    isSuperAdmin || permissions.some((p) => p.module_name === moduleName && p.action === action)
+
+  const canView = has('table_bookings', 'view')
+  const canEdit = has('table_bookings', 'edit')
+  const canManage = has('table_bookings', 'manage')
+  const canViewReports = has('reports', 'view')
+  const canManageSettings = has('settings', 'manage')
+  const canSendMessages = has('messages', 'send_transactional')
+
+  if (!canView) {
+    redirect('/unauthorized')
+  }
 
   if (isFohOnlyUser(permissions)) {
     redirect('/table-bookings/foh')
