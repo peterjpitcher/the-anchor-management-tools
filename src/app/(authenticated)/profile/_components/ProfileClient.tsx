@@ -36,7 +36,7 @@ import {
 /*  Types                                                              */
 /* ------------------------------------------------------------------ */
 
-interface Profile {
+export interface Profile {
   id: string
   email: string
   full_name: string | null
@@ -57,13 +57,20 @@ const layoutProps = {
   subtitle: 'Manage your account details',
 } as const
 
-export function ProfileClient(): React.JSX.Element {
-  const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+interface ProfileClientProps {
+  /** Read by the server page, so the screen does not load again on mount. Null when that read failed. */
+  initialProfile: Profile | null
+  /** Why the server read failed, shown once as a toast as the mount load used to. */
+  initialError?: string | null
+}
+
+export function ProfileClient({ initialProfile, initialError = null }: ProfileClientProps): React.JSX.Element {
+  const [profile, setProfile] = useState<Profile | null>(initialProfile)
+  const [loading, setLoading] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [removingAvatar, setRemovingAvatar] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [fullName, setFullName] = useState('')
+  const [fullName, setFullName] = useState(initialProfile?.full_name ?? '')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRemoveAvatarConfirm, setShowRemoveAvatarConfirm] = useState(false)
 
@@ -84,9 +91,11 @@ export function ProfileClient(): React.JSX.Element {
     }
   }, [])
 
+  // The profile arrives from the server page; only a failed read is reported here. Saves,
+  // uploads and Retry still reload it through fetchProfile.
   useEffect(() => {
-    void fetchProfile()
-  }, [fetchProfile])
+    if (initialError) toast.error(initialError)
+  }, [initialError])
 
   async function handleUpdateProfile() {
     if (!profile) return

@@ -34,6 +34,7 @@ import { CHANNEL_MAP } from '@/lib/short-links/channels'
 import { formatDate } from '@/lib/dateUtils'
 import { cn } from '@/lib/utils'
 import type { ShortLink } from '@/types/short-links'
+import type { ShortLinkVolumeSummary } from '@/lib/short-links/volume-summary'
 
 interface Props {
   initialLinks: ShortLink[]
@@ -41,8 +42,10 @@ interface Props {
   initialLinkTotal: number
   /** Set when the server could not read the list, so it is not shown as an empty one. */
   initialError: string | null
-  volume: unknown
-  previousVolume: unknown
+  /** Clicks, unique visitors and top link for the last 30 days, reduced on the server. */
+  volumeSummary: ShortLinkVolumeSummary
+  /** Clicks in the 30 days before that, for the trend. */
+  previousTotalClicks: number
   canManage: boolean
 }
 
@@ -50,15 +53,6 @@ type DisplayLink = ShortLink & {
   isVariant?: boolean
   variantCount?: number
 }
-
-type VolumeRow = {
-  destination_url?: unknown
-  name?: unknown
-  short_code?: unknown
-  total_clicks?: unknown
-  unique_visitors?: unknown
-}
-
 
 function getVariantLabel(link: ShortLink): string {
   const channelKey = typeof link.metadata?.channel === 'string' ? link.metadata.channel : null
@@ -80,46 +74,6 @@ function formatUrlForDisplay(value: string): string {
   }
 }
 
-function toNumber(value: unknown): number {
-  const numberValue = Number(value)
-  return Number.isFinite(numberValue) ? numberValue : 0
-}
-
-function getVolumeRows(value: unknown): VolumeRow[] {
-  if (!Array.isArray(value)) return []
-  return value.filter((row): row is VolumeRow => Boolean(row) && typeof row === 'object')
-}
-
-function sumVolumeRows(rows: VolumeRow[], key: 'total_clicks' | 'unique_visitors'): number {
-  return rows.reduce((sum, row) => sum + toNumber(row[key]), 0)
-}
-
-function formatDestination(value: unknown): string {
-  if (typeof value !== 'string' || !value) return '-'
-
-  try {
-    const url = new URL(value)
-    if (url.hostname === 'www.the-anchor.pub' || url.hostname === 'the-anchor.pub') {
-      return `${url.pathname}${url.search}`
-    }
-    return `${url.hostname}${url.pathname}${url.search}`
-  } catch {
-    return value
-  }
-}
-
-function getTopDestination(rows: VolumeRow[]): { label: string; title: string } {
-  if (rows.length === 0) return { label: '-', title: '' }
-
-  const top = [...rows].sort((a, b) => toNumber(b.total_clicks) - toNumber(a.total_clicks))[0]
-  const name = typeof top.name === 'string' && top.name.trim() ? top.name.trim() : ''
-  const destination = typeof top.destination_url === 'string' ? top.destination_url : ''
-  return {
-    label: name || formatDestination(destination),
-    title: destination || name,
-  }
-}
-
 /**
  * Clicks in the last 30 days against the 30 before. A percentage needs a previous figure, so
  * growth from nothing is said in words instead.
@@ -135,7 +89,7 @@ function shortenForStat(value: string, max = 40): string {
   return value.length > max ? `${value.slice(0, max - 3)}...` : value
 }
 
-export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal, initialError, volume, previousVolume, canManage }: Props) {
+export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal, initialError, volumeSummary, previousTotalClicks, canManage }: Props) {
   const [links, setLinks] = useState<ShortLink[]>(initialLinks)
   const [totalLinks, setTotalLinks] = useState(initialTotal)
   const [linkTotal, setLinkTotal] = useState(initialLinkTotal)
@@ -262,13 +216,8 @@ export function ShortLinksClient({ initialLinks, initialTotal, initialLinkTotal,
     }
   }
 
-  const currentVolumeRows = useMemo(() => getVolumeRows(volume), [volume])
-  const previousVolumeRows = useMemo(() => getVolumeRows(previousVolume), [previousVolume])
-  const totalClicks = useMemo(() => sumVolumeRows(currentVolumeRows, 'total_clicks'), [currentVolumeRows])
-  const previousTotalClicks = useMemo(() => sumVolumeRows(previousVolumeRows, 'total_clicks'), [previousVolumeRows])
-  const uniqueVisitors = useMemo(() => sumVolumeRows(currentVolumeRows, 'unique_visitors'), [currentVolumeRows])
+  const { totalClicks, uniqueVisitors, topDestination } = volumeSummary
   const clicksTrend = useMemo(() => getClicksTrend(totalClicks, previousTotalClicks), [previousTotalClicks, totalClicks])
-  const topDestination = useMemo(() => getTopDestination(currentVolumeRows), [currentVolumeRows])
 
   const linkKind = (link: DisplayLink): 'link' | 'variant' => (link.isVariant ? 'variant' : 'link')
 

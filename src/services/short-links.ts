@@ -523,11 +523,8 @@ export class ShortLinkService {
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let countQuery = supabase
-      .from('short_links')
-      .select('id', { count: 'exact', head: true })
-      .is('parent_link_id', null);
-
+    // One read gives both the page and the count: a separate head count with the same
+    // filters was a second round trip for the same number.
     let parentQuery = supabase
       .from('short_links')
       .select('*', { count: 'exact' })
@@ -535,26 +532,18 @@ export class ShortLinkService {
       .order('created_at', { ascending: false });
 
     if (!includeSystem) {
-      countQuery = countQuery.not('created_by', 'is', null);
       parentQuery = parentQuery.not('created_by', 'is', null);
     }
 
     if (search) {
       const term = `%${search}%`;
       const searchFilter = `name.ilike.${term},short_code.ilike.${term},destination_url.ilike.${term}`;
-      countQuery = countQuery.or(searchFilter);
       parentQuery = parentQuery.or(searchFilter);
     }
 
-    const [
-      { count: linkTotal, error: countError },
-      { data: parents, error: parentError, count },
-    ] = await Promise.all([
-      countQuery,
-      parentQuery.range(from, to),
-    ]);
+    const { data: parents, error: parentError, count } = await parentQuery.range(from, to);
 
-    if (countError || parentError) throw new Error('Failed to load short links');
+    if (parentError) throw new Error('Failed to load short links');
 
     const parentRows = parents || [];
     const parentIds = parentRows.map((link) => link.id);
@@ -579,7 +568,8 @@ export class ShortLinkService {
     return {
       data: [...parentRows, ...variants],
       total: count || 0,
-      linkTotal: linkTotal || 0,
+      // Same filters as the list, so the same figure; kept as its own field for callers.
+      linkTotal: count || 0,
       page,
       pageSize,
     };

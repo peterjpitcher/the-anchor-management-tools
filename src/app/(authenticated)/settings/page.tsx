@@ -1,5 +1,4 @@
 import { checkUserPermission } from '@/app/actions/rbac'
-import { canViewCalendarNotes } from '@/app/actions/calendar-notes'
 import { currentUserCanUseMaintenance } from '@/app/actions/maintenance'
 import { getSiteSettings } from '@/app/actions/site-settings'
 import { SettingsClient } from './_components/SettingsClient'
@@ -12,7 +11,7 @@ export default async function SettingsPage() {
     canViewUsers,
     canViewRoles,
     canManageEvents,
-    canViewNotes,
+    canViewEvents,
     canViewCustomers,
     canViewMessages,
     canManageMenu,
@@ -24,7 +23,9 @@ export default async function SettingsPage() {
     checkUserPermission('users', 'view'),
     checkUserPermission('roles', 'view'),
     checkUserPermission('events', 'manage'),
-    canViewCalendarNotes(),
+    // The events half of canViewCalendarNotes (src/app/actions/calendar-notes.ts); its
+    // settings:manage half is the check two lines up, so it is not asked twice.
+    checkUserPermission('events', 'view'),
     checkUserPermission('customers', 'view'),
     checkUserPermission('messages', 'view'),
     checkUserPermission('menu_management', 'manage'),
@@ -34,6 +35,9 @@ export default async function SettingsPage() {
     currentUserCanUseMaintenance(),
     getSiteSettings(),
   ])
+
+  // Same rule as canViewCalendarNotes and the table's RLS: events:view OR settings:manage.
+  const canViewNotes = canViewEvents || canManageSettings
 
   const tileGroups = buildSettingsTileGroups({
     settingsView: canViewSettings,
