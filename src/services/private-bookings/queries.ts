@@ -263,7 +263,8 @@ export async function fetchPrivateBookings(options: {
         vat_amount,
         gross_total,
         deposit_status,
-        days_until_event
+        days_until_event,
+        hold_expiry
       `,
       { count: 'exact' }
     )
@@ -313,26 +314,13 @@ export async function fetchPrivateBookings(options: {
   const totalCount = typeof count === 'number' ? count : (data?.length ?? 0);
 
   const bookingIds = (data || []).map((booking) => booking.id).filter(Boolean);
-  const holdExpiryById = new Map<string, string | null>();
-  const ledgers = await readBookingPaymentLedgers(bookingIds);
-
-  if (bookingIds.length > 0) {
-    const holdExpiryResult = await supabase
-        .from('private_bookings')
-        .select('id, hold_expiry')
-        .in('id', bookingIds);
-
-    if (holdExpiryResult.error) {
-      logger.error('Error fetching hold expiry dates for private bookings:', { error: holdExpiryResult.error instanceof Error ? holdExpiryResult.error : new Error(String(holdExpiryResult.error)) });
-    } else if (holdExpiryResult.data) {
-      for (const row of holdExpiryResult.data) {
-        holdExpiryById.set(row.id, row.hold_expiry ?? null);
-      }
-    }
-  }
-
-  const awaitingDepositById = await loadDepositAwaitingConfirmation(supabase, data || []);
-  const hireAttentionById = await loadHireAttention(data || []);
+  // The three follow-up reads are independent, so they run together rather than one after another.
+  // hold_expiry comes from the view itself, so the separate private_bookings read for it is gone.
+  const [ledgers, awaitingDepositById, hireAttentionById] = await Promise.all([
+    readBookingPaymentLedgers(bookingIds),
+    loadDepositAwaitingConfirmation(supabase, data || []),
+    loadHireAttention(data || []),
+  ]);
 
   const enriched = (data || []).map((booking) => {
     // Customer-payable total is VAT-inclusive (stored prices are net)
@@ -342,7 +330,7 @@ export async function fetchPrivateBookings(options: {
     const balanceRemaining = ledger?.originalInvoiceId ? ledger.invoiceBalanceTotal : Math.max(0, bookingTotal - paymentSum);
     return {
       ...booking,
-      hold_expiry: holdExpiryById.get(booking.id) ?? undefined,
+      hold_expiry: booking.hold_expiry ?? undefined,
       is_date_tbd: isBookingDateTbd(booking),
       balance_remaining: balanceRemaining,
       deposit_status: normalizeDepositStatus(booking),
@@ -358,8 +346,11 @@ export async function fetchPrivateBookingsForCalendar(): Promise<{ data: Private
   const todayIso = toLocalIsoDate(new Date());
   const supabase = await createClient();
 
+  // Reads the table, not private_bookings_with_details: the calendar needs no computed money
+  // column, and the view runs several money functions per row. The view is security_invoker, so
+  // RLS on private_bookings decides the rows either way.
   const { data, error } = await supabase
-    .from('private_bookings_with_details')
+    .from('private_bookings')
     .select(
       `
         id,

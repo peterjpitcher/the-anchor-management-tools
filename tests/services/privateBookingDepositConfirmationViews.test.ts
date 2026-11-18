@@ -114,14 +114,17 @@ describe('the private bookings list', () => {
 
   it('still lists the bookings when the confirmation read fails, marking none and logging it', async () => {
     seed([draft('waiting', { deposit_confirmed_at: null })])
+    // Fail only the confirmation read itself. The list's other private_bookings reads now run at
+    // the same time, so a table-wide failure in the fake would hit them too, which a real
+    // per-query error would not.
     const originalFrom = state.db.from
     state.db.from = (table: string) => {
       const builder = originalFrom(table)
       if (table !== 'private_bookings') return builder
       const originalSelect = builder.select
       builder.select = (columns?: string) => {
-        if (columns?.includes('deposit_confirmed_at')) {
-          state.db.failures.push({ table: 'private_bookings', op: 'select', error: { code: '42703', message: 'no such column' } })
+        if (columns === 'id, deposit_confirmed_at, deposit_waived') {
+          return { in: async () => ({ data: null, error: { code: '42703', message: 'no such column' } }) }
         }
         return originalSelect(columns)
       }
