@@ -177,6 +177,67 @@ describe('DailyClient', () => {
     expect(banner()).toHaveTextContent('Cash balanced')
   })
 
+  it('shows the server summary and swaps it when the date changes, without re-fetching it', async () => {
+    const { rerender } = render(
+      <DailyClient {...baseProps} dailySummary="Quiz night: 40 booked" />
+    )
+
+    expect(screen.getByText('Quiz night: 40 booked')).toBeInTheDocument()
+
+    rerender(
+      <DailyClient {...baseProps} sessionDate="2026-05-25" dailySummary="Sunday lunch: 12 tables" />
+    )
+
+    expect(await screen.findByText('Sunday lunch: 12 tables')).toBeInTheDocument()
+    expect(screen.queryByText('Quiz night: 40 booked')).not.toBeInTheDocument()
+
+    rerender(<DailyClient {...baseProps} sessionDate="2026-05-26" dailySummary={null} />)
+
+    await waitFor(() => {
+      expect(screen.queryByText('Sunday lunch: 12 tables')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByText('Auto-detected events:')).not.toBeInTheDocument()
+    expect(getDailySummaryActionMock).not.toHaveBeenCalled()
+  })
+
+  it('shows the missing-dates alert once the streamed list arrives', async () => {
+    let resolveDates: (dates: string[]) => void = () => {}
+    const datesPromise = new Promise<string[]>(resolve => {
+      resolveDates = resolve
+    })
+
+    render(<DailyClient {...baseProps} missingDates={datesPromise} />)
+
+    expect(screen.queryByText(/missing cashing up/)).not.toBeInTheDocument()
+
+    resolveDates(['2026-05-22', '2026-05-23'])
+
+    expect(await screen.findByText('2 missing cashing up entries')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Fri 22 May' })).toBeInTheDocument()
+  })
+
+  it('accepts a React Flight thenable whose then() returns nothing', async () => {
+    // What the browser receives for a promise passed across the server boundary.
+    const flightThenable = {
+      then(onFulfilled: (dates: string[]) => void) {
+        setTimeout(() => onFulfilled(['2026-05-22']), 0)
+        return undefined
+      },
+    } as unknown as Promise<string[]>
+
+    render(<DailyClient {...baseProps} missingDates={flightThenable} />)
+
+    expect(await screen.findByText('1 missing cashing up entry')).toBeInTheDocument()
+  })
+
+  it('shows no missing-dates alert when the streamed list fails', async () => {
+    render(<DailyClient {...baseProps} missingDates={Promise.reject(new Error('boom'))} />)
+
+    await waitFor(() => {
+      expect(screen.queryByText(/missing cashing up/)).not.toBeInTheDocument()
+    })
+  })
+
   it('clears stale values when moving to a different empty cash-up date', async () => {
     const { container, rerender } = render(<DailyClient {...baseProps} />)
     const cardTotal = getInput(container, '#input-card-total')

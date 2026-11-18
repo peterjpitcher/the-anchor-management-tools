@@ -658,7 +658,17 @@ export class CashingUpService {
     });
   }
 
-  static async getDashboardData(supabase: SupabaseClient, siteId?: string, fromDate?: string, toDate?: string): Promise<CashupDashboardData> {
+  /**
+   * `knownSites` lets a caller that has already read the sites (the dashboard page, once for both the
+   * selected and the comparison year) skip re-reading them here. Omitted, they are read.
+   */
+  static async getDashboardData(
+    supabase: SupabaseClient,
+    siteId?: string,
+    fromDate?: string,
+    toDate?: string,
+    knownSites?: Array<{ id: string; name: string }>,
+  ): Promise<CashupDashboardData> {
     // DEF-S01–S05: replaced stub values with real aggregations; fetch sites in parallel
     let sessionQuery = supabase
       .from('cashup_sessions')
@@ -677,7 +687,9 @@ export class CashingUpService {
     const [{ data, error }, { data: allTargets }, { data: sites }] = await Promise.all([
       sessionQuery.order('session_date', { ascending: false }),
       targetQuery,
-      supabase.from('sites').select('id, name'),
+      knownSites
+        ? Promise.resolve({ data: knownSites })
+        : supabase.from('sites').select('id, name'),
     ]);
 
     if (error) throw error;

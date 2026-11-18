@@ -813,10 +813,15 @@
     "name": "toDate",
     "type": "string",
     "optional": true
+   },
+   {
+    "name": "sites",
+    "type": "Array<{ id: string; name: string }>",
+    "optional": true
    }
   ],
   "typeRefs": {},
-  "doc": "",
+  "doc": "Dashboard figures for a date range. `sites` is optional: pass the sites already read (id and\nname) to save a re-read; they only label rows with a site name.",
   "readOnly": true
  },
  {

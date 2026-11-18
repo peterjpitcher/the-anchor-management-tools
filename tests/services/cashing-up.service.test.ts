@@ -426,6 +426,58 @@ describe('CashingUpService.getWeeklyReportData', () => {
   });
 });
 
+describe('CashingUpService.getDashboardData sites', () => {
+  function chainResolving(response: { data: unknown[]; error: null }) {
+    const chain: Record<string, unknown> = {};
+    for (const method of ['select', 'is', 'eq', 'gte', 'lte', 'order']) {
+      chain[method] = vi.fn(() => chain);
+    }
+    chain.then = (resolve: (value: unknown) => void) => resolve(response);
+    return chain;
+  }
+
+  function dashboardClient() {
+    const tables: Record<string, ReturnType<typeof chainResolving>> = {
+      cashup_sessions: chainResolving({
+        data: [{
+          session_date: '2026-01-02',
+          site_id: 'site-1',
+          status: 'approved',
+          notes: null,
+          total_counted_amount: 300,
+          total_variance_amount: 0,
+          cashup_payment_breakdowns: [],
+        }],
+        error: null,
+      }),
+      cashup_targets: chainResolving({ data: [], error: null }),
+      sites: chainResolving({ data: [{ id: 'site-1', name: 'Read Here' }], error: null }),
+    };
+    const from = vi.fn((table: string) => tables[table]);
+    return { supabase: { from } as unknown as SupabaseClient, from };
+  }
+
+  it('uses the sites it is given and does not read them again', async () => {
+    const { supabase, from } = dashboardClient();
+
+    const data = await CashingUpService.getDashboardData(
+      supabase, 'site-1', '2026-01-01', '2026-12-31', [{ id: 'site-1', name: 'The Anchor' }],
+    );
+
+    expect(from).not.toHaveBeenCalledWith('sites');
+    expect(data.tables.variance[0].siteName).toBe('The Anchor');
+  });
+
+  it('reads the sites itself when none are given', async () => {
+    const { supabase, from } = dashboardClient();
+
+    const data = await CashingUpService.getDashboardData(supabase, 'site-1', '2026-01-01', '2026-12-31');
+
+    expect(from).toHaveBeenCalledWith('sites');
+    expect(data.tables.variance[0].siteName).toBe('Read Here');
+  });
+});
+
 describe('CashingUpService.getInsightsData', () => {
   // The two breakdown reads page past the 1,000-row cap, so they end at
   // .order().range() and serve the requested slice; the rest end at their last filter.
