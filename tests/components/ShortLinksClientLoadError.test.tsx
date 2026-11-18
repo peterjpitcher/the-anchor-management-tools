@@ -27,8 +27,8 @@ function renderClient(initialError: string | null) {
       initialTotal={0}
       initialLinkTotal={0}
       initialError={initialError}
-      volume={[]}
-      previousVolume={[]}
+      volumeSummary={{ totalClicks: 0, uniqueVisitors: 0, topDestination: { label: '-', title: '' } }}
+      previousTotalClicks={0}
       canManage={false}
     />,
   )
