@@ -70,6 +70,11 @@ const READ_BY_HAND: Array<{ file: string; why: UnreadReason; checked: string }> 
     why: 'filter column is built at run time',
     checked: 'The sort column is a ReceiptSortColumn: transaction_date, details, amount_in, amount_out or amount_total. receipt_transactions has all five.',
   },
+  {
+    file: 'src/services/receipts/receiptQueries.ts',
+    why: 'query is not traced to a .from()',
+    checked: 'loadVendorGroupTotals wraps the read in a narrow() callback, so the chain cannot see its .from(). It reads receipt_transactions, selects vendor_name, amount_in, amount_out, amount_total and receipt_files(id), filters vendor_name and orders by id. receipt_transactions has all of these (18 November 2026).',
+  },
 ]
 
 function sourceFiles(dir: string, found: string[] = []): string[] {
