@@ -46,10 +46,10 @@ vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn().mockResolvedValue(true),
 }))
 
-vi.mock('@/lib/audit-helpers', () => ({
+vi.mock('@/lib/supabase/current-user', () => ({
   getCurrentUser: vi.fn().mockResolvedValue({
-    user_id: 'test-user-id',
-    user_email: 'test@example.com',
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    error: null,
   }),
 }))
 

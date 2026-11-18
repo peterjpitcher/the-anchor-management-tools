@@ -6700,6 +6700,15 @@
   "readOnly": false
  },
  {
+  "name": "mileage.getDestinationOptions",
+  "module": "mileage",
+  "export": "getDestinationOptions",
+  "params": [],
+  "typeRefs": {},
+  "doc": "Every destination as a pick-list entry (id, name, postcode, home base flag), for the trips page\nand its trip form. Unlike getDestinations it reads no trip legs or distances, so it stays one\nsmall read however many trips there are. Needs the mileage view permission. Read only.",
+  "readOnly": true
+ },
+ {
   "name": "mileage.getDestinations",
   "module": "mileage",
   "export": "getDestinations",

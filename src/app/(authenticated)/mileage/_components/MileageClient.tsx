@@ -27,7 +27,7 @@ import {
   deleteTrip,
   exportMileageListCsv,
   getTripForEdit,
-  type MileageDestination,
+  type MileageDestinationOption,
   type MileageTrip,
 } from '@/app/actions/mileage'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
@@ -58,7 +58,7 @@ interface MileageClientProps {
   warnings: string[]
   trips: MileageTripsPageResult
   stats: MileageHeadlineStats
-  destinations: MileageDestination[]
+  destinations: MileageDestinationOption[]
   drivers: MileageDriver[]
   presets: PeriodPresetGroup[]
   /** Today's London date as YYYY-MM-DD. */

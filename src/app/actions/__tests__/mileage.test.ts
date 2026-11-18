@@ -68,10 +68,10 @@ vi.mock('@/app/actions/rbac', () => ({
   checkUserPermission: vi.fn().mockResolvedValue(true),
 }))
 
-vi.mock('@/lib/audit-helpers', () => ({
+vi.mock('@/lib/supabase/current-user', () => ({
   getCurrentUser: vi.fn().mockResolvedValue({
-    user_id: 'test-user-id',
-    user_email: 'test@example.com',
+    user: { id: 'test-user-id', email: 'test@example.com' },
+    error: null,
   }),
 }))
 
@@ -92,10 +92,12 @@ vi.mock('next/cache', () => ({
 
 import { logAuditEvent } from '@/app/actions/audit'
 import { checkUserPermission } from '@/app/actions/rbac'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import {
   createTrip,
   deleteTrip,
   exportMileageListCsv,
+  getDestinationOptions,
   getDestinations,
   getDistanceEntries,
   getMileageInsights,
@@ -537,6 +539,48 @@ describe('getDestinations', () => {
     ])
   })
 
+  it('starts all three reads together instead of one after another', async () => {
+    let releaseDestinations: () => void = () => {}
+    const destinationsGate = new Promise<void>((resolve) => {
+      releaseDestinations = resolve
+    })
+    const destinationsTable = pagedTable([
+      { id: HOME_ID, name: 'The Anchor', postcode: 'TW19 6AQ', is_home_base: true },
+    ])
+    const slowDestinations = {
+      ...destinationsTable,
+      select: vi.fn(() => ({
+        order: vi.fn(function order(this: unknown) {
+          return this
+        }),
+        range: vi.fn(async (from: number, to: number) => {
+          await destinationsGate
+          return destinationsTable.range(from, to)
+        }),
+      })),
+    }
+    const legsTable = pagedTable([])
+    const distancesTable = pagedTable([])
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return slowDestinations
+      if (table === 'mileage_trip_legs') return legsTable
+      if (table === 'mileage_destination_distances') return distancesTable
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const pending = getDestinations()
+    await vi.waitFor(() => {
+      expect(legsTable.range).toHaveBeenCalled()
+      expect(distancesTable.range).toHaveBeenCalled()
+    })
+    releaseDestinations()
+
+    const result = await pending
+    expect(result.data).toEqual([
+      { id: HOME_ID, name: 'The Anchor', postcode: 'TW19 6AQ', isHomeBase: true, tripCount: 0, milesFromAnchor: 0 },
+    ])
+  })
+
   it('returns an error instead of partial counts when a page fails', async () => {
     const failing = {
       select: vi.fn(() => {
@@ -553,6 +597,52 @@ describe('getDestinations', () => {
 
     expect(result.data).toBeUndefined()
     expect(result.error).toContain('timeout')
+  })
+})
+
+describe('getDestinationOptions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockRpc.mockReset()
+  })
+
+  it('reads only the destinations, every page of them, and checks the view permission once per sign-in', async () => {
+    const rows = Array.from({ length: 1001 }, (_, index) => ({
+      id: `dest-${String(index).padStart(4, '0')}`,
+      name: `Place ${index}`,
+      postcode: null,
+      is_home_base: index === 0,
+    }))
+    const destinationsTable = pagedTable(rows)
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'mileage_destinations') return destinationsTable
+      throw new Error(`Unexpected table: ${table}`)
+    })
+
+    const result = await getDestinationOptions()
+
+    expect(result.error).toBeUndefined()
+    expect(result.data).toHaveLength(1001)
+    expect(result.data?.[0]).toEqual({ id: 'dest-0000', name: 'Place 0', postcode: null, isHomeBase: true })
+    expect(destinationsTable.select).toHaveBeenCalledWith('id, name, postcode, is_home_base')
+    expect(destinationsTable.order).toHaveBeenLastCalledWith('id')
+    expect(vi.mocked(checkUserPermission)).toHaveBeenCalledWith('mileage', 'view', 'test-user-id')
+    expect(vi.mocked(getCurrentUser)).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses a signed-out caller without reading anything', async () => {
+    vi.mocked(getCurrentUser).mockResolvedValueOnce({ user: null, error: null })
+
+    await expect(getDestinationOptions()).resolves.toEqual({ error: 'Insufficient permissions' })
+    expect(vi.mocked(checkUserPermission)).not.toHaveBeenCalled()
+    expect(mockFrom).not.toHaveBeenCalled()
+  })
+
+  it('refuses a user without the view permission', async () => {
+    vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
+
+    await expect(getDestinationOptions()).resolves.toEqual({ error: 'Insufficient permissions' })
+    expect(mockFrom).not.toHaveBeenCalled()
   })
 })
 
@@ -924,7 +1014,7 @@ describe('getTripForEdit', () => {
     vi.mocked(checkUserPermission).mockResolvedValueOnce(false)
 
     await expect(getTripForEdit(TRIP_ID)).resolves.toEqual({ error: 'Insufficient permissions' })
-    expect(vi.mocked(checkUserPermission)).toHaveBeenCalledWith('mileage', 'manage')
+    expect(vi.mocked(checkUserPermission)).toHaveBeenCalledWith('mileage', 'manage', 'test-user-id')
     expect(mockFrom).not.toHaveBeenCalled()
   })
 })

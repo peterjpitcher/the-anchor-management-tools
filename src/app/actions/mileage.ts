@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from './audit'
-import { getCurrentUser } from '@/lib/audit-helpers'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { fetchAllRows, type PagedReadResult } from '@/lib/supabase/paged-read'
 import { getTodayIsoDate } from '@/lib/dateUtils'
@@ -133,11 +133,15 @@ function logMileageReadError(
 // Types
 // ---------------------------------------------------------------------------
 
-export interface MileageDestination {
+/** What the trip form and filters need to pick a place: no trip counts or distances. */
+export interface MileageDestinationOption {
   id: string
   name: string
   postcode: string | null
   isHomeBase: boolean
+}
+
+export interface MileageDestination extends MileageDestinationOption {
   /** Distinct trips that visit this destination, whichever leg it appears on. */
   tripCount: number
   milesFromAnchor: number | null
@@ -295,15 +299,17 @@ async function requireMileagePermission(action: 'view' | 'manage'): Promise<{
   userId: string
   userEmail: string
 }> {
-  const canAccess = await checkUserPermission('mileage', action)
+  // One sign-in lookup, shared with the permission check. A signed-out caller still gets
+  // "Insufficient permissions", as it did when the permission check looked the user up itself.
+  const { user } = await getCurrentUser()
+  if (!user) {
+    throw new Error('Insufficient permissions')
+  }
+  const canAccess = await checkUserPermission('mileage', action, user.id)
   if (!canAccess) {
     throw new Error('Insufficient permissions')
   }
-  const { user_id, user_email } = await getCurrentUser()
-  if (!user_id) {
-    throw new Error('Unauthorized')
-  }
-  return { userId: user_id, userEmail: user_email ?? '' }
+  return { userId: user.id, userEmail: user.email ?? '' }
 }
 
 function revalidateMileagePaths(): void {
@@ -413,29 +419,40 @@ export async function getDestinations(): Promise<{
     // Every read below pages, because an unpaged select stops silently at 1,000 rows:
     // on 15 September 2026 Destinations counted 1,000 of 1,275 trip legs. Each order
     // ends on `id` so the page boundaries neither overlap nor skip.
-    const destinations = await fetchAllRows<DestinationRow>(
-      (from, to) =>
-        db
-          .from('mileage_destinations')
-          .select('id, name, postcode, is_home_base')
-          .order('name')
-          .order('id')
-          .range(from, to),
-      { label: 'mileage destinations' }
-    )
+    const [destinations, legs, distances] = await Promise.all([
+      fetchAllRows<DestinationRow>(
+        (from, to) =>
+          db
+            .from('mileage_destinations')
+            .select('id, name, postcode, is_home_base')
+            .order('name')
+            .order('id')
+            .range(from, to),
+        { label: 'mileage destinations' }
+      ),
+      fetchAllRows<DestinationLegRow>(
+        (from, to) =>
+          db
+            .from('mileage_trip_legs')
+            .select('id, trip_id, from_destination_id, to_destination_id')
+            .order('id')
+            .range(from, to),
+        { label: 'mileage trip legs' }
+      ),
+      // Read alongside the others; only rows touching the home base are used below.
+      fetchAllRows<DistanceRow>(
+        (from, to) =>
+          db
+            .from('mileage_destination_distances')
+            .select('from_destination_id, to_destination_id, miles')
+            .order('id')
+            .range(from, to),
+        { label: 'mileage destination distances' }
+      ),
+    ])
 
     // Get home base ID for distance lookups
     const homeBase = destinations.find((d) => d.is_home_base)
-
-    const legs = await fetchAllRows<DestinationLegRow>(
-      (from, to) =>
-        db
-          .from('mileage_trip_legs')
-          .select('id, trip_id, from_destination_id, to_destination_id')
-          .order('id')
-          .range(from, to),
-      { label: 'mileage trip legs' }
-    )
 
     // Distinct trips per destination: a round trip visits its stop once, not twice.
     const tripsByDestination = new Map<string, Set<string>>()
@@ -450,16 +467,6 @@ export async function getDestinations(): Promise<{
     // Get distance cache for Anchor -> each destination
     const distanceMap = new Map<string, number>()
     if (homeBase) {
-      const distances = await fetchAllRows<DistanceRow>(
-        (from, to) =>
-          db
-            .from('mileage_destination_distances')
-            .select('from_destination_id, to_destination_id, miles')
-            .order('id')
-            .range(from, to),
-        { label: 'mileage destination distances' }
-      )
-
       for (const d of distances) {
         // Only care about distances involving the home base
         if (d.from_destination_id === homeBase.id) {
@@ -480,6 +487,46 @@ export async function getDestinations(): Promise<{
     }))
 
     return { success: true, data: result }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to fetch destinations'
+    return { error: message }
+  }
+}
+
+/**
+ * Every destination as a pick-list entry (id, name, postcode, home base flag), for the trips page
+ * and its trip form. Unlike getDestinations it reads no trip legs or distances, so it stays one
+ * small read however many trips there are. Needs the mileage view permission. Read only.
+ */
+export async function getDestinationOptions(): Promise<{
+  success?: boolean
+  error?: string
+  data?: MileageDestinationOption[]
+}> {
+  try {
+    await requireMileagePermission('view')
+    const db = createAdminClient()
+
+    const destinations = await fetchAllRows<DestinationRow>(
+      (from, to) =>
+        db
+          .from('mileage_destinations')
+          .select('id, name, postcode, is_home_base')
+          .order('name')
+          .order('id')
+          .range(from, to),
+      { label: 'mileage destinations' }
+    )
+
+    return {
+      success: true,
+      data: destinations.map((d) => ({
+        id: d.id,
+        name: d.name,
+        postcode: d.postcode,
+        isHomeBase: d.is_home_base,
+      })),
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to fetch destinations'
     return { error: message }

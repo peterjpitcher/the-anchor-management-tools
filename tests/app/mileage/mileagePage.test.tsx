@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   redirect: vi.fn(),
   listMileageTrips: vi.fn(),
   getTripStats: vi.fn(),
-  getDestinations: vi.fn(),
+  getDestinationOptions: vi.fn(),
+  checkUserPermission: vi.fn(),
+  getCurrentUserModuleActions: vi.fn(),
   getTripDateRange: vi.fn(),
   getMileageDrivers: vi.fn(),
 }))
@@ -20,11 +22,14 @@ vi.mock('@/lib/dateUtils', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/dateUtils')>()),
   getTodayIsoDate: () => '2026-09-15',
 }))
-vi.mock('@/app/actions/rbac', () => ({ checkUserPermission: vi.fn().mockResolvedValue(true) }))
+vi.mock('@/app/actions/rbac', () => ({
+  checkUserPermission: mocks.checkUserPermission,
+  getCurrentUserModuleActions: mocks.getCurrentUserModuleActions,
+}))
 vi.mock('@/app/actions/mileage', () => ({
   listMileageTrips: mocks.listMileageTrips,
   getTripStats: mocks.getTripStats,
-  getDestinations: mocks.getDestinations,
+  getDestinationOptions: mocks.getDestinationOptions,
   getTripDateRange: mocks.getTripDateRange,
   getTripForEdit: vi.fn(),
   deleteTrip: vi.fn(),
@@ -64,13 +69,66 @@ function expectLoadError(message: string): void {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.redirect.mockReset()
+  mocks.getCurrentUserModuleActions.mockResolvedValue({ success: true, actions: ['view', 'manage'] })
+  mocks.checkUserPermission.mockResolvedValue(true)
   mocks.getTripStats.mockResolvedValue({ success: true, data: STATS })
-  mocks.getDestinations.mockResolvedValue({ success: true, data: [] })
+  mocks.getDestinationOptions.mockResolvedValue({ success: true, data: [] })
   mocks.getTripDateRange.mockResolvedValue({ success: true, data: { first: '2024-01-05', last: '2026-09-14' } })
   mocks.getMileageDrivers.mockResolvedValue({ success: true, data: [] })
   mocks.listMileageTrips.mockResolvedValue(
     pageResult(parseMileageReportDataset(buildDatasetJson()).trips, 3, { trips: 3, milesTenths: 570, amountPence: 3101 })
   )
+})
+
+describe('MileagePage permissions', () => {
+  it('reads the permission list once and makes no single checks when both actions are held', async () => {
+    render(await page())
+
+    expect(mocks.getCurrentUserModuleActions).toHaveBeenCalledWith('mileage')
+    expect(mocks.checkUserPermission).not.toHaveBeenCalled()
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('still lets a super admin in when no permission rows are listed', async () => {
+    mocks.getCurrentUserModuleActions.mockResolvedValue({ success: true, actions: [] })
+    mocks.checkUserPermission.mockResolvedValue(true)
+
+    render(await page())
+
+    expect(mocks.checkUserPermission).toHaveBeenCalledWith('mileage', 'view')
+    expect(mocks.checkUserPermission).toHaveBeenCalledWith('mileage', 'manage')
+    expect(mocks.redirect).not.toHaveBeenCalled()
+  })
+
+  it('sends someone without view to the unauthorised page and asks nothing more', async () => {
+    mocks.getCurrentUserModuleActions.mockResolvedValue({ success: true, actions: [] })
+    mocks.checkUserPermission.mockResolvedValue(false)
+    mocks.redirect.mockImplementation(() => {
+      throw new Error('NEXT_REDIRECT')
+    })
+
+    await expect(page()).rejects.toThrow('NEXT_REDIRECT')
+    expect(mocks.redirect).toHaveBeenCalledWith('/unauthorized')
+    expect(mocks.checkUserPermission).toHaveBeenCalledTimes(1)
+    expect(mocks.listMileageTrips).not.toHaveBeenCalled()
+  })
+
+  it('treats a failed permission read like a missing row and asks checkUserPermission', async () => {
+    mocks.getCurrentUserModuleActions.mockResolvedValue({ error: 'Failed to fetch permissions' })
+    mocks.checkUserPermission.mockResolvedValue(false)
+    mocks.redirect.mockImplementation(() => {
+      throw new Error('NEXT_REDIRECT')
+    })
+
+    await expect(page()).rejects.toThrow('NEXT_REDIRECT')
+    expect(mocks.redirect).toHaveBeenCalledWith('/unauthorized')
+  })
+
+  it('loads the destination pick list, not the full destinations report', async () => {
+    render(await page())
+    expect(mocks.getDestinationOptions).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('MileagePage', () => {
@@ -101,7 +159,7 @@ describe('MileagePage', () => {
   })
 
   it('shows an error when destinations fail to load', async () => {
-    mocks.getDestinations.mockResolvedValue({ error: 'mileage trip legs failed: timeout' })
+    mocks.getDestinationOptions.mockResolvedValue({ error: 'mileage trip legs failed: timeout' })
     render(await page())
     expectLoadError('mileage trip legs failed: timeout')
   })

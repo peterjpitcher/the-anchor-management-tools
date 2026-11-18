@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { checkUserPermission } from './rbac'
 import { logAuditEvent } from '@/app/actions/audit'
-import { getCurrentUser } from '@/lib/audit-helpers'
+import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createClient } from '@/lib/supabase/server'
 import { logger } from '@/lib/logger'
 import { getTodayIsoDate } from '@/lib/dateUtils'
@@ -128,15 +128,17 @@ async function requireExpensePermission(action: 'view' | 'manage'): Promise<{
   userId: string
   userEmail: string
 }> {
-  const canDo = await checkUserPermission('expenses', action)
+  // One sign-in lookup, shared with the permission check. A signed-out caller still gets
+  // "Insufficient permissions", as it did when the permission check looked the user up itself.
+  const { user } = await getCurrentUser()
+  if (!user) {
+    throw new Error('Insufficient permissions')
+  }
+  const canDo = await checkUserPermission('expenses', action, user.id)
   if (!canDo) {
     throw new Error('Insufficient permissions')
   }
-  const { user_id, user_email } = await getCurrentUser()
-  if (!user_id) {
-    throw new Error('Unauthorized')
-  }
-  return { userId: user_id, userEmail: user_email ?? '' }
+  return { userId: user.id, userEmail: user.email ?? '' }
 }
 
 function revalidateExpensePaths(): void {

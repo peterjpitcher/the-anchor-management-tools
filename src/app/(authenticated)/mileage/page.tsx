@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { Alert, PageLayout } from '@/ds'
-import { checkUserPermission } from '@/app/actions/rbac'
-import { getDestinations, getTripDateRange, getTripStats, listMileageTrips } from '@/app/actions/mileage'
+import { checkUserPermission, getCurrentUserModuleActions } from '@/app/actions/rbac'
+import { getDestinationOptions, getTripDateRange, getTripStats, listMileageTrips } from '@/app/actions/mileage'
 import { getMileageDrivers } from '@/app/actions/mileage-drivers'
 import { getTodayIsoDate } from '@/lib/dateUtils'
 import { MILEAGE_LIST_PAGE_SIZE, parseMileageListQuery, serialiseMileageListQuery } from '@/lib/mileage/list-query'
@@ -13,19 +13,42 @@ interface MileagePageProps {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
+/**
+ * Answers the page's two mileage permissions exactly as two checkUserPermission calls would, from
+ * one read of the user's permission list.
+ *
+ * getCurrentUserModuleActions lists only the permission rows the user's roles hold, while
+ * checkUserPermission also allows a super admin everything and answers no when the lookup fails.
+ * So an action missing from the list is not yet a no: checkUserPermission settles the first
+ * missing one. If that says no, the user is not a super admin and the other missing action is a
+ * no as well (both read the same cached permission list); if it says yes, the other is checked too.
+ */
+async function resolveMileagePagePermissions(): Promise<{ canView: boolean; canManage: boolean }> {
+  const moduleActions = await getCurrentUserModuleActions('mileage')
+  const held = new Set<string>('actions' in moduleActions ? moduleActions.actions : [])
+  const result = { view: held.has('view'), manage: held.has('manage') }
+
+  const missing = (['view', 'manage'] as const).filter((action) => !result[action])
+  if (missing.length > 0) {
+    const [probe, ...rest] = missing
+    result[probe] = await checkUserPermission('mileage', probe)
+    if (result[probe]) {
+      for (const action of rest) result[action] = await checkUserPermission('mileage', action)
+    }
+  }
+  return { canView: result.view, canManage: result.manage }
+}
+
 /** The trips page (spec 7.1): the address holds the filters, sort and page, and this page loads what it asks for. */
 export default async function MileagePage({ searchParams }: MileagePageProps): Promise<React.JSX.Element> {
-  const [canView, canManage] = await Promise.all([
-    checkUserPermission('mileage', 'view'),
-    checkUserPermission('mileage', 'manage'),
-  ])
+  const { canView, canManage } = await resolveMileagePagePermissions()
   if (!canView) redirect('/unauthorized')
 
   const { query, warnings } = parseMileageListQuery(await searchParams)
   const [tripsResult, statsResult, destsResult, driversResult, rangeResult] = await Promise.all([
     listMileageTrips(query),
     getTripStats(),
-    getDestinations(),
+    getDestinationOptions(),
     getMileageDrivers(),
     getTripDateRange(),
   ])

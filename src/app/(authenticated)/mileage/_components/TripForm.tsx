@@ -7,7 +7,7 @@ import {
   updateTrip,
   getDistanceCache,
   getRatePreviewContext,
-  type MileageDestination,
+  type MileageDestinationOption,
   type MileageTrip,
 } from '@/app/actions/mileage'
 import type { MileageDriver } from '@/app/actions/mileage-drivers'
@@ -30,7 +30,7 @@ interface TripFormProps {
   open: boolean
   onClose: () => void
   onSuccess: () => void
-  destinations: MileageDestination[]
+  destinations: MileageDestinationOption[]
   drivers: MileageDriver[]
   editingTrip?: MileageTrip | null
 }
