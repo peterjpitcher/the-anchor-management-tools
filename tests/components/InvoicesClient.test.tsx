@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import InvoicesClient from '@/app/(authenticated)/invoices/_components/InvoicesClient'
-import type { InvoiceWithDetails } from '@/types/invoices'
+import type { InvoiceListRow, InvoiceWithDetails } from '@/types/invoices'
 
 const routerPushMock = vi.hoisted(() => vi.fn())
 const downloadInvoicePdfMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
@@ -135,6 +135,48 @@ describe('InvoicesClient', () => {
     expectedOptions.forEach(optionText => {
         expect(screen.getByRole('option', { name: optionText })).toBeInTheDocument()
     })
+  })
+
+  it('renders a row from the slim list shape, balance net of payments and issued credits', () => {
+    const slimRow: InvoiceListRow = {
+      id: 'invoice-2',
+      invoice_number: 'INV-002',
+      reference: 'October work',
+      status: 'partially_paid',
+      invoice_date: '2026-10-01',
+      due_date: '2026-10-31',
+      total_amount: 120,
+      paid_amount: 20,
+      vendor: { id: 'vendor-1', name: 'Acme Supplies' },
+      credits: [
+        { status: 'issued', amount_inc_vat: 10 },
+        { status: 'draft', amount_inc_vat: 50 },
+      ],
+    }
+
+    render(
+      <InvoicesClient
+        initialInvoices={[slimRow]}
+        initialTotal={1}
+        initialSummary={mockSummary}
+        initialStatus="unpaid"
+        initialPage={1}
+        initialSearch=""
+        initialVendorSearch=""
+        initialStartDate=""
+        initialEndDate=""
+        initialLimit={20}
+        initialError={null}
+        permissions={mockPermissions}
+      />
+    )
+
+    expect(screen.getAllByText('INV-002').length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/October work/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Acme Supplies').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('£120.00').length).toBeGreaterThan(0)
+    // 120 total, less 20 paid, less the 10 issued credit; the draft credit does not count.
+    expect(screen.getAllByText('£90.00').length).toBeGreaterThan(0)
   })
 
   it('renders a one-click invoice PDF download button', () => {

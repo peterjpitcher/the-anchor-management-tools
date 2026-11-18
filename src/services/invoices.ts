@@ -6,9 +6,30 @@ import { getTodayIsoDate } from '@/lib/dateUtils';
 import { isInvoiceStatusTransitionAllowed } from '@/lib/status-transitions';
 import { z } from 'zod'; // Import Zod
 
-import type { InvoiceStatus, InvoiceLineItemInput, Invoice, InvoiceWithDetails, LineItemCatalogItem } from '@/types/invoices';
+import type { InvoiceStatus, InvoiceLineItemInput, Invoice, InvoiceWithDetails, InvoiceListRow, LineItemCatalogItem } from '@/types/invoices';
 
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Full invoice rows, for callers that need everything (agents through invoices.getInvoices).
+const INVOICE_FULL_SELECT = `
+        *,
+        vendor:invoice_vendors(*),
+        credits:credit_notes(status, amount_inc_vat)
+      `;
+
+// The invoices list page reads only these. paid_amount and the credits feed the Balance column.
+export const INVOICE_LIST_SELECT =
+  'id, invoice_number, reference, status, invoice_date, due_date, total_amount, paid_amount, vendor:invoice_vendors(id, name), credits:credit_notes(status, amount_inc_vat)';
+
+type InvoicePageFilters = {
+  status?: InvoiceStatus | 'unpaid';
+  page: number;
+  limit: number;
+  search?: string;
+  vendorSearch?: string;
+  startDate?: string;
+  endDate?: string;
+};
 
 function sanitizeInvoiceSearch(value: string): string {
   return value
@@ -257,6 +278,32 @@ export class InvoiceService {
     startDate?: string,
     endDate?: string
   ) {
+    const { rows, total } = await this.fetchInvoicePage(INVOICE_FULL_SELECT, {
+      status, page, limit, search, vendorSearch, startDate, endDate,
+    });
+    return { invoices: rows as InvoiceWithDetails[], total };
+  }
+
+  /** Same filters as getInvoices, but only the columns the invoices list page renders. */
+  static async getInvoiceListRows(
+    status?: InvoiceStatus | 'unpaid',
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+    vendorSearch?: string,
+    startDate?: string,
+    endDate?: string
+  ) {
+    const { rows, total } = await this.fetchInvoicePage(INVOICE_LIST_SELECT, {
+      status, page, limit, search, vendorSearch, startDate, endDate,
+    });
+    return { invoices: rows as unknown as InvoiceListRow[], total };
+  }
+
+  private static async fetchInvoicePage(
+    selectClause: string,
+    { status, page, limit, search, vendorSearch, startDate, endDate }: InvoicePageFilters
+  ): Promise<{ rows: unknown[]; total: number }> {
     const supabase = await createClient();
     const today = getTodayIsoDate();
     const vendorSearchTerm = vendorSearch ? sanitizeInvoiceSearch(vendorSearch) : '';
@@ -275,10 +322,7 @@ export class InvoiceService {
 
       vendorIds = (vendors || []).map((vendor) => vendor.id);
       if (vendorIds.length === 0) {
-        return {
-          invoices: [] as InvoiceWithDetails[],
-          total: 0
-        };
+        return { rows: [], total: 0 };
       }
     }
 
@@ -288,11 +332,7 @@ export class InvoiceService {
 
     let query = supabase
       .from('invoices')
-      .select(`
-        *,
-        vendor:invoice_vendors(*),
-        credits:credit_notes(status, amount_inc_vat)
-      `, { count: 'exact' })
+      .select(selectClause, { count: 'exact' })
       .is('deleted_at', null);
 
     if (status === 'unpaid') {
@@ -338,7 +378,9 @@ export class InvoiceService {
       throw new Error('Failed to fetch invoices');
     }
 
-    const normalizedInvoices = invoices.map((invoice) => ({
+    // The select string is chosen at run time, so the typed client cannot infer the row shape.
+    const rows = (invoices ?? []) as unknown as Array<{ status: InvoiceStatus; due_date: string }>;
+    const normalizedInvoices = rows.map((invoice) => ({
       ...invoice,
       status:
         invoice.status === 'sent' && invoice.due_date < today
@@ -347,7 +389,7 @@ export class InvoiceService {
     }));
 
     return {
-      invoices: normalizedInvoices as InvoiceWithDetails[],
+      rows: normalizedInvoices,
       total: count || 0
     };
   }

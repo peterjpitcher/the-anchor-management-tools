@@ -4547,6 +4547,53 @@
   "readOnly": true
  },
  {
+  "name": "invoices.getInvoiceListPage",
+  "module": "invoices",
+  "export": "getInvoiceListPage",
+  "params": [
+   {
+    "name": "status",
+    "type": "InvoiceStatus | 'unpaid'",
+    "optional": true
+   },
+   {
+    "name": "page",
+    "type": "number",
+    "optional": true
+   },
+   {
+    "name": "limit",
+    "type": "number",
+    "optional": true
+   },
+   {
+    "name": "search",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "vendorSearch",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "startDate",
+    "type": "string",
+    "optional": true
+   },
+   {
+    "name": "endDate",
+    "type": "string",
+    "optional": true
+   }
+  ],
+  "typeRefs": {
+   "InvoiceStatus": "type InvoiceStatus = 'draft' | 'sent' | 'partially_paid' | 'paid' | 'overdue' | 'void' | 'written_off'"
+  },
+  "doc": "Lists invoices for the invoices page: same filters and paging as getInvoices, but each row\ncarries only what the list shows (number, reference, vendor id and name, dates, status, total,\npaid amount and credits for the balance). Use getInvoices for full invoice rows.",
+  "readOnly": true
+ },
+ {
   "name": "invoices.getInvoices",
   "module": "invoices",
   "export": "getInvoices",

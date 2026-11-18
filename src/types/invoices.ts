@@ -116,6 +116,19 @@ export interface InvoiceWithDetails extends Invoice {
   payments?: InvoicePayment[]
 }
 
+/**
+ * One row of the invoices list page: only the columns the list and its row actions read.
+ * `paid_amount` and `credits` feed the Balance column (`invoiceBalanceDue`).
+ * A full `InvoiceWithDetails` is assignable to it.
+ */
+export type InvoiceListRow = Pick<
+  Invoice,
+  'id' | 'invoice_number' | 'reference' | 'status' | 'invoice_date' | 'due_date' | 'total_amount' | 'paid_amount'
+> & {
+  vendor?: Pick<InvoiceVendor, 'id' | 'name'> | null
+  credits?: Array<{ status: string; amount_inc_vat: number | string }> | null
+}
+
 export interface LineItemCatalogItem {
   id: string
   name: string
