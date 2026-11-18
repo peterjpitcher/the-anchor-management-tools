@@ -458,6 +458,23 @@ describe('listParkingBookings arrival window', () => {
     expect(chain.gte).not.toHaveBeenCalled()
   })
 
+  it('names its columns rather than selecting everything, and includes every field the client reads', async () => {
+    const chain = mockListClient()
+
+    await listParkingBookings()
+
+    const columns = String(chain.select.mock.calls[0][0]).split(',').map((column) => column.trim())
+    expect(columns).not.toContain('*')
+    for (const field of [
+      'id', 'reference', 'status', 'payment_status', 'calculated_price', 'override_price', 'override_reason',
+      'start_at', 'end_at', 'customer_id', 'customer_first_name', 'customer_last_name', 'customer_mobile',
+      'customer_email', 'vehicle_registration', 'vehicle_make', 'vehicle_model', 'vehicle_colour',
+      'payment_due_at', 'notes', 'capacity_override', 'capacity_override_reason',
+    ]) {
+      expect(columns).toContain(field)
+    }
+  })
+
   it('refuses an unreadable start rather than loading everything', async () => {
     mockListClient()
 

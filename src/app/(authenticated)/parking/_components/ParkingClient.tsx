@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState, useTransition, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, useTransition, type MouseEvent } from 'react'
 import {
   formatDateTime,
   parseLondonDateTimeLocal,
@@ -65,11 +65,9 @@ import {
   updateParkingBookingDetails,
   listParkingBookings,
   getParkingBookingNotifications,
-  getParkingRateConfig,
-  getParkingRateSettings,
   saveParkingRateConfig
 } from '@/app/actions/parking'
-import type { ParkingRateConfig } from '@/lib/parking/pricing'
+import { parkingRateConfigFromRecord, type ParkingRateConfig } from '@/lib/parking/pricing'
 import type { ParkingRate } from '@/types/parking'
 
 /* ------------------------------------------------------------------ */
@@ -82,9 +80,40 @@ interface ParkingPermissions {
   canRefund: boolean
 }
 
+/** The first bookings list, loaded by the server page: the rows, or why they could not be read. */
+export type ParkingInitialBookings = { data: ParkingBooking[] } | { error: string }
+
+/** The current rate row, loaded by the server page for managers only (null when not loaded). */
+export type ParkingInitialRates = { data: ParkingRate } | { error: string } | null
+
 interface Props {
   permissions: ParkingPermissions
   initialError?: string | null
+  initialBookings: ParkingInitialBookings
+  initialRates: ParkingInitialRates
+}
+
+/** How long the search box waits after the last keystroke before it asks the server. */
+export const PARKING_SEARCH_DEBOUNCE_MS = 300
+
+function rateFormFromRecord(rate: ParkingRate) {
+  return {
+    hourly_rate: String(rate.hourly_rate),
+    daily_rate: String(rate.daily_rate),
+    weekly_rate: String(rate.weekly_rate),
+    monthly_rate: String(rate.monthly_rate),
+    capacity_override: rate.capacity_override == null ? '' : String(rate.capacity_override),
+    notes: rate.notes ?? '',
+  }
+}
+
+const EMPTY_RATE_FORM = {
+  hourly_rate: '',
+  daily_rate: '',
+  weekly_rate: '',
+  monthly_rate: '',
+  capacity_override: '',
+  notes: '',
 }
 
 /* ------------------------------------------------------------------ */
@@ -159,21 +188,29 @@ function formatDuration(minutes: number): string {
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
-export default function ParkingClient({ permissions, initialError }: Props) {
-  const [bookings, setBookings] = useState<ParkingBooking[]>([])
-  const [loading, setLoading] = useState(true)
-  // False until the first load settles: until then the count and the figures would read 0.
-  const [firstLoadSettled, setFirstLoadSettled] = useState(false)
+export default function ParkingClient({ permissions, initialError, initialBookings, initialRates }: Props) {
+  const [bookings, setBookings] = useState<ParkingBooking[]>(() =>
+    'data' in initialBookings ? initialBookings.data : []
+  )
+  const [loading, setLoading] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState<ParkingBooking | null>(null)
   // A failed load is shown as a failure, never as "No bookings": an empty list after an outage
   // reads as a quiet day rather than a broken request.
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(() =>
+    'error' in initialBookings ? initialBookings.error : null
+  )
   const [notifications, setNotifications] = useState<ParkingNotificationRecord[]>([])
   const [loadingNotifications, setLoadingNotifications] = useState(false)
   const [notificationsError, setNotificationsError] = useState<string | null>(null)
-  const [activeRates, setActiveRates] = useState<ParkingRateConfig | null>(null)
+  const initialRateRecord = initialRates && 'data' in initialRates ? initialRates.data : null
+  // The pricing figures are derived from the same rate row the Rates tab edits, not read again.
+  const [activeRates, setActiveRates] = useState<ParkingRateConfig | null>(() =>
+    initialRateRecord ? parkingRateConfigFromRecord(initialRateRecord) : null
+  )
   const [pricingPreview, setPricingPreview] = useState<ParkingPricingResult | null>(null)
   const [pricingError, setPricingError] = useState<string | null>(null)
+  // The settled search: the search box holds keystrokes for PARKING_SEARCH_DEBOUNCE_MS before it
+  // reports, so typing a name is one request rather than one per keystroke.
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [paymentFilter, setPaymentFilter] = useState('all')
@@ -182,15 +219,10 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   const [createForm, setCreateForm] = useState(initialFormState)
   const [editForm, setEditForm] = useState(initialFormState)
   const [cancelTarget, setCancelTarget] = useState<ParkingBooking | null>(null)
-  const [activeRateRecord, setActiveRateRecord] = useState<ParkingRate | null>(null)
-  const [rateForm, setRateForm] = useState({
-    hourly_rate: '',
-    daily_rate: '',
-    weekly_rate: '',
-    monthly_rate: '',
-    capacity_override: '',
-    notes: '',
-  })
+  const [activeRateRecord, setActiveRateRecord] = useState<ParkingRate | null>(initialRateRecord)
+  const [rateForm, setRateForm] = useState(() =>
+    initialRateRecord ? rateFormFromRecord(initialRateRecord) : EMPTY_RATE_FORM
+  )
   const [isPending, startTransition] = useTransition()
   const [isMutating, startMutation] = useTransition()
   // Which detail-card action started the running mutation, so only that button shows it is busy.
@@ -245,38 +277,30 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       return []
     } finally {
       setLoading(false)
-      setFirstLoadSettled(true)
     }
     return records
   }
 
-  useEffect(() => { void fetchBookings() }, [statusFilter, paymentFilter, search])
-
+  // The server page sent the unfiltered list, so the list is only fetched again once a filter or
+  // the settled search differs from what was last fetched. Keyed rather than a "first run" flag so
+  // React's development double-run of effects does not fetch it again either.
+  const lastFetchedQuery = useRef<string>(JSON.stringify(['all', 'all', '']))
   useEffect(() => {
-    if (!permissions.canManage) return
-    const loadRates = async () => {
-      const result = await getParkingRateConfig()
-      if (!result || 'error' in result) {
-        toast.error((result && 'error' in result ? result.error : undefined) || 'Unable to load parking rates')
-        setActiveRates(null)
-        return
-      }
-      setActiveRates(result.data)
-      const settings = await getParkingRateSettings()
-      if ('success' in settings) {
-        setActiveRateRecord(settings.data)
-        setRateForm({
-          hourly_rate: String(settings.data.hourly_rate),
-          daily_rate: String(settings.data.daily_rate),
-          weekly_rate: String(settings.data.weekly_rate),
-          monthly_rate: String(settings.data.monthly_rate),
-          capacity_override: settings.data.capacity_override == null ? '' : String(settings.data.capacity_override),
-          notes: settings.data.notes ?? '',
-        })
-      }
-    }
-    void loadRates()
-  }, [permissions.canManage])
+    const queryKey = JSON.stringify([statusFilter, paymentFilter, search])
+    if (queryKey === lastFetchedQuery.current) return
+    lastFetchedQuery.current = queryKey
+    void fetchBookings()
+  }, [statusFilter, paymentFilter, search])
+
+  // A failed first load says so once, as a refetch failure does.
+  const initialBookingsError = 'error' in initialBookings ? initialBookings.error : null
+  const initialRatesError = initialRates && 'error' in initialRates ? initialRates.error : null
+  useEffect(() => {
+    if (initialBookingsError) toast.error(initialBookingsError)
+    if (initialRatesError) toast.error(initialRatesError)
+    // Only the server's first answer is reported here (deliberately run once); later failures
+    // report themselves.
+  }, [])
 
   useEffect(() => {
     if (!activeRates || !createForm.start_at || !createForm.end_at) {
@@ -492,20 +516,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
       const savedRate = result.data
       toast.success('Parking rates updated')
       setActiveRateRecord(savedRate)
-      setActiveRates({
-        hourlyRate: Number(savedRate.hourly_rate),
-        dailyRate: Number(savedRate.daily_rate),
-        weeklyRate: Number(savedRate.weekly_rate),
-        monthlyRate: Number(savedRate.monthly_rate),
-      })
-      setRateForm({
-        hourly_rate: String(savedRate.hourly_rate),
-        daily_rate: String(savedRate.daily_rate),
-        weekly_rate: String(savedRate.weekly_rate),
-        monthly_rate: String(savedRate.monthly_rate),
-        capacity_override: savedRate.capacity_override == null ? '' : String(savedRate.capacity_override),
-        notes: savedRate.notes ?? '',
-      })
+      setActiveRates(parkingRateConfigFromRecord(savedRate))
+      setRateForm(rateFormFromRecord(savedRate))
     })
   }
 
@@ -597,9 +609,8 @@ export default function ParkingClient({ permissions, initialError }: Props) {
   return (
     <PageLayout
       title="Parking"
-      // No count before the first load settles or while the list failed to load: "0 bookings
-      // total" would be a claim, not a fact.
-      subtitle={!firstLoadSettled || loadError ? undefined : `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
+      // No count while the list failed to load: "0 bookings total" would be a claim, not a fact.
+      subtitle={loadError ? undefined : `${bookings.length} booking${bookings.length !== 1 ? 's' : ''} total`}
       headerActions={
         <>
           <Button variant="secondary" size="sm" onClick={() => void fetchBookings()} disabled={loading}>
@@ -613,9 +624,9 @@ export default function ParkingClient({ permissions, initialError }: Props) {
     >
       {pageError && <Alert tone="danger" title="We couldn't load everything">{pageError}</Alert>}
 
-      {/* Before the first load settles, or after a failed load, the figures would all read 0.
-          The bookings card shows the loading state or the alert that explains the gap instead. */}
-      {firstLoadSettled && !loadError && (
+      {/* After a failed load the figures would all read 0. The bookings card shows the alert
+          that explains the gap instead. */}
+      {!loadError && (
         <StatGrid columns={3}>
           <Stat label="Total Bookings" value={bookings.length} />
           <Stat label="Upcoming" value={upcomingCount} />
@@ -642,6 +653,7 @@ export default function ParkingClient({ permissions, initialError }: Props) {
                 placeholder="Reference or customer"
                 value={search}
                 onChange={setSearch}
+                debounceDelay={PARKING_SEARCH_DEBOUNCE_MS}
                 className="w-full sm:w-64"
               />
               <Select aria-label="Filter by status" options={statusOptions} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} />

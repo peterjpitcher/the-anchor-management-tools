@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import ParkingClient from './_components/ParkingClient'
+import { PermissionService } from '@/services/permission'
+import { getParkingRateSettings, listParkingBookings } from '@/app/actions/parking'
+import ParkingClient, { type ParkingInitialBookings, type ParkingInitialRates } from './_components/ParkingClient'
 
 export default async function ParkingPage() {
   const supabase = await createClient()
@@ -15,59 +17,66 @@ export default async function ParkingPage() {
 
   const errors: string[] = []
 
-  const {
-    data: canView,
-    error: canViewError,
-  } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'parking',
-    p_action: 'view',
-  })
+  // One cached permission list (60 seconds) answers all three checks, with the same super admin
+  // rule as the user_has_permission RPC this page used to call three times in series.
+  // 'unavailable' means the lookup failed, which is reported, never treated as a grant.
+  const [viewStatus, manageStatus, refundStatus] = await Promise.all([
+    PermissionService.getPermissionStatus('parking', 'view', user.id),
+    PermissionService.getPermissionStatus('parking', 'manage', user.id),
+    PermissionService.getPermissionStatus('parking', 'refund', user.id),
+  ])
 
-  if (canViewError) {
-    console.error('Unable to verify parking view permission', canViewError)
+  if (viewStatus === 'unavailable') {
+    console.error('Unable to verify parking view permission')
     errors.push('We could not verify your parking access. Some functionality might be limited.')
   }
 
-  if (!canView && !canViewError) {
+  if (viewStatus === 'denied') {
     redirect('/unauthorized')
   }
 
-  const {
-    data: canManage,
-    error: canManageError,
-  } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'parking',
-    p_action: 'manage',
-  })
-
-  if (canManageError) {
-    console.error('Unable to verify parking manage permission', canManageError)
+  if (manageStatus === 'unavailable') {
+    console.error('Unable to verify parking manage permission')
     errors.push('We could not confirm manage permissions; booking creation is currently disabled.')
   }
 
-  const {
-    data: canRefund,
-    error: canRefundError,
-  } = await supabase.rpc('user_has_permission', {
-    p_user_id: user.id,
-    p_module_name: 'parking',
-    p_action: 'refund',
-  })
-
-  if (canRefundError) {
-    console.error('Unable to verify parking refund permission', canRefundError)
+  if (refundStatus === 'unavailable') {
+    console.error('Unable to verify parking refund permission')
     errors.push('Refund actions may be temporarily unavailable.')
   }
 
   const permissions = {
-    canCreate: Boolean(canManage) && !canManageError,
-    canManage: Boolean(canManage) && !canManageError,
-    canRefund: Boolean(canRefund) && !canRefundError,
+    canCreate: manageStatus === 'allowed',
+    canManage: manageStatus === 'allowed',
+    canRefund: refundStatus === 'allowed',
   }
+
+  // The first bookings list and the rate row load here, together, instead of from the browser
+  // after the page has painted. Both actions still run their own permission checks.
+  const [bookingsResult, ratesResult] = await Promise.all([
+    listParkingBookings(),
+    permissions.canManage ? getParkingRateSettings() : Promise.resolve(null),
+  ])
+
+  const initialBookings: ParkingInitialBookings =
+    bookingsResult && 'success' in bookingsResult && bookingsResult.success
+      ? { data: bookingsResult.data }
+      : { error: (bookingsResult && 'error' in bookingsResult && bookingsResult.error) || 'Failed to load parking bookings' }
+
+  const initialRates: ParkingInitialRates = ratesResult
+    ? 'success' in ratesResult
+      ? { data: ratesResult.data }
+      : { error: ratesResult.error }
+    : null
 
   const initialError = errors.length > 0 ? errors.join(' ') : null
 
-  return <ParkingClient permissions={permissions} initialError={initialError} />
+  return (
+    <ParkingClient
+      permissions={permissions}
+      initialError={initialError}
+      initialBookings={initialBookings}
+      initialRates={initialRates}
+    />
+  )
 }

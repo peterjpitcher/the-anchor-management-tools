@@ -1,4 +1,4 @@
-import { ParkingPricingBreakdownLine, ParkingPricingResult } from '@/types/parking'
+import { ParkingPricingBreakdownLine, ParkingPricingResult, ParkingRate } from '@/types/parking'
 
 const MILLIS_PER_MINUTE = 60_000
 const HOUR_MINUTES = 60
@@ -11,6 +11,18 @@ export interface ParkingRateConfig {
   dailyRate: number
   weeklyRate: number
   monthlyRate: number
+}
+
+/** The pricing figures from a stored parking_rates row. A missing or unreadable figure counts as 0. */
+export function parkingRateConfigFromRecord(
+  record: Pick<ParkingRate, 'hourly_rate' | 'daily_rate' | 'weekly_rate' | 'monthly_rate'>
+): ParkingRateConfig {
+  return {
+    hourlyRate: Number(record.hourly_rate) || 0,
+    dailyRate: Number(record.daily_rate) || 0,
+    weeklyRate: Number(record.weekly_rate) || 0,
+    monthlyRate: Number(record.monthly_rate) || 0,
+  }
 }
 
 export interface ParkingPricingOptions {

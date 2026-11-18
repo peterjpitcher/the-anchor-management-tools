@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ParkingClient from '@/app/(authenticated)/parking/_components/ParkingClient'
+import type { ParkingBooking } from '@/types/parking'
 
 const mockListParkingBookings = vi.fn()
 const mockGetNotifications = vi.fn()
@@ -68,8 +69,13 @@ describe('ParkingClient status words and search name', () => {
   })
 
   it('names the search box and shows status labels, not stored values', async () => {
-    mockListParkingBookings.mockResolvedValue({ data: [BOOKING] })
-    render(<ParkingClient permissions={permissions} />)
+    render(
+      <ParkingClient
+        permissions={permissions}
+        initialBookings={{ data: [BOOKING as unknown as ParkingBooking] }}
+        initialRates={null}
+      />
+    )
 
     expect(screen.getByRole('textbox', { name: 'Search parking bookings' })).toBeInTheDocument()
 
@@ -81,7 +87,6 @@ describe('ParkingClient status words and search name', () => {
   })
 
   it('shows a notification delivery status through the shared delivery map', async () => {
-    mockListParkingBookings.mockResolvedValue({ data: [BOOKING] })
     mockGetNotifications.mockResolvedValue({
       data: [
         {
@@ -97,7 +102,13 @@ describe('ParkingClient status words and search name', () => {
       ],
     })
     const user = userEvent.setup()
-    render(<ParkingClient permissions={permissions} />)
+    render(
+      <ParkingClient
+        permissions={permissions}
+        initialBookings={{ data: [BOOKING as unknown as ParkingBooking] }}
+        initialRates={null}
+      />
+    )
 
     const table = await screen.findByRole('table')
     await user.click(within(table).getByText('PK-001'))
