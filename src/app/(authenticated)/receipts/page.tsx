@@ -113,12 +113,14 @@ export default async function ReceiptsPage({ searchParams }: ReceiptsPageProps) 
     page,
   }
 
-  let data = await getReceiptWorkspaceData(filters)
-  const [canGovernRules, paymentsToConfirm, canEditInvoices] = await Promise.all([
+  // None of the other three reads depends on the workspace data, so all four run together.
+  const [firstData, canGovernRules, paymentsToConfirm, canEditInvoices] = await Promise.all([
+    getReceiptWorkspaceData(filters),
     currentUserCanGovernReceiptRules(),
     getCustomerPaymentsToConfirm(),
     checkUserPermission('invoices', 'edit'),
   ])
+  let data = firstData
 
   if (
     !rawMonth &&

@@ -24,6 +24,7 @@ vi.mock('@/lib/receipts/rule-matching', () => ({
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { queryReceiptWorkspaceData } from '@/services/receipts/receiptQueries'
+import { totalVendorGroups } from '@/lib/receipts/vendor-group-key'
 
 const mockedCreateAdminClient = createAdminClient as unknown as Mock
 
@@ -74,7 +75,7 @@ function buildTransactions() {
     id: `tx-${String(index).padStart(5, '0')}`,
     // Names that already exist in the canonical list, so the suggestion count is
     // the canonical list itself rather than the page plus the list.
-    vendor_name: `Vendor ${String(index % 40).padStart(4, '0')}`,
+    vendor_name: `Vendor ${String(index % 40).padStart(4, '0')}` as string | null,
     amount_out: 10,
     amount_in: null,
     transaction_date: '2026-09-01',
@@ -99,6 +100,12 @@ type Stubs = {
 
 /** The rows of `receipt_settings`, or 'fail' when the table cannot be read. Reset before each test. */
 let settingsRows: Array<{ key: string; value: Record<string, unknown> }> | 'fail' = []
+/** Every rpc called, by name. Reset before each test. */
+let rpcCalls: string[] = []
+/** How many times `receipt_settings` was read. Reset before each test. */
+let settingsReads = 0
+/** What get_receipt_monthly_status_counts returns. Reset before each test. */
+let statusCountRows: Array<{ month_start: string; status: string; total: number }> = []
 
 function mockAdminClient(
   transactions: ReturnType<typeof buildTransactions>,
@@ -114,7 +121,17 @@ function mockAdminClient(
       if (table === 'receipt_transactions') {
         const stub = createQueryStub((calls) => {
           const [from, to] = rangeOf(calls)
-          return { data: transactions.slice(from, to + 1), error: null, count: transactions.length }
+          // The vendor group totals read narrows by vendor name: honour those two filters.
+          let rows: typeof transactions = transactions
+          const named = calls.find((call) => call.method === 'in' && call.args[0] === 'vendor_name')
+          if (named) {
+            const names = named.args[1] as string[]
+            rows = rows.filter((row) => row.vendor_name !== null && names.includes(row.vendor_name))
+          }
+          if (calls.some((call) => call.method === 'or' && call.args[0] === 'vendor_name.is.null,vendor_name.eq.')) {
+            rows = rows.filter((row) => row.vendor_name === null || row.vendor_name === '')
+          }
+          return { data: rows.slice(from, to + 1), error: null, count: rows.length }
         })
         transactionStubs.push(stub)
         return stub.builder
@@ -147,6 +164,7 @@ function mockAdminClient(
       }
 
       if (table === 'receipt_settings') {
+        settingsReads += 1
         return createQueryStub(() =>
           settingsRows === 'fail' ? { data: null, error: { message: 'timeout' } } : { data: settingsRows, error: null }
         ).builder
@@ -168,6 +186,10 @@ function mockAdminClient(
       throw new Error(`Unexpected table: ${table}`)
     },
     rpc: (fn: string) => {
+      rpcCalls.push(fn)
+      if (fn === 'get_receipt_monthly_status_counts') {
+        return createQueryStub(() => ({ data: statusCountRows, error: null })).builder
+      }
       if (fn === 'count_receipt_statuses') {
         return createQueryStub(() => ({
           data: [{ pending: 23, completed: 7743, auto_completed: 0, no_receipt_required: 426, cant_find: 10 }],
@@ -194,6 +216,9 @@ describe('receipts workspace paging', () => {
     vi.clearAllMocks()
     mockedCreateAdminClient.mockReset()
     settingsRows = []
+    rpcCalls = []
+    statusCountRows = []
+    settingsReads = 0
   })
 
   it('pages every view at a hundred, and honours page two of the month view', async () => {
@@ -277,19 +302,96 @@ describe('receipts workspace paging', () => {
     expect(pageOrders.at(-1)).toEqual(['id', { ascending: true }])
     expect(rangeOf(stubs.transactionStubs[0].calls)).toEqual([100, 199])
 
-    // The totals read: every matching row, four columns, in pages of 1,000.
+    // The totals read: four columns, in pages of 1,000.
     const totalsReads = stubs.transactionStubs.slice(1)
-    expect(totalsReads.map((stub) => rangeOf(stub.calls))).toEqual(
-      Array.from({ length: 9 }, (_, index) => [index * 1000, index * 1000 + 999])
-    )
     expect(totalsReads[0].calls[0]).toEqual({ method: 'select', args: ['vendor_name, amount_in, amount_out, amount_total'] })
 
-    // 8,202 payments of ten pounds over forty vendors: the heading is the whole group, not the
-    // two or three rows of it on this page.
+    // 8,202 payments of ten pounds over forty vendors, all forty on this page: the heading is the
+    // whole group, not the two or three rows of it on this page.
     const totals = result.vendorGroupTotals ?? {}
     expect(Object.keys(totals)).toHaveLength(40)
     expect(Object.values(totals).reduce((sum, group) => sum + group.count, 0)).toBe(TOTAL_TRANSACTIONS)
     expect(totals['vendor 0000']).toEqual({ count: 206, totalIn: 0, totalOut: 2060, totalAmount: 2060 })
+  })
+
+  it('totals only the vendor groups on the page, with the same figures as a read of every payment', async () => {
+    const transactions = buildTransactions()
+    const stubs = mockAdminClient(transactions, buildVendors())
+
+    // Ten rows a page: page two holds tx 10 to 19, so vendors 0010 to 0019 only.
+    const result = await queryReceiptWorkspaceData({ groupByVendor: true, page: 2, pageSize: 10 })
+
+    const pageVendors = Array.from({ length: 10 }, (_, index) => `Vendor ${String(index + 10).padStart(4, '0')}`)
+    const totalsReads = stubs.transactionStubs.slice(1)
+    expect(totalsReads.length).toBeGreaterThan(0)
+    for (const read of totalsReads) {
+      expect(read.calls).toContainEqual({ method: 'in', args: ['vendor_name', pageVendors] })
+    }
+    // 2,050 matching payments: three pages of 1,000, not the nine of a read of every payment.
+    expect(totalsReads.map((stub) => rangeOf(stub.calls))).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ])
+
+    const everyPayment = totalVendorGroups(transactions)
+    const expected = Object.fromEntries(pageVendors.map((name) => [name.toLowerCase(), everyPayment[name.toLowerCase()]]))
+    expect(result.vendorGroupTotals).toEqual(expected)
+    expect(result.vendorGroupTotals?.['vendor 0010']).toEqual({ count: 205, totalIn: 0, totalOut: 2050, totalAmount: 2050 })
+  })
+
+  it('totals the "Missing vendor" group over every page when the page has a payment with no vendor', async () => {
+    const transactions = buildTransactions().map((row, index) => (index % 100 === 5 ? { ...row, vendor_name: null } : row))
+    const stubs = mockAdminClient(transactions, buildVendors())
+
+    const result = await queryReceiptWorkspaceData({ groupByVendor: true, page: 1, pageSize: 10 })
+
+    const missingReads = stubs.transactionStubs
+      .slice(1)
+      .filter((stub) => stub.calls.some((call) => call.method === 'or' && call.args[0] === 'vendor_name.is.null,vendor_name.eq.'))
+    expect(missingReads).toHaveLength(1)
+    expect(result.vendorGroupTotals?.['missing vendor']).toEqual(totalVendorGroups(transactions)['missing vendor'])
+    expect(result.vendorGroupTotals?.['missing vendor']?.count).toBe(82)
+  })
+
+  it('falls back to a read of every payment when a vendor name on the page holds a double quote', async () => {
+    const transactions = buildTransactions().map((row, index) => (index === 0 ? { ...row, vendor_name: 'Joe "The Plumber"' } : row))
+    const stubs = mockAdminClient(transactions, buildVendors())
+
+    const result = await queryReceiptWorkspaceData({ groupByVendor: true, page: 1, pageSize: 10 })
+
+    const totalsReads = stubs.transactionStubs.slice(1)
+    expect(totalsReads.some((stub) => stub.calls.some((call) => call.method === 'in'))).toBe(false)
+    expect(totalsReads).toHaveLength(9)
+    expect(result.vendorGroupTotals?.['joe "the plumber"']).toEqual({ count: 1, totalIn: 0, totalOut: 10, totalAmount: 10 })
+    expect(Object.keys(result.vendorGroupTotals ?? {})).toHaveLength(10)
+  })
+
+  it('fills the month picker from the months that hold payments, once each, newest first', async () => {
+    statusCountRows = [
+      { month_start: '2026-09-01', status: 'completed', total: 400 },
+      { month_start: '2026-09-01', status: 'pending', total: 3 },
+      { month_start: '2026-08-01', status: 'completed', total: 380 },
+      { month_start: '2019-02-01', status: 'completed', total: 12 },
+      { month_start: '2019-02-01', status: 'no_receipt_required', total: 1 },
+    ]
+    mockAdminClient(buildTransactions(), buildVendors())
+
+    const result = await queryReceiptWorkspaceData({})
+
+    expect(result.availableMonths).toEqual(['2026-09', '2026-08', '2019-02'])
+    expect(rpcCalls).toContain('get_receipt_monthly_status_counts')
+    // The summary also ranks every vendor in every month, which the picker never shows.
+    expect(rpcCalls).not.toContain('get_receipt_monthly_summary')
+  })
+
+  it('does not offer a month that holds no payments, even when it is the one asked for', async () => {
+    statusCountRows = [{ month_start: '2026-09-01', status: 'completed', total: 400 }]
+    mockAdminClient(buildTransactions(), buildVendors())
+
+    const result = await queryReceiptWorkspaceData({ month: '2026-07' })
+
+    expect(result.availableMonths).toEqual(['2026-09'])
   })
 
   it('does not total the groups when the list is not grouped', async () => {
@@ -345,6 +447,8 @@ describe('receipts workspace paging', () => {
       }
       // The tile says where its count starts.
       expect(data.summary.completedWithoutReceiptAfter).toBe('2025-12-31')
+      // The rows and the tile share one read of the settings.
+      expect(settingsReads).toBe(1)
     })
 
     it('leaves every other view alone, whatever the lock date', async () => {
