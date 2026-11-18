@@ -38,9 +38,11 @@ import { ConversationThread } from './ConversationThread'
 import { useFillToViewportBottom } from './useFillToViewportBottom'
 
 // Each tick re-reads the conversation list plus the open thread's newest page.
-// At 15s a single tab left open all shift was hammering the inbox queries for no
-// benefit: staff act on messages in minutes, not seconds.
-const REFRESH_INTERVAL = 30000
+// At 15s, and then 30s, a single tab left open all shift kept the inbox queries
+// busy for no benefit: staff act on messages in minutes, not seconds. 60s halves
+// that load again (page load performance spec, 18 November 2026). Realtime is
+// deliberately not used here: it is already the largest share of database time.
+const REFRESH_INTERVAL = 60000
 /** Backoff ceiling after repeated failures, so an outage is not amplified. */
 const MAX_REFRESH_INTERVAL = 300000
 const SEARCH_DEBOUNCE_MS = 350

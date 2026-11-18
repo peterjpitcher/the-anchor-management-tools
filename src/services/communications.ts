@@ -141,6 +141,32 @@ function inboxRow(row: any): InboxRow {
   return { ...row, has_attachments: Boolean(row.has_attachments) } as InboxRow
 }
 
+/** Newest first, ties broken by id descending: the order the SQL function uses. */
+function compareNewestFirst(a: { created_at: string; id: string }, b: { created_at: string; id: string }): number {
+  const difference = new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  if (difference !== 0) return difference
+  if (a.id === b.id) return 0
+  return a.id < b.id ? 1 : -1
+}
+
+/**
+ * Rebuild the two lists the inbox used to read separately: the newest recent
+ * rows and the newest unread rows. A row can sit in both, as before. Each list
+ * is re-sorted here rather than trusting row order to survive the API.
+ */
+function splitInboxRows(data: any[]): { recent: any[]; unread: any[] } {
+  const recent: any[] = []
+  const unread: any[] = []
+  for (const row of data) {
+    const { is_unread_row: isUnreadRow, ...rest } = row ?? {}
+    if (isUnreadRow) unread.push(rest)
+    else recent.push(rest)
+  }
+  recent.sort(compareNewestFirst)
+  unread.sort(compareNewestFirst)
+  return { recent, unread }
+}
+
 /*
  * Opt-out keywords and matching now live in src/lib/sms/opt-out-keywords.ts, so
  * this path and the inbound webhook cannot drift apart. That module imports
@@ -343,32 +369,25 @@ export class CommunicationsService {
     await requireMessagesView()
     const adminClient = createAdminClient()
 
-    const unreadFilter =
-      'and(direction.eq.inbound,channel.in.(sms,whatsapp),read_at.is.null),' +
-      'and(direction.eq.inbound,channel.eq.email,staff_read_at.is.null)'
-
-    const [recentResult, unreadResult, unmatchedResult] = await Promise.all([
-      (adminClient.from('customer_communications') as any)
-        .select(INBOX_COLUMNS)
-        .order('created_at', { ascending: false })
-        .limit(RECENT_COMMUNICATION_FETCH_LIMIT),
-      (adminClient.from('customer_communications') as any)
-        .select(INBOX_COLUMNS)
-        .or(unreadFilter)
-        .order('created_at', { ascending: false })
-        .limit(UNREAD_COMMUNICATION_FETCH_LIMIT),
+    // One read through get_inbox_communications instead of two reads of the
+    // customer_communications view. The view could not push ORDER BY and LIMIT
+    // into its UNION ALL branches, so each read scanned and sorted every SMS
+    // and email ever sent; the function takes the newest rows from each base
+    // table and truncates the union to exactly the newest N overall. Recent
+    // rows (is_unread_row false) and unread rows (true) come back together;
+    // 250 + 500 stays under the 1,000-row API cap, so nothing is cut off.
+    const [inboxResult, unmatchedResult] = await Promise.all([
+      adminClient.rpc('get_inbox_communications', {
+        p_recent_limit: RECENT_COMMUNICATION_FETCH_LIMIT,
+        p_unread_limit: UNREAD_COMMUNICATION_FETCH_LIMIT,
+      }),
       (adminClient.from('unmatched_communications') as any)
         .select('id', { count: 'exact', head: true })
         .eq('status', 'unmatched'),
     ])
 
-    if (recentResult.error) {
-      logger.error('Error fetching recent communications', { error: toError(recentResult.error) })
-      throw new Error('Failed to load messages')
-    }
-
-    if (unreadResult.error) {
-      logger.error('Error fetching unread communications', { error: toError(unreadResult.error) })
+    if (inboxResult.error) {
+      logger.error('Error fetching inbox communications', { error: toError(inboxResult.error) })
       throw new Error('Failed to load messages')
     }
 
@@ -376,10 +395,9 @@ export class CommunicationsService {
       logger.warn('Error counting unmatched communications', { error: toError(unmatchedResult.error) })
     }
 
-    const rows = [
-      ...((unreadResult.data ?? []) as any[]).map(inboxRow),
-      ...((recentResult.data ?? []) as any[]).map(inboxRow),
-    ]
+    const { recent, unread } = splitInboxRows((inboxResult.data ?? []) as any[])
+
+    const rows = [...unread.map(inboxRow), ...recent.map(inboxRow)]
     const customerMap = await loadCustomers(adminClient, rows.map(row => row.customer_id))
     const conversations = new Map<string, ConversationSummary>()
     const seenRows = new Set<string>()
@@ -420,7 +438,7 @@ export class CommunicationsService {
       return new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
     })
 
-    const unreadIsCapped = (unreadResult.data?.length ?? 0) >= UNREAD_COMMUNICATION_FETCH_LIMIT
+    const unreadIsCapped = unread.length >= UNREAD_COMMUNICATION_FETCH_LIMIT
 
     return {
       conversations: sorted,
