@@ -10,8 +10,9 @@ import type { User as SupabaseUser } from '@supabase/supabase-js'
 import { CustomerService } from '@/services/customers'
 import type { CreateCustomerInput } from '@/types/customers'
 import type { Customer } from '@/types/database'
-import { getBulkCustomerLabels } from './customer-labels-bulk'
-import { getUnreadMessageCounts } from './messageActions'
+import { readBulkCustomerLabels } from '@/lib/customers/bulk-labels'
+import { MessageService } from '@/services/messages'
+import { logger } from '@/lib/logger'
 import type { CustomerLabelAssignment } from './customer-labels'
 import { sendBulkSms } from '@/lib/sms/bulk'
 import { ConsentService } from '@/services/consent'
@@ -105,8 +106,9 @@ type CustomerCategoryStatsQueryRow = {
 export interface CustomerListResult {
   customers: Customer[]
   totalCount: number
-  smsActiveCount: number
-  smsDeactivatedCount: number
+  /** null when the caller asked for no tab counts (a plain page change keeps the ones it holds). */
+  smsActiveCount: number | null
+  smsDeactivatedCount: number | null
   customerPreferences: Record<string, CustomerCategoryStats[]>
   customerLabels: Record<string, CustomerLabelAssignment[]>
   unreadCounts: Record<string, number>
@@ -118,18 +120,31 @@ const CUSTOMER_LIST_SELECT =
 
 /**
  * Server-side customer list fetch with enrichment data (preferences, labels,
- * unread message counts).  Used by the Customers page Server Component to
- * provide data for the initial render — no skeleton flash on first visit.
+ * unread message counts). Used by the Customers page Server Component for the
+ * first render, so there is no skeleton flash on first visit, and by the list
+ * when staff page, search or filter.
+ *
+ * The SMS Active and SMS Deactivated tab counts do not depend on the page, so a
+ * caller that already holds them for the same search and filter passes
+ * `includeTabCounts: false` and gets null for both, saving two full counts.
+ * Left out, it defaults to true.
  */
 export async function getCustomerList(params: {
   page: number
   pageSize: number
   searchTerm: string
   smsFilter: CustomerSmsFilter
+  includeTabCounts?: boolean
 }): Promise<CustomerListResult> {
   const { page, pageSize, searchTerm, smsFilter } = params
+  const includeTabCounts = params.includeTabCounts ?? true
 
-  const hasViewPermission = await checkUserPermission('customers', 'view')
+  // Both checks run together. The unread badges need messages:view, which the
+  // exported getUnreadMessageCounts used to check on its own after the list loaded.
+  const [hasViewPermission, canViewMessages] = await Promise.all([
+    checkUserPermission('customers', 'view'),
+    checkUserPermission('messages', 'view').catch(() => false),
+  ])
   if (!hasViewPermission) {
     return {
       customers: [],
@@ -146,12 +161,8 @@ export async function getCustomerList(params: {
   const supabase = await createClient()
 
   // Walk-in and anonymised placeholders are not people to list or count (BK-082).
-  // Build the base query for counting
-  let countQuery = supabase
-    .from('customers')
-    .select('id', { count: 'exact', head: true })
-    .eq('is_placeholder', false)
-
+  // The total for the selected tab comes from the data query itself (count: 'exact'
+  // on the same filters), so only the two tab counts are separate requests.
   let smsActiveCountQuery = supabase
     .from('customers')
     .select('id', { count: 'exact', head: true })
@@ -169,7 +180,7 @@ export async function getCustomerList(params: {
   // twice or not at all as you paged. id breaks the tie deterministically.
   let dataQuery = supabase
     .from('customers')
-    .select(CUSTOMER_LIST_SELECT)
+    .select(CUSTOMER_LIST_SELECT, { count: 'exact' })
     .eq('is_placeholder', false)
     .order('first_name', { ascending: true })
     .order('last_name', { ascending: true })
@@ -178,17 +189,14 @@ export async function getCustomerList(params: {
   // Apply SMS filter. 'all' deliberately applies none, so the All tab shows
   // every customer rather than only the textable ones.
   if (smsFilter === 'deactivated') {
-    countQuery = countQuery.in('sms_status', SMS_DEACTIVATED_STATUSES)
     dataQuery = dataQuery.in('sms_status', SMS_DEACTIVATED_STATUSES)
   } else if (smsFilter === 'active') {
-    countQuery = countQuery.in('sms_status', SMS_ACTIVE_STATUSES)
     dataQuery = dataQuery.in('sms_status', SMS_ACTIVE_STATUSES)
   }
 
   // Apply search filter across name, phone, and email
   if (searchTerm.trim()) {
     const searchFilter = buildCustomerSearchFilter(searchTerm.trim())
-    countQuery = countQuery.or(searchFilter)
     smsActiveCountQuery = smsActiveCountQuery.or(searchFilter)
     smsDeactivatedCountQuery = smsDeactivatedCountQuery.or(searchFilter)
     dataQuery = dataQuery.or(searchFilter)
@@ -199,16 +207,20 @@ export async function getCustomerList(params: {
   const to = from + pageSize - 1
   dataQuery = dataQuery.range(from, to)
 
-  // Run count and data in parallel
+  // Run the tab counts (when wanted) and the data in parallel
+  const skippedCount = { count: null, error: null } as const
   const [
-    { count, error: countError },
     { count: smsActiveCount, error: smsActiveCountError },
     { count: smsDeactivatedCount, error: smsDeactivatedCountError },
-    { data: rows, error: dataError }
-  ] = await Promise.all([countQuery, smsActiveCountQuery, smsDeactivatedCountQuery, dataQuery])
+    { data: rows, count, error: dataError }
+  ] = await Promise.all([
+    includeTabCounts ? smsActiveCountQuery : skippedCount,
+    includeTabCounts ? smsDeactivatedCountQuery : skippedCount,
+    dataQuery,
+  ])
 
-  if (countError || smsActiveCountError || smsDeactivatedCountError || dataError) {
-    console.error('Error fetching customer list:', countError ?? smsActiveCountError ?? smsDeactivatedCountError ?? dataError)
+  if (smsActiveCountError || smsDeactivatedCountError || dataError) {
+    console.error('Error fetching customer list:', smsActiveCountError ?? smsDeactivatedCountError ?? dataError)
     return {
       customers: [],
       totalCount: 0,
@@ -228,8 +240,8 @@ export async function getCustomerList(params: {
     return {
       customers: [],
       totalCount,
-      smsActiveCount: smsActiveCount ?? 0,
-      smsDeactivatedCount: smsDeactivatedCount ?? 0,
+      smsActiveCount: includeTabCounts ? smsActiveCount ?? 0 : null,
+      smsDeactivatedCount: includeTabCounts ? smsDeactivatedCount ?? 0 : null,
       customerPreferences: {},
       customerLabels: {},
       unreadCounts: {}
@@ -247,8 +259,22 @@ export async function getCustomerList(params: {
       )
       .in('customer_id', customerIds)
       .order('times_attended', { ascending: false }),
-    getBulkCustomerLabels(customerIds),
-    getUnreadMessageCounts(customerIds)
+    // customers:view was checked above, so the labels are read directly rather than
+    // through the exported getBulkCustomerLabels action, which would check it again.
+    readBulkCustomerLabels(supabase, customerIds).catch((error: unknown) => {
+      console.error('Error in getBulkCustomerLabels:', error)
+      return { assignments: undefined }
+    }),
+    // Same for the unread badges: messages:view was checked above, and without it
+    // the list shows none, exactly as getUnreadMessageCounts returned {}.
+    canViewMessages
+      ? MessageService.getUnreadCounts(customerIds).catch((error: unknown) => {
+          logger.error('Error fetching unread counts', {
+            error: error instanceof Error ? error : new Error(String(error)),
+          })
+          return {}
+        })
+      : Promise.resolve({})
   ])
 
   // Process category stats
@@ -283,8 +309,8 @@ export async function getCustomerList(params: {
   return {
     customers,
     totalCount,
-    smsActiveCount: smsActiveCount ?? 0,
-    smsDeactivatedCount: smsDeactivatedCount ?? 0,
+    smsActiveCount: includeTabCounts ? smsActiveCount ?? 0 : null,
+    smsDeactivatedCount: includeTabCounts ? smsDeactivatedCount ?? 0 : null,
     customerPreferences,
     customerLabels,
     unreadCounts

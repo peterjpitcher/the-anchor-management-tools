@@ -22,7 +22,8 @@ function customerQueries(text: string): string[] {
 
 describe('placeholder customers are filtered out', () => {
   it.each([
-    ['the customer list and its counts', 'src/app/actions/customers.ts', 4],
+    // The list's total now comes from its data query (spec C1), so three chains, not four.
+    ['the customer list and its counts', 'src/app/actions/customers.ts', 3],
     ['the front-of-house customer search', 'src/app/api/foh/customers/search/route.ts', 1],
     ['the dashboard customer tiles', 'src/app/(authenticated)/dashboard/dashboard-data.ts', 4],
     ['the insights new-customer figures', 'src/lib/insights/sections/customers.ts', 2],

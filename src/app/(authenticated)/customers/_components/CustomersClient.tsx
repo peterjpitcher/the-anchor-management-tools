@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import type { Customer } from '@/types/database'
@@ -100,8 +100,17 @@ export default function CustomersClient({
   // BK-163: the upcoming hires still on a customer's old details, offered after an edit here.
   const [contactOffer, setContactOffer] = useState<{ customerId: string | null; offers: BookingContactOffer[] }>({ customerId: null, offers: [] })
   const [totalCount, setTotalCount] = useState(initialData.totalCount)
-  const [smsActiveCount, setSmsActiveCount] = useState(initialData.smsActiveCount)
-  const [smsDeactivatedCount, setSmsDeactivatedCount] = useState(initialData.smsDeactivatedCount)
+  const [smsActiveCount, setSmsActiveCount] = useState(initialData.smsActiveCount ?? 0)
+  const [smsDeactivatedCount, setSmsDeactivatedCount] = useState(initialData.smsDeactivatedCount ?? 0)
+  // The search and filter the tab counts above were counted for. The counts do not
+  // depend on the page, so a plain page change keeps them and asks the server for
+  // none. null means the counts held are not trustworthy (a failed load), so the
+  // next fetch counts again.
+  const tabCountsKey = useRef<string | null>(
+    initialData.error || initialData.smsActiveCount === null || initialData.smsDeactivatedCount === null
+      ? null
+      : JSON.stringify([initialSearch, initialSmsFilter])
+  )
   const [customerPreferences, setCustomerPreferences] = useState<
     Record<string, CustomerCategoryStats[]>
   >(initialData.customerPreferences)
@@ -169,21 +178,32 @@ export default function CustomersClient({
 
   // Data fetching
   const fetchPage = useCallback(
-    async (opts: { page: number; size: number; search: string; smsFilter: CustomerSmsFilter }) => {
+    async (opts: { page: number; size: number; search: string; smsFilter: CustomerSmsFilter; forceTabCounts?: boolean }) => {
       setIsFetching(true)
+      const key = JSON.stringify([opts.search, opts.smsFilter])
+      // Counts are asked for on page 1, after a change of search or filter, after a save
+      // (forceTabCounts), and whenever the ones held are not known to be good.
+      const includeTabCounts = Boolean(opts.forceTabCounts) || opts.page === 1 || tabCountsKey.current !== key
       try {
         const result = await getCustomerList({
           page: opts.page, pageSize: opts.size, searchTerm: opts.search, smsFilter: opts.smsFilter,
+          includeTabCounts,
         })
         setCustomers(result.customers)
         setTotalCount(result.totalCount)
-        setSmsActiveCount(result.smsActiveCount)
-        setSmsDeactivatedCount(result.smsDeactivatedCount)
+        if (result.smsActiveCount !== null && result.smsDeactivatedCount !== null) {
+          setSmsActiveCount(result.smsActiveCount)
+          setSmsDeactivatedCount(result.smsDeactivatedCount)
+          tabCountsKey.current = result.error ? null : key
+        } else if (result.error) {
+          tabCountsKey.current = null
+        }
         setCustomerPreferences(result.customerPreferences)
         setCustomerLabels(result.customerLabels)
         setUnreadCounts(result.unreadCounts)
         setLoadError(result.error ?? null)
       } catch {
+        tabCountsKey.current = null
         setLoadError('Failed to load customers')
       } finally {
         setIsFetching(false)
@@ -212,7 +232,8 @@ export default function CustomersClient({
   }, [pushParams])
 
   const refreshCurrentPage = useCallback(() => {
-    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter })
+    // After a create, edit, delete or import the tab counts may have moved, so recount.
+    fetchPage({ page: currentPage, size: pageSize, search: searchTerm, smsFilter, forceTabCounts: true })
   }, [currentPage, fetchPage, pageSize, searchTerm, smsFilter])
 
   const totalPages = Math.ceil(totalCount / pageSize)
