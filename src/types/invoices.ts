@@ -169,6 +169,14 @@ export interface QuoteWithDetails extends Quote {
   converted_invoice?: Invoice
 }
 
+/** One row of the Quotes list: only the fields the list draws and searches on. */
+export type QuoteListItem = Pick<
+  Quote,
+  'id' | 'quote_number' | 'reference' | 'quote_date' | 'valid_until' | 'status' | 'total_amount' | 'converted_to_invoice_id'
+> & {
+  vendor?: Pick<InvoiceVendor, 'id' | 'name'> | null
+}
+
 interface RecurringInvoice {
   id: string
   vendor_id: string

@@ -9843,6 +9843,23 @@
   "readOnly": true
  },
  {
+  "name": "quotes.getQuotesPageData",
+  "module": "quotes",
+  "export": "getQuotesPageData",
+  "params": [
+   {
+    "name": "status",
+    "type": "QuoteStatus",
+    "optional": true
+   }
+  ],
+  "typeRefs": {
+   "QuoteStatus": "type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected' | 'expired'"
+  },
+  "doc": "The Quotes page in one read: the list (optionally one stored status) and the summary figures.\n\nEvery quote is read once with only the fields the list draws. The summary is totalled from the\nstored rows before a lapsed sent quote is relabelled expired, so it matches getQuoteSummary\nexactly. The status filter is applied to the stored status, as getQuotes does: \"sent\" still\nincludes lapsed sent quotes (shown as expired) and \"expired\" only quotes stored as expired.",
+  "readOnly": true
+ },
+ {
   "name": "quotes.getQuoteSummary",
   "module": "quotes",
   "export": "getQuoteSummary",

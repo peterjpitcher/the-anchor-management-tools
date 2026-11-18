@@ -8,8 +8,8 @@ import { render, screen } from '@testing-library/react'
 import { FINANCE_NAV, financeNav } from '@/app/(authenticated)/invoices/_shared/nav'
 
 const quoteActions = vi.hoisted(() => ({
-  getQuotes: vi.fn().mockResolvedValue({ quotes: [] }),
-  getQuoteSummary: vi.fn().mockResolvedValue({
+  getQuotesPageData: vi.fn().mockResolvedValue({
+    quotes: [],
     summary: { total_pending: 0, total_expired: 0, total_accepted: 0, draft_badge: 0 },
   }),
 }))
