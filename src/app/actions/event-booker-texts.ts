@@ -1,5 +1,6 @@
 'use server'
 
+import { createHash } from 'crypto'
 import { headers } from 'next/headers'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
@@ -29,6 +30,8 @@ export interface EventBookerTextResult {
   sent?: number
   /** Texts held by quiet hours (9pm to 9am London) and sent from 9am. */
   held?: number
+  /** Bookers who already had this exact message for this event, so were not texted again. */
+  alreadySent?: number
   failed?: number
   failures?: Array<{ name: string; error: string }>
   /** Sends stopped part-way on a safety failure; some texts may have gone. Do not resend. */
@@ -163,8 +166,15 @@ export async function sendEventBookerText(input: {
     return { error: 'Nobody booked into this event can be texted.' }
   }
 
+  // One id per distinct message. The SMS duplicate guard keys on customer, template and event;
+  // without this every later, different update to the same bookers within 14 days read as a
+  // clash and stopped the send at the first booker. The same wording resent (a double click, a
+  // retry) keeps the same id, so nobody gets it twice. Same pattern as manual SMS in sms.ts.
+  const updateId = createHash('sha256').update(`${eventId}\n${message}`).digest('hex').slice(0, 16)
+
   let sent = 0
   let held = 0
+  let alreadySent = 0
   const failures: Array<{ name: string; error: string }> = []
   let stoppedEarly = false
 
@@ -179,6 +189,7 @@ export async function sendEventBookerText(input: {
           trigger_type: EVENT_BOOKER_UPDATE_TEMPLATE_KEY,
           event_id: eventId,
           event_booking_id: recipient.bookingIds[0],
+          stage: updateId,
           sent_by: auth.userId,
         },
       })
@@ -186,7 +197,8 @@ export async function sendEventBookerText(input: {
       const logFailure = (result as { logFailure?: boolean }).logFailure === true
 
       if (result.success) {
-        if ((result as { deferred?: boolean }).deferred) held += 1
+        if ((result as { suppressed?: boolean }).suppressed) alreadySent += 1
+        else if ((result as { deferred?: boolean }).deferred) held += 1
         else sent += 1
       } else {
         failures.push({ name, error: result.error || 'Failed to send' })
@@ -205,8 +217,11 @@ export async function sendEventBookerText(input: {
   }
 
   const notAttempted = stoppedEarly
-    ? audience.recipients.length - sent - held - failures.length
+    ? audience.recipients.length - sent - held - alreadySent - failures.length
     : 0
+
+  // Every booker reached, now or earlier with this same message, counts as a successful send.
+  const delivered = sent + held > 0 || (alreadySent > 0 && failures.length === 0 && !stoppedEarly)
 
   await logAuditEvent({
     user_id: auth.userId,
@@ -214,23 +229,25 @@ export async function sendEventBookerText(input: {
     operation_type: 'send',
     resource_type: 'event_booker_text',
     resource_id: eventId,
-    operation_status: sent + held > 0 ? 'success' : 'failure',
-    ...(sent + held === 0 && { error_message: failures[0]?.error ?? 'No texts sent' }),
+    operation_status: delivered ? 'success' : 'failure',
+    ...(!delivered && { error_message: failures[0]?.error ?? 'No texts sent' }),
     additional_info: {
       eventName: event.name,
       includePendingPayment,
       message,
       recipientCustomerIds: audience.recipients.map((r) => r.customerId),
       excludedCustomerIds: audience.excluded.map((x) => x.customerId),
+      updateId,
       sent,
       held,
+      alreadySent,
       failed: failures.length,
       stoppedEarly,
       notAttempted,
     },
   })
 
-  if (sent + held === 0) {
+  if (!delivered) {
     return {
       success: false,
       error: stoppedEarly
@@ -246,6 +263,7 @@ export async function sendEventBookerText(input: {
     success: true,
     sent,
     held,
+    alreadySent,
     failed: failures.length + notAttempted,
     failures,
     stoppedEarly,
