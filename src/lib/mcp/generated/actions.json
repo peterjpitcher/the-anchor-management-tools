@@ -312,7 +312,7 @@
    }
   ],
   "typeRefs": {
-   "BulkRecipientFilters": "interface BulkRecipientFilters {\n  eventId?: string\n  bookingStatus?: 'with_bookings' | 'without_bookings'\n  smsOptIn: 'opted_in' | 'all'\n  categoryId?: string\n  createdAfter?: string    // ISO date\n  createdBefore?: string   // ISO date\n  search?: string\n  page?: number\n  pageSize?: number\n}"
+   "BulkRecipientFilters": "interface BulkRecipientFilters {\n  eventId?: string\n  bookingStatus?: 'with_bookings' | 'without_bookings'\n  categoryId?: string\n  createdAfter?: string    // ISO date\n  createdBefore?: string   // ISO date\n  search?: string\n  page?: number\n  pageSize?: number\n}"
   },
   "doc": "Fetches bulk SMS recipients from the database using the get_bulk_sms_recipients RPC.\nAll filtering (event, booking status, category, date range, search) is handled server-side.\nSearch wildcards are escaped before passing to prevent unintended ILIKE expansion.",
   "readOnly": true
@@ -2960,6 +2960,36 @@
    "editSchema": "const editSchema = z.object({\n  bookingId: z.string().uuid(),\n  attendees: guestDetailsEditSchema,\n})"
   },
   "doc": "Staff add or correct each ticket's name and answers (BK-016). A booking taken by phone, at the\nbar or at the kiosk has no guest rows: this now creates one per ticket, with the event's\ncurrent questions. A booking made before a question was added gains it, unanswered. Answers\nnever reach the audit row.",
+  "readOnly": false
+ },
+ {
+  "name": "event-booker-texts.previewEventBookerText",
+  "module": "event-booker-texts",
+  "export": "previewEventBookerText",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  eventId: string\n  includePendingPayment: boolean\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Who a \"Text bookers\" message would reach for an event, and who it would not, with the reason.\nRead only. Recipients come from the event's live bookings, never from the browser.",
+  "readOnly": true
+ },
+ {
+  "name": "event-booker-texts.sendEventBookerText",
+  "module": "event-booker-texts",
+  "export": "sendEventBookerText",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  eventId: string\n  includePendingPayment: boolean\n  message: string\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Sends a service text to everyone booked into one event (owner decision, 19 November 2026).\nGoes to every booker who accepts texts, marketing consent or not; never to anyone opted out.\nEach text goes through sendSMS, so quiet hours, rate limits, duplicate suppression and the\nkill switches (SUSPEND_ALL_SMS, SUSPEND_EVENT_SMS, SUSPEND_ALL_COMMS) all apply.",
   "readOnly": false
  },
  {

@@ -66,25 +66,25 @@ describe('fetchBulkRecipients', () => {
 
   it('should return error when user is not authenticated', async () => {
     setAuthUser(null)
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({ error: 'Unauthorized' })
     expect(mockRpc).not.toHaveBeenCalled()
   })
 
   it('should return error when user lacks messages:send_marketing permission', async () => {
     vi.mocked(checkUserPermission).mockResolvedValue(false)
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({ error: 'Insufficient permissions' })
     expect(mockRpc).not.toHaveBeenCalled()
   })
 
   it('should check permission with messages:send_marketing (not create or view)', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    await fetchBulkRecipients({})
     expect(checkUserPermission).toHaveBeenCalledWith('messages', 'send_marketing', MOCK_USER.id)
   })
 
   it('should return recipients on success with default filters', async () => {
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({
       data: [
         { id: 'cust-1', first_name: 'Alice', last_name: 'Smith', mobile_number: '+447700900001', last_booking_date: '2025-03-01' },
@@ -98,7 +98,6 @@ describe('fetchBulkRecipients', () => {
 
   it('should map filters correctly to RPC params', async () => {
     await fetchBulkRecipients({
-      smsOptIn: 'opted_in',
       eventId: 'evt-1',
       bookingStatus: 'with_bookings',
       categoryId: 'cat-1',
@@ -121,23 +120,23 @@ describe('fetchBulkRecipients', () => {
   })
 
   it('passes pagination params to the RPC', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in', page: 3, pageSize: 25 })
+    await fetchBulkRecipients({ page: 3, pageSize: 25 })
     expect(mockRpc).toHaveBeenCalledWith(
       'get_bulk_sms_recipients',
       expect.objectContaining({ p_page: 3, p_page_size: 25 })
     )
   })
 
-  it('should set p_sms_opt_in_only to false when smsOptIn is "all"', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'all' })
+  it('always asks for marketing-consented customers only (Bulk Messages is marketing)', async () => {
+    await fetchBulkRecipients({})
     expect(mockRpc).toHaveBeenCalledWith(
       'get_bulk_sms_recipients',
-      expect.objectContaining({ p_sms_opt_in_only: false })
+      expect.objectContaining({ p_sms_opt_in_only: true })
     )
   })
 
   it('should pass null for undefined optional filters', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    await fetchBulkRecipients({})
     expect(mockRpc).toHaveBeenCalledWith('get_bulk_sms_recipients', {
       p_event_id: null,
       p_booking_status: null,
@@ -152,7 +151,7 @@ describe('fetchBulkRecipients', () => {
   })
 
   it('should escape % wildcard in search string', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in', search: '50% off' })
+    await fetchBulkRecipients({ search: '50% off' })
     expect(mockRpc).toHaveBeenCalledWith(
       'get_bulk_sms_recipients',
       expect.objectContaining({ p_search: '50\\% off' })
@@ -160,7 +159,7 @@ describe('fetchBulkRecipients', () => {
   })
 
   it('should escape _ wildcard in search string', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in', search: 'some_thing' })
+    await fetchBulkRecipients({ search: 'some_thing' })
     expect(mockRpc).toHaveBeenCalledWith(
       'get_bulk_sms_recipients',
       expect.objectContaining({ p_search: 'some\\_thing' })
@@ -168,7 +167,7 @@ describe('fetchBulkRecipients', () => {
   })
 
   it('should escape \\ in search string', async () => {
-    await fetchBulkRecipients({ smsOptIn: 'opted_in', search: 'C:\\Users' })
+    await fetchBulkRecipients({ search: 'C:\\Users' })
     expect(mockRpc).toHaveBeenCalledWith(
       'get_bulk_sms_recipients',
       expect.objectContaining({ p_search: 'C:\\\\Users' })
@@ -177,13 +176,13 @@ describe('fetchBulkRecipients', () => {
 
   it('should return error when RPC fails', async () => {
     mockRpc.mockResolvedValue({ data: null, error: { message: 'function does not exist' } })
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({ error: 'Failed to fetch recipients: function does not exist' })
   })
 
   it('should return empty array when RPC returns null data', async () => {
     mockRpc.mockResolvedValue({ data: null, error: null })
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({ data: [], total: 0, page: 1, pageSize: 50 })
   })
 
@@ -195,7 +194,7 @@ describe('fetchBulkRecipients', () => {
       error: null,
     })
 
-    const result = await fetchBulkRecipients({ smsOptIn: 'opted_in' })
+    const result = await fetchBulkRecipients({})
     expect(result).toEqual({
       data: [
         { id: 'cust-1', first_name: '', last_name: '', mobile_number: '+447700900001', last_booking_date: null },

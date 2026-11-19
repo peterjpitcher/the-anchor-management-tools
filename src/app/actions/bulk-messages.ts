@@ -76,7 +76,9 @@ export async function fetchBulkRecipients(
   const { data, error } = await supabase.rpc('get_bulk_sms_recipients', {
     p_event_id: filters.eventId || null,
     p_booking_status: filters.bookingStatus || null,
-    p_sms_opt_in_only: filters.smsOptIn !== 'all',
+    // Bulk Messages is marketing: the RPC only ever lists customers who agreed to marketing
+    // texts. Event bookers are texted from the event page instead (Text bookers).
+    p_sms_opt_in_only: true,
     p_category_id: filters.categoryId || null,
     p_created_after: filters.createdAfter || null,
     p_created_before: filters.createdBefore || null,
