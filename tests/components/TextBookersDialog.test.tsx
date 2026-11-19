@@ -71,6 +71,14 @@ describe('TextBookersDialog', () => {
     expect(toast.success).toHaveBeenCalledWith('Texted 2 bookers')
   })
 
+  it('says when everyone already had this exact message', async () => {
+    vi.mocked(sendEventBookerText).mockResolvedValue({ success: true, sent: 0, held: 0, alreadySent: 2, failed: 0, failures: [] })
+    renderDialog()
+    await writeAndSend()
+    expect(await screen.findByText('2 already had this exact message, so were not texted again')).toBeInTheDocument()
+    expect(toast.success).toHaveBeenCalledWith('Everyone already had this message')
+  })
+
   it('shows the failure when the send is refused', async () => {
     vi.mocked(sendEventBookerText).mockResolvedValue({ success: false, error: 'SMS sending is currently suspended', stoppedEarly: true })
     renderDialog()

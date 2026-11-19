@@ -71,7 +71,9 @@ export function TextBookersDialog({ open, eventId, eventName, onClose }: TextBoo
     try {
       const response = await sendEventBookerText({ eventId, includePendingPayment: includePending, message })
       setResult(response)
-      if (response.success) {
+      if (response.success && (response.sent ?? 0) + (response.held ?? 0) === 0) {
+        toast.success('Everyone already had this message')
+      } else if (response.success) {
         toast.success(`Texted ${(response.sent ?? 0) + (response.held ?? 0)} ${(response.sent ?? 0) + (response.held ?? 0) === 1 ? 'booker' : 'bookers'}`)
       } else {
         toast.error(response.error ?? 'The texts could not be sent')
@@ -196,6 +198,7 @@ function SendResult({ result }: { result: EventBookerTextResult }) {
       <ul className="list-disc space-y-1 pl-5">
         {sent > 0 && <li>{sent} sent now</li>}
         {held > 0 && <li>{held} held by quiet hours, going out from 9am</li>}
+        {(result.alreadySent ?? 0) > 0 && <li>{result.alreadySent} already had this exact message, so were not texted again</li>}
         {failed > 0 && <li>{failed} not sent</li>}
         {result.failures?.map((f) => (
           <li key={`${f.name}:${f.error}`}>

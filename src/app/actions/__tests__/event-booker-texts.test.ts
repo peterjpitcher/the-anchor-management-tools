@@ -30,6 +30,7 @@ import { checkUserPermission } from '@/app/actions/rbac'
 import { logAuditEvent } from '@/app/actions/audit'
 import { sendSMS } from '@/lib/twilio'
 import { loadEventBookerAudience, EVENT_BOOKER_UPDATE_TEMPLATE_KEY } from '@/lib/events/booker-texts'
+import { buildSmsDedupContext } from '@/lib/sms/safety'
 
 const EVENT_ID = '5bd854ce-48e7-4ca8-8e7c-c52cc7ec1e65'
 
@@ -120,6 +121,31 @@ describe('sendEventBookerText', () => {
     vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: null, deferred: true } as never)
     const result = await sendEventBookerText({ eventId: EVENT_ID, includePendingPayment: false, message: 'Hi' })
     expect(result).toMatchObject({ success: true, sent: 0, held: 2 })
+  })
+
+  it('gives each different message its own duplicate key, and the same message the same key', async () => {
+    // Codex review on PR 388: the duplicate guard keys on customer, template and event, so a
+    // second, different update to the same bookers used to clash and stop the send.
+    const keyFor = (call: number) => {
+      const [to, body, options] = vi.mocked(sendSMS).mock.calls[call] as [string, string, { customerId: string; metadata: Record<string, unknown> }]
+      return buildSmsDedupContext({ to, customerId: options.customerId, body, metadata: options.metadata })?.key
+    }
+
+    await sendEventBookerText({ eventId: EVENT_ID, includePendingPayment: false, message: 'Doors open at 6.30pm' })
+    await sendEventBookerText({ eventId: EVENT_ID, includePendingPayment: false, message: 'We now start at 7.30pm' })
+    await sendEventBookerText({ eventId: EVENT_ID, includePendingPayment: false, message: 'Doors open at 6.30pm' })
+
+    // Calls 0, 2 and 4 are Tracey for each of the three sends.
+    expect(keyFor(0)).toBeDefined()
+    expect(keyFor(2)).not.toBe(keyFor(0))
+    expect(keyFor(4)).toBe(keyFor(0))
+  })
+
+  it('reports bookers who already had this exact message instead of claiming a new send', async () => {
+    vi.mocked(sendSMS).mockResolvedValue({ success: true, sid: null, suppressed: true, suppressionReason: 'duplicate' } as never)
+    const result = await sendEventBookerText({ eventId: EVENT_ID, includePendingPayment: false, message: 'Hi' })
+    expect(result).toMatchObject({ success: true, sent: 0, held: 0, alreadySent: 2, failed: 0 })
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({ operation_status: 'success' }))
   })
 
   it('reports per-person failures and carries on', async () => {
