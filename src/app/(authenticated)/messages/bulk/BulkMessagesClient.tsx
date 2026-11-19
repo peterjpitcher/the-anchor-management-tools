@@ -69,7 +69,6 @@ export default function BulkMessagesClient({
   // Filter state
   const [eventId, setEventId] = useState('')
   const [bookingStatus, setBookingStatus] = useState('')
-  const [smsOptIn, setSmsOptIn] = useState<'opted_in' | 'all'>('opted_in')
   const [categoryId, setCategoryId] = useState('')
   const [createdAfter, setCreatedAfter] = useState('')
   const [createdBefore, setCreatedBefore] = useState('')
@@ -114,13 +113,12 @@ export default function BulkMessagesClient({
     return {
       eventId: eventId || undefined,
       bookingStatus: (bookingStatus as 'with_bookings' | 'without_bookings') || undefined,
-      smsOptIn,
       categoryId: categoryId || undefined,
       createdAfter: createdAfter || undefined,
       createdBefore: createdBefore || undefined,
       search: search.trim() || undefined,
     }
-  }, [eventId, bookingStatus, smsOptIn, categoryId, createdAfter, createdBefore, search])
+  }, [eventId, bookingStatus, categoryId, createdAfter, createdBefore, search])
 
   // Fetch recipients
   const loadRecipients = useCallback(async (requestedPage = 1) => {
@@ -367,6 +365,10 @@ export default function BulkMessagesClient({
       <Card>
         <CardHeader title="Filters" />
         <CardBody className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Bulk Messages is for marketing, so it only lists customers who have agreed to marketing texts. To text
+            everyone booked into an event about that event, use Text Bookers on the event&apos;s attendee list.
+          </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Select
               id="filter-event"
@@ -393,16 +395,6 @@ export default function BulkMessagesClient({
               <option value="">Any status</option>
               <option value="with_bookings">With bookings</option>
               <option value="without_bookings">Without bookings</option>
-            </Select>
-
-            <Select
-              id="filter-sms-optin"
-              label="SMS Opt-in"
-              value={smsOptIn}
-              onChange={(e) => setSmsOptIn(e.target.value as 'opted_in' | 'all')}
-            >
-              <option value="opted_in">Opted in only</option>
-              <option value="all">All customers</option>
             </Select>
 
             <Select

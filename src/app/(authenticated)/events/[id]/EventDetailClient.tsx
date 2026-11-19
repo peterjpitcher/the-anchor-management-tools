@@ -71,6 +71,7 @@ import { KitchenLoadEditor, type KitchenLoadSummary } from '@/components/kitchen
 import { setEventKitchenLoad } from '@/app/actions/kitchen-load'
 import { GuestDetailsModal } from './AddGuestDetailsModal'
 import { RebookBookingDialog } from './RebookBookingDialog'
+import { TextBookersDialog } from './TextBookersDialog'
 import { deleteExpiredEventBooking } from '@/app/actions/event-booking-delete'
 import { describeSeatUpdateBlock, validateSeatsInput } from './manual-booking-helpers'
 import { EventMarketingLinksCard } from '@/components/features/events/EventMarketingLinksCard'
@@ -1334,7 +1335,12 @@ function AttendeesTab({
   isPending: boolean
 }) {
   // Copying a booking's email onto the customer record edits the customer (BK-078).
-  const canUpdateCustomerEmail = usePermissions().hasPermission('customers', 'manage')
+  const { hasPermission } = usePermissions()
+  const canUpdateCustomerEmail = hasPermission('customers', 'manage')
+  // A service text to the event's bookers needs the transactional SMS permission as well (the
+  // server checks both).
+  const canTextBookers = canManage && hasPermission('messages', 'send_transactional')
+  const [textBookersOpen, setTextBookersOpen] = useState(false)
   const pageSize = 25
   const [attendeePage, setAttendeePage] = useState(1)
   // Find a guest by name or by an 07 number without paging through 25 at a time (BK-180).
@@ -1623,6 +1629,15 @@ function AttendeesTab({
         />
       )}
 
+      {canTextBookers && (
+        <TextBookersDialog
+          open={textBookersOpen}
+          eventId={event.id}
+          eventName={event.name}
+          onClose={() => setTextBookersOpen(false)}
+        />
+      )}
+
       {/* Bookings table */}
       <Card>
         <CardHeader
@@ -1641,6 +1656,17 @@ function AttendeesTab({
                   }}
                 >
                   Check-In
+                </Button>
+              )}
+              {canTextBookers && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<Icon name="message" size={14} />}
+                  onClick={() => setTextBookersOpen(true)}
+                  disabled={activeBookingsCount === 0}
+                >
+                  Text Bookers
                 </Button>
               )}
               <LinkButton

@@ -28,6 +28,8 @@ const TEMPLATE_ROUTE_RULES: TemplateRouteRule[] = [
   { type: 'exact', match: 'event_postponed', channels: EMAIL_THEN_MESSAGING },
   { type: 'exact', match: 'event_cancelled', channels: EMAIL_THEN_MESSAGING },
   { type: 'exact', match: 'event_waitlist_offer', channels: SMS_ONLY },
+  // Staff "Text bookers" service text from the event page (src/lib/events/booker-texts.ts).
+  { type: 'exact', match: 'event_booker_update', channels: SMS_ONLY },
   { type: 'prefix', match: 'event_cross_promo_', channels: SMS_ONLY },
   { type: 'prefix', match: 'event_general_promo_', channels: SMS_ONLY },
   { type: 'prefix', match: 'event_reminder_promo_', channels: SMS_ONLY },

@@ -75,6 +75,7 @@ const NOT_STATUS_ELSEWHERE: Record<string, string> = {
   CONTENT_GAP_LABELS: 'calendar filter names',
   ONLINE_INCOME_SOURCE_LABELS: 'online income kinds (table deposit, tickets, parking)',
   LEAVE_TYPE_LABELS: 'leave kinds (holiday, cannot work), not a status',
+  EVENT_BOOKER_EXCLUSION_LABELS: 'why a booker is left out of a Text bookers send, not a status',
   ONBOARDING_LEAVE_ORIGIN_LABEL: 'where a leave request came from',
 }
 
