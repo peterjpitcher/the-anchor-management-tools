@@ -454,8 +454,10 @@ export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions)
   if (!response.ok) {
     const errorText = await response.text();
     let errorMessage = 'Failed to create PayPal order';
+    let errorBody: unknown = errorText || null;
     try {
       const errorJson = JSON.parse(errorText);
+      errorBody = errorJson;
       console.error('PayPal order creation error:', errorJson);
       if (errorJson.details && errorJson.details.length > 0) {
         errorMessage = errorJson.details[0].description || errorJson.message || errorMessage;
@@ -465,7 +467,10 @@ export async function createInlinePayPalOrder(options: InlinePayPalOrderOptions)
     } catch {
       console.error('PayPal order creation error (raw):', errorText);
     }
-    throw new Error(errorMessage);
+    // The message stays as it was for callers that read it. The HTTP status and PayPal's own body
+    // (name, debug_id, details[].issue) travel with it, in the shape PayPalApiError carries, so a
+    // set-up failure can be told apart and raised with PayPal (see describePayPalError).
+    throw Object.assign(new Error(errorMessage), { status: response.status, details: errorBody });
   }
 
   const data = await response.json();
