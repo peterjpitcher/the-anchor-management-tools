@@ -6,8 +6,21 @@
     {
       "type": "masthead_seasonal",
       "data": {
-        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/11-november.jpg",
-        "alt": "The Anchor, Stanwell Moor Village, since 1751. Poppies and winter greenery around the wordmark."
+        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/12-december.jpg",
+        "alt": "The Anchor, Stanwell Moor Village, since 1751. Holly, pine cones and Christmas greenery around the wordmark."
+      }
+    },
+    {
+      "type": "image_full",
+      "data": {
+        "image": {
+          "src": "https://www.the-anchor.pub/images/marketing/christmas-2026/christmas-dinner-hero.jpg",
+          "alt": "A Christmas dinner at The Anchor: roast beef, a Yorkshire pudding, pigs in blankets, stuffing, roast potatoes, mash, peas and sprouts",
+          "width": 600,
+          "height": 340
+        },
+        "placeholder_label": "Christmas dinner photo · 600 x 340",
+        "placeholder_caption": "Christmas dinner at The Anchor"
       }
     },
     {

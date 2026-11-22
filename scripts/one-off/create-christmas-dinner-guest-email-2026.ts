@@ -18,6 +18,12 @@
  *
  * Re-runnable: it updates the existing draft in place rather than adding a second one.
  *
+ * Edited after scheduling, 22 November 2026: the owner asked for the Christmas plate photo
+ * and the December masthead ("Yes, both"). A scheduled campaign is frozen, so
+ * CHRISTMAS_DINNER_GUEST_EMAIL_UNSCHEDULE=true puts a SCHEDULED one back to draft first (and
+ * nothing else: a campaign that is sending or sent is never touched). It then has to be
+ * booked in again through `scheduleMarketingCampaign`, so every guard runs a second time.
+ *
  * Dry run by default. RUN_CHRISTMAS_DINNER_GUEST_EMAIL_MUTATION=true applies it.
  * CHRISTMAS_DINNER_GUEST_EMAIL_HTML_OUT=<path> also writes the rendered email to that file,
  * so it can be looked at before it is scheduled.
@@ -84,6 +90,27 @@ async function main(): Promise<void> {
   if (error) throw new Error(error.message)
 
   const current = existing?.[0]
+  const mayUnschedule =
+    process.env.CHRISTMAS_DINNER_GUEST_EMAIL_UNSCHEDULE === 'true' &&
+    process.env.RUN_CHRISTMAS_DINNER_GUEST_EMAIL_MUTATION === 'true'
+  if (current && current.status === 'scheduled' && mayUnschedule) {
+    assertScriptMutationAllowed({
+      scriptName: 'create-christmas-dinner-guest-email-2026',
+      envVar: 'RUN_CHRISTMAS_DINNER_GUEST_EMAIL_MUTATION',
+    })
+    // Guarded on the status, so a campaign the cron has just picked up is left alone.
+    const { data: unscheduled, error: unscheduleError } = await supabase
+      .from('marketing_campaigns')
+      .update({ status: 'draft', scheduled_for: null, approved_recipient_count: null })
+      .eq('id', current.id)
+      .eq('status', 'scheduled')
+      .select('id')
+      .maybeSingle()
+    if (unscheduleError) throw new Error(unscheduleError.message)
+    if (!unscheduled) throw new Error(`${current.id} was not scheduled when we tried to unschedule it`)
+    console.warn(`\n${current.id} put back to draft. It is NOT scheduled until it is booked in again.`)
+    current.status = 'draft'
+  }
   if (current && current.status !== 'draft') {
     console.warn(
       `\n${current.id} is ${current.status}, not a draft, so its content is frozen. ` +
