@@ -108,6 +108,8 @@ export type FohScheduleResponse = {
 }
 
 export type FohViewMode = 'inside' | 'outside'
+/** How much of the day the timeline draws: the whole opening window, or about five hours around now. */
+export type FohTimelineZoom = 'day' | 'now'
 
 export type FohCreateBookingResponse = {
   success: boolean

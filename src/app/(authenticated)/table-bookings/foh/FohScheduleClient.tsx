@@ -6,12 +6,14 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { Alert } from '@/ds'
 import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
 import { cn } from '@/lib/utils'
+import { formatTime12Hour } from '@/lib/dateUtils'
 
 import type {
   FohBooking,
   FohMoveTableAvailabilityResponse,
   FohMoveTableOption,
   FohStyleVariant,
+  FohTimelineZoom,
   FohViewMode,
   SelectedBookingContext,
 } from './types'
@@ -54,6 +56,8 @@ import { UndoBar } from '@/components/features/table-bookings/UndoBar'
 import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 import { AwaitingConfirmationPanel } from '@/components/features/table-bookings/AwaitingConfirmationPanel'
 
+const FOH_ZOOM_STORAGE_KEY = 'foh-timeline-zoom'
+
 // How often the 'still open from earlier' strip looks again while the schedule keeps refreshing.
 const FOH_STRIP_REFRESH_MS = 5 * 60 * 1000
 
@@ -63,7 +67,8 @@ export function FohScheduleClient({
   canEdit,
   isSuperAdmin = false,
   styleVariant = 'default',
-  canWaiveDeposit = false
+  canWaiveDeposit = false,
+  canManageSettings = false
 }: {
   initialDate: string
   deploymentVersion: string
@@ -71,6 +76,8 @@ export function FohScheduleClient({
   isSuperAdmin?: boolean
   styleVariant?: FohStyleVariant
   canWaiveDeposit?: boolean
+  /** settings manage: Table Setup is offered in the toolbar's More menu. */
+  canManageSettings?: boolean
 }) {
   const supabase = useMemo(() => createSupabaseClient(), [])
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
@@ -101,6 +108,26 @@ export function FohScheduleClient({
   const [submittingFoodOrderAlert, setSubmittingFoodOrderAlert] = useState(false)
   const [clockNow, setClockNow] = useState(() => new Date())
   const [viewMode, setViewMode] = useState<FohViewMode>('inside')
+  // Day (the whole opening window) or Now (about five hours around the present). Remembered per
+  // browser; a narrow screen starts on Now. Storage can be blocked, so every touch of it is guarded.
+  const [timelineZoom, setTimelineZoom] = useState<FohTimelineZoom>('day')
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(FOH_ZOOM_STORAGE_KEY)
+      if (stored === 'day' || stored === 'now') { setTimelineZoom(stored); return }
+    } catch {
+      // No storage: fall through to the default for this screen width.
+    }
+    if (window.innerWidth < 1024) setTimelineZoom('now')
+  }, [])
+  const chooseTimelineZoom = useCallback((zoom: FohTimelineZoom) => {
+    setTimelineZoom(zoom)
+    try {
+      window.localStorage.setItem(FOH_ZOOM_STORAGE_KEY, zoom)
+    } catch {
+      // The choice still holds for this visit.
+    }
+  }, [])
 
   const lastInteractionAtMsRef = useRef(Date.now())
   const timelineRef = useRef<HTMLDivElement | null>(null)
@@ -452,7 +479,14 @@ export function FohScheduleClient({
   // --- Render ---
   // The manager kiosk sits on the same dark green as its PageLayout header (bg-brand-700 is the
   // sidebar green); the sidebar token itself belongs to the app shell.
-  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-2 rounded-xl bg-brand-700 p-2 sm:p-3' : 'space-y-6')
+  // Tight on both layouts: every band above the timeline pushes the tables down the screen.
+  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-1.5 rounded-xl bg-brand-700 p-1.5' : 'space-y-2')
+  const serviceWindow = schedule?.service_window
+  const openHoursLabel = !serviceWindow
+    ? null
+    : serviceWindow.source === 'closed'
+      ? 'Closed all day'
+      : `Open ${formatTime12Hour(serviceWindow.start_time || '09:00')} to ${formatTime12Hour(serviceWindow.end_time || '23:00')}${serviceWindow.end_next_day ? ' (next day)' : ''}`
 
   return (
     /*
@@ -489,6 +523,10 @@ export function FohScheduleClient({
         staffNotice={staffNotice}
         onDismissStaffNotice={() => setStaffNotice(null)}
         lastInteractionAtMsRef={lastInteractionAtMsRef}
+        timelineZoom={timelineZoom}
+        onTimelineZoomChange={chooseTimelineZoom}
+        openHoursLabel={openHoursLabel}
+        canManageSettings={canManageSettings}
         search={
           <FohBookingSearch
             schedule={schedule}
@@ -549,6 +587,7 @@ export function FohScheduleClient({
             loading={loading}
             styleVariant={styleVariant}
             currentTimelineLeftPct={currentTimelineLeftPct}
+            zoom={timelineZoom}
             sensors={sensors}
             activeDragData={activeDragData}
             pointerPosition={pointerPosition}

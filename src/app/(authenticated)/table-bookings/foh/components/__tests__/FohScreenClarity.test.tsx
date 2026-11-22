@@ -12,7 +12,7 @@ import { FohBookingSearch } from '../FohBookingSearch'
 import { FohNoShowList } from '../FohNoShowList'
 import { FohPartySizeStepper } from '../FohPartySizeStepper'
 import { FohHeader } from '../FohHeader'
-import { BookingMarkers } from '../FohTimeline'
+import { BookingBlockContent, BookingMarkers } from '../FohTimeline'
 import { getFohPanelActions, isFohScheduleStale, searchFohBookings } from '../../utils'
 
 function booking(overrides: Partial<FohBooking> = {}): FohBooking {
@@ -290,7 +290,8 @@ describe('the header', () => {
   it('asks before texting the kitchen, and sends only on the second tap', async () => {
     const props = renderHeader()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Food order: text the kitchen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Food order: text the kitchen' }))
     expect(props.onSendFoodOrderAlert).not.toHaveBeenCalled()
 
     const question = screen.getByRole('group', { name: 'Text the kitchen?' })
@@ -303,11 +304,14 @@ describe('the header', () => {
   it('sends nothing when the question is cancelled or left alone', async () => {
     const props = renderHeader()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Food order: text the kitchen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Food order: text the kitchen' }))
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('group', { name: 'Text the kitchen?' })).toBeNull()
 
-    await userEvent.click(screen.getByRole('button', { name: 'Food order: text the kitchen' }))
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Food order: text the kitchen' }))
+    expect(screen.getByRole('group', { name: 'Text the kitchen?' })).toBeInTheDocument()
     act(() => { vi.advanceTimersByTime(8000) })
 
     expect(screen.queryByRole('group', { name: 'Text the kitchen?' })).toBeNull()
@@ -318,5 +322,142 @@ describe('the header', () => {
     renderHeader()
 
     expect(screen.getByText('Saturday 28 November')).toBeInTheDocument()
+  })
+
+  // Owner review, 22 November 2026: one compact toolbar, so the tables start higher up.
+  it('keeps the everyday controls on the toolbar and the rare ones behind More', async () => {
+    renderHeader({
+      canManageSettings: true,
+      nextUpcomingEvent: { id: 'event-1', name: 'Quiz Night', date: '2026-11-25', time: '19:30', start_datetime: null },
+    })
+
+    for (const name of ['Previous day', 'Next day', 'Today', 'Walk-in', 'Add booking', 'More']) {
+      expect(screen.getByRole('button', { name })).toBeInTheDocument()
+    }
+    // Not on the toolbar itself.
+    expect(screen.queryByRole('link', { name: 'Checklists' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Food order: text the kitchen' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+
+    const menu = await screen.findByRole('dialog', { name: 'More' })
+    expect(within(menu).getByRole('link', { name: 'Checklists' })).toHaveAttribute('href', '/checklists')
+    expect(within(menu).getByRole('link', { name: 'Vouchers' })).toHaveAttribute('href', '/vouchers/foh')
+    expect(within(menu).getByRole('link', { name: 'Table Setup' })).toHaveAttribute('href', '/settings/table-bookings')
+    expect(within(menu).getByRole('button', { name: 'Book guests for Quiz Night' })).toBeInTheDocument()
+    expect(within(menu).getByRole('button', { name: 'Food order: text the kitchen' })).toBeInTheDocument()
+  })
+
+  it('books guests onto the next event from More', async () => {
+    const props = renderHeader({
+      nextUpcomingEvent: { id: 'event-1', name: 'Quiz Night', date: '2026-11-25', time: '19:30', start_datetime: null },
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+    await userEvent.click(await screen.findByRole('button', { name: 'Book guests for Quiz Night' }))
+
+    expect(props.onOpenCreateModal).toHaveBeenCalledWith({
+      mode: 'booking',
+      prefill: { booking_date: '2026-11-25', purpose: 'event', event_id: 'event-1' },
+    })
+  })
+
+  it('leaves Table Setup out without settings access', async () => {
+    renderHeader()
+
+    await userEvent.click(screen.getByRole('button', { name: 'More' }))
+
+    await screen.findByRole('link', { name: 'Checklists' })
+    expect(screen.queryByRole('link', { name: 'Table Setup' })).toBeNull()
+  })
+
+  it('shows the counts, the hours and the next event as one line of plain text', () => {
+    renderHeader({
+      totals: { bookings: 3, covers: 12, privateHireGuests: 20 },
+      openHoursLabel: 'Open 12pm to 10pm',
+      nextUpcomingEvent: { id: 'event-1', name: 'Quiz Night', date: '2026-11-25', time: '19:30', start_datetime: null },
+    })
+
+    expect(screen.getByText('3 bookings · 12 covers · 20 private hire guests')).toBeInTheDocument()
+    expect(screen.getByText('Open 12pm to 10pm')).toBeInTheDocument()
+    expect(screen.getByRole('status', { name: 'Next event reminder' })).toHaveTextContent('Next event: Quiz Night · 4 Days Left to Book')
+  })
+
+  it('switches the timeline between Day and Now', async () => {
+    const onTimelineZoomChange = vi.fn()
+    renderHeader({ timelineZoom: 'day', onTimelineZoomChange })
+
+    const zoom = screen.getByRole('group', { name: 'Timeline zoom' })
+    expect(within(zoom).getByRole('button', { name: 'Day' })).toHaveAttribute('aria-pressed', 'true')
+    expect(within(zoom).getByRole('button', { name: 'Now' })).toHaveAttribute('aria-pressed', 'false')
+
+    await userEvent.click(within(zoom).getByRole('button', { name: 'Now' }))
+
+    expect(onTimelineZoomChange).toHaveBeenCalledWith('now')
+  })
+
+  it('keeps every toolbar control at the 44px touch height', () => {
+    renderHeader({ onTimelineZoomChange: vi.fn() })
+
+    for (const name of ['Today', 'Walk-in', 'Add booking', 'More', 'Day', 'Now', 'Inside']) {
+      expect(screen.getByRole('button', { name })).toHaveClass('min-h-touch')
+    }
+    for (const name of ['Previous day', 'Next day']) {
+      expect(screen.getByRole('button', { name })).toHaveClass('size-11')
+    }
+  })
+})
+
+// Owner review, 22 November 2026: "You can't really read any of the names on the bookings."
+describe('what a timeline block says', () => {
+  it('puts the name first, then the party size', () => {
+    const { container } = render(<BookingBlockContent booking={booking({ guest_name: 'Gareth Williams', party_size: 5 })} />)
+
+    expect(container.firstElementChild).toHaveTextContent('Gareth Williams · 5')
+    // The name may run onto a second line before it is cut.
+    expect(container.firstElementChild).toHaveClass('line-clamp-2')
+  })
+
+  it('says the state in one short word beside a dot, with the markers on the same line', () => {
+    const { container } = render(
+      <BookingBlockContent booking={booking({ seated_at: '2026-11-21T19:05:00.000Z', allergies: ['peanuts'] })} />
+    )
+
+    const statusLine = container.children[1]
+    expect(statusLine).toHaveTextContent('Seated')
+    expect(statusLine).toHaveTextContent('Allergy')
+    expect(statusLine).toHaveTextContent('7pm - 9pm')
+    // The whole line is left off a block too narrow for it: name and size only.
+    expect(statusLine).toHaveClass('hidden', '@min-[7rem]:flex')
+  })
+
+  it('uses short words for each state', () => {
+    const word = (overrides: Partial<FohBooking>) => {
+      const { container, unmount } = render(<BookingBlockContent booking={booking(overrides)} />)
+      const text = container.children[1].textContent ?? ''
+      unmount()
+      return text
+    }
+
+    expect(word({})).toContain('Booked')
+    expect(word({ seated_at: 'x', left_at: 'y' })).toContain('Left')
+    expect(word({ status: 'no_show' })).toContain('No-show')
+    expect(word({ status: 'pending_payment' })).toContain('Unpaid')
+  })
+
+  it('shows that the guest confirmed as a tick with a name, not a pill', () => {
+    render(<BookingBlockContent booking={booking({ guest_confirmed_at: '2026-11-20T10:00:00.000Z' })} />)
+
+    expect(screen.getByRole('img', { name: 'Confirmed by guest' })).toHaveTextContent('✓')
+    expect(screen.queryByText(/Confirmed ✓/)).toBeNull()
+  })
+
+  it('names a private hire and leaves out the party size', () => {
+    const { container } = render(
+      <BookingBlockContent booking={booking({ is_private_block: true, status: 'private_block', guest_name: 'Smith party' })} />
+    )
+
+    expect(container.firstElementChild).toHaveTextContent(/^Smith party$/)
+    expect(container.children[1]).toHaveTextContent('Private hire')
   })
 })

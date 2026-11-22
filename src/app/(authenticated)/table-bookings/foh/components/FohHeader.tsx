@@ -1,10 +1,9 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import Image from 'next/image'
-import { Alert, Button, LinkButton } from '@/ds'
+import { Alert, Button, Icon, IconButton, LinkButton, Popover } from '@/ds'
 import { cn } from '@/lib/utils'
-import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
+import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohTimelineZoom, FohViewMode } from '../types'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatNextEventUrgency, shiftIsoDate } from '../utils'
 
@@ -34,6 +33,13 @@ type FohHeaderProps = {
   freshness?: React.ReactNode
   /** The freshness slot is showing its warning, which needs the whole width. */
   freshnessWide?: boolean
+  /** Day or Now on the timeline. The control is left out when no handler is given. */
+  timelineZoom?: FohTimelineZoom
+  onTimelineZoomChange?: (zoom: FohTimelineZoom) => void
+  /** "Open 12pm to 10pm", or "Closed all day". */
+  openHoursLabel?: string | null
+  /** settings manage: Table Setup is offered in the More menu. */
+  canManageSettings?: boolean
   onSendFoodOrderAlert: () => void
   onOpenCreateModal: (options?: {
     mode?: FohCreateMode
@@ -44,6 +50,21 @@ type FohHeaderProps = {
   }) => void
 }
 
+// Every control is 44px tall for a thumb but only as wide as its word: the old header's buttons
+// were full size, stacked in six bands, and pushed the first table 60% of the way down the screen
+// (owner review, 22 November 2026).
+const COMPACT_CONTROL = 'min-h-touch shrink-0 px-2.5'
+
+/**
+ * The floor screen's toolbar: one row of controls and one slim line of facts.
+ *
+ *  - Left: the day (previous, date, next, today).
+ *  - Middle: the name search, sized to what is left.
+ *  - Right: Inside or Outside, Day or Now, Walk-in, Add booking, and "More" for what is used
+ *    rarely (Food Order, Checklists, Vouchers, Table Setup, booking guests onto the next event).
+ *  - Under it, as plain small text: bookings and covers, the next event, opening hours and when
+ *    the screen was last updated.
+ */
 export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   const {
     date,
@@ -67,17 +88,22 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     search,
     freshness,
     freshnessWide = false,
+    timelineZoom = 'day',
+    onTimelineZoomChange,
+    openHoursLabel,
+    canManageSettings = false,
     onSendFoodOrderAlert,
     onOpenCreateModal,
   } = props
 
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const viewingToday = date === serviceDateNow
+  const touch = () => { lastInteractionAtMsRef.current = Date.now() }
   const openNowCreateModal = (mode: FohCreateMode) => {
     // A walk-in is always the day being worked, so the screen goes back to it. "Add booking"
     // keeps the date being looked at (owner decision, 22 November 2026): it used to jump to today.
     if (mode === 'walk_in') setDate(serviceDateNow)
-    lastInteractionAtMsRef.current = Date.now()
+    touch()
     onOpenCreateModal({ mode })
   }
 
@@ -90,304 +116,242 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     return () => window.clearTimeout(timer)
   }, [confirmingFoodOrder])
 
-  // One card treatment for both styles; the kiosk only packs it tighter.
-  const serviceCardClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
-  // Owner decision D6: every control on the bar iPad is at least 44px tall. The screen's
-  // data-touch-targets rule only lifts buttons and fields on a touch pointer, and never the
-  // Checklists and Vouchers links, so the header sets the floor itself.
-  const controlSize = isManagerKioskStyle ? 'sm' : 'md'
-  const serviceHeaderClass = cn(
-    'flex flex-col sm:flex-row sm:justify-between',
-    isManagerKioskStyle ? 'gap-1.5 sm:items-center' : 'gap-3 sm:items-end'
-  )
-  const serviceDateLabelClass = cn(
-    'block text-sm font-medium text-text',
-    isManagerKioskStyle && 'sr-only'
-  )
-  const serviceDateControlsClass = cn(
-    // Mobile: wrap onto multiple lines so "Today" is never pushed off-screen.
-    // sm+ (incl. the manager kiosk tablet): keep the original single-row scroll behaviour.
-    // The scroll clips an outer focus ring, so the buttons in this row draw theirs inset.
-    'flex flex-wrap items-center gap-2 sm:flex-nowrap sm:whitespace-nowrap sm:overflow-x-auto',
-    isManagerKioskStyle ? 'mt-0' : 'mt-1'
-  )
-  const totalsBadgeClass = cn(
-    'rounded-md border px-2 py-1 text-xs font-medium',
-    isManagerKioskStyle
-      ? 'border-primary/20 bg-primary-soft text-primary-soft-fg'
-      : 'border-border-strong bg-surface-hover text-text'
-  )
-  const nextEventCalloutClass = cn(
-    'mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2',
-    'border-warning-border bg-warning-soft text-warning-fg',
-    isManagerKioskStyle && 'px-2 py-1.5'
-  )
-  const nextEventPillClass =
-    'inline-flex items-center rounded-pill bg-warning/20 px-2 py-0.5 text-xs font-extrabold uppercase tracking-wide text-warning-fg'
-  const nextEventTitleClass = cn(
-    'min-w-0 truncate text-sm font-semibold leading-tight text-warning-fg',
-    isManagerKioskStyle && 'text-xs'
-  )
-  const nextEventMetaClass = cn(
-    'text-sm font-medium text-warning-fg',
-    isManagerKioskStyle && 'text-xs'
-  )
   const dateInputClass =
-    'min-h-touch rounded-sm border border-border-strong bg-surface px-3 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring'
-  const viewToggleGroupClass = cn(
-    'inline-flex items-center rounded-md border p-0.5',
-    isManagerKioskStyle ? 'border-primary/20 bg-primary-soft' : 'border-border-strong bg-surface-hover'
-  )
-  const viewToggleSegmentClass = (active: boolean) =>
+    'min-h-touch w-36 shrink-0 rounded-sm border border-border-strong bg-surface px-2 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring'
+  const segmentGroupClass = 'inline-flex shrink-0 items-center rounded-default border border-border-strong bg-surface-hover p-0.5'
+  const segmentClass = (active: boolean) =>
     cn(
-      'min-h-touch rounded-sm font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring',
-      isManagerKioskStyle ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm',
-      active
-        ? 'bg-surface text-text shadow-sm'
-        : 'text-text-muted hover:text-text'
+      'min-h-touch rounded-sm px-2.5 text-xs font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring',
+      active ? 'bg-surface text-text shadow-sm' : 'text-text-muted hover:text-text'
     )
+  const factClass = 'whitespace-nowrap'
+  const alertGap = 'mt-2'
 
   return (
-    <div className={serviceCardClass}>
-      <div className={nextEventCalloutClass} role="status" aria-label="Next event reminder">
-        {!upcomingEventsLoaded ? (
-          <p className={nextEventMetaClass}>Loading next event...</p>
-        ) : nextUpcomingEvent ? (
-          <>
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className={nextEventPillClass}>Next event</span>
-                <span className={nextEventMetaClass}>{formatNextEventUrgency(nextUpcomingEvent, clockNow)}</span>
-                <span className={nextEventTitleClass} title={nextUpcomingEvent.name}>
-                  {nextUpcomingEvent.name}
-                </span>
-              </div>
-            </div>
+    <div className={cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-3')}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* The day */}
+        <IconButton
+          type="button"
+          variant="secondary"
+          label="Previous day"
+          icon={<Icon name="chevronLeft" size={18} />}
+          onClick={() => { setDate((current: string) => shiftIsoDate(current, -1)); touch() }}
+          className="size-11 shrink-0"
+        />
+        <input
+          id="foh-date"
+          type="date"
+          aria-label="Service date"
+          value={date}
+          onChange={(event) => { setDate(event.target.value); touch() }}
+          className={dateInputClass}
+        />
+        <IconButton
+          type="button"
+          variant="secondary"
+          label="Next day"
+          icon={<Icon name="chevronRight" size={18} />}
+          onClick={() => { setDate((current: string) => shiftIsoDate(current, 1)); touch() }}
+          className="size-11 shrink-0"
+        />
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          disabled={viewingToday}
+          onClick={() => { setDate(serviceDateNow); touch() }}
+          className={COMPACT_CONTROL}
+        >
+          Today
+        </Button>
 
-            {canEdit && (
-              <Button
-                type="button"
-                variant="primary"
-                size={controlSize}
-                onClick={() =>
-                  onOpenCreateModal({
-                    mode: 'booking',
-                    prefill: {
-                      booking_date: nextUpcomingEvent.date,
-                      purpose: 'event',
-                      event_id: nextUpcomingEvent.id
-                    }
-                  })
-                }
-                className="min-h-touch"
-              >
-                Book guests
-              </Button>
-            )}
-          </>
-        ) : (
-          <p className={nextEventMetaClass}>No upcoming events scheduled.</p>
+        {/* The search takes what is left, and no more than it needs. */}
+        {search ? <div className="min-w-44 max-w-md flex-1">{search}</div> : <div className="flex-1" />}
+
+        {/* View toggle: always visible (a view control, not gated by canEdit). */}
+        <div className={segmentGroupClass} role="group" aria-label="Seating view">
+          <button
+            type="button"
+            onClick={() => onViewModeChange('inside')}
+            aria-pressed={viewMode === 'inside'}
+            className={segmentClass(viewMode === 'inside')}
+          >
+            Inside
+          </button>
+          <button
+            type="button"
+            onClick={() => onViewModeChange('outside')}
+            aria-pressed={viewMode === 'outside'}
+            className={segmentClass(viewMode === 'outside')}
+          >
+            Outside ({outsideCount})
+          </button>
+        </div>
+
+        {onTimelineZoomChange && viewMode === 'inside' && (
+          <div className="inline-flex shrink-0 items-center gap-0.5" role="group" aria-label="Timeline zoom">
+            <Button
+              type="button"
+              variant={timelineZoom === 'day' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={timelineZoom === 'day'}
+              title="The whole day across the screen"
+              onClick={() => { onTimelineZoomChange('day'); touch() }}
+              className={COMPACT_CONTROL}
+            >
+              Day
+            </Button>
+            <Button
+              type="button"
+              variant={timelineZoom === 'now' ? 'primary' : 'secondary'}
+              size="sm"
+              aria-pressed={timelineZoom === 'now'}
+              title="About five hours around now, larger"
+              onClick={() => { onTimelineZoomChange('now'); touch() }}
+              className={COMPACT_CONTROL}
+            >
+              Now
+            </Button>
+          </div>
         )}
-      </div>
 
-      <div className={serviceHeaderClass}>
-        <div>
-          <label htmlFor="foh-date" className={serviceDateLabelClass}>
-            Service date
-          </label>
-          <div className={serviceDateControlsClass}>
-            <Button
-              type="button"
-              variant="secondary"
-              size={controlSize}
-              onClick={() => {
-                setDate((current: string) => shiftIsoDate(current, -1))
-                lastInteractionAtMsRef.current = Date.now()
-              }}
-              className="min-h-touch focus-visible:shadow-ring-inset"
-              aria-label="Previous day"
-            >
-              Previous
+        {canEdit && (
+          <>
+            <Button type="button" variant="primary" size="sm" onClick={() => openNowCreateModal('walk_in')} className={COMPACT_CONTROL}>
+              Walk-in
             </Button>
-            <input
-              id="foh-date"
-              type="date"
-              value={date}
-              onChange={(event) => {
-                setDate(event.target.value)
-                lastInteractionAtMsRef.current = Date.now()
-              }}
-              className={dateInputClass}
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size={controlSize}
-              onClick={() => {
-                setDate((current: string) => shiftIsoDate(current, 1))
-                lastInteractionAtMsRef.current = Date.now()
-              }}
-              className="min-h-touch focus-visible:shadow-ring-inset"
-              aria-label="Next day"
-            >
-              Next
+            <Button type="button" variant="secondary" size="sm" onClick={() => openNowCreateModal('booking')} className={COMPACT_CONTROL}>
+              Add booking
             </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size={controlSize}
-              onClick={() => {
-                setDate(serviceDateNow)
-                lastInteractionAtMsRef.current = Date.now()
-              }}
-              className="min-h-touch focus-visible:shadow-ring-inset"
-            >
-              Today
-            </Button>
-            <span className={totalsBadgeClass}>Total bookings: {totals.bookings}</span>
-            <span className={totalsBadgeClass}>Total covers: {totals.covers}</span>
-            {typeof totals.privateHireGuests === 'number' && totals.privateHireGuests > 0 && (
-              <span className={totalsBadgeClass}>Private hire guests: {totals.privateHireGuests}</span>
-            )}
-          </div>
-        </div>
+          </>
+        )}
 
-        <div className="flex flex-wrap items-center gap-2">
-          {canEdit && confirmingFoodOrder && (
-            <div
-              role="group"
-              aria-label="Text the kitchen?"
-              className="flex items-center gap-2 rounded-lg border border-danger-border bg-danger-soft px-2 py-1"
-            >
-              <span className="text-sm font-semibold text-danger-fg">Text the kitchen?</span>
-              <Button
-                type="button"
-                variant="danger"
-                size={controlSize}
-                onClick={() => {
-                  setConfirmingFoodOrder(false)
-                  onSendFoodOrderAlert()
-                }}
-                className="min-h-touch font-extrabold"
-              >
-                Send
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size={controlSize}
-                onClick={() => setConfirmingFoodOrder(false)}
-                className="min-h-touch"
-              >
-                Cancel
-              </Button>
+        {/* Everything used rarely, behind one button. */}
+        <Popover
+          align="right"
+          width="sm"
+          label="More"
+          panelClassName="p-2"
+          trigger={
+            <Button type="button" variant="secondary" size="sm" className={COMPACT_CONTROL} iconRight={<Icon name="chevronDown" size={14} />}>
+              More
+            </Button>
+          }
+        >
+          {({ close }) => (
+            <div className="flex flex-col gap-1.5" data-touch-targets="">
+              {canEdit && (
+                // Deliberately loud: it texts the kitchen, so it stays red and in capitals. It
+                // only asks here; the text goes on the second tap.
+                <Button
+                  type="button"
+                  variant="danger"
+                  disabled={submittingFoodOrderAlert}
+                  aria-label="Food order: text the kitchen"
+                  onClick={() => { close(); setConfirmingFoodOrder(true); touch() }}
+                  className="min-h-touch w-full font-extrabold uppercase tracking-wide"
+                >
+                  {submittingFoodOrderAlert ? 'Sending...' : 'Food Order'}
+                </Button>
+              )}
+              {canEdit && nextUpcomingEvent && (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    close()
+                    touch()
+                    onOpenCreateModal({
+                      mode: 'booking',
+                      prefill: { booking_date: nextUpcomingEvent.date, purpose: 'event', event_id: nextUpcomingEvent.id },
+                    })
+                  }}
+                  className="h-auto min-h-touch w-full whitespace-normal py-1 text-left"
+                >
+                  Book guests for {nextUpcomingEvent.name}
+                </Button>
+              )}
+              <LinkButton href="/checklists" variant="secondary" className="min-h-touch w-full">
+                Checklists
+              </LinkButton>
+              <LinkButton href="/vouchers/foh" variant="secondary" className="min-h-touch w-full">
+                Vouchers
+              </LinkButton>
+              {canManageSettings && (
+                <LinkButton href="/settings/table-bookings" variant="secondary" className="min-h-touch w-full">
+                  Table Setup
+                </LinkButton>
+              )}
             </div>
           )}
-
-          {canEdit && !confirmingFoodOrder && (
-            // Deliberately loud: it texts the kitchen, so it stays red and in capitals.
-            <Button
-              type="button"
-              variant="danger"
-              size={controlSize}
-              onClick={() => setConfirmingFoodOrder(true)}
-              disabled={submittingFoodOrderAlert}
-              aria-label="Food order: text the kitchen"
-              className="min-h-touch font-extrabold uppercase tracking-wide"
-              icon={
-                <Image
-                  src="/logo.png"
-                  alt=""
-                  width={20}
-                  height={20}
-                  aria-hidden
-                  className={cn('h-4 w-auto rounded-sm bg-surface px-0.5 py-0.5', isManagerKioskStyle && 'h-3.5')}
-                />
-              }
-            >
-              {submittingFoodOrderAlert ? 'Sending...' : 'Food Order'}
-            </Button>
-          )}
-
-          {/* View toggle — always visible (view control, not gated by canEdit). */}
-          <div className={viewToggleGroupClass} role="group" aria-label="Seating view">
-            <button
-              type="button"
-              onClick={() => onViewModeChange('inside')}
-              aria-pressed={viewMode === 'inside'}
-              className={viewToggleSegmentClass(viewMode === 'inside')}
-            >
-              Inside
-            </button>
-            <button
-              type="button"
-              onClick={() => onViewModeChange('outside')}
-              aria-pressed={viewMode === 'outside'}
-              className={viewToggleSegmentClass(viewMode === 'outside')}
-            >
-              Outside ({outsideCount})
-            </button>
-          </div>
-
-          {/* Checklists: navigation, visible to all FOH users (not gated by canEdit). */}
-          <LinkButton href="/checklists" variant="primary" size={controlSize} className="min-h-touch">
-            Checklists
-          </LinkButton>
-
-          {/* Vouchers: navigation, visible to all FOH users (not gated by canEdit). */}
-          <LinkButton href="/vouchers/foh" variant="primary" size={controlSize} className="min-h-touch">
-            Vouchers
-          </LinkButton>
-
-          {canEdit && (
-            <>
-              <Button
-                type="button"
-                variant="primary"
-                size={controlSize}
-                onClick={() => openNowCreateModal('walk_in')}
-                className="min-h-touch"
-              >
-                Walk-in
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size={controlSize}
-                onClick={() => openNowCreateModal('booking')}
-                className="min-h-touch"
-              >
-                Add booking
-              </Button>
-            </>
-          )}
-        </div>
+        </Popover>
       </div>
 
-      {(search || freshness) && (
-        <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
-          {/* The warning comes first and takes the whole row: it must not be squeezed beside the search. */}
-          {freshness && freshnessWide ? <div className="w-full">{freshness}</div> : null}
-          {search ? <div className="min-w-64 flex-1">{search}</div> : null}
-          {freshness && !freshnessWide ? <div className="shrink-0">{freshness}</div> : null}
+      {canEdit && confirmingFoodOrder && (
+        <div
+          role="group"
+          aria-label="Text the kitchen?"
+          className="mt-1.5 flex flex-wrap items-center gap-2 rounded-lg border border-danger-border bg-danger-soft px-2 py-1"
+        >
+          <span className="text-sm font-semibold text-danger-fg">Text the kitchen that a food order is in?</span>
+          <Button
+            type="button"
+            variant="danger"
+            size="sm"
+            onClick={() => { setConfirmingFoodOrder(false); onSendFoodOrderAlert() }}
+            className={cn(COMPACT_CONTROL, 'font-extrabold')}
+          >
+            Send
+          </Button>
+          <Button type="button" variant="secondary" size="sm" onClick={() => setConfirmingFoodOrder(false)} className={COMPACT_CONTROL}>
+            Cancel
+          </Button>
         </div>
       )}
 
+      {/* The facts, as one slim line of small plain text. */}
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs leading-5 text-text-muted">
+        <span className={cn(factClass, 'font-medium text-text')}>
+          {totals.bookings} {totals.bookings === 1 ? 'booking' : 'bookings'} · {totals.covers} covers
+          {typeof totals.privateHireGuests === 'number' && totals.privateHireGuests > 0
+            ? ` · ${totals.privateHireGuests} private hire guests`
+            : ''}
+        </span>
+        {openHoursLabel ? <span className={factClass}>{openHoursLabel}</span> : null}
+        <span className="min-w-0 flex-1 truncate" role="status" aria-label="Next event reminder">
+          {!upcomingEventsLoaded
+            ? 'Loading next event...'
+            : nextUpcomingEvent
+              ? (
+                <>
+                  <span className="font-semibold text-warning-fg">Next event:</span>{' '}
+                  {nextUpcomingEvent.name} · {formatNextEventUrgency(nextUpcomingEvent, clockNow)}
+                </>
+              )
+              : 'No upcoming events'}
+        </span>
+        {freshness && !freshnessWide ? <span className="shrink-0">{freshness}</span> : null}
+      </div>
+
+      {/* The stale warning takes a whole row of its own: it must not be squeezed. */}
+      {freshness && freshnessWide ? <div className={alertGap}>{freshness}</div> : null}
+
       {!viewingToday && (
-        <div className={cn('rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+        <div className={cn('rounded-lg border border-warning-border bg-warning-soft px-3 py-1 text-sm text-warning-fg', alertGap)}>
           Viewing <span className="font-semibold">{formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long' })}</span>,
           not today. This screen returns to today after 5 minutes of inactivity.
         </div>
       )}
 
       {statusMessage && (
-        <Alert tone="success" size="sm" className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}>
+        <Alert tone="success" size="sm" className={alertGap}>
           {statusMessage}
         </Alert>
       )}
 
       {errorMessage && (
-        <Alert tone="danger" size="sm" className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}>
+        <Alert tone="danger" size="sm" className={alertGap}>
           {errorMessage}
         </Alert>
       )}
@@ -399,7 +363,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
           title="Check this booking"
           closable
           onClose={onDismissStaffNotice}
-          className={isManagerKioskStyle ? 'mt-2' : 'mt-3'}
+          className={alertGap}
         >
           <ul className="list-disc space-y-1 pl-4">
             {staffNotice.map((line) => (
