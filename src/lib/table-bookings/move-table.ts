@@ -411,7 +411,6 @@ export async function getMoveTableAvailability(
   )
 
   const collator = new Intl.Collator('en', { numeric: true, sensitivity: 'base' })
-  const assignedTableSet = new Set(assignedTableIds)
   const availableTables = bookableTables
     .filter((table) => !unavailableByAssignment.has(table.id))
     .filter((table) => !unavailableByPrivateBlocks.has(table.id))
@@ -457,11 +456,13 @@ export async function getMoveTableAvailability(
     })
   }
 
-  availableTables
-    .filter((table) => !assignedTableSet.has(table.id))
-    .forEach((table) => {
-      addOption([table])
-    })
+  // One of the booking's own tables is an option too: a joined booking whose party got smaller
+  // moves onto just one of them, which frees the other. These used to be left out, so staff could
+  // not release a spare table by hand (22 November 2026). The set the booking already holds is
+  // still skipped by addOption.
+  availableTables.forEach((table) => {
+    addOption([table])
+  })
 
   const linkedPairs = new Set<string>()
   for (const row of (joinLinksResult.data || [])) {
