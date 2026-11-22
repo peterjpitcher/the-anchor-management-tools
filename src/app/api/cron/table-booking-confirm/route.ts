@@ -25,7 +25,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { reportCronFailure } from '@/lib/cron/alerting'
+import { withCronRun } from '@/lib/cron/run-recorder'
 import { createBookingConfirmToken } from '@/lib/table-bookings/manage-booking'
 import { getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { bookingStartInstant } from '@/lib/table-bookings/confirm-token'
@@ -134,7 +134,12 @@ async function sendConfirmReminderEmailFirst(
   })
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * A sweep that cannot run throws: withCronRun records it as failed, answers 500 and emails
+ * CRON_ALERT_EMAIL. Reminders it could not send are counted in `failed`, which the daily
+ * scheduled jobs check adds up.
+ */
+async function sendTableBookingConfirmReminders(request: NextRequest): Promise<Response> {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -268,7 +273,11 @@ export async function GET(request: NextRequest) {
     logger.error('Table booking confirm reminder cron failed', {
       metadata: { error: error instanceof Error ? error.message : String(error) },
     })
-    await reportCronFailure('table-booking-confirm', error)
-    return NextResponse.json({ error: 'Cron failed' }, { status: 500 })
+    throw error
   }
 }
+
+export const GET = withCronRun('table-booking-confirm', sendTableBookingConfirmReminders, {
+  recording: 'every_run',
+  itemFailures: (body) => Number(body.failed ?? 0),
+})

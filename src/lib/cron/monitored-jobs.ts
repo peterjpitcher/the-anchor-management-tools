@@ -35,6 +35,13 @@ export type MonitoredCronJob = {
   monitoredFrom?: string
 }
 
+/**
+ * The five table booking jobs and the table booking watch joined the list together (owner
+ * decisions, 22 November 2026). The date leaves two days for that release to go out; see
+ * `monitoredFrom` above.
+ */
+const TABLE_BOOKING_JOBS_WATCHED_FROM = '2026-11-24T00:00:00.000Z'
+
 export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
   {
     jobName: 'job-queue',
@@ -148,6 +155,62 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     label: 'Christmas booking follow-up emails and clear-out',
     // New in the Christmas funnel release (10 November 2026); see signing-reminders above.
     monitoredFrom: '2026-11-12T00:00:00.000Z',
+  },
+  {
+    jobName: 'table-booking-deposit-timeout',
+    path: '/api/cron/table-booking-deposit-timeout',
+    intervalMinutes: 5,
+    maxDurationSeconds: 60,
+    recording: 'hourly',
+    label: 'Table deposit holds: reminders and letting lapsed holds go',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
+  },
+  {
+    jobName: 'table-booking-paypal-reconciliation',
+    path: '/api/cron/table-booking-paypal-reconciliation',
+    intervalMinutes: 60,
+    maxDurationSeconds: 60,
+    recording: 'every_run',
+    label: 'Table deposit PayPal check',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
+  },
+  {
+    jobName: 'table-booking-confirm',
+    path: '/api/cron/table-booking-confirm',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 300,
+    recording: 'every_run',
+    label: 'Table booking confirm reminders',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
+  },
+  {
+    jobName: 'preorder-reminders',
+    path: '/api/cron/preorder-reminders',
+    // vercel.json runs it at 09:00 and 12:00 UTC and both runs do work. The check counts it as
+    // once a day, so a day with neither run is reported; losing one of the two is not.
+    intervalMinutes: 1440,
+    maxDurationSeconds: 300,
+    recording: 'every_run',
+    label: 'Pre-order reminders and kitchen cutoff digests',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
+  },
+  {
+    jobName: 'preorder-reports',
+    path: '/api/cron/preorder-reports',
+    intervalMinutes: 1440,
+    maxDurationSeconds: 300,
+    recording: 'every_run',
+    label: 'Pre-order report (seat changes and withdrawn choices)',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
+  },
+  {
+    jobName: 'table-booking-watch',
+    path: '/api/cron/table-booking-watch',
+    intervalMinutes: 60,
+    maxDurationSeconds: 60,
+    recording: 'every_run',
+    label: 'Table booking watch (website bookings stopped or cannot reach us)',
+    monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
   },
 ]
 

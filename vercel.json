@@ -340,6 +340,10 @@
     {
       "path": "/api/cron/christmas-follow-ups",
       "schedule": "0 9,10 * * *"
+    },
+    {
+      "path": "/api/cron/table-booking-watch",
+      "schedule": "35 * * * *"
     }
   ]
 }

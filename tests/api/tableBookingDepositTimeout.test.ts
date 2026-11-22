@@ -137,7 +137,9 @@ describe('table booking deposit timeout cron', () => {
     expect(status).toBe(200)
     expect(payload).toEqual({ cancelled: 0 })
     expect(selectBuilder.lte).toHaveBeenCalledWith('hold_expires_at', '2026-07-24T11:50:00.000Z')
-    expect(supabase.from).toHaveBeenCalledTimes(1)
+    // One read of the bookings; the run recorder's own row in cron_job_runs is not the job's work.
+    const tablesTouched = vi.mocked(supabase.from).mock.calls.map(([table]) => table).filter((table) => table !== 'cron_job_runs')
+    expect(tablesTouched).toEqual(['table_bookings'])
     expect(sendTableBookingCancelledSmsIfAllowed).not.toHaveBeenCalled()
     expect(logAuditEvent).not.toHaveBeenCalled()
   })

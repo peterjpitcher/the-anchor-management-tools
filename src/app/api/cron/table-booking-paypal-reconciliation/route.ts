@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { reportCronFailure } from '@/lib/cron/alerting'
+import { withCronRun } from '@/lib/cron/run-recorder'
 import {
   reconcileTableDepositOrder,
   TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS,
@@ -53,7 +53,12 @@ const MAX_CANDIDATES = 200
 
 type Candidate = TableDepositOrderBooking
 
-export async function GET(request: NextRequest) {
+/**
+ * A run that cannot do its work throws: withCronRun records it as failed, answers 500 and emails
+ * CRON_ALERT_EMAIL. Bookings that need a person are not failures of the job: the settle step has
+ * already told the manager about each one.
+ */
+async function reconcileTableBookingDeposits(request: NextRequest): Promise<Response> {
   const authResult = authorizeCronRequest(request)
   if (!authResult.authorized) {
     return NextResponse.json({ error: authResult.reason ?? 'Unauthorized' }, { status: 401 })
@@ -66,58 +71,54 @@ export async function GET(request: NextRequest) {
   let recovered = 0
   const needsAttention: string[] = []
 
-  try {
-    // Any booking that started a PayPal payment and has no capture recorded. Cancelled ones
-    // are included deliberately: those are exactly the cases where the guest paid and the
-    // timeout cron cancelled them anyway, and they are the ones a human must see.
-    const { data: candidates, error } = await supabase
-      .from('table_bookings')
-      .select(TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS)
-      .not('paypal_deposit_order_id', 'is', null)
-      .is('paypal_deposit_capture_id', null)
-      // By activity, not by when the booking was made (BK-047): a deposit order raised weeks after
-      // booking (a party grown to 15, a Christmas booking made early) touches updated_at, and was
-      // never checked when this read created_at.
-      .gte('updated_at', since)
-      .order('updated_at', { ascending: false })
-      .limit(MAX_CANDIDATES)
+  // Any booking that started a PayPal payment and has no capture recorded. Cancelled ones
+  // are included deliberately: those are exactly the cases where the guest paid and the
+  // timeout cron cancelled them anyway, and they are the ones a human must see.
+  const { data: candidates, error } = await supabase
+    .from('table_bookings')
+    .select(TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS)
+    .not('paypal_deposit_order_id', 'is', null)
+    .is('paypal_deposit_capture_id', null)
+    // By activity, not by when the booking was made (BK-047): a deposit order raised weeks after
+    // booking (a party grown to 15, a Christmas booking made early) touches updated_at, and was
+    // never checked when this read created_at.
+    .gte('updated_at', since)
+    .order('updated_at', { ascending: false })
+    .limit(MAX_CANDIDATES)
 
-    if (error) {
-      await reportCronFailure('table-booking-paypal-reconciliation', error, {
-        stage: 'fetch_candidates',
-      })
-      return NextResponse.json({ error: 'DB error' }, { status: 500 })
-    }
-
-    for (const booking of (candidates ?? []) as Candidate[]) {
-      if (!booking.paypal_deposit_order_id) continue
-      checked++
-
-      const result = await reconcileTableDepositOrder(supabase, booking, { source: 'reconciliation_cron' })
-      if (result.outcome === 'needs_attention') {
-        needsAttention.push(booking.booking_reference ?? booking.id)
-      } else if (result.outcome === 'recorded') {
-        recovered++
-      } else if (result.outcome === 'closed_booking') {
-        // Recorded on the closed booking and refunded, or left for a person; either way a person
-        // has been told, by the settle step.
-        needsAttention.push(booking.booking_reference ?? booking.id)
-      }
-    }
-
-    if (needsAttention.length > 0) {
-      logger.error('Table booking deposits were reconciled and need a human to check them', {
-        metadata: { bookings: needsAttention },
-      })
-    }
-
-    logger.info('[table-booking-paypal-reconciliation] completed', {
-      metadata: { checked, recovered, needsAttention: needsAttention.length },
-    })
-
-    return NextResponse.json({ checked, recovered, needsAttention })
-  } catch (error) {
-    await reportCronFailure('table-booking-paypal-reconciliation', error)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+  if (error) {
+    throw new Error(`Could not load the deposits to check: ${error.message}`)
   }
+
+  for (const booking of (candidates ?? []) as Candidate[]) {
+    if (!booking.paypal_deposit_order_id) continue
+    checked++
+
+    const result = await reconcileTableDepositOrder(supabase, booking, { source: 'reconciliation_cron' })
+    if (result.outcome === 'needs_attention') {
+      needsAttention.push(booking.booking_reference ?? booking.id)
+    } else if (result.outcome === 'recorded') {
+      recovered++
+    } else if (result.outcome === 'closed_booking') {
+      // Recorded on the closed booking and refunded, or left for a person; either way a person
+      // has been told, by the settle step.
+      needsAttention.push(booking.booking_reference ?? booking.id)
+    }
+  }
+
+  if (needsAttention.length > 0) {
+    logger.error('Table booking deposits were reconciled and need a human to check them', {
+      metadata: { bookings: needsAttention },
+    })
+  }
+
+  logger.info('[table-booking-paypal-reconciliation] completed', {
+    metadata: { checked, recovered, needsAttention: needsAttention.length },
+  })
+
+  return NextResponse.json({ checked, recovered, needsAttention })
 }
+
+export const GET = withCronRun('table-booking-paypal-reconciliation', reconcileTableBookingDeposits, {
+  recording: 'every_run',
+})
