@@ -37,10 +37,11 @@ export type MonitoredCronJob = {
 
 /**
  * The five table booking jobs and the table booking watch joined the list together (owner
- * decisions, 22 November 2026). The date leaves two days for that release to go out; see
- * `monitoredFrom` above.
+ * decisions, 22 November 2026). The date leaves a week for that release to go out, as the staff
+ * training release did; see `monitoredFrom` above. If the release goes out later than this date,
+ * move it, or the three daily jobs raise a false "no completed run" the morning after.
  */
-const TABLE_BOOKING_JOBS_WATCHED_FROM = '2026-11-24T00:00:00.000Z'
+const TABLE_BOOKING_JOBS_WATCHED_FROM = '2026-11-29T00:00:00.000Z'
 
 export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
   {

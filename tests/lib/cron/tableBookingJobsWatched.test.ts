@@ -21,8 +21,8 @@ const TABLE_BOOKING_JOB_NAMES = [
 ]
 
 const MINUTE = 60_000
-// 07:40 in the pub on Tuesday 1 December 2026, when the daily check runs, a week after these
-// jobs joined the list.
+// 07:40 in the pub on Tuesday 1 December 2026, when the daily check runs, after the date these
+// jobs are watched from.
 const NOW = whenLondonClockReaches('2026-12-01', '07:40') as Date
 
 const jobs = MONITORED_CRON_JOBS.filter((job) => TABLE_BOOKING_JOB_NAMES.includes(job.jobName))
@@ -94,14 +94,38 @@ describe('the table booking jobs on the daily scheduled jobs check', () => {
     expect(report.jobs[0].missedRun).toMatchObject({ from: null })
   })
 
-  it('does not call them missing on the morning after they join the list', async () => {
+  it('does not call them missing on the morning after the release that added them', async () => {
+    // Released on the afternoon of Monday 23 November. By the next morning's check the three
+    // frequent jobs have run since the release; the three daily ones have not been due yet. Run
+    // recording began long ago for the jobs already on the list (the job queue stands for them),
+    // so only each new job's own monitoredFrom holds the alert back.
     const releaseMorning = whenLondonClockReaches('2026-11-24', '07:40') as Date
+    const minutesBefore = (minutes: number) => new Date(releaseMorning.getTime() - minutes * MINUTE).toISOString()
+    const ranAt = (jobName: string, minutes: number) => ({
+      ...completedRun(jobName, 0),
+      run_key: `run:${minutesBefore(minutes)}`,
+      started_at: minutesBefore(minutes),
+      finished_at: minutesBefore(minutes),
+    })
+    const hourlySince = (jobName: string, hours: number) => Array.from({ length: hours }, (_, index) => ranAt(jobName, 20 + index * 60))
+
+    const jobQueue = MONITORED_CRON_JOBS.find((job) => job.jobName === 'job-queue')!
     const db = createFakeDb({
-      // Recording began long ago for the jobs already watched; these six have no runs yet.
-      cron_job_runs: [{ ...completedRun('job-queue', 0), started_at: '2026-10-26T00:00:00.000Z' }],
+      cron_job_runs: [
+        ...hourlySince('job-queue', 30 * 24),
+        ...hourlySince('table-booking-deposit-timeout', 16),
+        ...hourlySince('table-booking-paypal-reconciliation', 16),
+        ...hourlySince('table-booking-watch', 16),
+      ],
       jobs: [],
     })
-    const report = await checkScheduledJobs(db.client as never, releaseMorning, jobs)
+
+    const report = await checkScheduledJobs(db.client as never, releaseMorning, [jobQueue, ...jobs])
     expect(report.jobs).toEqual([])
+
+    // The same morning without their monitoredFrom would have reported the three daily jobs.
+    const undated = jobs.map(({ monitoredFrom: _monitoredFrom, ...job }) => job)
+    const withoutDates = await checkScheduledJobs(db.client as never, releaseMorning, [jobQueue, ...undated])
+    expect(withoutDates.jobs.map((finding) => finding.jobName).sort()).toEqual(['preorder-reminders', 'preorder-reports', 'table-booking-confirm'])
   })
 })
