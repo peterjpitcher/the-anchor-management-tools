@@ -4,6 +4,7 @@ import React from 'react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/ds'
 import type { FohBooking, FohStyleVariant } from '../types'
+import { formatFohClock, getBookingVisualLabel } from '../utils'
 
 type FohUnassignedBookingsProps = {
   bookings: FohBooking[]
@@ -35,11 +36,11 @@ export const FohUnassignedBookings = React.memo(function FohUnassignedBookings(p
               onClick={() => onBookingClick(booking)}
               className={cn(
                 'inline-flex min-h-touch items-center gap-1.5 rounded-md border border-warning-border bg-surface text-warning-fg hover:bg-warning/10 focus-visible:outline-hidden focus-visible:shadow-ring',
-                isManagerKioskStyle ? 'px-1.5 py-0.5 text-meta' : 'px-2 py-1 text-xs'
+                isManagerKioskStyle ? 'px-1.5 py-0.5 text-xs' : 'px-2 py-1 text-xs'
               )}
             >
               <span>
-                {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)} · {booking.party_size || 1} · {booking.booking_time}
+                {booking.party_size || 1} · {getBookingVisualLabel(booking)} · {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)} · {formatFohClock(booking.booking_time)}
               </span>
               {highChairs > 0 ? <Badge tone="neutral">High chair ×{highChairs}</Badge> : null}
             </button>

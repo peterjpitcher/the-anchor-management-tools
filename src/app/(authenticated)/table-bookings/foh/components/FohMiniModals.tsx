@@ -2,7 +2,8 @@
 
 import React from 'react'
 import { ChristmasCourseFields, type ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
-import { Button, Input, Modal } from '@/ds'
+import { Alert, Button, Input, Modal } from '@/ds'
+import { FohPartySizeStepper } from './FohPartySizeStepper'
 import { ModalActions } from '@/ds/compat'
 
 type FohPartySizeModalProps = {
@@ -14,6 +15,8 @@ type FohPartySizeModalProps = {
   onClose: () => void
   onPartySizeChange: (value: string) => void
   onConfirm: (value: string) => void
+  /** Why the size was not accepted, shown here rather than on the page underneath. */
+  error?: string | null
 }
 
 export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: FohPartySizeModalProps) {
@@ -24,6 +27,7 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
     onClose,
     onPartySizeChange,
     onConfirm,
+    error = null,
   } = props
   const inputRef = React.useRef<HTMLInputElement | null>(null)
 
@@ -51,16 +55,18 @@ export const FohPartySizeModal = React.memo(function FohPartySizeModal(props: Fo
         </ModalActions>
       }
     >
-      <Input
+      {error && (
+        <Alert tone="danger" size="sm" className="mb-3">
+          {error}
+        </Alert>
+      )}
+      <FohPartySizeStepper
         ref={inputRef}
         label="New party size"
-        type="number"
         min={1}
         max={50}
         value={partySizeEditValue}
-        onChange={(e) => onPartySizeChange(e.target.value)}
-        className="min-h-touch"
-        autoFocus
+        onChange={onPartySizeChange}
       />
       {open && props.bookingId && props.onCoursesChange ? <ChristmasCourseFields bookingId={props.bookingId} partySize={Number(partySizeEditValue)} onChange={props.onCoursesChange} appearance="foh" /> : null}
     </Modal>
@@ -74,6 +80,8 @@ type FohWalkoutModalProps = {
   onClose: () => void
   onAmountChange: (value: string) => void
   onConfirm: () => void
+  /** Why the amount was not accepted, shown here rather than on the page underneath. */
+  error?: string | null
 }
 
 export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWalkoutModalProps) {
@@ -84,6 +92,7 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
     onClose,
     onAmountChange,
     onConfirm,
+    error = null,
   } = props
 
   return (
@@ -110,6 +119,11 @@ export const FohWalkoutModal = React.memo(function FohWalkoutModal(props: FohWal
         </ModalActions>
       }
     >
+      {error && (
+        <Alert tone="danger" size="sm" className="mb-3">
+          {error}
+        </Alert>
+      )}
       <Input
         label="Walkout amount"
         type="number"

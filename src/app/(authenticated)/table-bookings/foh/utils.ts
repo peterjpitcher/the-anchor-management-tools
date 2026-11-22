@@ -1,4 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz'
+import { formatTime12Hour, formatTimeInLondon } from '@/lib/dateUtils'
 import {
   getTableBookingStatusBadgeClasses,
   getTableBookingStatusBlockClasses,
@@ -24,22 +25,27 @@ export const DEFAULT_COUNTRY_CODE = '44'
 export const FOH_AUTO_RETURN_IDLE_MS = 5 * 60 * 1000
 export const FOH_AUTO_RETURN_POLL_MS = 30 * 1000
 
-export function formatBookingWindow(start?: string | null, end?: string | null, fallbackTime?: string | null): string {
-  if (start && end) {
-    try {
-      const formatter = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        hour: 'numeric',
-        minute: '2-digit',
-        hourCycle: 'h12'
-      })
-      return `${formatter.format(new Date(start))} - ${formatter.format(new Date(end))}`
-    } catch {
-      return fallbackTime || 'Time unknown'
-    }
-  }
+/**
+ * One time format for the whole screen: 12 hour with am/pm, as dateUtils writes it ("7pm",
+ * "7:30pm"). Blocks, the panel, the header and the lists all go through these two.
+ */
+export function formatFohClock(clock?: string | null): string {
+  if (!clock) return 'Time unknown'
+  return formatTime12Hour(clock.slice(0, 5))
+}
 
-  return fallbackTime || 'Time unknown'
+export function formatFohInstant(isoValue?: string | Date | null): string | null {
+  if (!isoValue) return null
+  const date = isoValue instanceof Date ? isoValue : new Date(isoValue)
+  if (!Number.isFinite(date.getTime())) return null
+  return formatTime12Hour(formatTimeInLondon(date))
+}
+
+export function formatBookingWindow(start?: string | null, end?: string | null, fallbackTime?: string | null): string {
+  const startLabel = formatFohInstant(start)
+  const endLabel = formatFohInstant(end)
+  if (startLabel && endLabel) return `${startLabel} - ${endLabel}`
+  return fallbackTime ? formatFohClock(fallbackTime) : 'Time unknown'
 }
 
 export function statusBadgeClass(status?: string | null): string {
@@ -59,20 +65,7 @@ export function getBookingVisualLabel(booking: FohBooking): string {
 }
 
 export function formatLifecycleTime(isoValue?: string | null): string | null {
-  if (!isoValue) return null
-  const parsedMs = Date.parse(isoValue)
-  if (!Number.isFinite(parsedMs)) return null
-
-  try {
-    return new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Europe/London',
-      hour: 'numeric',
-      minute: '2-digit',
-      hourCycle: 'h12'
-    }).format(new Date(parsedMs))
-  } catch {
-    return null
-  }
+  return formatFohInstant(isoValue)
 }
 
 function parseClockMinutes(clock: string | null | undefined): number | null {
@@ -87,14 +80,8 @@ function parseClockMinutes(clock: string | null | undefined): number | null {
 
 export function formatLaneMinuteLabel(totalMinutes: number): string {
   const dayOffset = Math.floor(totalMinutes / 1440)
-  const dayMinutes = ((totalMinutes % 1440) + 1440) % 1440
-  const hour24 = Math.floor(dayMinutes / 60)
-  const minute = dayMinutes % 60
-  const ampm = hour24 >= 12 ? 'pm' : 'am'
-  const hour12 = hour24 % 12 || 12
-  const minuteText = String(minute).padStart(2, '0')
   const daySuffix = dayOffset > 0 ? ` +${dayOffset}d` : ''
-  return `${hour12}:${minuteText}${ampm}${daySuffix}`
+  return `${formatFohClock(formatMinutesAsClock(totalMinutes))}${daySuffix}`
 }
 
 export function getLondonDateKey(date: Date): string | null {
@@ -888,4 +875,94 @@ export function getFohTimeChangeBlocker(booking: FohBooking): string | null {
     return 'This booking is closed.'
   }
   return null
+}
+
+/**
+ * What the booking panel offers for a booking as it stands (owner decision, 22 November 2026):
+ * one large primary button that fits the state, never Seated and Left side by side, and the
+ * reason anything is not offered as words on the screen. It mirrors what the routes accept
+ * (staff-status-actions.ts): the server is still the authority, this only keeps staff from
+ * tapping into a refusal.
+ */
+export type FohPanelActions = {
+  /** The one large button: Seated before arrival, Left once seated, Undo for a no-show. */
+  primary: 'seated' | 'left' | 'undo_no_show' | null
+  /** A party marked as left can be put back at its table. */
+  canReseat: boolean
+  canNoShow: boolean
+  /** Why something is not offered, as sentences for the panel. */
+  notes: string[]
+}
+
+export function getFohPanelActions(booking: FohBooking, now: Date): FohPanelActions {
+  const status = (booking.status || '').toLowerCase()
+  const eventLinked = isFohEventLinkedBooking(booking)
+
+  if (status === 'no_show') {
+    return eventLinked
+      ? { primary: null, canReseat: false, canNoShow: false, notes: ['Tied to an event. Put it back from the event.'] }
+      : { primary: 'undo_no_show', canReseat: false, canNoShow: false, notes: [] }
+  }
+  if (status === 'cancelled' || status === 'completed') {
+    return { primary: null, canReseat: false, canNoShow: false, notes: [`This booking is ${status}, so it cannot be seated or marked.`] }
+  }
+  if (booking.left_at) {
+    return { primary: null, canReseat: true, canNoShow: false, notes: ['This party has left.'] }
+  }
+  if (booking.seated_at) {
+    return { primary: 'left', canReseat: false, canNoShow: false, notes: [] }
+  }
+
+  const notes: string[] = []
+  const startMs = booking.start_datetime ? Date.parse(booking.start_datetime) : Number.NaN
+  const started = Number.isFinite(startMs) && startMs <= now.getTime()
+  let canNoShow = false
+  if (eventLinked) {
+    notes.push('No-show and cancel are done from the event, because this table is tied to an event booking.')
+  } else if (!started) {
+    notes.push('No-show can be recorded once the booking time has passed.')
+  } else {
+    canNoShow = true
+  }
+  return { primary: 'seated', canReseat: false, canNoShow, notes }
+}
+
+/** A booking found by the header search, with the table it sits on. */
+export type FohSearchResult = {
+  booking: FohBooking
+  laneTableId: string | null
+  laneTableName: string | null
+}
+
+/**
+ * Bookings for the day shown whose guest name or booking reference contains what was typed. A
+ * booking joined across tables is listed once, on its first table. No-shows are included so a
+ * guest who turns up late can be found and put back.
+ */
+export function searchFohBookings(schedule: FohScheduleResponse['data'] | null, query: string): FohSearchResult[] {
+  const needle = query.trim().toLowerCase()
+  if (!schedule || needle.length === 0) return []
+
+  const results = new Map<string, FohSearchResult>()
+  const consider = (booking: FohBooking, laneTableId: string | null, laneTableName: string | null) => {
+    if (results.has(booking.id) || booking.is_private_block) return
+    const haystack = `${booking.guest_name || ''} ${booking.booking_reference || ''}`.toLowerCase()
+    if (haystack.includes(needle)) results.set(booking.id, { booking, laneTableId, laneTableName })
+  }
+  for (const lane of schedule.lanes) {
+    for (const booking of lane.bookings) consider(booking, lane.table_id, lane.table_name)
+  }
+  for (const booking of schedule.unassigned_bookings || []) consider(booking, null, null)
+  for (const booking of schedule.outside_bookings || []) consider(booking, null, null)
+  for (const booking of schedule.no_show_bookings || []) consider(booking, null, null)
+
+  return Array.from(results.values()).sort((a, b) => a.booking.booking_time.localeCompare(b.booking.booking_time))
+}
+
+/** How old the screen's picture may be before it warns (owner: about two minutes). */
+export const FOH_STALE_AFTER_MS = 2 * 60 * 1000
+
+export function isFohScheduleStale(lastUpdatedAt: Date | null, now: Date): boolean {
+  if (!lastUpdatedAt) return false
+  return now.getTime() - lastUpdatedAt.getTime() > FOH_STALE_AFTER_MS
 }

@@ -50,8 +50,8 @@ describe('FohChangeTimeModal', () => {
     renderModal()
     expect(screen.getByText('Smith')).toBeInTheDocument()
     // The heading states the current time, and the grid separately marks that tile as current.
-    expect(screen.getByText(/currently booked for/i)).toHaveTextContent('18:00')
-    expect(screen.getByRole('button', { name: /18:00, current booking time/i })).toBeInTheDocument()
+    expect(screen.getByText(/currently booked for/i)).toHaveTextContent('6pm')
+    expect(screen.getByRole('button', { name: /6pm, current booking time/i })).toBeInTheDocument()
   })
 
   it('always warns that the guest will be told', () => {
@@ -69,7 +69,7 @@ describe('FohChangeTimeModal', () => {
     const user = userEvent.setup()
     const { onConfirm } = renderModal()
 
-    const current = screen.getByRole('button', { name: /18:00, current booking time/i })
+    const current = screen.getByRole('button', { name: /6pm, current booking time/i })
     expect(current).toBeDisabled()
     await user.click(current)
     expect(onConfirm).not.toHaveBeenCalled()
@@ -77,9 +77,9 @@ describe('FohChangeTimeModal', () => {
 
   it('disables a blocked slot and names the reason for assistive technology', () => {
     renderModal()
-    const taken = screen.getByRole('button', { name: /18:30, unavailable, taken/i })
+    const taken = screen.getByRole('button', { name: /6:30pm, unavailable, taken/i })
     expect(taken).toBeDisabled()
-    const priv = screen.getByRole('button', { name: /19:00, unavailable, private/i })
+    const priv = screen.getByRole('button', { name: /7pm, unavailable, private/i })
     expect(priv).toBeDisabled()
   })
 
@@ -90,11 +90,11 @@ describe('FohChangeTimeModal', () => {
     // Nothing chosen yet, so there is nothing to confirm.
     expect(screen.getByRole('button', { name: /change time/i })).toBeDisabled()
 
-    await user.click(screen.getByRole('button', { name: '18:15' }))
+    await user.click(screen.getByRole('button', { name: '6:15pm' }))
     // Picking a slot does not send anything on its own.
     expect(onConfirm).not.toHaveBeenCalled()
 
-    const confirm = screen.getByRole('button', { name: /change to 18:15/i })
+    const confirm = screen.getByRole('button', { name: /change to 6:15pm/i })
     expect(confirm).toBeEnabled()
     await user.click(confirm)
     expect(onConfirm).toHaveBeenCalledWith('18:15')
@@ -104,14 +104,14 @@ describe('FohChangeTimeModal', () => {
     const user = userEvent.setup()
     const { onConfirm } = renderModal()
 
-    await user.click(screen.getByRole('button', { name: /15 minutes earlier, 17:45/i }))
-    await user.click(screen.getByRole('button', { name: /change to 17:45/i }))
+    await user.click(screen.getByRole('button', { name: /15 minutes earlier, 5:45pm/i }))
+    await user.click(screen.getByRole('button', { name: /change to 5:45pm/i }))
     expect(onConfirm).toHaveBeenCalledWith('17:45')
   })
 
   it('disables a nudge that lands on a blocked time rather than hiding it', () => {
     renderModal()
-    expect(screen.getByRole('button', { name: /30 minutes later, 18:30, unavailable/i })).toBeDisabled()
+    expect(screen.getByRole('button', { name: /30 minutes later, 6:30pm, unavailable/i })).toBeDisabled()
   })
 
   it('shows a refusal inside the modal, where staff are looking', () => {
@@ -123,7 +123,7 @@ describe('FohChangeTimeModal', () => {
     const user = userEvent.setup()
     renderModal({ submitting: true })
     expect(screen.getByRole('button', { name: /changing/i })).toBeDisabled()
-    const slot1815 = screen.getByRole('button', { name: '18:15' })
+    const slot1815 = screen.getByRole('button', { name: '6:15pm' })
     expect(slot1815).toBeDisabled()
     await user.click(slot1815)
     expect(screen.getByRole('button', { name: /changing/i })).toBeDisabled()

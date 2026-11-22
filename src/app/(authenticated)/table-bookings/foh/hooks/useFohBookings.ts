@@ -14,6 +14,8 @@ export type UseFohBookingsReturn = {
   errorMessage: string | null
   setErrorMessage: React.Dispatch<React.SetStateAction<string | null>>
   reloadSchedule: (opts?: { requestedDate?: string; surfaceError?: boolean }) => Promise<void>
+  /** When the schedule on screen was last read from the server, or null before the first load. */
+  lastUpdatedAt: Date | null
   upcomingEvents: FohUpcomingEvent[]
   upcomingEventsLoaded: boolean
 }
@@ -27,6 +29,9 @@ export function useFohBookings(input: {
   const [schedule, setSchedule] = useState<FohScheduleResponse['data'] | null>(null)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // Every successful read stamps this, whichever path asked for it. The screen says "Last updated"
+  // from it and warns when it is more than about two minutes old.
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null)
   const [upcomingEvents, setUpcomingEvents] = useState<FohUpcomingEvent[]>([])
   const [upcomingEventsLoaded, setUpcomingEventsLoaded] = useState(false)
 
@@ -68,6 +73,7 @@ export function useFohBookings(input: {
 
         if (!isCancelled) {
           setSchedule(payload)
+          setLastUpdatedAt(new Date())
         }
       } catch (error) {
         if (!isCancelled) {
@@ -93,6 +99,7 @@ export function useFohBookings(input: {
       try {
         const data = await fetchSchedule(requestedDate)
         setSchedule(data)
+        setLastUpdatedAt(new Date())
       } catch (error) {
         if (surfaceError) {
           setErrorMessage(error instanceof Error ? error.message : 'Failed to reload Front of House schedule')
@@ -138,6 +145,7 @@ export function useFohBookings(input: {
     errorMessage,
     setErrorMessage,
     reloadSchedule,
+    lastUpdatedAt,
     upcomingEvents,
     upcomingEventsLoaded,
   }

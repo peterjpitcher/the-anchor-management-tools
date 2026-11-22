@@ -3,6 +3,9 @@
 import React from 'react'
 import { cn } from '@/lib/utils'
 import { bookingNoteMarker } from '@/lib/table-bookings/allergy-words'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import { getTableBookingDepositState } from '@/lib/table-bookings/ui'
+import { formatTime12Hour } from '@/lib/dateUtils'
 import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
@@ -58,13 +61,13 @@ type FohTimelineProps = {
   onLaneClick: (lane: { table_id: string; table_name: string }) => void
 }
 
-// Outside + high-chair badges. Rendered identically on FOH blocks and the detail modal
-// (and matched on BOH) so seating context reads the same everywhere. Exact props are
-// coordinated across surfaces — do not change tone or label wording independently.
-// Compact pills sized for the height-constrained timeline block (the full @/ds
-// Badge is too tall and gets clipped by the block's fixed height). Same design
-// tokens as Badge so the colours stay consistent with BOH/detail views.
-function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
+// The markers on a timeline block, most important first, because a narrow block cuts the row off
+// at its right edge: an allergy, then a deposit that is owed, then one that is paid, a Christmas
+// booking, and the rest. Each is a word as well as a colour, at the smallest body size (12px):
+// the 10px pills this replaces could not be read at arm's length from the till (owner decision,
+// 22 November 2026). Rendered identically on FOH blocks so seating context reads the same.
+export function BookingMarkers({ booking, className }: { booking: FohBooking; className?: string }) {
+  if (booking.is_private_block) return null
   const highChairs = booking.high_chair_count ?? 0
   // Allergy in red when the allergy field is filled in, a note mentions an allergen or a guest's seat
   // records one, otherwise Note when the booking carries one (BK-052): allergies have mostly arrived
@@ -77,25 +80,48 @@ function BookingBadges({ booking, className }: { booking: FohBooking; className?
   })
   // The guest tapped 'confirm' on the day-before text (BK-094).
   const guestConfirmed = Boolean(booking.guest_confirmed_at)
-  if (!booking.is_outside_seating && highChairs <= 0 && !noteMarker && !guestConfirmed) return null
-  const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-2xs font-medium leading-none'
+  // Read from the booking itself, never the payments ledger: a PayPal deposit lives on the booking.
+  const deposit = getTableBookingDepositState(booking).kind
+  const depositOwed = deposit === 'pending' || deposit === 'required'
+  const isChristmas = isChristmasBookingType(booking.booking_type)
+  if (
+    !booking.is_outside_seating && highChairs <= 0 && !noteMarker && !guestConfirmed
+    && deposit !== 'paid' && !depositOwed && !isChristmas
+  ) return null
+  const pill = 'inline-flex shrink-0 items-center rounded-pill border px-1.5 text-xs font-semibold leading-4'
   return (
-    <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
-      {guestConfirmed ? (
-        <span className={cn(pill, 'border-transparent bg-success-soft text-success-fg')} title="Confirmed by guest">
-          Confirmed ✓
+    <span className={cn('flex flex-nowrap items-center gap-1 overflow-hidden', className)}>
+      {noteMarker === 'allergy' ? (
+        <span className={cn(pill, 'border-danger-border bg-danger-soft text-danger-fg')}>Allergy</span>
+      ) : null}
+      {depositOwed ? (
+        <span className={cn(pill, 'border-warning-border bg-warning-soft text-warning-fg')} title="Deposit owed">
+          &pound; owed
         </span>
       ) : null}
-      {noteMarker === 'allergy' ? (
-        <span className={cn(pill, 'border-transparent bg-danger-soft text-danger-fg')}>Allergy</span>
-      ) : noteMarker === 'note' ? (
-        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>Note</span>
+      {deposit === 'paid' ? (
+        <span className={cn(pill, 'border-success-border bg-success-soft text-success-fg')} title="Deposit paid">
+          &pound; paid
+        </span>
+      ) : null}
+      {isChristmas ? (
+        <span className={cn(pill, 'border-info-border bg-info-soft text-info-fg')} title="Christmas booking">
+          Xmas
+        </span>
       ) : null}
       {booking.is_outside_seating ? (
         <span className={cn(pill, 'border-transparent bg-info-soft text-info-fg')}>Outside</span>
       ) : null}
       {highChairs > 0 ? (
         <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>High chair ×{highChairs}</span>
+      ) : null}
+      {guestConfirmed ? (
+        <span className={cn(pill, 'border-transparent bg-success-soft text-success-fg')} title="Confirmed by guest">
+          Confirmed ✓
+        </span>
+      ) : null}
+      {noteMarker === 'note' ? (
+        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>Note</span>
       ) : null}
     </span>
   )
@@ -137,7 +163,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
   )
   const tableHeaderCellClass = cn(
     'font-semibold uppercase tracking-wide text-text-muted',
-    isManagerKioskStyle ? 'px-2 py-1.5 text-2xs' : 'px-3 py-2 text-xs'
+    isManagerKioskStyle ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-xs'
   )
   // No horizontal padding. The drag snap measures this element and converts a pointer offset
   // into a time, but the lane tracks below it have no padding, so any here made the header a
@@ -148,34 +174,35 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     isManagerKioskStyle ? 'px-2 py-1.5' : 'px-3 py-2'
   )
   const laneTimelineClass = cn(
-    'relative overflow-hidden bg-surface-2/60',
-    isManagerKioskStyle ? 'h-12 pt-1' : 'h-14',
+    // Tall enough for three 12px lines in a block: who and what state, the name, the markers.
+    'relative h-16 overflow-hidden bg-surface-2/60',
     canEdit && 'cursor-pointer hover:bg-primary/5'
   )
   const laneEmptyClass = cn(
     'absolute inset-0 flex items-center text-text-soft',
-    isManagerKioskStyle ? 'px-2 text-2xs' : 'px-3 text-xs'
+    isManagerKioskStyle ? 'px-2 text-xs' : 'px-3 text-xs'
   )
   // Blocks sit inside the lane's overflow-hidden track, which would clip an outer focus ring.
-  const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
-    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+  // Block text is 12px, the smallest body size: nothing on a block is 10px any more.
+  const bookingBlockBaseClass = cn(
+    'absolute top-1 h-14 overflow-hidden rounded-md border py-0.5 text-left text-xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset',
+    isManagerKioskStyle ? 'px-1' : 'px-1.5'
+  )
   // Status colours on blocks are tints (bg-primary/15 and so on), so each block sits on an
   // opaque card of the same shape. Without it, tick lines and any overlapping block would show
   // through the text.
-  const bookingUnderlayClass = isManagerKioskStyle
-    ? 'pointer-events-none absolute top-0.5 h-11 rounded-md bg-surface'
-    : 'pointer-events-none absolute top-1 h-12 rounded-md bg-surface'
-  const bookingOverlayBaseClass = isManagerKioskStyle
-    ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs'
-    : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs'
+  const bookingUnderlayClass = 'pointer-events-none absolute top-1 h-14 rounded-md bg-surface'
+  const bookingOverlayBaseClass = cn(
+    'h-14 overflow-hidden rounded-md border py-0.5 text-left text-xs',
+    isManagerKioskStyle ? 'px-1' : 'px-1.5'
+  )
   const timelineTickLabelClass = cn(
-    'absolute -translate-x-1/2 font-medium text-text-muted',
-    isManagerKioskStyle ? 'top-0.5 text-2xs' : 'pt-0.5 text-2xs'
+    'absolute -translate-x-1/2 text-xs font-medium text-text-muted',
+    isManagerKioskStyle ? 'top-0.5' : 'pt-0.5'
   )
   const nowLineLabelClass = cn(
-    'absolute left-0 -translate-x-1/2 rounded-sm bg-danger text-on-dark font-semibold',
-    isManagerKioskStyle ? 'top-0.5 px-1 py-px text-2xs' : 'top-0.5 px-1.5 py-px text-2xs'
+    'absolute left-0 top-0.5 -translate-x-1/2 rounded-sm bg-danger py-px text-xs font-semibold text-on-dark',
+    isManagerKioskStyle ? 'px-1' : 'px-1.5'
   )
 
   const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
@@ -184,13 +211,14 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     <div className={cn(swimlaneCardClass, 'relative')}>
       <div className={swimlaneHeaderRowClass}>
         <h3 className="text-sm font-semibold text-text">Table availability swimlanes</h3>
-        <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
+        <p className="text-xs text-text-muted">
           {schedule?.service_window?.source === 'closed' ? (
             'Closed all day'
           ) : (
             <>
-              Service window {schedule?.service_window?.start_time || '09:00'} - {schedule?.service_window?.end_time || '23:00'}
-              {schedule?.service_window?.end_next_day ? ' (+1 day)' : ''}
+              Open {formatTime12Hour(schedule?.service_window?.start_time || '09:00')} to{' '}
+              {formatTime12Hour(schedule?.service_window?.end_time || '23:00')}
+              {schedule?.service_window?.end_next_day ? ' (next day)' : ''}
             </>
           )}
         </p>
@@ -350,9 +378,16 @@ const LaneRow = React.memo(function LaneRow(props: {
         const visualClassName = statusBlockClass(visualState)
         const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
         const isLockedBlock = isEventOnlyBlock
-        const detailLine = booking.capacity_label
-          ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
-          : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
+        const windowLabel = formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
+        const guestLabel = booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)
+        // Party size and state come first, in words, so they are what is left when a narrow block
+        // cuts its text off. The colour says the same thing, but never on its own.
+        const headline = booking.is_private_block
+          ? 'Private hire'
+          : booking.capacity_label
+            ? booking.capacity_label
+            : `${booking.party_size || 1} · ${visualLabel}`
+        const detailLine = `${headline} · ${windowLabel}`
 
         return (
           <React.Fragment key={`${lane.table_id}-${booking.id}`}>
@@ -385,15 +420,12 @@ const LaneRow = React.memo(function LaneRow(props: {
                 onBookingClick(booking, lane.table_id, lane.table_name)
               }}
             >
-              <p className="truncate font-semibold leading-tight">
-                {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+              <p className="truncate font-bold leading-4">{headline}</p>
+              <p className="truncate leading-4">
+                {guestLabel}
+                <span className="font-normal"> · {windowLabel}</span>
               </p>
-              <p className="truncate leading-tight">
-                {booking.is_private_block
-                  ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
-                  : detailLine}
-              </p>
-              <BookingBadges booking={booking} className="mt-0.5" />
+              <BookingMarkers booking={booking} className="mt-0.5" />
             </DraggableBookingBlock>
           </React.Fragment>
         )
@@ -421,8 +453,8 @@ const LaneRow = React.memo(function LaneRow(props: {
             {lane.table_name}
             {lane.table_number ? <span className="ml-1 text-xs text-text-muted">({lane.table_number})</span> : null}
           </p>
-          <p className="text-meta text-text-muted">
-            Capacity {lane.capacity || '-'}
+          <p className="text-xs text-text-muted">
+            Seats {lane.capacity || '-'}
             {lane.area ? ` · ${lane.area}` : ''}
             {lane.is_bookable === false ? ' · not bookable' : ''}
           </p>

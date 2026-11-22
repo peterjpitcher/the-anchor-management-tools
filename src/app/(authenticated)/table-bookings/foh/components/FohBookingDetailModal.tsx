@@ -1,7 +1,7 @@
 'use client'
 
 import React from 'react'
-import { Badge, Button, Input, LinkButton, Modal, Textarea } from '@/ds'
+import { Alert, Badge, Button, Input, LinkButton, Modal, Textarea } from '@/ds'
 import { parseAllergyList } from '@/lib/table-bookings/allergy-words'
 import { cn } from '@/lib/utils'
 import { formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
@@ -25,8 +25,10 @@ import {
   statusBadgeClass,
   postBookingAction,
   getFohTimeChangeBlocker,
+  getFohPanelActions,
   isFohEventLinkedBooking,
 } from '../utils'
+import type { FohPanelNotice, FohRunAction } from '../hooks/useFohBookingActions'
 import { staffCancellationBody } from '@/lib/table-bookings/staff-cancellation'
 import { FohCancelBookingConfirm } from './FohCancelBookingConfirm'
 
@@ -37,24 +39,26 @@ type FohBookingDetailModalProps = {
   canChooseRefund?: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
-  showNoShowConfirmation: boolean
   selectedMoveTarget: string
   selectedMoveOptions: FohMoveTableOption[]
   loadingSelectedMoveOptions: boolean
   onClose: () => void
-  onRunAction: (
-    action: () => Promise<unknown>,
-    successMessage: string,
-    inFlightLabel?: string
-  ) => Promise<boolean>
+  onRunAction: FohRunAction
   onMoveTargetChange: (bookingId: string, tableId: string) => void
   onSetShowCancelBookingConfirmation: (value: boolean) => void
-  onSetShowNoShowConfirmation: (value: boolean) => void
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
   onOpenChangeTime: (bookingId: string) => void
   /** table_bookings manage: may settle an owed deposit after booking (BK-045, D18). */
   canManageDeposit?: boolean
+  /**
+   * What the last action said, shown here inside the panel: an error or a success under an open
+   * dialog is a message nobody reads (owner decision, 22 November 2026).
+   */
+  notice?: FohPanelNotice | null
+  onDismissNotice?: () => void
+  /** The time now, so the panel offers only what fits the booking's state. Defaults to the clock. */
+  now?: Date
 }
 
 export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(props: FohBookingDetailModalProps) {
@@ -64,7 +68,6 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     canChooseRefund = false,
     bookingActionInFlight,
     showCancelBookingConfirmation,
-    showNoShowConfirmation,
     selectedMoveTarget,
     selectedMoveOptions,
     loadingSelectedMoveOptions,
@@ -72,12 +75,21 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
     onRunAction,
     onMoveTargetChange,
     onSetShowCancelBookingConfirmation,
-    onSetShowNoShowConfirmation,
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
     onOpenChangeTime,
     canManageDeposit = false,
+    notice = null,
+    onDismissNotice,
+    now,
   } = props
+
+  // A new message is brought into view: the panel scrolls, and the action that caused it may
+  // sit below the fold (the move-table grid).
+  const noticeRef = React.useRef<HTMLDivElement | null>(null)
+  React.useEffect(() => {
+    if (notice) noticeRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [notice])
 
   const selectedBooking = selectedBookingContext?.booking ?? null
   if (!selectedBooking) {
@@ -108,7 +120,6 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
   const selectedBookingNoShowTime = formatLifecycleTime(selectedBooking.no_show_at)
   // The table half of an event booking is cancelled or no-showed from the event (BK-074).
   const selectedBookingIsEventLinked = isFohEventLinkedBooking(selectedBooking)
-  const eventLinkedBlocker = selectedBookingIsEventLinked ? 'Tied to an event. Change it from the event.' : null
   const selectedBookingCanBeCancelled = Boolean(
     selectedBooking &&
       !selectedBookingIsEventLinked &&
@@ -125,6 +136,19 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
       size="md"
     >
       <div className="space-y-4">
+        {notice && (
+          <div ref={noticeRef}>
+            <Alert
+              tone={notice.tone}
+              size="sm"
+              role={notice.tone === 'success' ? 'status' : 'alert'}
+              closable={Boolean(onDismissNotice)}
+              onClose={onDismissNotice}
+            >
+              {notice.text}
+            </Alert>
+          </div>
+        )}
         <div className="rounded-md border border-border bg-surface-2 p-3">
           <div className="flex items-center justify-between gap-2">
             <p className="text-sm font-semibold text-text">
@@ -140,6 +164,18 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
               ? formatBookingWindow(selectedBooking.start_datetime, selectedBooking.end_datetime, selectedBooking.booking_time)
               : `${formatBookingWindow(selectedBooking.start_datetime, selectedBooking.end_datetime, selectedBooking.booking_time)} · ${selectedBooking.party_size || 1} people`}
           </p>
+          {selectedBooking.guest_phone && (
+            // Staff ring a party that is late. A real link, so the iPad or a paired phone can dial.
+            <p className="mt-1 text-sm text-text">
+              Phone:{' '}
+              <a
+                href={`tel:${selectedBooking.guest_phone}`}
+                className="inline-flex min-h-touch items-center font-semibold text-primary underline"
+              >
+                {selectedBooking.guest_phone}
+              </a>
+            </p>
+          )}
           <p className="mt-1 text-xs text-text-muted">
             {selectedBooking.booking_type || 'regular'} · {selectedBooking.booking_purpose || 'food'}
             {selectedBooking.event_seating_type ? ` · ${selectedBooking.event_seating_type}` : ''}
@@ -238,8 +274,9 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
         )}
 
         {selectedBooking.is_private_block && (
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">
-            This block is managed by private-booking area mapping. Edit the private booking or area mapping in settings.
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-text">
+            This table is held for a private hire, so it cannot be booked or changed from here. To free it, change the
+            private booking.
           </div>
         )}
 
@@ -256,9 +293,8 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             selectedBookingIsOutside={selectedBookingIsOutside}
             bookingActionInFlight={bookingActionInFlight}
             showCancelBookingConfirmation={showCancelBookingConfirmation}
-            showNoShowConfirmation={showNoShowConfirmation}
+            now={now}
             selectedBookingCanBeCancelled={selectedBookingCanBeCancelled}
-            eventLinkedBlocker={eventLinkedBlocker}
             selectedMoveTarget={selectedMoveTarget}
             selectedMoveOptions={selectedMoveOptions}
             loadingSelectedMoveOptions={loadingSelectedMoveOptions}
@@ -267,7 +303,6 @@ export const FohBookingDetailModal = React.memo(function FohBookingDetailModal(p
             onRunAction={onRunAction}
             onMoveTargetChange={onMoveTargetChange}
             onSetShowCancelBookingConfirmation={onSetShowCancelBookingConfirmation}
-            onSetShowNoShowConfirmation={onSetShowNoShowConfirmation}
             onOpenPartySizeEdit={onOpenPartySizeEdit}
             onOpenWalkoutModal={onOpenWalkoutModal}
             onOpenChangeTime={onOpenChangeTime}
@@ -363,7 +398,7 @@ function GuestNotesEditor({
 }: {
   booking: FohBooking
   busy: boolean
-  onRunAction: FohBookingDetailModalProps['onRunAction']
+  onRunAction: FohRunAction
 }) {
   const [open, setOpen] = React.useState(false)
   const [notes, setNotes] = React.useState(booking.special_requirements ?? '')
@@ -428,6 +463,10 @@ const ACTION_BUTTON_CLASS = 'min-h-touch w-full'
 const DANGER_OUTLINE_CLASS = 'border-danger-border text-danger-fg hover:bg-danger-soft'
 const DANGER_OUTLINE_SELECTED_CLASS = 'border-danger bg-danger-soft'
 
+// The one large button for the booking's state. Deliberately bigger than everything else in the
+// panel: on a busy bar it is the tap staff make a hundred times a shift.
+const PRIMARY_ACTION_CLASS = 'min-h-14 w-full text-base font-semibold'
+
 // Inner component for the action buttons section
 function BookingActions(props: {
   selectedBooking: FohBooking
@@ -435,23 +474,16 @@ function BookingActions(props: {
   selectedBookingIsOutside: boolean
   bookingActionInFlight: string | null
   showCancelBookingConfirmation: boolean
-  showNoShowConfirmation: boolean
+  now?: Date
   selectedBookingCanBeCancelled: boolean
-  /** Set for the table half of an event booking: why cancel and no-show are not offered (BK-074). */
-  eventLinkedBlocker: string | null
   selectedMoveTarget: string
   selectedMoveOptions: FohMoveTableOption[]
   loadingSelectedMoveOptions: boolean
   currentTableName: string | null
   onClose: () => void
-  onRunAction: (
-    action: () => Promise<unknown>,
-    successMessage: string,
-    inFlightLabel?: string
-  ) => Promise<boolean>
+  onRunAction: FohRunAction
   onMoveTargetChange: (bookingId: string, tableId: string) => void
   onSetShowCancelBookingConfirmation: (value: boolean) => void
-  onSetShowNoShowConfirmation: (value: boolean) => void
   onOpenPartySizeEdit: (bookingId: string, currentSize: number) => void
   onOpenWalkoutModal: (bookingId: string) => void
   onOpenChangeTime: (bookingId: string) => void
@@ -463,9 +495,8 @@ function BookingActions(props: {
     selectedBookingIsOutside,
     bookingActionInFlight,
     showCancelBookingConfirmation,
-    showNoShowConfirmation,
+    now,
     selectedBookingCanBeCancelled,
-    eventLinkedBlocker,
     selectedMoveTarget,
     selectedMoveOptions,
     loadingSelectedMoveOptions,
@@ -474,164 +505,164 @@ function BookingActions(props: {
     onRunAction,
     onMoveTargetChange,
     onSetShowCancelBookingConfirmation,
-    onSetShowNoShowConfirmation,
     onOpenPartySizeEdit,
     onOpenWalkoutModal,
     onOpenChangeTime,
     timeChangeBlocker,
   } = props
 
+  const busy = Boolean(bookingActionInFlight)
+  const actions = getFohPanelActions(selectedBooking, now ?? new Date())
+  const guestLabel = selectedBooking.guest_name || selectedBooking.booking_reference || 'Booking'
+  const bookingPath = `/api/foh/bookings/${selectedBooking.id}`
+  const status = (selectedBooking.status || '').toLowerCase()
+  const isOpen = !['cancelled', 'completed', 'no_show'].includes(status)
+
+  // Why a button is missing, as words on the screen. A tooltip does not exist on an iPad.
+  const reasons = [...actions.notes]
+  if (isOpen && timeChangeBlocker && !reasons.some((reason) => reason.includes('event'))) {
+    reasons.push(`The time cannot be changed here. ${timeChangeBlocker}`)
+  }
+
+  // One tap, then a 10 second Undo on the screen behind. No confirm box.
+  const tap = (path: string, saved: string, inFlight: string, undoLabel?: string, body?: Record<string, unknown>) => {
+    void (async () => {
+      const ok = await onRunAction(() => postBookingAction(path, body), saved, inFlight, undoLabel ? { undoLabel } : undefined)
+      if (ok) onClose()
+    })()
+  }
+
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
+      {actions.primary === 'seated' && (
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          disabled={busy}
+          onClick={() => tap(`${bookingPath}/seated`, 'Marked as seated', 'seated', `${guestLabel} marked as seated`)}
+          className={PRIMARY_ACTION_CLASS}
+        >
+          {bookingActionInFlight === 'seated' ? 'Marking...' : 'Seated'}
+        </Button>
+      )}
+      {actions.primary === 'left' && (
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          disabled={busy}
+          onClick={() => tap(`${bookingPath}/left`, 'Marked as left', 'left', `${guestLabel} marked as left`)}
+          className={PRIMARY_ACTION_CLASS}
+        >
+          {bookingActionInFlight === 'left' ? 'Marking...' : 'Left'}
+        </Button>
+      )}
+      {actions.primary === 'undo_no_show' && (
+        <Button
+          type="button"
+          variant="primary"
+          size="lg"
+          disabled={busy}
+          onClick={() =>
+            tap(`${bookingPath}/undo`, 'No-show undone. The booking is back as booked', 'undo_no_show', undefined, {
+              action: 'no_show',
+              ...(selectedBooking.no_show_at ? { stamp: selectedBooking.no_show_at } : {}),
+            })
+          }
+          className={PRIMARY_ACTION_CLASS}
+        >
+          {bookingActionInFlight === 'undo_no_show' ? 'Putting back...' : 'Undo no-show'}
+        </Button>
+      )}
+      {actions.canReseat && (
         <Button
           type="button"
           variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight)}
-          onClick={() => {
-            void (async () => {
-              const ok = await onRunAction(
-                () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/seated`),
-                'Marked as seated',
-                'seated'
-              )
-              if (ok) onClose()
-            })()
-          }}
-          className={ACTION_BUTTON_CLASS}
+          size="lg"
+          disabled={busy}
+          onClick={() => tap(`${bookingPath}/seated`, 'Back at the table', 'seated')}
+          className="min-h-touch w-full"
         >
-          {bookingActionInFlight === 'seated' ? 'Marking...' : 'Mark seated'}
+          {bookingActionInFlight === 'seated' ? 'Marking...' : 'Back at the table'}
         </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight)}
-          onClick={() => {
-            void (async () => {
-              const ok = await onRunAction(
-                () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/left`),
-                'Marked as left',
-                'left'
-              )
-              if (ok) onClose()
-            })()
-          }}
-          className={ACTION_BUTTON_CLASS}
-        >
-          {bookingActionInFlight === 'left' ? 'Marking...' : 'Mark left'}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight) || Boolean(eventLinkedBlocker)}
-          title={eventLinkedBlocker ?? undefined}
-          onClick={() => {
-            if (eventLinkedBlocker) return
-            onSetShowNoShowConfirmation(!showNoShowConfirmation)
-          }}
-          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showNoShowConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
-        >
-          {bookingActionInFlight === 'no_show' ? 'Saving...' : showNoShowConfirmation ? 'No-show selected' : 'Mark no-show'}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight)}
-          onClick={() => {
-            const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
-            onOpenPartySizeEdit(selectedBooking.id, currentSize)
-          }}
-          className={ACTION_BUTTON_CLASS}
-        >
-          {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Edit party size'}
-        </Button>
-        {/* Until this existed, the only way to re-time a booking was to drag it on the
-            timeline, and drag is switched off in kiosk mode, which is what the floor iPad
-            runs. There was no route to a time change at all on that screen. */}
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight) || Boolean(timeChangeBlocker)}
-          title={timeChangeBlocker ?? undefined}
-          onClick={() => {
-            if (timeChangeBlocker) return
-            onOpenChangeTime(selectedBooking.id)
-          }}
-          className={ACTION_BUTTON_CLASS}
-        >
-          {bookingActionInFlight === 'change_time' ? 'Changing...' : 'Change time'}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight) || !selectedBookingCanBeCancelled}
-          title={eventLinkedBlocker ?? undefined}
-          onClick={() => {
-            if (!selectedBookingCanBeCancelled) return
-            onSetShowCancelBookingConfirmation(!showCancelBookingConfirmation)
-          }}
-          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showCancelBookingConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
-        >
-          {showCancelBookingConfirmation ? 'Cancel selected' : 'Cancel booking'}
-        </Button>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          disabled={Boolean(bookingActionInFlight)}
-          onClick={() => {
-            onOpenWalkoutModal(selectedBooking.id)
-          }}
-          className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS)}
-        >
-          {bookingActionInFlight === 'walkout' ? 'Saving...' : 'Flag walkout'}
-        </Button>
-      </div>
+      )}
 
-      {showNoShowConfirmation && (
-        <div className="rounded-md border border-danger-border bg-danger-soft px-3 py-2">
-          <p className="text-xs font-semibold text-danger-fg">Confirm no-show</p>
-          <p className="mt-1 text-xs text-danger-fg">
-            This will mark the booking as no-show and remove it from active covers.
-          </p>
-          <div className="mt-2 flex gap-2">
+      {isOpen && (
+        <div className="grid grid-cols-2 gap-2">
+          {actions.canNoShow && (
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => onSetShowNoShowConfirmation(false)}
-              className="min-h-touch"
+              disabled={busy}
+              onClick={() => tap(`${bookingPath}/no-show`, 'No-show recorded', 'no_show', `${guestLabel} marked as a no-show`)}
+              className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS)}
             >
-              Go back
+              {bookingActionInFlight === 'no_show' ? 'Saving...' : 'No-show'}
             </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              const currentSize = Math.max(1, Number(selectedBooking.party_size || 1))
+              onOpenPartySizeEdit(selectedBooking.id, currentSize)
+            }}
+            className={ACTION_BUTTON_CLASS}
+          >
+            {bookingActionInFlight === 'party_size' ? 'Saving...' : 'Edit party size'}
+          </Button>
+          {/* Until this existed, the only way to re-time a booking was to drag it on the
+              timeline, and drag is switched off in kiosk mode, which is what the floor iPad
+              runs. There was no route to a time change at all on that screen. */}
+          {!timeChangeBlocker && (
             <Button
               type="button"
-              variant="danger"
+              variant="secondary"
               size="sm"
-              disabled={Boolean(bookingActionInFlight)}
-              onClick={() => {
-                void (async () => {
-                  const ok = await onRunAction(
-                    () => postBookingAction(`/api/foh/bookings/${selectedBooking.id}/no-show`),
-                    'No-show recorded',
-                    'no_show'
-                  )
-                  if (ok) onClose()
-                })()
-              }}
-              className="min-h-touch"
+              disabled={busy}
+              onClick={() => onOpenChangeTime(selectedBooking.id)}
+              className={ACTION_BUTTON_CLASS}
             >
-              {bookingActionInFlight === 'no_show' ? 'Saving...' : 'Confirm no-show'}
+              {bookingActionInFlight === 'change_time' ? 'Changing...' : 'Change time'}
             </Button>
-          </div>
+          )}
+          {selectedBookingCanBeCancelled && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={busy}
+              onClick={() => onSetShowCancelBookingConfirmation(!showCancelBookingConfirmation)}
+              className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS, showCancelBookingConfirmation && DANGER_OUTLINE_SELECTED_CLASS)}
+            >
+              {showCancelBookingConfirmation ? 'Cancel selected' : 'Cancel booking'}
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={busy}
+            onClick={() => {
+              onOpenWalkoutModal(selectedBooking.id)
+            }}
+            className={cn(ACTION_BUTTON_CLASS, DANGER_OUTLINE_CLASS)}
+          >
+            {bookingActionInFlight === 'walkout' ? 'Saving...' : 'Flag walkout'}
+          </Button>
         </div>
+      )}
+
+      {reasons.length > 0 && (
+        <ul className="space-y-1 rounded-md border border-border bg-surface-2 px-3 py-2 text-sm text-text">
+          {reasons.map((reason) => (
+            <li key={reason}>{reason}</li>
+          ))}
+        </ul>
       )}
 
       {showCancelBookingConfirmation && selectedBookingCanBeCancelled && (
@@ -664,8 +695,8 @@ function BookingActions(props: {
           and with a quiet room it ran to twenty-odd tiles that pushed Mark seated, Mark left and
           the rest off the bottom of the screen. The frequent actions stay reachable without
           scrolling; moving a table is worth a scroll. */}
-      {selectedBookingIsOutside ? (
-        <p className="text-xs text-text-muted">Outside booking, so there is no table to move.</p>
+      {!isOpen ? null : selectedBookingIsOutside ? (
+        <p className="text-sm text-text-muted">Outside booking, so there is no table to move.</p>
       ) : (
         <div className="rounded-md border border-border p-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-1">

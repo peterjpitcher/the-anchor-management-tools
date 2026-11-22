@@ -40,7 +40,6 @@ function renderModal(booking: FohBooking) {
       canEdit={false}
       bookingActionInFlight={null}
       showCancelBookingConfirmation={false}
-      showNoShowConfirmation={false}
       selectedMoveTarget=""
       selectedMoveOptions={[]}
       loadingSelectedMoveOptions={false}
@@ -48,7 +47,6 @@ function renderModal(booking: FohBooking) {
       onRunAction={vi.fn(async () => true)}
       onMoveTargetChange={vi.fn()}
       onSetShowCancelBookingConfirmation={vi.fn()}
-      onSetShowNoShowConfirmation={vi.fn()}
       onOpenPartySizeEdit={vi.fn()}
       onOpenWalkoutModal={vi.fn()}
       onOpenChangeTime={vi.fn()}

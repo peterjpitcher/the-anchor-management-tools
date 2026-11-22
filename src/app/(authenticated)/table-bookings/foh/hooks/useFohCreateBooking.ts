@@ -415,7 +415,8 @@ export function useFohCreateBooking(input: {
   function resetCreateModalState() {
     setCreateForm((current) => ({
       booking_date: date, event_id: '', phone: '', email: '', customer_name: '', first_name: '', last_name: '',
-      time: current.time || '19:00', party_size: current.party_size || '2', purpose: 'food',
+      // The party size never carries over from the booking before (owner decision, 22 November 2026).
+      time: current.time || '19:00', party_size: '2', purpose: 'food',
       seating_preference: 'seated',
       sunday_deposit_method: 'payment_link',
       notes: '', allergies: '', waive_deposit: false, is_venue_event: false, bypass_pacing: false,
@@ -434,7 +435,11 @@ export function useFohCreateBooking(input: {
   }) {
     const requestedMode = options?.mode || 'booking'
     const walkInMode = requestedMode === 'walk_in'
-    const bookingDate = options?.prefill?.booking_date || serviceDateNow
+    // A walk-in is always the day being worked. A booking keeps the date being looked at, so
+    // staff taking a booking for Saturday while looking at Saturday do not have to pick it again;
+    // a day already gone falls back to today.
+    const bookingDate = options?.prefill?.booking_date
+      || (!walkInMode && date > serviceDateNow ? date : serviceDateNow)
     setErrorMessage(null); setStatusMessage(null); setCreateMode(requestedMode)
     setWalkInTargetTable(
       walkInMode && options?.laneTableId ? { id: options.laneTableId, name: options.laneTableName || 'selected table' } : null
@@ -473,6 +478,7 @@ export function useFohCreateBooking(input: {
         ...current,
         booking_date: bookingDate,
         time: nextTime,
+        party_size: '2',
         purpose: nextPurpose,
         event_id: walkInMode ? options?.prefill?.event_id ?? walkInDefaults?.eventId ?? '' : options?.prefill?.event_id ?? current.event_id,
         seating_preference: 'seated',
@@ -618,6 +624,9 @@ export function useFohCreateBooking(input: {
         const detailsText = payload.data.details_to_follow
           ? ' Some guest details are still to follow: the guest can add them from their booking link.'
           : ''
+        // The booking is made. The refresh is best effort: if it fails the success still shows
+        // and the "last updated" warning says the screen is behind.
+        await reloadSchedule({ surfaceError: false }).catch(() => {})
         setStatusMessage(`${headline}${tableSentence}${walkInTableMoveText}${notificationText}${detailsText}${paymentLinkText}${manageLinkText}`)
         closeCreateModal()
       } catch (error) {
@@ -712,7 +721,8 @@ export function useFohCreateBooking(input: {
       const paymentLinkText = payload.data.state === 'pending_payment' && payload.data.next_step_url ? ` Deposit link: ${payload.data.next_step_url}` : ''
       if (payload.data.is_outside_seating && !tableText) tableText = ' at an outside table'
       const highChairText = describeHighChairs(requestedHighChairs, payload.data.high_chairs_granted)
-      await reloadSchedule()
+      // Best effort, as above: a booking that was made must never read as failed.
+      await reloadSchedule({ surfaceError: false }).catch(() => {})
       const bookingLabel = isManagement ? 'Management booking' : isWalkIn ? 'Walk-in booking' : 'Table booking'
       // Only an older screen sends courses, so this is now only ever false for one of those.
       const coursesText = payload.data.christmas_courses_saved === false

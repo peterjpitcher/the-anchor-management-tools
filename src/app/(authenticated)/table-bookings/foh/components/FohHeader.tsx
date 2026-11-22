@@ -1,10 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Image from 'next/image'
 import { Alert, Button, LinkButton } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { FohUpcomingEvent, FohStyleVariant, FohCreateMode, FohViewMode } from '../types'
+import { formatDateInLondon } from '@/lib/dateUtils'
 import { formatNextEventUrgency, shiftIsoDate } from '../utils'
 
 type FohHeaderProps = {
@@ -28,6 +29,9 @@ type FohHeaderProps = {
   staffNotice?: string[] | null
   onDismissStaffNotice?: () => void
   lastInteractionAtMsRef: React.MutableRefObject<number>
+  /** The name search, and the "last updated" line or its warning. Built by the screen. */
+  search?: React.ReactNode
+  freshness?: React.ReactNode
   onSendFoodOrderAlert: () => void
   onOpenCreateModal: (options?: {
     mode?: FohCreateMode
@@ -58,6 +62,8 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     staffNotice,
     onDismissStaffNotice,
     lastInteractionAtMsRef,
+    search,
+    freshness,
     onSendFoodOrderAlert,
     onOpenCreateModal,
   } = props
@@ -65,10 +71,21 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const viewingToday = date === serviceDateNow
   const openNowCreateModal = (mode: FohCreateMode) => {
-    setDate(serviceDateNow)
+    // A walk-in is always the day being worked, so the screen goes back to it. "Add booking"
+    // keeps the date being looked at (owner decision, 22 November 2026): it used to jump to today.
+    if (mode === 'walk_in') setDate(serviceDateNow)
     lastInteractionAtMsRef.current = Date.now()
     onOpenCreateModal({ mode })
   }
+
+  // "Food Order" texts the kitchen, and a text cannot be taken back, so the first tap asks and the
+  // second sends. The question takes itself away after a few seconds if nobody answers it.
+  const [confirmingFoodOrder, setConfirmingFoodOrder] = useState(false)
+  useEffect(() => {
+    if (!confirmingFoodOrder) return
+    const timer = window.setTimeout(() => setConfirmingFoodOrder(false), 8000)
+    return () => window.clearTimeout(timer)
+  }, [confirmingFoodOrder])
 
   // One card treatment for both styles; the kiosk only packs it tighter.
   const serviceCardClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
@@ -92,7 +109,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     isManagerKioskStyle ? 'mt-0' : 'mt-1'
   )
   const totalsBadgeClass = cn(
-    'rounded-md border px-2 py-1 text-meta font-medium',
+    'rounded-md border px-2 py-1 text-xs font-medium',
     isManagerKioskStyle
       ? 'border-primary/20 bg-primary-soft text-primary-soft-fg'
       : 'border-border-strong bg-surface-hover text-text'
@@ -103,14 +120,14 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     isManagerKioskStyle && 'px-2 py-1.5'
   )
   const nextEventPillClass =
-    'inline-flex items-center rounded-pill bg-warning/20 px-2 py-0.5 text-2xs font-extrabold uppercase tracking-wide text-warning-fg'
+    'inline-flex items-center rounded-pill bg-warning/20 px-2 py-0.5 text-xs font-extrabold uppercase tracking-wide text-warning-fg'
   const nextEventTitleClass = cn(
     'min-w-0 truncate text-sm font-semibold leading-tight text-warning-fg',
-    isManagerKioskStyle && 'text-meta'
+    isManagerKioskStyle && 'text-xs'
   )
   const nextEventMetaClass = cn(
     'text-sm font-medium text-warning-fg',
-    isManagerKioskStyle && 'text-meta'
+    isManagerKioskStyle && 'text-xs'
   )
   const dateInputClass =
     'min-h-touch rounded-sm border border-border-strong bg-surface px-3 text-ui text-text outline-hidden focus:border-border-focus focus:shadow-ring'
@@ -121,7 +138,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
   const viewToggleSegmentClass = (active: boolean) =>
     cn(
       'min-h-touch rounded-sm font-medium transition focus-visible:outline-hidden focus-visible:shadow-ring',
-      isManagerKioskStyle ? 'px-2 py-1 text-meta' : 'px-3 py-1.5 text-sm',
+      isManagerKioskStyle ? 'px-2 py-1 text-xs' : 'px-3 py-1.5 text-sm',
       active
         ? 'bg-surface text-text shadow-sm'
         : 'text-text-muted hover:text-text'
@@ -233,15 +250,46 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {canEdit && (
+          {canEdit && confirmingFoodOrder && (
+            <div
+              role="group"
+              aria-label="Text the kitchen?"
+              className="flex items-center gap-2 rounded-lg border border-danger-border bg-danger-soft px-2 py-1"
+            >
+              <span className="text-sm font-semibold text-danger-fg">Text the kitchen?</span>
+              <Button
+                type="button"
+                variant="danger"
+                size={controlSize}
+                onClick={() => {
+                  setConfirmingFoodOrder(false)
+                  onSendFoodOrderAlert()
+                }}
+                className="min-h-touch font-extrabold"
+              >
+                Send
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size={controlSize}
+                onClick={() => setConfirmingFoodOrder(false)}
+                className="min-h-touch"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {canEdit && !confirmingFoodOrder && (
             // Deliberately loud: it texts the kitchen, so it stays red and in capitals.
             <Button
               type="button"
               variant="danger"
               size={controlSize}
-              onClick={onSendFoodOrderAlert}
+              onClick={() => setConfirmingFoodOrder(true)}
               disabled={submittingFoodOrderAlert}
-              aria-label="Send food order SMS alert"
+              aria-label="Food order: text the kitchen"
               className="min-h-touch font-extrabold uppercase tracking-wide"
               icon={
                 <Image
@@ -313,10 +361,17 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
         </div>
       </div>
 
+      {(search || freshness) && (
+        <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+          {search ? <div className="min-w-64 flex-1">{search}</div> : null}
+          {freshness ? <div className={cn(search ? 'shrink-0' : 'w-full')}>{freshness}</div> : null}
+        </div>
+      )}
+
       {!viewingToday && (
         <div className={cn('rounded-md border border-warning-border bg-warning-soft px-3 py-2 text-sm text-warning-fg', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
-          Viewing <span className="font-semibold">{date}</span>. This screen returns to{' '}
-          <span className="font-semibold">{serviceDateNow}</span> after 5 minutes of inactivity.
+          Viewing <span className="font-semibold">{formatDateInLondon(date, { weekday: 'long', day: 'numeric', month: 'long' })}</span>,
+          not today. This screen returns to today after 5 minutes of inactivity.
         </div>
       )}
 

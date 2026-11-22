@@ -5,11 +5,18 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 
 /**
- * Manages ALL Supabase realtime channel subscriptions for the FOH schedule.
- * Keeps ref-based drag suppression together with the channels so that
- * realtime refreshes are suppressed while a drag is in flight.
+ * The ONE mechanism that keeps the FOH schedule up to date (owner decision, 22 November 2026):
  *
- * Also manages the 60-second polling fallback.
+ *  1. a Supabase realtime subscription on the floor-plan tables, so a change made on another
+ *     device appears within about half a second;
+ *  2. a 60 second refetch as the safety net, for the tables that are not watched live and for a
+ *     realtime connection that has quietly dropped;
+ *  3. a refetch the moment the tab becomes visible again or the network returns, which is when an
+ *     iPad that slept or lost wifi is most out of date.
+ *
+ * All three go through one debounced refresh, so they can never stack. There is no other timer
+ * that refetches the schedule. Refreshes are held back while a drag is in flight, and one runs as
+ * soon as the drag ends.
  */
 export function useFohRealtime(input: {
   supabase: SupabaseClient
@@ -101,8 +108,16 @@ export function useFohRealtime(input: {
 
     pollIntervalId = window.setInterval(queueRefresh, 60_000)
 
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === 'visible') queueRefresh()
+    }
+    document.addEventListener('visibilitychange', refreshWhenVisible)
+    window.addEventListener('online', queueRefresh)
+
     return () => {
       cancelled = true
+      document.removeEventListener('visibilitychange', refreshWhenVisible)
+      window.removeEventListener('online', queueRefresh)
       if (refreshTimeoutId != null) {
         window.clearTimeout(refreshTimeoutId)
       }

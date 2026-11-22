@@ -55,7 +55,7 @@
   "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
     "raw-heading": 1,
     "hand-spinner": 1,
-    "rounded-md": 7
+    "rounded-md": 4
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
     "raw-button": 1,
