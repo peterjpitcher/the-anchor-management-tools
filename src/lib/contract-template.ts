@@ -1025,7 +1025,7 @@ ${depositRequired ? `            <p>I, <b>${safeCustomerName}</b>, agree to enga
             </div>
             <div class="tc-sec">
               <p class="tc-h">Children and supervision</p>
-              <p>The Host is responsible for the conduct and supervision of all guests, including children and under-18s. The Anchor does not provide childcare or child supervision. Under-18s must be accompanied and supervised by responsible adults, and every guest under 18 must leave the premises by 21.00. Children are not allowed in the pool table area unless supervised by an adult.</p>
+              <p>The Host is responsible for the conduct and supervision of all guests, including children and under-18s. The Anchor does not provide childcare or child supervision. Under-18s must be accompanied and supervised by responsible adults, and a guest under 18 may remain on the premises after 21.00 only if their parent is with them. Children are not allowed in the pool table area unless supervised by an adult.</p>
               <p>If responsible adults leave, under-18s in their care may be asked to leave. Children and under-18s must not obstruct normal service, disturb other guests, create safety issues or interfere with other bookings. Nothing in this clause excludes The Anchor&rsquo;s liability for its own negligence or legal duties.</p>
             </div>
             <div class="tc-sec">

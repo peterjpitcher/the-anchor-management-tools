@@ -37,8 +37,9 @@ export const ANCHOR_VENUE_CONTEXT: VenueContext = {
   accessibility: 'Step free from the car park. One step between the bar and the garden, with a ramp on request. No accessible toilet',
   facilities: [
     'Dog friendly',
-    // Owner decision 4 November 2026: children with a supervising adult, and nobody under 18 after 9pm.
-    'Children welcome until 9pm with a supervising adult, and everyone under 18 leaves by 9pm',
+    // Owner decision 22 November 2026 (replaces 4 November): children with a supervising adult,
+    // and after 9pm under-18s can stay as long as their parents are with them.
+    'Children welcome with a supervising adult. After 9pm, under-18s can stay as long as their parents are with them',
     'Full menu available while the kitchen is open',
   ],
   nearby: [
