@@ -167,6 +167,9 @@ export async function recordGuestAttended(supabase: Db, booking: NoShowReplyBook
           ...transition.plan.update,
           no_show_guest_response: 'attended',
           no_show_guest_responded_at: nowIso,
+          // No review request for this visit: it would arrive days late, from a pub that had just
+          // told them they never came.
+          review_suppressed_at: nowIso,
         })
         .eq('id', booking.id)
         .eq('status', 'no_show')

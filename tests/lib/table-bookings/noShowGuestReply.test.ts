@@ -126,6 +126,8 @@ describe('"I did come in"', () => {
       no_show_marked_by: null,
       no_show_guest_response: 'attended',
       no_show_guest_responded_at: NOW.toISOString(),
+      // No review request days late for a visit we had recorded as a no-show.
+      review_suppressed_at: NOW.toISOString(),
     })
     expect(audit).toHaveBeenCalledTimes(1)
     expect(audit.mock.calls[0][0]).toMatchObject({
