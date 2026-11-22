@@ -234,11 +234,20 @@ describe('deposit pay page: steps recorded on the server', () => {
   })
 
   it('logs, records and alerts when the PayPal order cannot be saved on the booking', async () => {
-    state.updateError = { code: '57014', message: 'statement timeout', details: null, hint: null }
+    state.updateError = {
+      code: '57014',
+      message: 'statement timeout',
+      details: 'Failing row contains (booking-1, guest@example.com, 07700 900123)',
+      hint: null,
+    }
 
     await openPage()
 
     expect(steps()).toEqual(['deposit_pay_page_viewed', 'deposit_pay_setup_failed'])
+    // Postgres can quote the whole failing row in `details`: it must not reach the record.
+    expect(JSON.stringify(state.inserts[1].metadata)).not.toContain('guest@example.com')
+    expect(JSON.stringify(alertMoneyNeedsAPerson.mock.calls)).not.toContain('guest@example.com')
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain('guest@example.com')
     expect(state.inserts[1].metadata).toMatchObject({
       reason: 'order_not_saved',
       paypalOrderId: 'ORDER-NEW',

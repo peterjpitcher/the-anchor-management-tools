@@ -14,6 +14,7 @@ import { loadPayPalPayerPrefill } from '@/lib/payments/paypal-payer-prefill'
 import { TablePaymentClient, type TablePaymentCaptureResult } from './TablePaymentClient'
 import { TablePaymentSuccessPanel, type TablePaymentSuccessDetails } from './TablePaymentSuccessPanel'
 import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit'
+import { redactPii } from '@/lib/cron/alerting'
 import { describePayPalError } from '@/lib/paypal-error-detail'
 import {
   afterDepositPayResponse,
@@ -326,10 +327,10 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         detail: {
           reason: 'order_not_saved',
           paypalOrderId,
+          // Code and message only. Postgres `details` can quote the whole failing row, contact
+          // details included, so it is kept out of the record, the log and the alert.
           dbCode: persistOrderError.code,
-          dbMessage: persistOrderError.message,
-          dbDetails: persistOrderError.details,
-          dbHint: persistOrderError.hint,
+          dbMessage: redactPii(persistOrderError.message ?? ''),
         },
       })
       return (
