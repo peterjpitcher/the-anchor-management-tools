@@ -837,6 +837,20 @@ export async function updateTableBookingByRawToken(
     }
   }
 
+  // A smaller party hands back the table and the longer sitting it no longer needs: a party of 7
+  // cut to 5 here sat holding two tables of six on 22 November 2026. After the size is saved, and
+  // never able to fail the change. Imported here like the alerts below, to keep the audit module
+  // out of everything that imports this file for its token helpers.
+  if (newPartySize < oldPartySize) {
+    const { rightSizeBookingAfterPartyShrink } = await import('./shrink-right-size')
+    await rightSizeBookingAfterPartyShrink(supabase, {
+      bookingId,
+      oldPartySize,
+      newPartySize,
+      source: 'guest_manage_link',
+    })
+  }
+
   /*
    * The deposit follows the new size exactly as on the staff screens (owner decision D20): an
    * unpaid one is re-priced, a paid one is left and flagged to a manager, and a confirmed booking
