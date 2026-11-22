@@ -20,10 +20,9 @@ import { carriedTurnaroundMs, isAssignmentConflictError, moveBookingAssignmentTo
  *   tables (released only when the booking needed the spare one for the party it had; a spare table
  *   somebody chose stays). If the booking engine's own picker (find_table_allocation_candidates)
  *   then has something smaller still that is free for the whole sitting, the booking moves there,
- *   but only when all of these hold: the new table is no further down the house order than the
- *   tables it has (a diner never leaves the Dining Room for the bar to save a seat), the booking
- *   is more than a day away (nobody is re-seated once the day's sheets are printed), and staff
- *   have not moved it by hand (Move table does not pin, so that choice is read from the audit log).
+ *   at any time before the party is seated, and whether or not staff had moved it by hand (owner
+ *   decision, 22 November 2026). One limit: the new table is never further down the house order
+ *   than the tables it has, so a diner does not leave the Dining Room for the bar to save a seat.
  * - Sitting. Shortened to the standard turn time for the new size (table_booking_turn_minutes).
  * Left alone: a party already seated (only the floor knows which table they are at; staff use Move
  * table) and a pinned booking.
@@ -73,8 +72,6 @@ const BOOKING_COLUMNS =
   'id, status, booking_date, booking_time, booking_purpose, start_datetime, end_datetime, duration_minutes, seated_at, left_at, table_pinned, is_outside_seating, event_booking_id, high_chair_count, requires_accessible_table'
 
 const MAX_TABLES_TO_SEARCH = 10
-/** Inside this, a smaller party keeps to its own tables: the day is planned and may be printed. */
-const NO_RELOCATION_WITHIN_MS = 24 * 60 * 60 * 1000
 
 function pairKey(left: string, right: string): string {
   return [left, right].sort().join(':')
@@ -206,9 +203,6 @@ async function readPickerFirstChoice(
   return { ids: best.table_ids as string[], seats }
 }
 
-/** Staff moved this booking by hand, so it keeps to its own tables. Not a fault. */
-class StaffChoseTheTable extends Error {}
-
 /** Why a booking is not one this helper touches at all, or null when it is. */
 function neverTouched(booking: BookingRow): string | null {
   if (['cancelled', 'no_show', 'completed'].includes(String(booking.status || ''))) return 'status_not_changeable'
@@ -329,15 +323,8 @@ async function rightSizeSmallerParty(
   const ownTarget = keepIds ?? heldIds
   const orderByTableId = new Map<string, number>(held.map((table) => [table.id, table.order]))
   let smallerElsewhere: { ids: string[]; seats: number } | null = null
-  if (allKnown && startMs - Date.now() > NO_RELOCATION_WITHIN_MS) {
+  if (allKnown) {
     try {
-      const { count: staffMoves, error: movesError } = await supabase.from('audit_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('resource_type', 'table_booking')
-        .eq('resource_id', input.bookingId)
-        .eq('operation_type', 'move_table')
-      if (movesError) throw new Error(`Could not read the booking's history: ${movesError.message}`)
-      if ((staffMoves ?? 0) > 0) throw new StaffChoseTheTable()
 
       const choice = await readPickerFirstChoice(supabase, {
         bookingId: input.bookingId,
@@ -370,7 +357,7 @@ async function rightSizeSmallerParty(
         if (worst(choice.ids) <= worst(ownTarget)) smallerElsewhere = choice
       }
     } catch (pickerError) {
-      if (!(pickerError instanceof StaffChoseTheTable)) logger.error('Could not look for a smaller table after a party got smaller; keeping its own tables', {
+      logger.error('Could not look for a smaller table after a party got smaller; keeping its own tables', {
         error: pickerError instanceof Error ? pickerError : new Error(String(pickerError)),
         metadata: { bookingId: input.bookingId },
       })

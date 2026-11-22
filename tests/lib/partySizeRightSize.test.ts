@@ -302,24 +302,14 @@ describe('a smaller party and a smaller table elsewhere', () => {
     expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A]])
   })
 
-  it('keeps to its own tables inside a day of the booking', async () => {
+  it('moves it on the day of the booking too, and after staff have moved it by hand', async () => {
     vi.setSystemTime(new Date('2026-11-22T09:00:00.000Z'))
-    const db = seed({ pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 } })
-
-    await guestShrinksTo(db, 3)
-
-    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A]])
-    expect(db.rpc.mock.calls.some(([fn]) => fn === 'find_table_allocation_candidates')).toBe(false)
-  })
-
-  it('keeps to its own tables once staff have moved the booking by hand', async () => {
     const db = seed({ pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 } })
     db.tables.audit_logs = [{ id: 'audit-1', resource_type: 'table_booking', resource_id: BOOKING_ID, operation_type: 'move_table' }]
 
     await guestShrinksTo(db, 3)
 
-    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A]])
-    expect(logger.error).not.toHaveBeenCalled()
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[FOUR_A]])
   })
 
   it('moves a party on one table to a smaller one', async () => {
