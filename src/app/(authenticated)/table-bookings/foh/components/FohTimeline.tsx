@@ -296,7 +296,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
             <div className={cn(bookingOverlayBaseClass, activeDragData.statusClassName)}>
               <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
               {liveSnapTime && !isOutOfBounds && (
-                <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
+                <p className="truncate text-xs font-semibold opacity-80">{formatTime12Hour(liveSnapTime)}</p>
               )}
               {isOutOfBounds && (
                 <p className="truncate text-xs font-semibold text-danger-fg">Out of range</p>

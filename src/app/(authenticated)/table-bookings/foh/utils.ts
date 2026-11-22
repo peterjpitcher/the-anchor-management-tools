@@ -1,5 +1,5 @@
 import { fromZonedTime } from 'date-fns-tz'
-import { formatTime12Hour, formatTimeInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, formatTime12Hour, formatTimeInLondon } from '@/lib/dateUtils'
 import {
   getTableBookingStatusBadgeClasses,
   getTableBookingStatusBlockClasses,
@@ -275,27 +275,17 @@ export function formatGbp(amount: number): string {
 }
 
 export function formatEventOptionDateTime(event: FohEventOption): string {
-  if (event.start_datetime) {
-    try {
-      return new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Europe/London',
-        weekday: 'short',
-        day: 'numeric',
-        month: 'short',
-        hour: 'numeric',
-        minute: '2-digit',
-        hourCycle: 'h12'
-      }).format(new Date(event.start_datetime))
-    } catch {
-      // Fall through to raw fields.
-    }
+  const day = (value: string | Date) => formatDateInLondon(value, { weekday: 'short', day: 'numeric', month: 'short' })
+  const startLabel = formatFohInstant(event.start_datetime)
+  if (event.start_datetime && startLabel) {
+    return `${day(event.start_datetime)}, ${startLabel}`
   }
 
   if (event.time) {
-    return `${event.date} ${event.time.slice(0, 5)}`
+    return `${day(event.date)}, ${formatFohClock(event.time)}`
   }
 
-  return event.date
+  return day(event.date)
 }
 
 export function getLondonDateIso(now = new Date()): string {
@@ -439,13 +429,7 @@ function eventPromptWindowLabel(eventOption: FohEventOption): string {
     return formatEventOptionDateTime(eventOption)
   }
 
-  const formatter = new Intl.DateTimeFormat('en-GB', {
-    timeZone: 'Europe/London',
-    hour: 'numeric',
-    minute: '2-digit',
-    hourCycle: 'h12'
-  })
-  return `${formatter.format(new Date(startMs - 15 * 60 * 1000))} - ${formatter.format(new Date(endMs))}`
+  return `${formatFohInstant(new Date(startMs - 15 * 60 * 1000))} - ${formatFohInstant(new Date(endMs))}`
 }
 
 export function shiftIsoDate(dateIso: string, dayDelta: number): string {

@@ -24,6 +24,7 @@ import {
   postBookingAction,
   buildTimeChangeOptions,
   formatFohClock,
+  isFohScheduleStale,
   resolveFohServiceDateNow,
   statusBlockClass,
   type FohSearchResult,
@@ -497,6 +498,7 @@ export function FohScheduleClient({
             }}
           />
         }
+        freshnessWide={isFohScheduleStale(lastUpdatedAt, clockNow)}
         freshness={
           <FohFreshness
             lastUpdatedAt={lastUpdatedAt}

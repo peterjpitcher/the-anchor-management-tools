@@ -32,6 +32,8 @@ type FohHeaderProps = {
   /** The name search, and the "last updated" line or its warning. Built by the screen. */
   search?: React.ReactNode
   freshness?: React.ReactNode
+  /** The freshness slot is showing its warning, which needs the whole width. */
+  freshnessWide?: boolean
   onSendFoodOrderAlert: () => void
   onOpenCreateModal: (options?: {
     mode?: FohCreateMode
@@ -64,6 +66,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     lastInteractionAtMsRef,
     search,
     freshness,
+    freshnessWide = false,
     onSendFoodOrderAlert,
     onOpenCreateModal,
   } = props
@@ -363,8 +366,10 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
 
       {(search || freshness) && (
         <div className={cn('flex flex-wrap items-center gap-x-4 gap-y-2', isManagerKioskStyle ? 'mt-2' : 'mt-3')}>
+          {/* The warning comes first and takes the whole row: it must not be squeezed beside the search. */}
+          {freshness && freshnessWide ? <div className="w-full">{freshness}</div> : null}
           {search ? <div className="min-w-64 flex-1">{search}</div> : null}
-          {freshness ? <div className={cn(search ? 'shrink-0' : 'w-full')}>{freshness}</div> : null}
+          {freshness && !freshnessWide ? <div className="shrink-0">{freshness}</div> : null}
         </div>
       )}
 

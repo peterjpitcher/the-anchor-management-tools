@@ -202,8 +202,10 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     if (!open) setConfirmingDiscard(false)
   }, [open])
   const closeFromOutside = () => {
-    if (submittingBooking) return
-    if (formHasDetails && !confirmingDiscard) {
+    // While the question is up, only its own buttons answer it: a second stray tap outside
+    // must not be taken as "discard".
+    if (submittingBooking || confirmingDiscard) return
+    if (formHasDetails) {
       setConfirmingDiscard(true)
       return
     }

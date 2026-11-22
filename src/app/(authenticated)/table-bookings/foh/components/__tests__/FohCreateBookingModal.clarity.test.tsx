@@ -146,6 +146,11 @@ describe('a tap outside the form', () => {
     const question = screen.getByRole('alertdialog', { name: 'Discard this booking?' })
     expect(question).toHaveTextContent('This booking has not been saved.')
 
+    // A second stray tap outside is not an answer to the question.
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole('alertdialog', { name: 'Discard this booking?' })).toBeInTheDocument()
+
     await userEvent.click(within(question).getByRole('button', { name: 'Keep editing' }))
 
     expect(onClose).not.toHaveBeenCalled()

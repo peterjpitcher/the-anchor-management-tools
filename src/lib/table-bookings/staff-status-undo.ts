@@ -176,7 +176,11 @@ async function findClash(
 }
 
 function tableTakenError(reference: string | null): string {
-  return `${UNDO_TABLE_TAKEN_ERROR_PREFIX} the table has been given to ${reference ?? 'someone else'} since this party was marked as left. The booking is still marked as left. Move one of them first, then seat this party again.`
+  // With no reference the database refused the time: another party, or a private hire.
+  const why = reference
+    ? `the table has been given to ${reference} since this party was marked as left`
+    : 'the table is no longer free for the rest of that booking (another booking or a private hire has it)'
+  return `${UNDO_TABLE_TAKEN_ERROR_PREFIX} ${why}. The booking is still marked as left. Move one of them first, then seat this party again.`
 }
 
 async function undoLeft(
