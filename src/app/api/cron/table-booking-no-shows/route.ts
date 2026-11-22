@@ -43,6 +43,10 @@ async function runTableBookingNoShows(request: NextRequest): Promise<Response> {
   try {
     sweep = await runNoShowSweep({ db })
     if (sweep.state === 'held') {
+      // A run that could not sweep is a failed run, so it is recorded as one and alerted on: a
+      // lasting fault in the hours would otherwise stop every automatic no-show behind a green
+      // check. The emails below still go.
+      failed += 1
       logger.error('End-of-day no-show sweep held: the opening hours could not be read', { metadata: { ...sweep } })
     } else if (sweep.marked > 0 || sweep.errors > 0) {
       logger.info('End-of-day no-show sweep ran', { metadata: { ...sweep } })

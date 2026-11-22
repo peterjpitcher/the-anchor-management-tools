@@ -322,6 +322,26 @@ export function buildStaffStatusTransitionPlan(input: {
   }
 
   if (input.action === 'confirmed') {
+    // 'Mark Confirmed' on a no-show whose visit is already over means the party did come. It is
+    // stamped as attended at its booked time, like the guest's own "I did come in". Left with no
+    // outcome, the end-of-day sweep would read it as unmarked, make it a no-show again within the
+    // hour and send the very email the correction was meant to prevent.
+    if (input.booking.status === 'no_show') {
+      const startIso = getBookingStartIso(input.booking)
+      const overIso = input.booking.end_datetime ?? startIso
+      if (startIso && overIso && Date.parse(overIso) <= Date.parse(input.nowIso)) {
+        const attended = buildNoShowAttendedPlan({ booking: input.booking, nowIso: input.nowIso })
+        if (attended.ok) {
+          return {
+            ok: true,
+            plan: {
+              update: { ...attended.plan.update, cancelled_at: null, cancelled_by: null },
+              select: 'id, status, seated_at, left_at, no_show_at, cancelled_at, cancelled_by',
+            },
+          }
+        }
+      }
+    }
     return {
       ok: true,
       plan: {

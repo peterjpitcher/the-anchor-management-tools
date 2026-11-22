@@ -86,6 +86,13 @@ describe('GET /api/cron/table-booking-no-shows', () => {
     expect(response.status).toBe(500)
     expect(state.followUps).toHaveBeenCalledTimes(1)
   })
+
+  it('answers 500 when the sweep is held because the opening hours cannot be read, and still sends the emails', async () => {
+    state.sweep.mockResolvedValue({ state: 'held', reason: 'hours_unreadable' })
+    const response = await call()
+    expect(response.status).toBe(500)
+    expect(state.followUps).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('the guest reply route', () => {

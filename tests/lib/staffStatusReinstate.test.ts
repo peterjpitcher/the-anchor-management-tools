@@ -26,6 +26,32 @@ describe('Mark Confirmed', () => {
     const result = buildStaffStatusTransitionPlan({ action: 'confirmed', booking: { ...BOOKING, status: 'no_show' }, nowIso: '2026-10-26T12:00:00Z' })
     expect(result.ok).toBe(true)
   })
+
+  // The end-of-day sweep takes any past booking that is confirmed with no outcome. A corrected
+  // no-show must not be one of them, or it is a no-show again within the hour.
+  it('stamps a no-show whose visit is over as attended at its booked time', () => {
+    const result = buildStaffStatusTransitionPlan({
+      action: 'confirmed',
+      booking: { ...BOOKING, status: 'no_show', end_datetime: '2026-11-20T21:00:00.000Z' },
+      nowIso: '2026-11-21T09:00:00.000Z',
+    })
+    expect(result.ok && result.plan.update).toMatchObject({
+      status: 'confirmed',
+      seated_at: '2026-11-20T19:00:00.000Z',
+      left_at: '2026-11-20T21:00:00.000Z',
+      no_show_at: null,
+      cancelled_at: null,
+    })
+  })
+
+  it('leaves a no-show undone during its own sitting with no outcome yet', () => {
+    const result = buildStaffStatusTransitionPlan({
+      action: 'confirmed',
+      booking: { ...BOOKING, status: 'no_show', end_datetime: '2026-11-20T21:00:00.000Z' },
+      nowIso: '2026-11-20T19:30:00.000Z',
+    })
+    expect(result.ok && result.plan.update).toMatchObject({ status: 'confirmed', seated_at: null, left_at: null })
+  })
 })
 
 describe('the status buttons the booking page shows', () => {
