@@ -138,3 +138,53 @@ describe('every FOH create path audits the booking it made', () => {
     ])
   })
 })
+
+/**
+ * Owner decision, 22 November 2026: a party that has walked in is already here, so no deposit is
+ * asked for. The screen never sent a deposit method for a walk-in, so one of 15 or more was refused.
+ */
+describe('a walk-in of 15 or more', () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it('is saved with no deposit and no deposit method, and says why', async () => {
+    const db = buildDb({})
+    vi.mocked(requireFohPermission).mockResolvedValue({ ok: true, userId: 'foh-user', supabase: db.client } as never)
+
+    const response = await POST(request({ walk_in: true, party_size: 16 }))
+
+    expect(response.status).toBe(201)
+    const waivers = vi.mocked(logAuditEvent).mock.calls.map(([event]) => event).filter((event) => event.operation_type === 'table_booking.deposit_waived')
+    expect(waivers).toEqual([
+      expect.objectContaining({ resource_id: 'tb-rpc', additional_info: expect.objectContaining({ reason: 'walk_in', party_size: 16 }) }),
+    ])
+  })
+
+  it('is recorded as owing nothing when it falls back to the direct insert', async () => {
+    const db = buildDb({ rpcResult: { data: { state: 'blocked', reason: 'outside_hours' }, error: null } })
+    vi.mocked(requireFohPermission).mockResolvedValue({ ok: true, userId: 'foh-user', supabase: db.client } as never)
+
+    const response = await POST(request({ walk_in: true, party_size: 16 }))
+
+    expect(response.status).toBe(201)
+    const inserted = db.queries.filter((query) => query.table === 'table_bookings' && called(query, 'insert'))
+    expect(inserted).toHaveLength(1)
+    expect(JSON.stringify(inserted[0].calls)).toContain('"deposit_waived":true')
+  })
+
+  it('an ordinary walk-in is not recorded as a waiver', async () => {
+    vi.mocked(requireFohPermission).mockResolvedValue({ ok: true, userId: 'foh-user', supabase: buildDb({}).client } as never)
+
+    const response = await POST(request({ walk_in: true, party_size: 4 }))
+
+    expect(response.status).toBe(201)
+    expect(vi.mocked(logAuditEvent).mock.calls.map(([event]) => event.operation_type)).not.toContain('table_booking.deposit_waived')
+  })
+
+  it('a booking of 16 taken in advance still needs its deposit method', async () => {
+    vi.mocked(requireFohPermission).mockResolvedValue({ ok: true, userId: 'foh-user', supabase: buildDb({}).client } as never)
+
+    const response = await POST(request({ party_size: 16 }))
+
+    expect(response.status).toBe(400)
+  })
+})

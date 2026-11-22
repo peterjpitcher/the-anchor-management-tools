@@ -10,7 +10,7 @@ import { hashGuestToken } from '@/lib/guest/tokens'
 import { logger } from '@/lib/logger'
 import { updateTableBookingByRawToken } from '@/lib/table-bookings/manage-booking'
 import { getMoveTableAvailability } from '@/lib/table-bookings/move-table'
-import { pickTablesToKeep, rightSizeBookingAfterPartyShrink } from '@/lib/table-bookings/shrink-right-size'
+import { pickTablesToKeep, rightSizeBookingAfterPartySizeChange } from '@/lib/table-bookings/party-size-right-size'
 import { updateTableBookingPartySizeWithLinkedEventSeats } from '@/lib/events/staff-seat-updates'
 
 /**
@@ -44,6 +44,10 @@ function seed(options: {
   booking?: Record<string, unknown>
   tableIds?: string[]
   moveError?: { code?: string; message: string }
+  /** What the booking engine's picker offers a party this size. Default: nothing better. */
+  pickerChoice?: { table_ids: string[]; total_capacity: number }
+  /** Make the longer table hold clash with the next booking. */
+  lengthenClashes?: boolean
 } = {}): Db {
   const tableIds = options.tableIds ?? [SIX_A, SIX_B]
   const db = createFakeSupabase({
@@ -119,6 +123,21 @@ function seed(options: {
       if (options.moveError) return Promise.resolve({ data: null, error: options.moveError })
       return Promise.resolve({ data: { state: 'moved', table_ids: args.p_table_ids }, error: null })
     }
+    if (fn === 'find_table_allocation_candidates') {
+      return Promise.resolve({
+        data: options.pickerChoice ? [{ ...options.pickerChoice, rank: 1, reason_code: null }] : [],
+        error: null,
+      })
+    }
+    if (fn === 'move_table_booking_time_v06') {
+      if (options.lengthenClashes) {
+        return Promise.resolve({ data: null, error: { code: '23P01', message: 'table_assignment_overlap' } })
+      }
+      const row = db.tables.table_bookings.find((entry) => entry.id === args.p_table_booking_id)
+      if (row) row.end_datetime = args.p_booking_end_datetime
+      for (const assignment of db.tables.booking_table_assignments) assignment.end_datetime = args.p_assignment_end_datetime
+      return Promise.resolve({ data: { state: 'updated' }, error: null })
+    }
     return Promise.resolve({ data: null, error: { message: `unexpected rpc ${fn}` } })
   })
   return db
@@ -187,6 +206,7 @@ describe('a guest making their own booking smaller', () => {
     expect(AuditService.logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
       operation_type: 'table_booking.right_sized_after_party_shrink',
       resource_id: BOOKING_ID,
+      old_values: { table_ids: [SIX_A, SIX_B], duration_minutes: 165 },
       new_values: { table_ids: [SIX_A], duration_minutes: 135 },
     }))
   })
@@ -199,7 +219,7 @@ describe('a guest making their own booking smaller', () => {
     expect(result).toMatchObject({ state: 'updated', new_party_size: 5 })
     expect(booking(db).party_size).toBe(5)
     expect(logger.error).toHaveBeenCalledWith(
-      'Party got smaller but its spare table or longer sitting could not be released',
+      'Party size changed but its tables or sitting could not be brought into line',
       expect.anything()
     )
   })
@@ -233,6 +253,132 @@ describe('a guest making their own booking smaller', () => {
   })
 })
 
+describe('a smaller party and a smaller table elsewhere', () => {
+  it('moves a party of 7 cut to 3 off its two sixes onto a free table of four', async () => {
+    const db = seed({ pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 } })
+
+    await guestShrinksTo(db, 3)
+
+    // A Sunday party of 3 sits 120 minutes; the table is held 15 more.
+    expect(booking(db)).toMatchObject({ party_size: 3, end_datetime: '2026-11-22T15:00:00.000Z', duration_minutes: 120 })
+    expect(moves(db)).toEqual([
+      { p_table_booking_id: BOOKING_ID, p_table_ids: [FOUR_A], p_start_datetime: START, p_end_datetime: '2026-11-22T15:15:00.000Z' },
+    ])
+    expect(db.rpc.mock.calls.find(([fn]) => fn === 'find_table_allocation_candidates')?.[1]).toMatchObject({
+      p_party_size: 3, p_channel: 'online', p_exclude_booking: BOOKING_ID, p_end_at: '2026-11-22T15:15:00.000Z',
+    })
+  })
+
+  it('keeps one of its own tables when the smaller one has just been taken', async () => {
+    const db = seed({ pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 } })
+    const rpc = db.rpc.getMockImplementation() as (fn: string, args: Record<string, unknown>) => Promise<unknown>
+    db.rpc = vi.fn((fn: string, args: Record<string, unknown>) => {
+      if (fn === 'move_table_booking_assignments_v05' && (args.p_table_ids as string[]).includes(FOUR_A)) {
+        return Promise.resolve({ data: null, error: { code: '23P01', message: 'table_assignment_overlap' } })
+      }
+      return rpc(fn, args)
+    }) as Db['rpc']
+
+    await guestShrinksTo(db, 3)
+
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[FOUR_A], [SIX_A]])
+  })
+
+  it('does not move a party to a table that is no smaller than its own', async () => {
+    const db = seed({ pickerChoice: { table_ids: [SIX_B], total_capacity: 6 } })
+
+    await guestShrinksTo(db, 5)
+
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A]])
+  })
+
+  it('never moves a diner down the house order to save a seat (Dining Room six to the bar bay)', async () => {
+    const SMALL_BAY = 'bbbbbbbb-0000-4000-8000-0000000005ba'
+    const db = seed({ pickerChoice: { table_ids: [SMALL_BAY], total_capacity: 5 } })
+    db.tables.tables.push({ id: SMALL_BAY, table_number: '3', name: 'Small Bay', capacity: 5, priority: 60, bar_priority: 40 })
+
+    await guestShrinksTo(db, 5)
+
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A]])
+  })
+
+  it('moves it on the day of the booking too, and after staff have moved it by hand', async () => {
+    vi.setSystemTime(new Date('2026-11-22T09:00:00.000Z'))
+    const db = seed({ pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 } })
+    db.tables.audit_logs = [{ id: 'audit-1', resource_type: 'table_booking', resource_id: BOOKING_ID, operation_type: 'move_table' }]
+
+    await guestShrinksTo(db, 3)
+
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[FOUR_A]])
+  })
+
+  it('moves a party on one table to a smaller one', async () => {
+    const db = seed({
+      tableIds: [SIX_A],
+      booking: { party_size: 5, committed_party_size: 5, end_datetime: GUEST_END_FOR_5, duration_minutes: 135 },
+      pickerChoice: { table_ids: [FOUR_A], total_capacity: 4 },
+    })
+    for (const row of db.tables.booking_table_assignments) row.end_datetime = TABLE_END_FOR_5
+
+    await guestShrinksTo(db, 2)
+
+    // A Sunday party of 2 sits 105 minutes.
+    expect(moves(db)).toEqual([
+      { p_table_booking_id: BOOKING_ID, p_table_ids: [FOUR_A], p_start_datetime: START, p_end_datetime: '2026-11-22T15:00:00.000Z' },
+    ])
+  })
+})
+
+describe('a bigger party', () => {
+  function seedFive(options: Parameters<typeof seed>[0] = {}) {
+    const db = seed({
+      ...options,
+      booking: { party_size: 7, committed_party_size: 7, end_datetime: GUEST_END_FOR_5, duration_minutes: 135, ...options.booking },
+    })
+    for (const row of db.tables.booking_table_assignments) row.end_datetime = TABLE_END_FOR_5
+    return db
+  }
+  const grown = { bookingId: BOOKING_ID, oldPartySize: 5, newPartySize: 7, source: 'foh' }
+
+  it('gets the longer sitting, table hold and booking together', async () => {
+    const db = seedFive()
+
+    const result = await rightSizeBookingAfterPartySizeChange(db as never, grown)
+
+    expect(result).toMatchObject({ state: 'right_sized', previousDurationMinutes: 135, durationMinutes: 165 })
+    expect(db.rpc).toHaveBeenCalledWith('move_table_booking_time_v06', {
+      p_table_booking_id: BOOKING_ID,
+      p_booking_time: '13:00:00',
+      p_start_datetime: START,
+      p_booking_end_datetime: GUEST_END_FOR_7,
+      p_assignment_end_datetime: TABLE_END_FOR_7,
+    })
+    expect(booking(db)).toMatchObject({ end_datetime: GUEST_END_FOR_7, duration_minutes: 165 })
+  })
+
+  it('keeps the sitting it had when the next booking needs the table', async () => {
+    const db = seedFive({ lengthenClashes: true })
+
+    const result = await rightSizeBookingAfterPartySizeChange(db as never, grown)
+
+    expect(result).toEqual({ state: 'unchanged', reason: 'no_room_for_longer_sitting' })
+    expect(booking(db)).toMatchObject({ end_datetime: GUEST_END_FOR_5, duration_minutes: 135 })
+    expect(logger.error).not.toHaveBeenCalled()
+  })
+
+  it('is lengthened even when already seated', async () => {
+    const db = seedFive({ booking: { seated_at: '2026-11-22T13:02:00.000Z' } })
+
+    expect(await rightSizeBookingAfterPartySizeChange(db as never, grown)).toMatchObject({ state: 'right_sized' })
+  })
+
+  it('keeps a sitting staff set by hand', async () => {
+    const db = seedFive({ booking: { end_datetime: '2026-11-22T15:00:00.000Z', duration_minutes: 120 } })
+
+    expect(await rightSizeBookingAfterPartySizeChange(db as never, grown)).toEqual({ state: 'unchanged', reason: 'sitting_already_right' })
+  })
+})
+
 describe('bookings that are left exactly as they are', () => {
   it.each([
     ['a party already seated', { seated_at: '2026-11-22T13:01:00.000Z' }, 'seated'],
@@ -242,7 +388,7 @@ describe('bookings that are left exactly as they are', () => {
   ])('%s', async (_label, fields, reason) => {
     const db = seed({ booking: { party_size: 5, ...fields } })
 
-    const result = await rightSizeBookingAfterPartyShrink(db as never, {
+    const result = await rightSizeBookingAfterPartySizeChange(db as never, {
       bookingId: BOOKING_ID, oldPartySize: 7, newPartySize: 5, source: 'test',
     })
 
@@ -266,7 +412,7 @@ describe('a party that grows back while its spare table is being released', () =
       return move(fn, args)
     }) as Db['rpc']
 
-    const result = await rightSizeBookingAfterPartyShrink(db as never, {
+    const result = await rightSizeBookingAfterPartySizeChange(db as never, {
       bookingId: BOOKING_ID, oldPartySize: 7, newPartySize: 5, source: 'test',
     })
 
@@ -280,7 +426,7 @@ describe('a party that grows back while its spare table is being released', () =
   it('releases nothing when the party had already grown back', async () => {
     const db = seed({ booking: { party_size: 7 } })
 
-    const result = await rightSizeBookingAfterPartyShrink(db as never, {
+    const result = await rightSizeBookingAfterPartySizeChange(db as never, {
       bookingId: BOOKING_ID, oldPartySize: 7, newPartySize: 5, source: 'test',
     })
 

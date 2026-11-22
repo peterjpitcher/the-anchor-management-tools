@@ -124,7 +124,7 @@ export function expectedDepositForCreate(input: {
   bookingDate: string
   periodAccepted: boolean
   depositWaived: boolean
-  waivedFor?: 'manager' | 'pub_event'
+  waivedFor?: 'manager' | 'pub_event' | 'walk_in'
 }): ResolvedDeposit | null {
   const resolution = resolveTableBookingDeposit({
     partySize: input.partySize,

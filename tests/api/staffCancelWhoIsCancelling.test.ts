@@ -173,6 +173,8 @@ describe('who is cancelling, on the FOH cancel and the BOH status routes', () =>
 
   it('BOH: a status change that is not a cancel ignores the choice', async () => {
     setUp()
+    // Seated, because a booking that has not started cannot be completed.
+    mocks.getTableBookingForFoh.mockResolvedValue({ ...BOOKING, seated_at: '2026-12-12T19:02:00.000Z' })
 
     const response = await postBohStatus(
       new NextRequest(`http://localhost/api/boh/table-bookings/${BOOKING_ID}/status`, {
