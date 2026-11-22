@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "title": "Christmas dinner at The Anchor, until 20 December",
+  "preheader": "Four or more of you, from £23 a head, and everyone picks their own courses.",
+  "blocks": [
+    {
+      "type": "masthead_seasonal",
+      "data": {
+        "image_url": "https://tfcasgxopxegwrabvwat.supabase.co/storage/v1/object/public/event-images/marketing/seasonal-masthead/11-november.jpg",
+        "alt": "The Anchor, Stanwell Moor Village, since 1751. Poppies and winter greenery around the wordmark."
+      }
+    },
+    {
+      "type": "text_block",
+      "data": {
+        "heading": "Your Christmas table's waiting",
+        "body": [
+          "Christmas dinner is on now at The Anchor, and the last sitting is Sunday 20 December. It's for four or more of you. Book the table first. Then we email you a link, and each of you picks 1, 2 or 3 courses and tells us about any allergies. Choices close at noon, 7 days before your booking.",
+          "It's from £23 a head. Go for 2 or 3 courses and there's a glass of prosecco in it for the adults, or an orange juice if you'd rather.",
+          "There's a £10 per person deposit when you book, and it comes off your bill. Sittings run Tuesday to Saturday, plus Sundays from 1pm to 6pm.",
+          "Book online at least 8 days ahead. Booking for more than 26, or less than 8 days away? Call us on 01753 682707 and we'll book it for you."
+        ],
+        "buttons": [
+          {
+            "label": "Book Christmas dinner",
+            "url": "https://www.the-anchor.pub/christmas-parties",
+            "variant": "primary"
+          }
+        ]
+      }
+    },
+    {
+      "type": "fact_strip",
+      "data": {
+        "rows": [
+          { "label": "Last sitting", "value": "Sunday 20 December" },
+          { "label": "Group size", "value": "Four or more of you" },
+          { "label": "Deposit", "value": "£10 per person, and it comes off your bill" },
+          { "label": "Book online", "value": "At least 8 days ahead" }
+        ]
+      }
+    },
+    {
+      "type": "closing_panel_dark",
+      "data": {
+        "script_line": "Your Christmas table's waiting",
+        "body": "Booking for more than 26, or less than 8 days away? Call us on 01753 682707 and we'll book it for you.",
+        "cta_label": "Book Christmas dinner",
+        "cta_url": "https://www.the-anchor.pub/christmas-parties",
+        "reassurance_items": ["Free parking right outside", "Dogs welcome throughout"],
+        "phone_label": "01753 682707",
+        "phone_url": "tel:+441753682707",
+        "whatsapp_label": "WhatsApp",
+        "whatsapp_url": "https://wa.me/441753682707"
+      }
+    },
+    {
+      "type": "footer",
+      "data": {
+        "year": "2026",
+        "unsubscribe_url": "%%unsubscribe%%",
+        "privacy_notice_url": "https://www.the-anchor.pub/privacy-policy",
+        "reason_for_contact": "You are receiving this because you have booked with us before, or because you said you would like to hear from us. That may have been a while ago now, and we are glad you are still with us."
+      }
+    }
+  ]
+}
