@@ -278,9 +278,12 @@ async function rightSize(
       })
       // The sitting goes back with the table: the bigger party keeps the time it had.
       if (nextDuration !== null && currentDuration !== null) {
-        await supabase.from('table_bookings')
+        const { error: sittingError } = await supabase.from('table_bookings')
           .update({ end_datetime: new Date(endMs).toISOString(), duration_minutes: currentDuration, updated_at: new Date().toISOString() })
           .eq('id', input.bookingId)
+        if (sittingError) {
+          throw new Error(`The party grew while its spare table was being released and its sitting could not be put back: ${sittingError.message}`)
+        }
       }
       throw new Error(
         restored.ok
