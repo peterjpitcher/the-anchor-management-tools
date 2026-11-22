@@ -186,6 +186,7 @@ describe('checkScheduledJobs', () => {
         'signing-reminders',
         'table-booking-confirm',
         'table-booking-deposit-timeout',
+        'table-booking-no-shows',
         'table-booking-paypal-reconciliation',
         'table-booking-watch',
         'training-daily',

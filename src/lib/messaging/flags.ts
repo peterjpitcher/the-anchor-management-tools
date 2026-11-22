@@ -82,6 +82,12 @@ export const MESSAGING_FLAG_KEYS = [
   // the wording on 10 November 2026; switched on by migration
   // 20261110195005_christmas_booking_leads.sql. Switching it off stops the emails with no deploy.
   'christmas_lead_follow_up',
+  // The morning-after email to a guest whose table booking was marked a no-show, by staff or by
+  // the end-of-day sweep (owner decisions of 22 November 2026). Email only, never a text. New guest
+  // wording, so it is off until switched on: migration
+  // 20261122200200_table_no_show_follow_up_flag_on.sql does that at release. Switching it off
+  // stops the emails with no deploy; the end-of-day no-show marking does not read it.
+  'table_no_show_follow_up',
   'bounce_sms_fallback',
   'staff_message_email_option',
 ] as const

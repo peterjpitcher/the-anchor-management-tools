@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { getTableBookingForFoh } from '@/lib/foh/bookings'
-import { buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
+import { markTableBookingNoShow } from '@/lib/table-bookings/no-show'
 import { logAuditEvent } from '@/app/actions/audit'
 import { eventLinkedTableBookingResponse, isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 
@@ -32,44 +32,40 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
-  const transition = buildStaffStatusTransitionPlan({
-    action: 'no_show',
-    booking,
-    nowIso,
-    noShowMarkedBy: auth.userId
-  })
-
-  if (!transition.ok) {
-    const { data: currentBooking } = await auth.supabase.from('table_bookings')
+  const readCurrent = async () => {
+    const { data } = await auth.supabase.from('table_bookings')
       .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
       .eq('id', id)
       .maybeSingle()
-    return NextResponse.json(
-      { error: transition.error, booking: currentBooking ?? null },
-      { status: transition.status }
-    )
+    return data ?? null
   }
 
-  const { data: noShowRow, error: updateError } = await auth.supabase.from('table_bookings')
-    .update(transition.plan.update)
-    .eq('id', id)
-    .eq('status', booking.status)
-    .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
-    .maybeSingle()
+  // The one way a no-show is written, shared with the end-of-day sweep (no-show.ts). It guards the
+  // write on the status read above, so a booking changed in between is not overwritten.
+  const marked = await markTableBookingNoShow<{
+    id: string
+    status: string
+    seated_at: string | null
+    left_at: string | null
+    no_show_at: string | null
+    cancelled_at: string | null
+    updated_at: string | null
+  }>(auth.supabase, { booking, nowIso, markedBy: auth.userId })
 
-  if (updateError) {
-    return NextResponse.json({ error: 'Failed to mark no-show' }, { status: 500 })
-  }
-  if (!noShowRow) {
-    const { data: currentBooking } = await auth.supabase.from('table_bookings')
-      .select('id, status, seated_at, left_at, no_show_at, cancelled_at, updated_at')
-      .eq('id', id)
-      .maybeSingle()
+  if (!marked.ok) {
+    if (marked.kind === 'refused') {
+      return NextResponse.json({ error: marked.error, booking: await readCurrent() }, { status: marked.status })
+    }
+    if (marked.kind === 'write_failed') {
+      return NextResponse.json({ error: 'Failed to mark no-show' }, { status: 500 })
+    }
+    const currentBooking = await readCurrent()
     return NextResponse.json(
-      { error: 'Booking changed before this update could be applied', booking: currentBooking ?? null },
+      { error: 'Booking changed before this update could be applied', booking: currentBooking },
       { status: currentBooking ? 409 : 404 }
     )
   }
+  const noShowRow = marked.row
 
   await logAuditEvent({
     user_id: auth.userId,

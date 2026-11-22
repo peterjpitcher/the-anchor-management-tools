@@ -53,6 +53,7 @@ export default async function BookingDetailPage({ params }: Props) {
       booking_type, booking_purpose, status, special_requirements,
       dietary_requirements, allergies, celebration_type,
       seated_at, left_at, no_show_at, no_show_marked_at, confirmed_at, cancelled_at, completed_at,
+      no_show_marked_by, no_show_follow_up_sent_at, no_show_guest_response, no_show_guest_reason, no_show_guest_responded_at,
       start_datetime, end_datetime, duration_minutes,
       high_chair_count, is_outside_seating, requires_accessible_table, table_pinned,
       booking_period_id, booking_period_name, booking_period_answer, booking_period_requires_preorder,

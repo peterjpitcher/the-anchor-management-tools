@@ -344,6 +344,10 @@
     {
       "path": "/api/cron/table-booking-watch",
       "schedule": "35 * * * *"
+    },
+    {
+      "path": "/api/cron/table-booking-no-shows",
+      "schedule": "0 * * * *"
     }
   ]
 }

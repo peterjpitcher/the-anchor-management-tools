@@ -22,6 +22,7 @@ const fohCancelRoute = readFileSync(
   resolve(process.cwd(), 'src/app/api/foh/bookings/[id]/cancel/route.ts'),
   'utf8'
 )
+const noShowHelper = readFileSync(resolve(process.cwd(), 'src/lib/table-bookings/no-show.ts'), 'utf8')
 const fohNoShowRoute = readFileSync(
   resolve(process.cwd(), 'src/app/api/foh/bookings/[id]/no-show/route.ts'),
   'utf8'
@@ -42,10 +43,15 @@ describe('A-061 optimistic concurrency wiring', () => {
   })
 
   it('guards table booking status writes with the previously loaded status', () => {
-    for (const source of [bohStatusRoute, fohCancelRoute, fohNoShowRoute]) {
+    for (const source of [bohStatusRoute, fohCancelRoute]) {
       expect(source).toContain(".eq('status', booking.status)")
       expect(source).toContain('Booking changed before this update could be applied')
     }
+    // The FOH no-show writes through the shared helper, which carries the guard; the route
+    // still answers a changed booking itself.
+    expect(noShowHelper).toContain(".eq('status', booking.status)")
+    expect(fohNoShowRoute).toContain('markTableBookingNoShow')
+    expect(fohNoShowRoute).toContain('Booking changed before this update could be applied')
   })
 
   it('enforces open timeclock and couldnt-work uniqueness in SQL and actions', () => {

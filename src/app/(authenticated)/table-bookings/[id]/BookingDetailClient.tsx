@@ -64,6 +64,7 @@ import {
   readGuestNotificationOutcome,
 } from '@/lib/table-bookings/guest-notification-outcome'
 import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
+import { describeNoShowGuestReply } from '@/lib/table-bookings/no-show-reasons'
 import {
   depositHeldGbp,
   initialStaffCancelForm,
@@ -314,6 +315,12 @@ export interface Booking {
   left_at: string | null
   no_show_at: string | null
   no_show_marked_at: string | null
+  /** Null on a no-show nobody pressed: the end-of-day sweep marked it. */
+  no_show_marked_by?: string | null
+  no_show_follow_up_sent_at?: string | null
+  no_show_guest_response?: string | null
+  no_show_guest_reason?: string | null
+  no_show_guest_responded_at?: string | null
   confirmed_at: string | null
   cancelled_at: string | null
   completed_at: string | null
@@ -545,6 +552,11 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     { label: 'Celebration', value: normaliseNote(booking.celebration_type) },
     { label: 'Internal notes', value: normaliseNote(booking.internal_notes) },
     { label: 'Cancellation reason', value: normaliseNote(booking.cancellation_reason) },
+    // The guest's answer to the morning-after no-show email (owner decision, 22 November 2026).
+    {
+      label: 'Reply to the no-show email',
+      value: describeNoShowGuestReply({ response: booking.no_show_guest_response, reason: booking.no_show_guest_reason }),
+    },
   ].filter((note) => note.value)
 
   const lifecycleEvents = [
@@ -552,7 +564,16 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
     { label: 'Confirmed', at: booking.confirmed_at },
     { label: 'Seated', at: booking.seated_at },
     { label: 'Left', at: booking.left_at },
-    { label: 'No-show marked', at: booking.no_show_marked_at ?? booking.no_show_at },
+    {
+      // Nobody's name on it means the end-of-day sweep assumed it.
+      label:
+        booking.status === 'no_show' && booking.no_show_marked_by === null
+          ? 'No-show assumed at the end of the day'
+          : 'No-show marked',
+      at: booking.no_show_marked_at ?? booking.no_show_at,
+    },
+    { label: 'No-show email sent', at: booking.no_show_follow_up_sent_at },
+    { label: 'Guest replied to the no-show email', at: booking.no_show_guest_responded_at },
     { label: 'Cancelled', at: booking.cancelled_at },
     { label: 'Completed', at: booking.completed_at },
     { label: 'Deposit captured', at: booking.card_capture_completed_at },

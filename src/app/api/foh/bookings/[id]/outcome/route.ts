@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { requireFohPermission } from '@/lib/foh/api-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { resolveTradingDayNow } from '@/lib/business-hours/trading-day'
-import { buildPastArrivalPlan, buildStaffStatusTransitionPlan } from '@/lib/table-bookings/staff-status-actions'
+import { buildPastArrivalPlan } from '@/lib/table-bookings/staff-status-actions'
+import { markTableBookingNoShow } from '@/lib/table-bookings/no-show'
 import { logAuditEvent } from '@/app/actions/audit'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -60,28 +61,48 @@ export async function POST(
   }
 
   const nowIso = new Date().toISOString()
-  const transition = outcome === 'arrived'
-    ? buildPastArrivalPlan({ booking, tradingDayIso: tradingDay, nowIso })
-    : buildStaffStatusTransitionPlan({ action: 'no_show', booking, nowIso, noShowMarkedBy: auth.userId })
-  if (!transition.ok) {
-    return NextResponse.json({ error: transition.error }, { status: transition.status })
-  }
+  let updated: Record<string, unknown>
+  if (outcome === 'no_show') {
+    // The floor's own no-show, written the one way it is written anywhere (no-show.ts).
+    const marked = await markTableBookingNoShow(auth.supabase, {
+      booking,
+      nowIso,
+      markedBy: auth.userId,
+      requireNoOutcome: true,
+    })
+    if (!marked.ok) {
+      if (marked.kind === 'refused') {
+        return NextResponse.json({ error: marked.error }, { status: marked.status })
+      }
+      if (marked.kind === 'write_failed') {
+        return NextResponse.json({ error: 'Failed to record the outcome' }, { status: 500 })
+      }
+      return NextResponse.json({ error: 'Booking changed before this update could be applied' }, { status: 409 })
+    }
+    updated = marked.row
+  } else {
+    const transition = buildPastArrivalPlan({ booking, tradingDayIso: tradingDay, nowIso })
+    if (!transition.ok) {
+      return NextResponse.json({ error: transition.error }, { status: transition.status })
+    }
 
-  const { data: updated, error: updateError } = await auth.supabase
-    .from('table_bookings')
-    .update(transition.plan.update)
-    .eq('id', id)
-    .eq('status', booking.status)
-    .is('seated_at', null)
-    .is('no_show_at', null)
-    .select('id, status, seated_at, left_at, no_show_at, updated_at')
-    .maybeSingle()
+    const { data: arrived, error: updateError } = await auth.supabase
+      .from('table_bookings')
+      .update(transition.plan.update)
+      .eq('id', id)
+      .eq('status', booking.status)
+      .is('seated_at', null)
+      .is('no_show_at', null)
+      .select('id, status, seated_at, left_at, no_show_at, updated_at')
+      .maybeSingle()
 
-  if (updateError) {
-    return NextResponse.json({ error: 'Failed to record the outcome' }, { status: 500 })
-  }
-  if (!updated) {
-    return NextResponse.json({ error: 'Booking changed before this update could be applied' }, { status: 409 })
+    if (updateError) {
+      return NextResponse.json({ error: 'Failed to record the outcome' }, { status: 500 })
+    }
+    if (!arrived) {
+      return NextResponse.json({ error: 'Booking changed before this update could be applied' }, { status: 409 })
+    }
+    updated = arrived
   }
 
   await logAuditEvent({
