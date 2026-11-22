@@ -98,6 +98,11 @@ export async function POST(
       suggested_amount: 0,
       charge_amount: 0,
       cap_applied: false
-    }
+    },
+    undo: {
+      action: 'no_show' as const,
+      stamp: nowIso,
+      ...(booking.status === 'pending_payment' ? { previous_status: 'pending_payment' as const } : {}),
+    },
   })
 }

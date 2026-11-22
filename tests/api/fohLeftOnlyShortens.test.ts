@@ -39,7 +39,11 @@ function buildSupabase(assignmentResult: { error: unknown }) {
   }
   const supabase = {
     from: (table: string) => {
-      if (table === 'booking_table_assignments') return { update: () => assignmentChain }
+      if (table === 'booking_table_assignments') {
+        // The route reads the table times it is about to cut (for Undo) before it cuts them.
+        const readChain = { eq: () => readChain, lt: () => readChain, gt: async () => ({ data: [], error: null }) }
+        return { update: () => assignmentChain, select: () => readChain }
+      }
       return {
         update: (values: Record<string, unknown>) => { calls.bookingUpdate = values; return bookingChain },
       }

@@ -101,6 +101,14 @@ export type PartySizeDepositTransitionResult =
     }
   | {
       /**
+       * The party grew past the deposit rule while already at its table, so no deposit is asked
+       * for (owner decision, 22 November 2026). Recorded as waived, with the reason on the audit row.
+       */
+      state: 'deposit_not_required_seated'
+      message: string
+    }
+  | {
+      /**
        * The deposit was left exactly as it was and the booking is flagged for a manager: a paid
        * deposit (settled on the bill), or one whose new figure could not be worked out. Never a
        * failure: the amendment itself succeeded.
@@ -371,6 +379,8 @@ export async function applyPartySizeDepositTransition(
     newPartySize: number
     sendSms: boolean
     appBaseUrl: string
+    /** The party is at its table now (seated, not left). */
+    seatedNow?: boolean
   },
 ): Promise<PartySizeDepositTransitionResult> {
   const { booking, previousPartySize, newPartySize } = input
@@ -437,6 +447,47 @@ export async function applyPartySizeDepositTransition(
   }
 
   const owedNow = booking.status === 'pending_payment' || booking.payment_status === 'pending'
+
+  // A party already at its table that grows into the deposit rule is not sent to a payment screen
+  // (owner decision, 22 November 2026: skip the deposit when they are already here). The deposit is
+  // recorded as not required the way a manager waiver is, so every screen reads it the same, and
+  // the audit row says why. A booking not yet seated still owes the deposit, below.
+  if (input.seatedNow && !owedNow && priced.amount > 0) {
+    const nowIso = new Date().toISOString()
+    const { error: skipError } = await supabase
+      .from('table_bookings')
+      .update({
+        deposit_waived: true,
+        deposit_rule: 'waived',
+        payment_status: null,
+        hold_expires_at: null,
+        deposit_amount: null,
+        paypal_deposit_order_id: null,
+        updated_at: nowIso,
+      })
+      .eq('id', booking.id)
+      .is('paypal_deposit_capture_id', null)
+    if (skipError) {
+      throw new Error(`Failed to record the deposit as not required: ${skipError.message}`)
+    }
+    await AuditService.logAuditEvent({
+      operation_type: 'table_booking.deposit_waived',
+      resource_type: 'table_booking',
+      resource_id: booking.id,
+      operation_status: 'success',
+      old_values: { party_size: previousPartySize, deposit_waived: false },
+      new_values: { party_size: newPartySize, deposit_waived: true },
+      additional_info: {
+        reason: 'party_grew_while_seated',
+        note: `Party grew from ${previousPartySize} to ${newPartySize} while seated, so the ${formatGbp(priced.amount)} deposit was not asked for.`,
+        deposit_not_asked_for: priced.amount,
+      },
+    })
+    return {
+      state: 'deposit_not_required_seated',
+      message: `No deposit is asked for, because the party is already seated (it would have been ${formatGbp(priced.amount)}).`,
+    }
+  }
 
   // An UNPAID deposit follows the new size (D20, BK-042).
   if (owedNow) {

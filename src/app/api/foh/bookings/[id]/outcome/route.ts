@@ -93,5 +93,10 @@ export async function POST(
     additional_info: { source: 'open_from_earlier', booking_date: booking.booking_date },
   }).catch(() => {})
 
-  return NextResponse.json({ success: true, data: updated })
+  return NextResponse.json({
+    success: true,
+    data: updated,
+    // The strip's one-tap No-show carries the same Undo as the floor's.
+    undo: outcome === 'no_show' ? { action: 'no_show' as const, stamp: nowIso } : null,
+  })
 }

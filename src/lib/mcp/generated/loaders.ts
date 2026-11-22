@@ -204,6 +204,7 @@ export const ROUTE_MODULES: Record<string, () => Promise<unknown>> = {
   'api/foh/bookings/[id]/party-size/route': () => import('@/app/api/foh/bookings/[id]/party-size/route'),
   'api/foh/bookings/[id]/seated/route': () => import('@/app/api/foh/bookings/[id]/seated/route'),
   'api/foh/bookings/[id]/time/route': () => import('@/app/api/foh/bookings/[id]/time/route'),
+  'api/foh/bookings/[id]/undo/route': () => import('@/app/api/foh/bookings/[id]/undo/route'),
   'api/foh/bookings/[id]/walkout/route': () => import('@/app/api/foh/bookings/[id]/walkout/route'),
   'api/foh/bookings/open-earlier/route': () => import('@/app/api/foh/bookings/open-earlier/route'),
   'api/foh/customers/search/route': () => import('@/app/api/foh/customers/search/route'),
