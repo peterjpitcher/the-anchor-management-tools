@@ -115,6 +115,24 @@ async function readTurnMinutes(
   return Number.isFinite(minutes) && minutes > 0 ? Math.trunc(minutes) : null
 }
 
+/** The party as it stands this instant, and whether it has been seated, pinned or closed since. */
+async function readPartyNow(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string
+): Promise<{ partySize: number; settled: boolean } | null> {
+  const { data, error } = await supabase.from('table_bookings')
+    .select('party_size, status, seated_at, left_at, table_pinned')
+    .eq('id', bookingId)
+    .maybeSingle()
+  if (error) throw new Error(`Could not re-read the booking: ${error.message}`)
+  if (!data) return null
+  return {
+    partySize: Math.max(1, Number(data.party_size || 1)),
+    settled: Boolean(data.seated_at || data.left_at || data.table_pinned === true)
+      || ['cancelled', 'no_show', 'completed'].includes(String(data.status || '')),
+  }
+}
+
 async function rightSize(
   supabase: SupabaseClient<any, 'public', any>,
   input: { bookingId: string; oldPartySize: number; newPartySize: number }
@@ -168,6 +186,7 @@ async function rightSize(
 
   // The tables.
   let keepIds: string[] | null = null
+  const seatsByTableId = new Map<string, number>()
   if (heldIds.length > 1) {
     const [tablesResult, linksResult] = await Promise.all([
       supabase.from('tables').select('id, capacity, priority, bar_priority').in('id', heldIds),
@@ -180,6 +199,7 @@ async function rightSize(
       capacity: Math.max(0, Number(table.capacity || 0)),
       order: Number((purpose === 'drinks' ? table.bar_priority : table.priority) ?? 0) || 0,
     }))
+    for (const table of held) seatsByTableId.set(table.id, table.capacity)
     const links = new Set<string>()
     for (const row of linksResult.data ?? []) {
       if (typeof row?.table_id === 'string' && typeof row?.join_table_id === 'string') {
@@ -193,6 +213,7 @@ async function rightSize(
   }
 
   if (!keepIds && nextDuration === null) return { state: 'unchanged', reason: 'nothing_to_release' }
+  const keptSeats = keepIds ? keepIds.reduce((sum, id) => sum + (seatsByTableId.get(id) ?? 0), 0) : 0
 
   // The booking's own window first, the table hold second: if the second write fails the table is
   // held for longer than the guest has it, never for less.
@@ -225,6 +246,14 @@ async function rightSize(
   const tableEndIso = new Date(Date.parse(guestEndIso) + gapMs).toISOString()
   const targetIds = keepIds ?? heldIds
 
+  // Somebody else may have changed the booking while this was working out what to release (staff
+  // growing the party back, or seating it). Look again immediately before the release, and once
+  // more after it: a booking must never be left on fewer seats than its party.
+  const before = await readPartyNow(supabase, input.bookingId)
+  if (!before || before.partySize !== input.newPartySize || before.settled) {
+    return { state: 'unchanged', reason: 'changed_meanwhile' }
+  }
+
   const moved = await moveBookingAssignmentToTables(supabase, {
     bookingId: input.bookingId,
     targetTableIds: targetIds,
@@ -233,6 +262,33 @@ async function rightSize(
     nowIso: new Date().toISOString(),
   })
   if (!moved.ok) throw new Error(`Could not release the tables: ${moved.error}`)
+
+  if (keepIds) {
+    const after = await readPartyNow(supabase, input.bookingId)
+    if (!after || after.partySize > keptSeats) {
+      const assignmentEnds = assignments
+        .map((row) => Date.parse(String(row.end_datetime || '')))
+        .filter((value) => Number.isFinite(value))
+      const restored = await moveBookingAssignmentToTables(supabase, {
+        bookingId: input.bookingId,
+        targetTableIds: heldIds,
+        startIso: tableStartIso,
+        endIso: assignmentEnds.length > 0 ? new Date(Math.max(...assignmentEnds)).toISOString() : tableEndIso,
+        nowIso: new Date().toISOString(),
+      })
+      // The sitting goes back with the table: the bigger party keeps the time it had.
+      if (nextDuration !== null && currentDuration !== null) {
+        await supabase.from('table_bookings')
+          .update({ end_datetime: new Date(endMs).toISOString(), duration_minutes: currentDuration, updated_at: new Date().toISOString() })
+          .eq('id', input.bookingId)
+      }
+      throw new Error(
+        restored.ok
+          ? 'The party grew while its spare table was being released; the table was put back'
+          : `The party grew while its spare table was being released and the table could not be put back: ${restored.error}`
+      )
+    }
+  }
 
   return {
     state: 'right_sized',

@@ -252,6 +252,43 @@ describe('bookings that are left exactly as they are', () => {
   })
 })
 
+describe('a party that grows back while its spare table is being released', () => {
+  it('gets the table back, so it is never left on fewer seats than its party', async () => {
+    const db = seed({ booking: { party_size: 5 } })
+    const move = db.rpc.getMockImplementation() as (fn: string, args: Record<string, unknown>) => Promise<unknown>
+    let releases = 0
+    db.rpc = vi.fn((fn: string, args: Record<string, unknown>) => {
+      if (fn === 'move_table_booking_assignments_v05') {
+        releases += 1
+        // Staff put the party back to 7 at the very moment the first release lands.
+        if (releases === 1) booking(db).party_size = 7
+      }
+      return move(fn, args)
+    }) as Db['rpc']
+
+    const result = await rightSizeBookingAfterPartyShrink(db as never, {
+      bookingId: BOOKING_ID, oldPartySize: 7, newPartySize: 5, source: 'test',
+    })
+
+    expect(result).toEqual({ state: 'unchanged', reason: 'failed' })
+    expect(moves(db).map((call) => call.p_table_ids)).toEqual([[SIX_A], [SIX_A, SIX_B]])
+    expect(moves(db)[1].p_end_datetime).toBe(TABLE_END_FOR_7)
+    expect(booking(db)).toMatchObject({ party_size: 7, end_datetime: GUEST_END_FOR_7, duration_minutes: 165 })
+    expect(logger.error).toHaveBeenCalled()
+  })
+
+  it('releases nothing when the party had already grown back', async () => {
+    const db = seed({ booking: { party_size: 7 } })
+
+    const result = await rightSizeBookingAfterPartyShrink(db as never, {
+      bookingId: BOOKING_ID, oldPartySize: 7, newPartySize: 5, source: 'test',
+    })
+
+    expect(result).toEqual({ state: 'unchanged', reason: 'changed_meanwhile' })
+    expect(moves(db)).toEqual([])
+  })
+})
+
 describe('staff making a booking smaller', () => {
   it('frees the second table and shortens the sitting', async () => {
     const db = seed()
