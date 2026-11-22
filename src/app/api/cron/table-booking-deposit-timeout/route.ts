@@ -4,6 +4,7 @@ import { sendTableBookingCancelledSmsIfAllowed } from '@/lib/table-bookings/book
 import { logAuditEvent } from '@/app/actions/audit'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { withCronRun } from '@/lib/cron/run-recorder'
 import { logger } from '@/lib/logger'
 import { recordAnalyticsEvent } from '@/lib/analytics/events'
 import {
@@ -64,7 +65,11 @@ function hasCapturedDeposit(booking: PendingDepositBooking) {
     || booking.payment_status === 'refunded'
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * A run that cannot do its work throws: withCronRun records it as failed, answers 500 and emails
+ * CRON_ALERT_EMAIL (at most once an hour), so this handler sends no failure email of its own for it.
+ */
+async function cancelLapsedDepositHolds(request: NextRequest): Promise<Response> {
   const authResult = authorizeCronRequest(request)
   if (!authResult.authorized) {
     return NextResponse.json({ error: authResult.reason ?? 'Unauthorized' }, { status: 401 })
@@ -87,8 +92,7 @@ export async function GET(request: NextRequest) {
 
     if (error) {
       logger.error('[deposit-timeout] could not load lapsed holds', { error: new Error(error.message) })
-      await reportCronFailure('table-booking-deposit-timeout', error, { stage: 'fetch_candidates' })
-      return NextResponse.json({ error: 'DB error' }, { status: 500 })
+      throw new Error(`Could not load lapsed deposit holds: ${error.message}`)
     }
 
     // The one reminder per hold, before the cancellations, behind its flag (on since 6 November
@@ -305,7 +309,10 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     logger.error('[deposit-timeout] fatal error', { error: error instanceof Error ? error : new Error(String(error)) })
-    await reportCronFailure('table-booking-deposit-timeout', error)
-    return NextResponse.json({ error: 'Internal error' }, { status: 500 })
+    throw error
   }
 }
+
+// Every five minutes, so one run record an hour (plus one per failed run), as the other
+// five-minute jobs keep.
+export const GET = withCronRun('table-booking-deposit-timeout', cancelLapsedDepositHolds, { recording: 'hourly' })

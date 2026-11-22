@@ -267,7 +267,10 @@ describe('table booking reconciliation guards', () => {
     mockDb([])
     await GET(request())
 
-    const chain = vi.mocked(createAdminClient).mock.results[0].value.from.mock.results[0].value
+    // The run recorder writes its own row to cron_job_runs first, so find the read of the bookings.
+    const from = vi.mocked(createAdminClient).mock.results[0].value.from
+    const bookingsRead = from.mock.calls.findIndex(([table]: [string]) => table === 'table_bookings')
+    const chain = from.mock.results[bookingsRead].value
     expect(chain.gte).toHaveBeenCalledWith('updated_at', expect.any(String))
     expect(chain.gte).not.toHaveBeenCalledWith('created_at', expect.any(String))
   })

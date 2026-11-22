@@ -170,6 +170,12 @@ describe('the pre-order cron route', () => {
     const { status } = await runSweep()
 
     expect(status).toBe(500)
-    expect(reportCronFailure).toHaveBeenCalledWith('preorder-reminders', expect.anything())
+    // The alert now comes from the run recorder, once, with the real error and the run's counts.
+    expect(reportCronFailure).toHaveBeenCalledTimes(1)
+    expect(reportCronFailure).toHaveBeenCalledWith(
+      'preorder-reminders',
+      expect.objectContaining({ message: 'db down' }),
+      expect.objectContaining({ httpStatus: 500 }),
+    )
   })
 })

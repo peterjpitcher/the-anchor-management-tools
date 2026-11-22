@@ -36,6 +36,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { reportCronFailure } from '@/lib/cron/alerting'
+import { withCronRun } from '@/lib/cron/run-recorder'
 import { sendEmail } from '@/lib/email/emailService'
 import { jobQueue } from '@/lib/unified-job-queue'
 import { createTableManageToken } from '@/lib/table-bookings/manage-booking'
@@ -191,7 +192,12 @@ function buildPreorderReminderEmail(
   })
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * A sweep that cannot run throws: withCronRun records it as failed, answers 500 and emails
+ * CRON_ALERT_EMAIL. A sweep that finished with some messages unsent answers 200 and sends its own
+ * alert below, as it always has.
+ */
+async function runPreorderReminderSweep(request: NextRequest): Promise<Response> {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -448,10 +454,11 @@ export async function GET(request: NextRequest) {
     logger.error('Pre-order reminder sweep failed', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
-    await reportCronFailure('preorder-reminders', error)
-    return NextResponse.json({ success: false, error: 'Pre-order reminder sweep failed' }, { status: 500 })
+    throw error
   }
 }
+
+export const GET = withCronRun('preorder-reminders', runPreorderReminderSweep, { recording: 'every_run' })
 
 /**
  * Take the one slot for this booking and kind. False means somebody already has it.

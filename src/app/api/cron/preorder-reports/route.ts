@@ -24,7 +24,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { escapeHtml, reportCronFailure } from '@/lib/cron/alerting'
+import { escapeHtml } from '@/lib/cron/alerting'
+import { withCronRun } from '@/lib/cron/run-recorder'
 import { sendEmail } from '@/lib/email/emailService'
 import {
   findWithdrawnPreorderChoices,
@@ -75,7 +76,11 @@ type WithdrawnGroup = {
   choices: WithdrawnPreorderChoice[]
 }
 
-export async function GET(request: NextRequest) {
+/**
+ * A report that cannot be built or sent throws: withCronRun records the run as failed, answers
+ * 500 and emails CRON_ALERT_EMAIL.
+ */
+async function sendPreorderReport(request: NextRequest): Promise<Response> {
   const auth = authorizeCronRequest(request)
   if (!auth.authorized) {
     return NextResponse.json({ error: auth.reason || 'Unauthorized' }, { status: 401 })
@@ -116,10 +121,11 @@ export async function GET(request: NextRequest) {
     logger.error('Pre-order nightly report failed', {
       error: error instanceof Error ? error : new Error(String(error)),
     })
-    await reportCronFailure('preorder-reports', error)
-    return NextResponse.json({ success: false, error: 'Pre-order nightly report failed' }, { status: 500 })
+    throw error
   }
 }
+
+export const GET = withCronRun('preorder-reports', sendPreorderReport, { recording: 'every_run' })
 
 /**
  * Future seasonal bookings whose seat rows no longer match the party size.
