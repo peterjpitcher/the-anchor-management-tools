@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js'
 // Imported file by file rather than through '@/components/features/guest': the
 // barrel re-exports GuestShell, which loads the guest webfonts, and a font
@@ -16,6 +16,8 @@ import { GuestHelpLine, GuestPhoneLink } from '@/components/features/guest/Guest
 import { TrustLine } from '@/components/features/guest/TrustLine'
 import { GUEST_MESSAGE_CLASS, GUEST_NOTE_CLASS } from '@/components/features/guest/styles'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
+// Type only: the module itself is server code and must not reach the browser bundle.
+import type { DepositPayClientStep } from '@/lib/table-bookings/deposit-pay-steps'
 import {
   TablePaymentSuccessPanel,
   type TablePaymentConfirmation,
@@ -39,6 +41,41 @@ export function withPhoneNumber(message: string): string {
     : `${message} Call us on ${GUEST_CONTACT.phoneDisplay}.`
 }
 
+/** PayPal's browser error, read field by field and cut short: an Error turns into `{}` as JSON. */
+type StepErrorDetail = { name?: string; code?: string; message?: string; debugId?: string }
+
+function payPalBrowserErrorDetail(error: unknown): StepErrorDetail {
+  const source = (error && typeof error === 'object' ? error : {}) as Record<string, unknown>
+  const pick = (value: unknown, max: number): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined
+  return {
+    name: pick(source.name, 120),
+    code: pick(source.code, 120),
+    message: pick(source.message, 300) ?? pick(error, 300),
+    debugId: pick(source.debug_id, 120) ?? pick(source.debugId, 120),
+  }
+}
+
+/**
+ * Tells the server which step the guest has reached (owner decision, 22 November 2026), so a
+ * payment that never arrives can be explained. Sent and forgotten: it is never waited for, and a
+ * failure here must never touch the payment, so every error is swallowed.
+ */
+function sendStep(stepUrl: string | undefined, step: DepositPayClientStep, detail?: StepErrorDetail): void {
+  if (!stepUrl) return
+  try {
+    void fetch(stepUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(detail ? { step, detail } : { step }),
+      // Lets the request finish if the guest closes the page straight after.
+      keepalive: true,
+    }).catch(() => {})
+  } catch {
+    // Reporting is best effort.
+  }
+}
+
 interface TablePaymentClientProps {
   orderId: string
   bookingReference: string
@@ -52,6 +89,8 @@ interface TablePaymentClientProps {
   paypalClientId: string
   paypalEnvironment: string
   captureAction: (orderId: string) => Promise<TablePaymentCaptureResult>
+  /** Where each step the guest reaches is reported. Left out, nothing is reported. */
+  stepUrl?: string
   // Outside bookings hold no indoor table, so the "reserved" copy stays table-free.
   isOutsideSeating?: boolean
   /** Greeting line under the h1, computed on the server from the customer record. */
@@ -101,6 +140,7 @@ export function TablePaymentClient({
   paypalClientId,
   paypalEnvironment,
   captureAction,
+  stepUrl,
   isOutsideSeating = false,
   greeting,
   success,
@@ -109,6 +149,8 @@ export function TablePaymentClient({
   const [paymentState, setPaymentState] = useState<PaymentState>('idle')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [confirmation, setConfirmation] = useState<TablePaymentConfirmation>('earlier')
+  // PayPal can set its buttons up more than once on one visit; the step is reported once.
+  const buttonsReported = useRef(false)
 
   const holdExpired = new Date(holdExpiresAt) < new Date()
   const seatWord = partySize === 1 ? 'person' : 'people'
@@ -202,8 +244,17 @@ export function TablePaymentClient({
                   // Disabled only while the approved payment is captured. PayPal shows disabled
                   // buttons at 38% opacity, and its card form sits inside them.
                   disabled={paymentState === 'paying'}
-                  createOrder={() => Promise.resolve(orderId)}
+                  onInit={() => {
+                    if (buttonsReported.current) return
+                    buttonsReported.current = true
+                    sendStep(stepUrl, 'buttons_shown')
+                  }}
+                  createOrder={() => {
+                    sendStep(stepUrl, 'paypal_opened')
+                    return Promise.resolve(orderId)
+                  }}
                   onApprove={async () => {
+                    sendStep(stepUrl, 'approved')
                     setPaymentState('paying')
                     try {
                       const result = await captureAction(orderId)
@@ -214,7 +265,8 @@ export function TablePaymentClient({
                         setErrorMessage(result.error || 'Payment capture failed.')
                         setPaymentState('error')
                       }
-                    } catch {
+                    } catch (captureError) {
+                      sendStep(stepUrl, 'capture_call_failed', payPalBrowserErrorDetail(captureError))
                       setErrorMessage(
                         "Something went wrong while we checked your payment, so please don't pay again yet."
                       )
@@ -222,9 +274,11 @@ export function TablePaymentClient({
                     }
                   }}
                   onCancel={() => {
+                    sendStep(stepUrl, 'cancelled')
                     setPaymentState('idle')
                   }}
-                  onError={() => {
+                  onError={(paypalError) => {
+                    sendStep(stepUrl, 'paypal_error', payPalBrowserErrorDetail(paypalError))
                     setErrorMessage("PayPal couldn't take the payment. Please try again.")
                     setPaymentState('error')
                   }}

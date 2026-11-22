@@ -53,6 +53,12 @@ export type MoneyAlertInput = {
    * BACK), so a real PayPal fault is never lost among them.
    */
   subjectTag?: string
+  /**
+   * How long the once-key holds, in hours. Defaults to 30 days, which makes an alert once per
+   * booking and kind. A shorter time turns it into a throttle: the deposit pay page uses one hour,
+   * so a fault that keeps happening is heard about again, but never more than hourly.
+   */
+  ttlHours?: number
 }
 
 export type MoneyAlertOutcome = { sent: boolean; duplicate: boolean }
@@ -86,10 +92,11 @@ export async function alertMoneyNeedsAPerson(
 ): Promise<MoneyAlertOutcome> {
   const onceKey = moneyAlertOnceKey(input)
   const requestHash = computeIdempotencyRequestHash({ onceKey })
+  const ttlHours = input.ttlHours ?? ALERT_TTL_HOURS
 
   let claimed = false
   try {
-    const claim = await claimIdempotencyKey(supabase, onceKey, requestHash, ALERT_TTL_HOURS)
+    const claim = await claimIdempotencyKey(supabase, onceKey, requestHash, ttlHours)
     if (claim.state !== 'claimed') {
       logger.info('Money alert already raised for this booking', {
         metadata: { onceKey, domain: input.domain, bookingId: input.bookingId, kind: input.kind, claim: claim.state },
@@ -128,7 +135,7 @@ export async function alertMoneyNeedsAPerson(
   if (claimed) {
     try {
       if (result.sent) {
-        await persistIdempotencyResponse(supabase, onceKey, requestHash, { state: 'alerted', kind: input.kind }, ALERT_TTL_HOURS)
+        await persistIdempotencyResponse(supabase, onceKey, requestHash, { state: 'alerted', kind: input.kind }, ttlHours)
       } else {
         await releaseIdempotencyClaim(supabase, onceKey, requestHash)
       }

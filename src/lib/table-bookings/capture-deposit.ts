@@ -3,6 +3,7 @@ import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { PAYPAL_DEFAULT_CURRENCY, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { payPalCaptureOutcome } from '@/lib/paypal-capture-outcome'
+import { describePayPalError, type PayPalErrorDetail } from '@/lib/paypal-error-detail'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
 import { alertTableDepositNeedsAPerson } from '@/lib/table-bookings/deposit-alerts'
 import { isClosedTableBookingStatus, settleDepositOnClosedBooking } from '@/lib/table-bookings/late-deposit'
@@ -64,7 +65,17 @@ export type CaptureTableDepositResult =
       confirmationChannel: 'email' | 'sms' | null
     }
   | { ok: false; code: 'NOT_PAYABLE'; blockReason: PayPalDepositCaptureBlockReason }
-  | { ok: false; code: Exclude<TableDepositCaptureFailureCode, 'NOT_PAYABLE'> }
+  | { ok: false; code: Exclude<TableDepositCaptureFailureCode, 'NOT_PAYABLE'>; detail?: TableDepositCaptureFailureDetail }
+
+/**
+ * Why PayPal stopped a capture, for the record of the pay page's steps (owner decision,
+ * 22 November 2026). Ids, codes and PayPal's own wording only; callers must not show it to a guest.
+ */
+export type TableDepositCaptureFailureDetail = {
+  paypal?: PayPalErrorDetail
+  captureStatus?: string | null
+  captureStatusReason?: string | null
+}
 
 export type CaptureTableDepositInput = {
   bookingId: string
@@ -152,7 +163,7 @@ export async function captureTableDeposit(
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { bookingId, orderId },
       })
-      return { ok: false, code: 'PAYPAL_ORDER_LOOKUP_FAILED' }
+      return { ok: false, code: 'PAYPAL_ORDER_LOOKUP_FAILED', detail: { paypal: describePayPalError(error) } }
     }
 
     if (orderAmount === null || !payPalAmountsMatch(orderAmount, expectedAmount)) {
@@ -173,7 +184,7 @@ export async function captureTableDeposit(
         orderId,
         error: error instanceof Error ? error.message : String(error),
       })
-      return { ok: false, code: 'CAPTURE_FAILED' }
+      return { ok: false, code: 'CAPTURE_FAILED', detail: { paypal: describePayPalError(error) } }
     }
     captureId = capture.transactionId ?? null
 
@@ -207,7 +218,11 @@ export async function captureTableDeposit(
         })
         return { ok: false, code: 'CAPTURE_PENDING' }
       }
-      return { ok: false, code: 'CAPTURE_DECLINED' }
+      return {
+        ok: false,
+        code: 'CAPTURE_DECLINED',
+        detail: { captureStatus: capture.captureStatus ?? null, captureStatusReason: capture.captureStatusReason ?? null },
+      }
     }
     moneyTaken = true
 
@@ -336,7 +351,7 @@ export async function captureTableDeposit(
       return await captureNotRecorded(supabase, input, { captureId, amountGbp: capturedAmountGbp, detail: message })
     }
     auditFailure(bookingId, 'payment.capture_failed', { orderId, error: message, bookingId })
-    return { ok: false, code: 'CAPTURE_FAILED' }
+    return { ok: false, code: 'CAPTURE_FAILED', detail: { paypal: describePayPalError(error) } }
   }
 }
 
