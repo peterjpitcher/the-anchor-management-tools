@@ -14,6 +14,14 @@ import { loadPayPalPayerPrefill } from '@/lib/payments/paypal-payer-prefill'
 import { TablePaymentClient, type TablePaymentCaptureResult } from './TablePaymentClient'
 import { TablePaymentSuccessPanel, type TablePaymentSuccessDetails } from './TablePaymentSuccessPanel'
 import { captureTableDeposit, type CaptureTableDepositResult } from '@/lib/table-bookings/capture-deposit'
+import { describePayPalError } from '@/lib/paypal-error-detail'
+import {
+  afterDepositPayResponse,
+  recordDepositPayStep,
+  reportDepositCaptureOutcome,
+  reportDepositPayLinkBlocked,
+  reportDepositPaySetupFailed,
+} from '@/lib/table-bookings/deposit-pay-steps'
 import {
   extractPayPalOrderAmountGbp,
   payPalAmountsMatch,
@@ -124,11 +132,21 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const state = getSingleValue(resolvedSearchParams.state)
   const reason = getSingleValue(resolvedSearchParams.reason)
 
+  // Every step this page reaches is recorded against the booking (owner decision,
+  // 22 November 2026), after the response has gone, so none of it holds the guest up.
+  const headerValues = await headers()
+
   if (state === 'blocked') {
+    reportDepositPayLinkBlocked({
+      rawToken: token,
+      reason,
+      decidedBy: 'redirect',
+      record: true,
+      throttleHeaders: headerValues,
+    })
     return <BlockedScreen reason={reason} />
   }
 
-  const headerValues = await headers()
   const throttle = await checkGuestTokenThrottle({
     headers: headerValues,
     rawToken: token,
@@ -137,6 +155,8 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   })
 
   if (!throttle.allowed) {
+    // Logged only: a rate limit is the wrong moment to add more database work.
+    reportDepositPayLinkBlocked({ rawToken: token, reason: 'rate_limited', decidedBy: 'rate_limit', record: false })
     return <BlockedScreen reason="rate_limited" />
   }
 
@@ -144,6 +164,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   const preview = await getTablePaymentPreviewByRawToken(supabase, token)
 
   if (preview.state !== 'ready') {
+    reportDepositPayLinkBlocked({ rawToken: token, reason: preview.reason, decidedBy: 'link_check', record: true })
     return <BlockedScreen reason={preview.reason} />
   }
 
@@ -154,6 +175,16 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
     .select('payment_status, paypal_deposit_order_id, is_outside_seating, booking_period_id, contact_email')
     .eq('id', preview.tableBookingId)
     .single()
+
+  const stepBooking = { tableBookingId: preview.tableBookingId, customerId: preview.customerId }
+  const alreadyPaid = booking?.payment_status === 'completed'
+  afterDepositPayResponse(() =>
+    recordDepositPayStep(supabase, {
+      ...stepBooking,
+      step: 'page_viewed',
+      detail: { alreadyPaid, returnedCancelled: state === 'cancelled' },
+    }),
+  )
 
   const isOutsideSeating = Boolean(booking?.is_outside_seating)
   const isChristmas = isChristmasBookingType(preview.bookingType)
@@ -243,7 +274,19 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         requestId: `tb-deposit-${preview.tableBookingId}-${Math.round(preview.totalAmount * 100)}`,
         payer,
       })
-    } catch {
+    } catch (setupError) {
+      const paypalError = describePayPalError(setupError)
+      reportDepositPaySetupFailed({
+        ...stepBooking,
+        detail: {
+          reason: 'order_create_failed',
+          paypalStatus: paypalError.status,
+          paypalName: paypalError.name,
+          paypalIssues: paypalError.issues.length ? paypalError.issues : undefined,
+          paypalDebugId: paypalError.debugId,
+          paypalMessage: paypalError.message,
+        },
+      })
       return (
         <PaymentSetupFailedScreen
           lead={formatGuestGreeting(null, 'we could not set up your payment right now.')}
@@ -278,6 +321,17 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
           action_needed: 'PayPal order created but order ID was not persisted',
         },
       })
+      reportDepositPaySetupFailed({
+        ...stepBooking,
+        detail: {
+          reason: 'order_not_saved',
+          paypalOrderId,
+          dbCode: persistOrderError.code,
+          dbMessage: persistOrderError.message,
+          dbDetails: persistOrderError.details,
+          dbHint: persistOrderError.hint,
+        },
+      })
       return (
         <PaymentSetupFailedScreen
           lead={formatGuestGreeting(null, 'we could not save your payment setup right now.')}
@@ -303,6 +357,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
   // Capture server action, 'use server' inside the function body. The steps are the shared table
   // deposit capture (captureTableDeposit, BK-129); only the guest's wording is decided here.
   const bookingIdForCapture = preview.tableBookingId
+  const customerIdForCapture = preview.customerId
   const expectedCurrencyForCapture = preview.currency
   async function captureDeposit(captureOrderId: string): Promise<TablePaymentCaptureResult> {
     'use server'
@@ -313,6 +368,8 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
       createdVia: 'guest_table_payment',
       currency: expectedCurrencyForCapture,
     })
+    // Paid, or refused and why, recorded against the booking once the guest has their answer.
+    reportDepositCaptureOutcome({ tableBookingId: bookingIdForCapture, customerId: customerIdForCapture, result })
     if (result.ok) {
       // The channel that actually reached the guest, so the screen never says "text" for an email.
       // A deposit recorded by an earlier trigger claims no channel; a send that failed asks the
@@ -342,6 +399,7 @@ export default async function TablePaymentPage({ params, searchParams }: TablePa
         paypalClientId={paypalClientId}
         paypalEnvironment={paypalEnvironment}
         captureAction={captureDeposit}
+        stepUrl={`/g/${encodeURIComponent(token)}/table-payment/step`}
         isOutsideSeating={isOutsideSeating}
         greeting={formatGuestGreeting(guestFirstName, 'your booking and deposit details are below.')}
         success={successDetails}
