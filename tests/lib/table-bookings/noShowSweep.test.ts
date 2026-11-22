@@ -5,7 +5,7 @@ import { createFakeSupabase, type FakeSupabase } from '../../helpers/fakeSupabas
  * The end-of-day no-show sweep (owner decision, 22 November 2026): which bookings it takes and
  * which it leaves, that a night running past midnight is not swept until it closes, that an
  * unreadable set of hours sweeps nothing, and that a second run changes nothing. Run against the
- * in-memory fake database with the real plan builder, deposit rule and trading-day rule.
+ * in-memory fake database with the real plan builder and trading-day rule.
  *
  * Every instant is written in UTC so the file reads the same in both test zones.
  */
@@ -127,29 +127,31 @@ describe('end-of-day no-show sweep', () => {
     expect(auditOrThrow).not.toHaveBeenCalled()
   })
 
-  it('leaves a confirmed booking whose required deposit is still unpaid to the deposit job', async () => {
+  it('moves no money: a paid deposit stays exactly as it was', async () => {
     const db = createFakeSupabase({
       table_bookings: [
-        booking('owes-deposit', { party_size: 16, committed_party_size: 16, payment_status: 'pending' }),
         booking('paid-deposit', {
           party_size: 16,
           committed_party_size: 16,
           payment_status: 'completed',
           paypal_deposit_capture_id: 'CAP-1',
         }),
+        // Confirmed but still owing a deposit: the deposit timeout only reads pending_payment,
+        // so nothing else would ever clear this one from the strip.
+        booking('confirmed-owing', { party_size: 16, committed_party_size: 16, payment_status: 'pending' }),
       ],
     })
 
     const result = await sweep(db, JUST_AFTER_MIDNIGHT)
 
-    expect(result).toMatchObject({ considered: 2, marked: 1, skipped: { awaiting_deposit: 1 } })
-    expect(row(db, 'owes-deposit')?.status).toBe('confirmed')
-    // The deposit is not touched: no refund, no charge. Only the status and the marks change.
+    expect(result).toMatchObject({ considered: 2, marked: 2 })
+    // No refund, no charge. Only the status and the marks change.
     expect(row(db, 'paid-deposit')).toMatchObject({
       status: 'no_show',
       payment_status: 'completed',
       paypal_deposit_capture_id: 'CAP-1',
     })
+    expect(row(db, 'confirmed-owing')).toMatchObject({ status: 'no_show', payment_status: 'pending' })
   })
 
   it('catches up the last seven days after a missed run, the same window as the strip', async () => {

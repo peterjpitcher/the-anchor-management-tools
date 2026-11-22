@@ -2,7 +2,6 @@ import type { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { AuditService } from '@/services/audit'
 import { resolveTradingDayNow, type TradingDayInForce } from '@/lib/business-hours/trading-day'
-import { hasUnpaidRequiredDeposit } from '@/lib/foh/bookings'
 import { isEventLinkedTableBooking } from '@/lib/table-bookings/event-link'
 import { markTableBookingNoShow } from '@/lib/table-bookings/no-show'
 import { openOutcomeWindow } from '@/lib/table-bookings/open-outcomes'
@@ -22,8 +21,9 @@ import { openOutcomeWindow } from '@/lib/table-bookings/open-outcomes'
  * the next: it looks back the same seven days as the 'Still open from earlier' strip.
  *
  * Left alone:
- *  - a booking still waiting for its deposit (status pending_payment or pending_card_capture, or
- *    a confirmed booking whose required deposit is unpaid): the deposit timeout handles those;
+ *  - a booking still waiting for its deposit (status pending_payment or pending_card_capture): the
+ *    deposit timeout cancels those. A CONFIRMED booking that somehow still owes a deposit is taken
+ *    like any other, because that job only reads pending_payment and nothing else would clear it;
  *  - the table half of an event booking: who came to an event is recorded on the event;
  *  - anything with an outcome, and anything a person changed while the sweep was running.
  *
@@ -37,7 +37,7 @@ type Db = ReturnType<typeof createAdminClient>
 /** A ceiling on one run. The strip itself never lists more than this. */
 export const NO_SHOW_SWEEP_MAX_PER_RUN = 200
 
-export type NoShowSweepSkipReason = 'awaiting_deposit' | 'not_started' | 'changed'
+export type NoShowSweepSkipReason = 'not_started' | 'changed'
 
 export type NoShowSweepResult =
   | { state: 'held'; reason: 'hours_unreadable' }
@@ -60,8 +60,6 @@ export type NoShowSweepDeps = {
 
 type SweepRow = {
   id: string
-  booking_reference: string | null
-  customer_id: string | null
   status: string
   booking_date: string
   booking_time: string
@@ -71,12 +69,6 @@ type SweepRow = {
   left_at: string | null
   no_show_at: string | null
   event_booking_id: string | null
-  payment_status: string | null
-  deposit_waived: boolean
-  party_size: number | null
-  committed_party_size: number | null
-  paypal_deposit_capture_id: string | null
-  booking_type: string | null
 }
 
 export async function runNoShowSweep(deps: NoShowSweepDeps): Promise<NoShowSweepResult> {
@@ -91,7 +83,7 @@ export async function runNoShowSweep(deps: NoShowSweepDeps): Promise<NoShowSweep
   const { data, error } = await db
     .from('table_bookings')
     .select(
-      'id, booking_reference, customer_id, status, booking_date, booking_time, start_datetime, end_datetime, seated_at, left_at, no_show_at, event_booking_id, payment_status, deposit_waived, party_size, committed_party_size, paypal_deposit_capture_id, booking_type'
+      'id, status, booking_date, booking_time, start_datetime, end_datetime, seated_at, left_at, no_show_at, event_booking_id'
     )
     .eq('status', 'confirmed')
     .is('seated_at', null)
@@ -122,10 +114,6 @@ export async function runNoShowSweep(deps: NoShowSweepDeps): Promise<NoShowSweep
   for (const booking of rows) {
     // The query already leaves these out; checked again so the rule is stated in one place.
     if (isEventLinkedTableBooking(booking)) continue
-    if (hasUnpaidRequiredDeposit(booking)) {
-      skip('awaiting_deposit')
-      continue
-    }
 
     const marked = await markTableBookingNoShow(db, {
       booking,

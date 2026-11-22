@@ -1202,6 +1202,8 @@ export class GdprService {
         internal_notes: null,
         special_requirements: null,
         cancellation_reason: null,
+        // Their own words in reply to the no-show email (22 November 2026).
+        no_show_guest_reason: null,
         allergies: null,
         dietary_requirements: null,
         // The email typed for the booking (BK-078).
