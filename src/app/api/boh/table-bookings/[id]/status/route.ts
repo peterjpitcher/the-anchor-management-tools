@@ -13,6 +13,7 @@ import {
 } from '@/lib/foh/bookings'
 import {
   buildStaffStatusTransitionPlan,
+  leftBeforeArrivalProblem,
   shortenAssignmentsOnLeave,
   type StaffStatusAction
 } from '@/lib/table-bookings/staff-status-actions'
@@ -111,6 +112,14 @@ export async function POST(
     const problem = await checkNoShowCanComeBack(auth.supabase, booking)
     if (problem) {
       return NextResponse.json({ error: problem }, { status: 409 })
+    }
+  }
+
+  if (action === 'left' || action === 'completed') {
+    // Before anything is freed: a booking that has not started cannot have left.
+    const tooEarly = leftBeforeArrivalProblem(booking, nowIso)
+    if (tooEarly) {
+      return NextResponse.json({ error: tooEarly }, { status: 409 })
     }
   }
 

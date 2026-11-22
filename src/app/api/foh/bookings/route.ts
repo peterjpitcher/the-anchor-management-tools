@@ -181,6 +181,10 @@ const CreateFohTableBookingSchema = z.object({
     value.management_override !== true &&
     value.waive_deposit !== true &&
     value.is_venue_event !== true &&
+    // A party that has walked in is already here: no deposit is asked for (owner decision,
+    // 22 November 2026). The screen never sent a method for a walk-in, so a walk-in of 15 or more
+    // could not be saved at all. A Christmas booking still always takes its deposit.
+    !(value.walk_in === true && !isChristmasPurpose(value.purpose)) &&
     value.party_size != null &&
     requiresDepositForParty(value.party_size, {
       // Christmas bookings always take a deposit, so staff must always pick a
@@ -249,7 +253,8 @@ async function createManualWalkInBookingOverride(params: {
   seatNow?: boolean // default: true
   /**
    * Recorded as deposit_waived. Set for a super admin override of a party that would owe a deposit
-   * (BK-050), so the booking says why nothing is owed and can be seated. Never for a walk-in.
+   * (BK-050), and for a walk-in of 15 or more, which takes none (owner decision, 22 November 2026),
+   * so the booking says why nothing is owed and can be seated.
    */
   depositWaived?: boolean
   payload: {
@@ -1249,9 +1254,17 @@ async function createFohTableBooking(
   // the `Boolean(...)` wrapper widens it back so the defense-in-depth
   // check survives any future refactor that lets an override booking
   // flow into this branch (Zod schema at line ~96 already exempts it).
+  // A walk-in is already in the pub, so no deposit is taken (owner decision, 22 November 2026).
+  // Christmas is the exception: it always takes its deposit.
+  // Only where a deposit would otherwise be due, so an ordinary walk-in is not recorded as waived.
+  const walkInWithoutDeposit =
+    payload.walk_in === true &&
+    !isChristmasPurpose(payload.purpose) &&
+    requiresDepositForParty(payload.party_size, { isChristmas: false })
   const treatAsWaived =
     payload.waive_deposit === true ||
     payload.is_venue_event === true ||
+    walkInWithoutDeposit ||
     Boolean(payload.management_override)
   // Christmas bookings always take a deposit, at any party size. A manager
   // waiver, venue event or management override still wins.
@@ -1284,7 +1297,7 @@ async function createFohTableBooking(
     bookingDate: payload.date,
     periodAccepted,
     depositWaived: treatAsWaived,
-    waivedFor: payload.is_venue_event === true ? 'pub_event' : 'manager',
+    waivedFor: payload.is_venue_event === true ? 'pub_event' : walkInWithoutDeposit && payload.waive_deposit !== true ? 'walk_in' : 'manager',
   })
 
   const requiresDeposit = expectedDeposit
@@ -1442,6 +1455,9 @@ async function createFohTableBooking(
         supabase: auth.supabase,
         customerId,
         seatNow: shouldSeatNow,
+        // A walk-in of 15 or more takes no deposit (owner decision, 22 November 2026). Say so on
+        // the booking, so it never reads as owing one.
+        depositWaived: walkInWithoutDeposit,
         payload: {
           date: payload.date,
           time: bookingTime,
@@ -1507,6 +1523,21 @@ async function createFohTableBooking(
         managementOverride: false,
       },
     })
+    if (walkInWithoutDeposit && payload.waive_deposit !== true && payload.is_venue_event !== true && bookingResult.table_booking_id) {
+      await logAuditEvent({
+        user_id: auth.userId,
+        operation_type: 'table_booking.deposit_waived',
+        resource_type: 'table_booking',
+        resource_id: bookingResult.table_booking_id,
+        operation_status: 'success',
+        additional_info: {
+          reason: 'walk_in',
+          description: 'No deposit: the party walked in',
+          booking_reference: bookingResult.booking_reference ?? null,
+          party_size: payload.party_size,
+        },
+      })
+    }
     if ((payload.waive_deposit === true || payload.is_venue_event === true) && bookingResult.table_booking_id) {
       await logAuditEvent({
         user_id: auth.userId,

@@ -65,6 +65,7 @@ export type TableBookingForFoh = {
   is_outside_seating?: boolean
   /** Set when this table is the table half of an event booking (BK-074). */
   event_booking_id?: string | null
+  seated_at?: string | null
 }
 
 export async function getTableBookingForFoh(
@@ -73,7 +74,7 @@ export async function getTableBookingForFoh(
 ): Promise<TableBookingForFoh | null> {
   const { data, error } = await supabase.from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, paypal_deposit_capture_id, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, high_chair_count, is_outside_seating, event_booking_id'
+      'id, customer_id, booking_reference, status, booking_type, payment_status, deposit_waived, paypal_deposit_capture_id, party_size, committed_party_size, booking_date, booking_time, duration_minutes, start_datetime, end_datetime, seated_at, high_chair_count, is_outside_seating, event_booking_id'
     )
     .eq('id', bookingId)
     .maybeSingle()

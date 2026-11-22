@@ -837,13 +837,14 @@ export async function updateTableBookingByRawToken(
     }
   }
 
-  // A smaller party hands back the table and the longer sitting it no longer needs: a party of 7
-  // cut to 5 here sat holding two tables of six on 22 November 2026. After the size is saved, and
-  // never able to fail the change. Imported here like the alerts below, to keep the audit module
-  // out of everything that imports this file for its token helpers.
-  if (newPartySize < oldPartySize) {
-    const { rightSizeBookingAfterPartyShrink } = await import('./shrink-right-size')
-    await rightSizeBookingAfterPartyShrink(supabase, {
+  // A smaller party moves to a smaller table and a shorter sitting (a party of 7 cut to 5 here sat
+  // holding two tables of six on 22 November 2026); a bigger one gets the longer sitting when its
+  // tables are free for it. After the size is saved, and never able to fail the change. Imported
+  // here like the alerts below, to keep the audit module out of everything that imports this file
+  // for its token helpers.
+  if (newPartySize !== oldPartySize) {
+    const { rightSizeBookingAfterPartySizeChange } = await import('./party-size-right-size')
+    await rightSizeBookingAfterPartySizeChange(supabase, {
       bookingId,
       oldPartySize,
       newPartySize,

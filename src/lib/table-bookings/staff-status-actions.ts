@@ -15,6 +15,27 @@ export type StaffStatusBooking = {
   start_datetime: string | null
   /** The planned end. 'left' only ever brings it forward, never pushes it later (BK-093). */
   end_datetime?: string | null
+  /** When the party was seated, if it was. A seated party can always be marked left. */
+  seated_at?: string | null
+}
+
+export const LEFT_BEFORE_ARRIVAL_ERROR =
+  'This booking has not started and nobody has been seated, so it cannot be marked as left or completed yet.'
+
+/**
+ * 'Left' and 'completed' are for a party that has been here. On 15 November 2026 a party of 15
+ * booked for 21 November was marked left seven minutes after it was made: its three tables stopped
+ * being held and its covers dropped out of the kitchen count for six days. One stray tap must not
+ * do that, so a booking that has not reached its start time and has nobody seated is refused. A
+ * party seated early can still leave early.
+ */
+export function leftBeforeArrivalProblem(booking: StaffStatusBooking, nowIso: string): string | null {
+  if (booking.seated_at) return null
+  const startIso = getBookingStartIso(booking)
+  const startMs = startIso ? Date.parse(startIso) : Number.NaN
+  const nowMs = Date.parse(nowIso)
+  if (Number.isFinite(startMs) && Number.isFinite(nowMs) && nowMs < startMs) return LEFT_BEFORE_ARRIVAL_ERROR
+  return null
 }
 
 /**
@@ -204,6 +225,11 @@ export function buildStaffStatusTransitionPlan(input: {
   const blocked = blocks(input.action, input.booking)
   if (blocked) {
     return blocked
+  }
+
+  if (input.action === 'left' || input.action === 'completed') {
+    const tooEarly = leftBeforeArrivalProblem(input.booking, input.nowIso)
+    if (tooEarly) return { ok: false, status: 409, error: tooEarly }
   }
 
   if (input.action === 'seated') {

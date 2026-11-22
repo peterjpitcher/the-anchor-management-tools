@@ -99,3 +99,59 @@ describe('leftEndDatetime and the BOH left plan', () => {
     expect(plan.ok && plan.plan.update).toMatchObject({ left_at: NOW, end_datetime: PLANNED_END })
   })
 })
+
+/**
+ * On 15 November 2026 a party of 15 booked for 21 November was marked left seven minutes after it
+ * was made. Its tables stopped being held and its covers left the kitchen count for six days.
+ */
+describe("'left' and 'completed' are refused before a booking has started", () => {
+  const FUTURE = {
+    id: ID,
+    status: 'confirmed',
+    booking_date: '2026-10-30',
+    booking_time: '16:00',
+    start_datetime: '2026-10-30T16:00:00.000Z',
+    end_datetime: '2026-10-30T18:00:00.000Z',
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(NOW))
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('FOH refuses it and frees nothing', async () => {
+    const { supabase, calls } = buildSupabase({ error: null })
+    mocks.permission.mockResolvedValue({ ok: true, userId: 'user-1', supabase })
+    mocks.getBooking.mockResolvedValue(FUTURE)
+
+    const res = await call()
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toMatch(/has not started/)
+    expect(calls.bookingUpdate).toBeNull()
+    expect(calls.assignmentFilters).toEqual([])
+  })
+
+  it('a party seated early can still leave early', async () => {
+    const { supabase, calls } = buildSupabase({ error: null })
+    mocks.permission.mockResolvedValue({ ok: true, userId: 'user-1', supabase })
+    mocks.getBooking.mockResolvedValue({ ...FUTURE, seated_at: '2026-10-24T18:30:00.000Z' })
+
+    const res = await call()
+
+    expect(res.status).toBe(200)
+    expect(calls.bookingUpdate).toMatchObject({ left_at: NOW })
+  })
+
+  it.each(['left', 'completed'] as const)('the back-office plan refuses %s', (action) => {
+    const plan = buildStaffStatusTransitionPlan({ action, booking: FUTURE, nowIso: NOW })
+    expect(plan).toMatchObject({ ok: false, status: 409 })
+  })
+
+  it('the back-office plan allows it once the booking has started', () => {
+    const plan = buildStaffStatusTransitionPlan({ action: 'completed', booking: FUTURE, nowIso: '2026-10-30T17:00:00.000Z' })
+    expect(plan.ok).toBe(true)
+  })
+})

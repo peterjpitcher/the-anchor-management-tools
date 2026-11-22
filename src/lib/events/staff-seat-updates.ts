@@ -10,7 +10,7 @@ import {
   getMoveTableAvailability,
   moveBookingAssignmentToTables,
 } from '@/lib/table-bookings/move-table'
-import { rightSizeBookingAfterPartyShrink } from '@/lib/table-bookings/shrink-right-size'
+import { rightSizeBookingAfterPartySizeChange } from '@/lib/table-bookings/party-size-right-size'
 
 type SeatUpdateSmsMeta = {
   success: boolean
@@ -583,10 +583,11 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
       }
     }
 
-    // A smaller party hands back the table and the longer sitting it no longer needs. After the
-    // size is saved, and never able to fail the change (it logs and carries on).
-    if (newPartySize < oldPartySize) {
-      await rightSizeBookingAfterPartyShrink(supabase, {
+    // A smaller party moves to a smaller table and a shorter sitting; a bigger one gets the longer
+    // sitting when its tables are free for it. After the size is saved, and never able to fail the
+    // change (it logs and carries on).
+    if (newPartySize !== oldPartySize) {
+      await rightSizeBookingAfterPartySizeChange(supabase, {
         bookingId: tableBooking.id,
         oldPartySize,
         newPartySize,
