@@ -38,24 +38,32 @@ export function UndoBar({
   onUndo: () => void
   onExpire: () => void
 }) {
+  // Counted against the clock, not by adding up ticks: an iPad throttles timers on a page it is
+  // not drawing, and ten ticks can then take far longer than ten seconds.
+  const [deadlineMs] = useState(() => Date.now() + UNDO_WINDOW_MS)
   const [secondsLeft, setSecondsLeft] = useState(Math.ceil(UNDO_WINDOW_MS / 1000))
 
-  // Read through a ref so a parent re-render never restarts the second in progress.
+  // Read through a ref so a parent re-render never restarts the countdown.
   const onExpireRef = useRef(onExpire)
   useEffect(() => {
     onExpireRef.current = onExpire
   }, [onExpire])
+  const expiredRef = useRef(false)
 
   useEffect(() => {
     // While the undo itself is being sent the offer must not vanish from under the tap.
     if (busy) return
-    if (secondsLeft <= 0) {
-      onExpireRef.current()
-      return
+    const check = () => {
+      const remaining = Math.ceil((deadlineMs - Date.now()) / 1000)
+      setSecondsLeft(Math.max(remaining, 0))
+      if (remaining <= 0 && !expiredRef.current) {
+        expiredRef.current = true
+        onExpireRef.current()
+      }
     }
-    const timer = window.setTimeout(() => setSecondsLeft((current) => current - 1), 1000)
-    return () => window.clearTimeout(timer)
-  }, [secondsLeft, busy])
+    const interval = window.setInterval(check, 250)
+    return () => window.clearInterval(interval)
+  }, [busy, deadlineMs])
 
   return (
     <div

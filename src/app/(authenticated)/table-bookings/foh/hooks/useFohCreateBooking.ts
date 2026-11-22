@@ -459,7 +459,9 @@ export function useFohCreateBooking(input: {
           return options.suggestedTime
         }
 
-        if (nextPurpose === 'event' || options?.prefill?.booking_date) {
+        // Another day keeps the time already in the form: 'the next free minute' only means
+        // something for the day being worked.
+        if (nextPurpose === 'event' || options?.prefill?.booking_date || bookingDate !== serviceDateNow) {
           return current.time
         }
 
