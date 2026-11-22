@@ -18616,6 +18616,26 @@
     "type": "string | null"
    },
    {
+    "name": "no_show_follow_up_claimed_at",
+    "type": "string | null"
+   },
+   {
+    "name": "no_show_follow_up_sent_at",
+    "type": "string | null"
+   },
+   {
+    "name": "no_show_guest_reason",
+    "type": "string | null"
+   },
+   {
+    "name": "no_show_guest_responded_at",
+    "type": "string | null"
+   },
+   {
+    "name": "no_show_guest_response",
+    "type": "string | null"
+   },
+   {
     "name": "no_show_marked_at",
     "type": "string | null"
    },

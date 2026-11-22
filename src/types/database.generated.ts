@@ -19108,6 +19108,11 @@ export type Database = {
           left_at: string | null
           modification_count: number | null
           no_show_at: string | null
+          no_show_follow_up_claimed_at: string | null
+          no_show_follow_up_sent_at: string | null
+          no_show_guest_reason: string | null
+          no_show_guest_responded_at: string | null
+          no_show_guest_response: string | null
           no_show_marked_at: string | null
           no_show_marked_by: string | null
           original_booking_data: Json | null
@@ -19188,6 +19193,11 @@ export type Database = {
           left_at?: string | null
           modification_count?: number | null
           no_show_at?: string | null
+          no_show_follow_up_claimed_at?: string | null
+          no_show_follow_up_sent_at?: string | null
+          no_show_guest_reason?: string | null
+          no_show_guest_responded_at?: string | null
+          no_show_guest_response?: string | null
           no_show_marked_at?: string | null
           no_show_marked_by?: string | null
           original_booking_data?: Json | null
@@ -19268,6 +19278,11 @@ export type Database = {
           left_at?: string | null
           modification_count?: number | null
           no_show_at?: string | null
+          no_show_follow_up_claimed_at?: string | null
+          no_show_follow_up_sent_at?: string | null
+          no_show_guest_reason?: string | null
+          no_show_guest_responded_at?: string | null
+          no_show_guest_response?: string | null
           no_show_marked_at?: string | null
           no_show_marked_by?: string | null
           original_booking_data?: Json | null
