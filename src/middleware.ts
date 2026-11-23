@@ -223,6 +223,18 @@ export async function middleware(request: NextRequest) {
     return applyNoIndexHeader(onboardingRateLimitResponse)
   }
 
+  // API routes are public here and every handler does its own auth (session, API key, cron
+  // bearer, webhook signature or signed token), so the session check below protected nothing on
+  // them. It did cost a Supabase Auth call for every signed-in request: the screens that refresh
+  // themselves in the background (front of house, back of house, the menu counts) made thousands
+  // of them a day, each followed by the handler's own check. A handler that reads the session
+  // through the cookie client refreshes an expired token itself and writes the new cookies on its
+  // own response, so nothing is lost by skipping it here. Page requests keep the check.
+  const pathname = request.nextUrl.pathname
+  if (pathname === '/api' || pathname.startsWith('/api/')) {
+    return applyNoIndexHeader(NextResponse.next())
+  }
+
   // 1. Create an unmodified response
   let response = NextResponse.next({
     request: {

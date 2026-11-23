@@ -18,6 +18,7 @@ import { NextRequest } from 'next/server'
 type CookieToSet = { name: string; value: string; options: Record<string, unknown> }
 
 const mocks = vi.hoisted(() => ({
+  getUserCalls: 0,
   user: null as { id: string } | null,
   cookiesWrittenByGetUser: [] as CookieToSet[],
 }))
@@ -30,6 +31,7 @@ vi.mock('@supabase/ssr', () => ({
   ) => ({
     auth: {
       getUser: async () => {
+        mocks.getUserCalls += 1
         if (mocks.cookiesWrittenByGetUser.length > 0) {
           options.cookies.setAll(mocks.cookiesWrittenByGetUser)
         }
@@ -70,6 +72,7 @@ function sentCookies(response: Response): Map<string, { value: string; maxAge?: 
 }
 
 beforeEach(() => {
+  mocks.getUserCalls = 0
   mocks.user = null
   mocks.cookiesWrittenByGetUser = []
 })
@@ -138,6 +141,51 @@ describe('middleware sign-in redirect cookies', () => {
     const sent = sentCookies(response)
     expect(sent.get('sb-abc-auth-token')?.value).toBe('fresh-session')
     expect(sent.has('post_login_redirect')).toBe(false)
+  })
+})
+
+/**
+ * API routes do their own auth, so the middleware no longer spends a Supabase Auth call on them:
+ * the screens that refresh themselves in the background made thousands a day. Pages keep the check.
+ */
+describe('middleware session check on API routes', () => {
+  it.each(['/api/foh/schedule?date=2026-11-23', '/api/outstanding-counts', '/api'])(
+    'makes no session check for %s and lets it through',
+    async (path) => {
+      mocks.user = { id: 'user-1' }
+
+      const response = await middleware(request(path))
+
+      expect(mocks.getUserCalls).toBe(0)
+      expect(response.headers.get('location')).toBeNull()
+      expect(response.headers.get('X-Robots-Tag')).toBe('noindex, nofollow, noarchive, nosnippet')
+    },
+  )
+
+  it('lets a signed-out API request through to the handler, which does its own auth', async () => {
+    const response = await middleware(request('/api/foh/schedule'))
+
+    expect(mocks.getUserCalls).toBe(0)
+    expect(response.headers.get('location')).toBeNull()
+  })
+
+  it.each(['/apiary', '/api-keys', '/dashboard', '/table-bookings/foh'])(
+    'still checks the session for %s and sends a signed-out visitor to sign in',
+    async (path) => {
+      const response = await middleware(request(path))
+
+      expect(mocks.getUserCalls).toBe(1)
+      expect(new URL(response.headers.get('location') ?? '').pathname).toBe('/auth/login')
+    },
+  )
+
+  it('still checks the session once for a signed-in page request', async () => {
+    mocks.user = { id: 'user-1' }
+
+    const response = await middleware(request('/table-bookings/foh'))
+
+    expect(mocks.getUserCalls).toBe(1)
+    expect(response.headers.get('location')).toBeNull()
   })
 })
 
