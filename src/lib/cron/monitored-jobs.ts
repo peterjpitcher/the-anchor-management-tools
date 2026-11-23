@@ -213,6 +213,18 @@ export const MONITORED_CRON_JOBS: readonly MonitoredCronJob[] = [
     label: 'Table booking watch (website bookings stopped or cannot reach us)',
     monitoredFrom: TABLE_BOOKING_JOBS_WATCHED_FROM,
   },
+  {
+    jobName: 'table-booking-no-shows',
+    path: '/api/cron/table-booking-no-shows',
+    // Hourly, so a trading day is swept within the hour after it ends; only the run at 10:00
+    // London sends the morning-after emails.
+    intervalMinutes: 60,
+    maxDurationSeconds: 120,
+    recording: 'hourly',
+    label: 'Table booking end-of-day no-shows and the morning-after email',
+    // New on 22 November 2026; see signing-reminders above.
+    monitoredFrom: '2026-11-24T00:00:00.000Z',
+  },
 ]
 
 /** Slack on top of twice the interval, for Vercel starting a run a little late. */

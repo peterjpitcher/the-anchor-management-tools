@@ -3,13 +3,16 @@ import { shiftIsoDate } from '@/lib/dateUtils'
 
 /**
  * Table bookings from earlier days that nobody marked (BK-130, customer bookings review of 24
- * October 2026; owner decision D13). A booking nobody seated, saw leave or marked as a no-show
- * stays 'confirmed' for good: the owner ruled out an overnight sweep on 6 August 2026, because the
- * review request needs the booking confirmed. So FOH and BOH list them in a 'Still open from
- * earlier' strip with one-tap Arrived and No-show.
+ * October 2026; owner decision D13). FOH and BOH list them in a 'Still open from earlier' strip
+ * with one-tap Arrived and No-show.
+ *
+ * Since 22 November 2026 the strip is a safety net, not the routine: the owner reversed the
+ * 6 August decision against an overnight sweep, and the hourly job in no-show-sweep.ts now marks
+ * every such booking a no-show once its trading day has ended. A booking only stays here when the
+ * sweep left it alone (a deposit still owed) or has not run yet.
  *
  * The strip covers the review window: after seven days a booking leaves the list unmarked, and
- * reads as 'not recorded', never as a no-show.
+ * reads as 'not recorded', never as a no-show. The sweep looks back the same seven days.
  *
  * A table booking made for an event booking is left out: who came to an event is ticked on the
  * event page.

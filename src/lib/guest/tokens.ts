@@ -14,6 +14,8 @@ type GuestTokenActionType =
   | 'email_capture'
   | 'preorder_guest'
   | 'event_rebook'
+  // The link in the morning-after no-show email (src/lib/table-bookings/no-show-follow-up.ts).
+  | 'no_show_follow_up'
 
 export type CreateGuestTokenInput = {
   customerId: string

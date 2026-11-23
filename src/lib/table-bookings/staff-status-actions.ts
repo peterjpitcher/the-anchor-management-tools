@@ -215,6 +215,43 @@ export function buildPastArrivalPlan(input: {
   }
 }
 
+/**
+ * A no-show put right because the party did come in: the guest said so from the morning-after
+ * email (owner decision, 22 November 2026). It is the two existing moves in one: the no-show is
+ * undone as 'Mark Confirmed' undoes it (status back to confirmed, the no-show marks cleared), and
+ * the visit is stamped as buildPastArrivalPlan stamps it, at the booking's own start and end
+ * rather than the time the button is pressed. The caller runs checkNoShowCanComeBack first, as the
+ * staff routes do. The customer's no-show tally comes down in the database, with the status.
+ */
+export function buildNoShowAttendedPlan(input: {
+  booking: StaffStatusBooking & { end_datetime?: string | null }
+  nowIso: string
+}): StaffStatusTransitionResult {
+  const { booking } = input
+  if (booking.status !== 'no_show') {
+    return { ok: false, status: 409, error: 'Only a no-show booking can be put right this way.' }
+  }
+  const startIso = getBookingStartIso(booking)
+  if (!startIso) {
+    return { ok: false, status: 409, error: 'This booking has no start time.' }
+  }
+  return {
+    ok: true,
+    plan: {
+      update: {
+        status: 'confirmed',
+        seated_at: startIso,
+        left_at: booking.end_datetime ?? startIso,
+        no_show_at: null,
+        no_show_marked_at: null,
+        no_show_marked_by: null,
+        updated_at: input.nowIso,
+      },
+      select: 'id, status, seated_at, left_at, no_show_at, no_show_marked_at, no_show_marked_by',
+    },
+  }
+}
+
 export function buildStaffStatusTransitionPlan(input: {
   action: StaffStatusAction
   booking: StaffStatusBooking
@@ -285,6 +322,26 @@ export function buildStaffStatusTransitionPlan(input: {
   }
 
   if (input.action === 'confirmed') {
+    // 'Mark Confirmed' on a no-show whose visit is already over means the party did come. It is
+    // stamped as attended at its booked time, like the guest's own "I did come in". Left with no
+    // outcome, the end-of-day sweep would read it as unmarked, make it a no-show again within the
+    // hour and send the very email the correction was meant to prevent.
+    if (input.booking.status === 'no_show') {
+      const startIso = getBookingStartIso(input.booking)
+      const overIso = input.booking.end_datetime ?? startIso
+      if (startIso && overIso && Date.parse(overIso) <= Date.parse(input.nowIso)) {
+        const attended = buildNoShowAttendedPlan({ booking: input.booking, nowIso: input.nowIso })
+        if (attended.ok) {
+          return {
+            ok: true,
+            plan: {
+              update: { ...attended.plan.update, cancelled_at: null, cancelled_by: null },
+              select: 'id, status, seated_at, left_at, no_show_at, cancelled_at, cancelled_by',
+            },
+          }
+        }
+      }
+    }
     return {
       ok: true,
       plan: {
@@ -321,7 +378,10 @@ export function buildStaffStatusTransitionPlan(input: {
   const bookingStartIso = getBookingStartIso(input.booking)
   const bookingStartMs = bookingStartIso ? Date.parse(bookingStartIso) : Number.NaN
 
-  if (!Number.isFinite(bookingStartMs) || bookingStartMs > Date.now()) {
+  // Judged against the caller's own clock reading, so the end-of-day sweep and its tests see one
+  // moment throughout. Every route passes the time it was called.
+  const nowMs = Date.parse(input.nowIso)
+  if (!Number.isFinite(bookingStartMs) || bookingStartMs > (Number.isFinite(nowMs) ? nowMs : Date.now())) {
     return {
       ok: false,
       status: 409,
