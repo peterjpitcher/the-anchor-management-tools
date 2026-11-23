@@ -139,7 +139,17 @@ export function MaintenanceListClient({
     if (restored.current) return
     restored.current = true
     if (typeof window === 'undefined') return
-    if (window.location.search) return
+    if (window.location.search) {
+      // The address bar is the truth. It is updated without a navigation, so pressing Back to
+      // this page can bring back the server's first answer (the view before any filter was
+      // changed) under a URL that still carries the filters. Take the filters from the URL then,
+      // which reloads the list to match it.
+      const urlFilters = parseMaintenanceFilters(new URLSearchParams(window.location.search))
+      if (maintenanceFiltersToQuery(urlFilters) === lastLoadedQuery.current) return
+      setFilters(urlFilters)
+      setSearchDraft(urlFilters.search)
+      return
+    }
 
     const stored = readStoredQuery()
     if (!stored) return

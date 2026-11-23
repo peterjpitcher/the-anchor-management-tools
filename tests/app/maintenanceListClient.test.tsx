@@ -193,6 +193,41 @@ describe('MaintenanceListClient', () => {
     expect(routerRefreshMock).not.toHaveBeenCalled()
   })
 
+  it('follows the URL when Back brings the page back with its first, unfiltered answer', async () => {
+    // Filter, open an item, press Back: the router restores the server's original payload
+    // (default filters and the unfiltered list) while the URL still says status=done.
+    const first = renderList()
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'done' } })
+    await waitFor(() => {
+      expect(window.location.search).toBe('?status=done')
+    })
+    first.unmount()
+    cleanup()
+    vi.clearAllMocks()
+
+    renderList()
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('done')
+    })
+    await waitFor(() => {
+      expect(getMaintenanceItemsMock).toHaveBeenCalledWith({ filters: { statuses: ['done'] } })
+    })
+    expect(getMaintenanceItemsMock).toHaveBeenCalledTimes(1)
+    expect(window.location.search).toBe('?status=done')
+  })
+
+  it('makes no extra load when the URL already matches what the server sent', async () => {
+    window.history.replaceState(null, '', '/maintenance?status=done')
+
+    renderList({ initialFilters: { ...DEFAULT_MAINTENANCE_FILTERS, status: 'done' } })
+
+    await waitFor(() => {
+      expect((screen.getByLabelText('Status') as HTMLSelectElement).value).toBe('done')
+    })
+    expect(getMaintenanceItemsMock).not.toHaveBeenCalled()
+  })
+
   it('loads the list once when a bare visit restores the saved filters', async () => {
     window.sessionStorage.setItem(MAINTENANCE_FILTERS_STORAGE_KEY, 'status=done')
 
