@@ -278,6 +278,11 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
               <LinkButton href="/vouchers/foh" variant="secondary" className="min-h-touch w-full">
                 Vouchers
               </LinkButton>
+              {/* What parking is booked, read only and with no prices: the till's own view, not
+                  the parking section (this login has no parking permission). */}
+              <LinkButton href="/table-bookings/foh/parking" variant="secondary" className="min-h-touch w-full">
+                Parking
+              </LinkButton>
               {canManageSettings && (
                 <LinkButton href="/settings/table-bookings" variant="secondary" className="min-h-touch w-full">
                   Table Setup

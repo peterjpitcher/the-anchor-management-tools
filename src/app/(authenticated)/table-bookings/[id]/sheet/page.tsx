@@ -1,3 +1,4 @@
+import { bookingSheetBackButton } from '@/lib/table-bookings/booking-sheet-back'
 import { notFound, redirect } from 'next/navigation'
 import { Alert, LinkButton, PageLayout } from '@/ds'
 import { getPermissionStatus, getUserPermissions } from '@/app/actions/rbac'
@@ -43,9 +44,7 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
   // Fail closed: if the permission list did not load, nobody is offered the download.
   const canDownload = permissionsResult.success === true && canDownloadBookingSheet(permissions)
   const fohOnly = isFohOnlyUser(permissions)
-  const backButton = fohOnly
-    ? { label: 'Back to Front of House', href: '/table-bookings/foh' }
-    : { label: 'Back to the booking', href: `/table-bookings/${id}` }
+  const backButton = bookingSheetBackButton(fohOnly, id)
 
   if (!UUID_REGEX.test(id)) notFound()
 

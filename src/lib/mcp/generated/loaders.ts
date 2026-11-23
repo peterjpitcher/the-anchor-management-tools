@@ -213,6 +213,7 @@ export const ROUTE_MODULES: Record<string, () => Promise<unknown>> = {
   'api/foh/events/upcoming/route': () => import('@/app/api/foh/events/upcoming/route'),
   'api/foh/food-order-alert/route': () => import('@/app/api/foh/food-order-alert/route'),
   'api/foh/guest-not-told/route': () => import('@/app/api/foh/guest-not-told/route'),
+  'api/foh/parking/route': () => import('@/app/api/foh/parking/route'),
   'api/foh/periods/route': () => import('@/app/api/foh/periods/route'),
   'api/foh/schedule/route': () => import('@/app/api/foh/schedule/route'),
   'api/foh/sunday-preorder/menu/route': () => import('@/app/api/foh/sunday-preorder/menu/route'),

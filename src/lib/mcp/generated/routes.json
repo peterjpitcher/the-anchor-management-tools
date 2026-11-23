@@ -511,6 +511,14 @@
   "auth": "other"
  },
  {
+  "path": "/api/foh/parking",
+  "module": "api/foh/parking/route",
+  "methods": [
+   "GET"
+  ],
+  "auth": "other"
+ },
+ {
   "path": "/api/foh/periods",
   "module": "api/foh/periods/route",
   "methods": [
