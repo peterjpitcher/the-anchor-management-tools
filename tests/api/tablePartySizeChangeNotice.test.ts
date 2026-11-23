@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 
 const mocks = vi.hoisted(() => ({
@@ -84,8 +84,14 @@ async function changeTo(partySize: number, body: Record<string, unknown> = {}) {
 }
 
 describe('a staff party-size change tells the guest', () => {
+  afterEach(() => vi.useRealTimers())
+
   beforeEach(() => {
     vi.clearAllMocks()
+    // Before the booking starts: once it has started the guest is told nothing unless staff ask
+    // (owner decision, 22 November 2026; tests/api/partySizeChangeAfterStart.test.ts).
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-01T10:00:00.000Z'))
     mocks.requireBohTableBookingPermission.mockResolvedValue({ ok: true, userId: 'user-1', supabase: supabase() })
     mocks.updateSeats.mockResolvedValue({
       state: 'updated',

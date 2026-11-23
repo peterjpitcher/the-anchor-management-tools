@@ -1,5 +1,6 @@
 'use client'
 
+import { formatTime12Hour } from '@/lib/dateUtils'
 import { Alert, Button, Modal } from '@/ds'
 import type { PendingMove } from '@/app/(authenticated)/table-bookings/foh/useFohDrag'
 
@@ -30,8 +31,8 @@ export function DragConfirmationModal({
   const message =
     pendingMove.type === 'time' ? (
       <>
-        Move <strong>{pendingMove.bookingLabel}</strong> from {pendingMove.fromTime} to{' '}
-        {pendingMove.toTime}?
+        Move <strong>{pendingMove.bookingLabel}</strong> from {formatTime12Hour(pendingMove.fromTime)} to{' '}
+        {formatTime12Hour(pendingMove.toTime)}?
       </>
     ) : (
       <>

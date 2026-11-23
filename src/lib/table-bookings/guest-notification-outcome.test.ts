@@ -86,11 +86,14 @@ describe('the cancel routes and screens carry the outcome through', () => {
 
   it('shows the warning on the FOH and BOH screens', () => {
     const foh = readFileSync(
-      join(process.cwd(), 'src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx'),
+      // The floor screen's booking actions moved into their own hook (22 November 2026).
+      join(process.cwd(), 'src/app/(authenticated)/table-bookings/foh/hooks/useFohBookingActions.ts'),
       'utf8'
     )
     expect(foh).toContain('describeGuestNotReached(result)')
-    expect(foh).toContain('setErrorMessage(guestNotReached)')
+    // Said on the page, in the open panel and as a toast on top of it.
+    expect(foh).toContain('setErrorMessage(problems)')
+    expect(foh).toContain('toast.warning(problems')
 
     const boh = readFileSync(
       join(process.cwd(), 'src/app/(authenticated)/table-bookings/[id]/BookingDetailClient.tsx'),

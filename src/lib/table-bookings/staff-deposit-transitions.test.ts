@@ -334,3 +334,52 @@ describe('both party-size routes hand the deposit columns in', () => {
     }
   })
 })
+
+// Owner decision, 22 November 2026: a party that grows to 15 or more while it is already at its
+// table is not put in front of a payment screen. A booking not yet seated still owes the deposit.
+describe('a party that grows past the deposit rule while seated owes no deposit', () => {
+  const seatedChange = (supabase: ReturnType<typeof fakeSupabase>, bookingRow: Record<string, unknown>, from: number, to: number) =>
+    applyPartySizeDepositTransition(supabase.client, {
+      booking: bookingRow as never,
+      previousPartySize: from,
+      newPartySize: to,
+      sendSms: false,
+      appBaseUrl: 'https://example.test',
+      seatedNow: true,
+    })
+
+  it('records the deposit as not required, says why on the audit row, and asks the guest for nothing', async () => {
+    // The booking started an hour ago: asking for a deposit now used to throw.
+    vi.setSystemTime(new Date('2026-12-05T20:00:00.000Z'))
+    const updates: UpdateCall[] = []
+
+    const result = await seatedChange(fakeSupabase(updates), booking(), 12, 16)
+
+    expect(result).toMatchObject({ state: 'deposit_not_required_seated' })
+    expect(updates).toHaveLength(1)
+    expect(updates[0]).toMatchObject({ deposit_waived: true, deposit_rule: 'waived', payment_status: null, deposit_amount: null })
+    expect(createTablePaymentToken).not.toHaveBeenCalled()
+    expect(logAuditEvent).toHaveBeenCalledWith(expect.objectContaining({
+      operation_type: 'table_booking.deposit_waived',
+      additional_info: expect.objectContaining({ reason: 'party_grew_while_seated', deposit_not_asked_for: 160 }),
+    }))
+  })
+
+  it('leaves a seated party alone when the new size owes nothing', async () => {
+    const updates: UpdateCall[] = []
+
+    const result = await seatedChange(fakeSupabase(updates), booking(), 4, 6)
+
+    expect(result).toEqual({ state: 'unchanged' })
+    expect(updates).toHaveLength(0)
+  })
+
+  it('still asks a booking that is not yet seated for the deposit', async () => {
+    const updates: UpdateCall[] = []
+
+    const result = await change(fakeSupabase(updates), booking(), 12, 16)
+
+    expect(result).toMatchObject({ state: 'deposit_required', depositAmount: 160 })
+    expect(updates[0]).not.toHaveProperty('deposit_waived')
+  })
+})

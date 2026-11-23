@@ -44,7 +44,7 @@ describe('FohTimeSlots: Christmas parties on tables that are not joined', () => 
     render(<FohTimeSlots {...PROPS} />)
 
     expect(await screen.findByText(WARNING)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /13:00/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /1pm/ })).toBeEnabled()
     const url = String((fetchMock.mock.calls[0] as unknown[])[0])
     expect(url).toContain('party_size=27')
     expect(url).toContain('purpose=christmas')
@@ -57,7 +57,7 @@ describe('FohTimeSlots: Christmas parties on tables that are not joined', () => 
     })
     render(<FohTimeSlots {...PROPS} partySize="26" />)
 
-    expect(await screen.findByRole('button', { name: /13:00/ })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /1pm/ })).toBeInTheDocument()
     expect(screen.queryByText(WARNING)).not.toBeInTheDocument()
   })
 
@@ -68,7 +68,7 @@ describe('FohTimeSlots: Christmas parties on tables that are not joined', () => 
     })
     render(<FohTimeSlots {...PROPS} />)
 
-    await waitFor(() => expect(screen.getByRole('button', { name: /13:00/ })).toBeDisabled())
+    await waitFor(() => expect(screen.getByRole('button', { name: /1pm/ })).toBeDisabled())
     expect(screen.queryByText(WARNING)).not.toBeInTheDocument()
   })
 })

@@ -5,6 +5,8 @@ export type FohBooking = {
   id: string
   booking_reference: string | null
   guest_name?: string | null
+  /** The guest's phone number, so staff can ring a party that is late. Staff only. */
+  guest_phone?: string | null
   event_name?: string | null
   booking_time: string
   party_size: number | null
@@ -89,6 +91,9 @@ export type FohScheduleResponse = {
     // Outside bookings (no physical table) — rendered as cards via the Outside view
     // toggle. Optional so existing schedule fixtures keep compiling; consumers read `?? []`.
     outside_bookings?: FohBooking[]
+    // No-shows for the day being worked only, kept apart from the lanes and listed greyed with
+    // 'Undo no-show'. Optional so existing fixtures keep compiling.
+    no_show_bookings?: FohBooking[]
     // True when private hires could not be read, so their tables are not drawn as blocked
     // (BK-159). Optional so existing fixtures keep compiling.
     private_hires_unavailable?: boolean
@@ -103,6 +108,8 @@ export type FohScheduleResponse = {
 }
 
 export type FohViewMode = 'inside' | 'outside'
+/** How much of the day the timeline draws: the whole opening window, or about five hours around now. */
+export type FohTimelineZoom = 'day' | 'now'
 
 export type FohCreateBookingResponse = {
   success: boolean

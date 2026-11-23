@@ -438,6 +438,14 @@
   "auth": "other"
  },
  {
+  "path": "/api/foh/bookings/[id]/undo",
+  "module": "api/foh/bookings/[id]/undo/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
   "path": "/api/foh/bookings/[id]/walkout",
   "module": "api/foh/bookings/[id]/walkout/route",
   "methods": [
@@ -499,6 +507,14 @@
   "methods": [
    "GET",
    "POST"
+  ],
+  "auth": "other"
+ },
+ {
+  "path": "/api/foh/parking",
+  "module": "api/foh/parking/route",
+  "methods": [
+   "GET"
   ],
   "auth": "other"
  },

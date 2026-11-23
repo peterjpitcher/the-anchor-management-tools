@@ -35,14 +35,9 @@
   "src/app/(authenticated)/table-bookings/foh/components/FohCreateBookingModal.tsx": {
     "rounded-md": 11
   },
-  "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
-    "status-opacity": 3,
-    "rounded-md": 3
-  },
   "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
     "raw-palette": 1,
-    "status-opacity": 3,
-    "rounded-md": 7
+    "status-opacity": 3
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
     "status-opacity": 1,

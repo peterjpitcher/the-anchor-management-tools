@@ -4,7 +4,7 @@ import React from 'react'
 import { Alert, Button, Modal } from '@/ds'
 import { ModalActions } from '@/ds/compat'
 import { cn } from '@/lib/utils'
-import type { TimeSlotOption } from '../utils'
+import { formatFohClock, type TimeSlotOption } from '../utils'
 
 const BLOCK_LABEL: Record<NonNullable<TimeSlotOption['blockedBy']>, string> = {
   private: 'Private',
@@ -114,7 +114,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
             {submitting
               ? 'Changing...'
               : selectedOption
-                ? `Change to ${selectedOption.time}`
+                ? `Change to ${formatFohClock(selectedOption.time)}`
                 : 'Change time'}
           </Button>
         </ModalActions>
@@ -124,7 +124,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
         <div className="rounded-md border border-border bg-surface-2 p-3">
           <p className="text-sm font-semibold text-text">{bookingLabel}</p>
           <p className="mt-0.5 text-sm text-text">
-            Currently booked for <strong>{currentTime}</strong>
+            Currently booked for <strong>{formatFohClock(currentTime)}</strong>
           </p>
         </div>
 
@@ -157,7 +157,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                       disabled={!usable || submitting}
                       aria-label={
                         option
-                          ? `${step > 0 ? `${step} minutes later` : `${Math.abs(step)} minutes earlier`}, ${option.time}${usable ? '' : ', unavailable'}`
+                          ? `${step > 0 ? `${step} minutes later` : `${Math.abs(step)} minutes earlier`}, ${formatFohClock(option.time)}${usable ? '' : ', unavailable'}`
                           : `${step} minutes, unavailable`
                       }
                       onClick={() => option && setSelected(option.time)}
@@ -174,7 +174,7 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                         {step > 0 ? `+${step}` : step}
                       </span>
                       <span className="mt-0.5 text-xs text-text-muted">
-                        {option ? option.time : '--:--'}
+                        {option ? formatFohClock(option.time) : 'None'}
                       </span>
                     </button>
                   )
@@ -204,10 +204,10 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                         aria-current={option.isCurrent ? 'true' : undefined}
                         aria-label={
                           option.isCurrent
-                            ? `${option.time}, current booking time`
+                            ? `${formatFohClock(option.time)}, current booking time`
                             : option.available
-                              ? option.time
-                              : `${option.time}, unavailable, ${BLOCK_LABEL[option.blockedBy!].toLowerCase()}`
+                              ? formatFohClock(option.time)
+                              : `${formatFohClock(option.time)}, unavailable, ${BLOCK_LABEL[option.blockedBy!].toLowerCase()}`
                         }
                         onClick={() => setSelected(option.time)}
                         className={cn(
@@ -224,11 +224,11 @@ export const FohChangeTimeModal = React.memo(function FohChangeTimeModal(props: 
                                 : 'border-border text-text-soft opacity-50',
                         )}
                       >
-                        <span className="text-sm font-semibold leading-tight">{option.time}</span>
+                        <span className="text-sm font-semibold leading-tight">{formatFohClock(option.time)}</span>
                         {option.isCurrent ? (
-                          <span className="mt-0.5 text-2xs font-medium text-text-muted">Current</span>
+                          <span className="mt-0.5 text-xs font-medium text-text-muted">Current</span>
                         ) : option.blockedBy ? (
-                          <span className="mt-0.5 text-2xs text-text-soft">
+                          <span className="mt-0.5 text-xs text-text-soft">
                             {BLOCK_LABEL[option.blockedBy]}
                           </span>
                         ) : null}

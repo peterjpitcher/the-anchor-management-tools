@@ -1,4 +1,5 @@
-import { LinkButton, PageLayout } from '@/ds'
+import { PageLayout } from '@/ds'
+import { BackToFrontOfHouse } from '@/components/foh/BackToFrontOfHouse'
 import { getTodayChecklist } from '@/app/actions/checklists'
 import { formatDateInLondon } from '@/lib/dateUtils'
 import { ChecklistScreen } from './_components/ChecklistScreen'
@@ -18,20 +19,12 @@ export default async function ChecklistsTodayPage() {
       })}`
     : 'Opening and closing tasks'
 
-  // Matches the FOH vouchers screen: same PageLayout, same primary
-  // "Back to the floor" action in the header. Both are iPad screens a member of
-  // staff steps up to mid-shift, so they should not look like two different apps.
-  const backToFloor = (
-    <LinkButton href="/table-bookings/foh" variant="primary" size="lg" className="min-h-touch">
-      Back to the floor
-    </LinkButton>
-  )
-
   return (
     <PageLayout
       title="Checklists"
       subtitle={subtitle}
-      headerActions={backToFloor}
+      // The till's one way back, in the same place on every till page.
+      headerActions={<BackToFrontOfHouse />}
       showHeaderActionsOnMobile
     >
       <ChecklistScreen initial={res.data} error={res.error} />

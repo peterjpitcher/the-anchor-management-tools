@@ -40,9 +40,7 @@
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohHeader.tsx": {
     "raw-button": 2,
-    "raw-input": 1,
-    "raw-label": 1,
-    "rounded-md": 3
+    "raw-input": 1
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohMiniModals.tsx": {
     "compat-import": 1
@@ -53,9 +51,7 @@
     "hand-spinner": 1
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohTimeline.tsx": {
-    "raw-heading": 1,
-    "hand-spinner": 1,
-    "rounded-md": 7
+    "hand-spinner": 1
   },
   "src/app/(authenticated)/table-bookings/foh/components/FohUnassignedBookings.tsx": {
     "raw-button": 1,

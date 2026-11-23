@@ -57,11 +57,28 @@ const UpdatePartySizeSchema = z.object({
     (value) => (typeof value === 'string' ? Number.parseInt(value, 10) : value),
     z.number().int().min(1).max(PARTY_SIZE_INPUT_CEILING)
   ),
-  send_sms: z.boolean().optional().default(true),
+  // Left out, the guest is told unless the booking has already started (see effectiveSendSms).
+  send_sms: z.boolean().optional(),
   // Optional staff-picked larger table setup for the single-step grow+move:
   // honoured when still available, otherwise the server auto-picks as before.
   move_table_ids: z.array(z.string().uuid()).min(1).max(4).optional()
 })
+
+/**
+ * Whether a staff party-size change tells the guest. An explicit choice from the screen stands;
+ * left out, the guest is told only while the booking has not started.
+ */
+export function effectivePartySizeSendSms(input: {
+  requested: boolean | undefined
+  startIso: string | null
+  seatedNow: boolean
+  nowMs: number
+}): boolean {
+  if (typeof input.requested === 'boolean') return input.requested
+  if (input.seatedNow) return false
+  const startMs = input.startIso ? Date.parse(input.startIso) : Number.NaN
+  return !(Number.isFinite(startMs) && startMs <= input.nowMs)
+}
 
 export async function changeTableBookingPartySize(
   request: NextRequest,
@@ -107,7 +124,7 @@ export async function changeTableBookingPartySize(
     // The deposit transition's columns, read BEFORE the change: its status and payment state decide
     // whether the deposit follows the new size or is flagged (D20). booking_period_answer, not the
     // period id, says whether a seasonal offer was taken (BK-042).
-    .select(`committed_party_size, booking_reference, updated_at, ${PARTY_SIZE_DEPOSIT_COLUMNS}`)
+    .select(`committed_party_size, booking_reference, updated_at, seated_at, left_at, ${PARTY_SIZE_DEPOSIT_COLUMNS}`)
     .eq('id', id)
     .maybeSingle()
 
@@ -116,6 +133,17 @@ export async function changeTableBookingPartySize(
   }
 
   const previousPartySize = Math.max(1, Number(currentBooking.party_size || 1))
+
+  // Once a booking has started the guest is standing in front of staff, so a party-size change
+  // says nothing to them unless staff ask for it (owner decision, 22 November 2026). A party at
+  // its table has started whatever the clock says.
+  const seatedNow = Boolean(currentBooking.seated_at) && !currentBooking.left_at
+  const sendSms = effectivePartySizeSendSms({
+    requested: parsed.data.send_sms,
+    startIso: currentBooking.start_datetime ?? null,
+    seatedNow,
+    nowMs: Date.now(),
+  })
 
   // The staff party limit, read from the settings the booking functions use: the ordinary limit
   // (D30, BK-146), or for a Christmas booking christmas_staff_max_party (60, A3). It stops a party
@@ -142,7 +170,7 @@ export async function changeTableBookingPartySize(
       canMakeLateChristmasChange: tableBookingsManagerCheck(auth),
       christmasMaxPartySize: partyLimit,
       actor: surface,
-      sendSms: parsed.data.send_sms,
+      sendSms,
       appBaseUrl,
       autoMoveTable: true,
       preferredTableIds: parsed.data.move_table_ids
@@ -198,8 +226,9 @@ export async function changeTableBookingPartySize(
         booking: currentBooking,
         previousPartySize,
         newPartySize,
-        sendSms: parsed.data.send_sms,
+        sendSms,
         appBaseUrl,
+        seatedNow,
       })
     } catch (depositError) {
       logger.error(`${label} party-size deposit transition failed after party size saved`, {
@@ -248,7 +277,7 @@ export async function changeTableBookingPartySize(
     if (
       result.state === 'updated'
       && result.new_party_size !== previousPartySize
-      && parsed.data.send_sms
+      && sendSms
       && !depositRequestWent
       && !result.event_booking_id
       && await isMessagingFlagOn('table_party_size_change_notice')
@@ -282,7 +311,10 @@ export async function changeTableBookingPartySize(
       depositTransition,
       warning: depositWarning,
       // An unpaid deposit that followed the new size (D20), for the success message.
-      depositNote: depositTransition?.state === 'deposit_repriced' ? depositTransition.message : null,
+      depositNote:
+        depositTransition?.state === 'deposit_repriced' || depositTransition?.state === 'deposit_not_required_seated'
+          ? depositTransition.message
+          : null,
       // What the shrink dropped, so staff can tell the booker whose food choice has gone.
       preorderRemoved,
       // Whether the guest was told about the new size, so the screens can say when nobody was.

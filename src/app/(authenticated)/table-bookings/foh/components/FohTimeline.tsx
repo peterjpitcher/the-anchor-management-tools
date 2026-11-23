@@ -1,8 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { bookingNoteMarker } from '@/lib/table-bookings/allergy-words'
+import { isChristmasBookingType } from '@/lib/table-bookings/christmas'
+import { getTableBookingDepositState } from '@/lib/table-bookings/ui'
+import { formatTime12Hour } from '@/lib/dateUtils'
 import { DndContext, type DragStartEvent, type DragMoveEvent, type DragEndEvent, type SensorDescriptor, type SensorOptions } from '@dnd-kit/core'
 import { DraggableBookingBlock } from '@/components/foh/DraggableBookingBlock'
 import { DroppableLaneTimeline } from '@/components/foh/DroppableLaneTimeline'
@@ -12,6 +15,7 @@ import type {
   FohLane,
   FohScheduleResponse,
   FohStyleVariant,
+  FohTimelineZoom,
   TimelineRange,
 } from '../types'
 import {
@@ -32,6 +36,11 @@ type FohTimelineProps = {
   loading: boolean
   styleVariant: FohStyleVariant
   currentTimelineLeftPct: number | null
+  /**
+   * 'day' draws the whole opening window across the width. 'now' draws about five hours, scrolls
+   * sideways and keeps the Now line in view. Defaults to 'day'.
+   */
+  zoom?: FohTimelineZoom
   // Drag state
   sensors: SensorDescriptor<SensorOptions>[]
   activeDragData: {
@@ -58,13 +67,40 @@ type FohTimelineProps = {
   onLaneClick: (lane: { table_id: string; table_name: string }) => void
 }
 
-// Outside + high-chair badges. Rendered identically on FOH blocks and the detail modal
-// (and matched on BOH) so seating context reads the same everywhere. Exact props are
-// coordinated across surfaces — do not change tone or label wording independently.
-// Compact pills sized for the height-constrained timeline block (the full @/ds
-// Badge is too tall and gets clipped by the block's fixed height). Same design
-// tokens as Badge so the colours stay consistent with BOH/detail views.
-function BookingBadges({ booking, className }: { booking: FohBooking; className?: string }) {
+// The table column is as narrow as a table name allows, so the hours get the width (owner review,
+// 22 November 2026: at 220px and more the day was squeezed and no guest name could be read).
+const TABLE_COLUMN_PX = 160
+const LANE_GRID_CLASS = 'grid grid-cols-[160px_minmax(0,1fr)]'
+/** How much of the day the 'now' zoom shows across the width. */
+const NOW_ZOOM_MINUTES = 5 * 60
+/** After staff scroll the 'now' zoom by hand it is left alone for this long before following again. */
+const FOLLOW_PAUSE_MS = 60 * 1000
+
+// The dot beside the status word. Full class strings: Tailwind only generates what it can read.
+const STATUS_DOT_CLASS: Record<string, string> = {
+  confirmed: 'bg-primary',
+  seated: 'bg-success',
+  pending_payment: 'bg-warning',
+  no_show: 'bg-danger',
+  left: 'bg-text-soft',
+  completed: 'bg-text-soft',
+  cancelled: 'bg-text-soft',
+}
+
+/** The status in one short word, to sit beside its dot on a block. */
+function shortStatusWord(visualState: string, fallback: string): string {
+  if (visualState === 'pending_payment') return 'Unpaid'
+  if (visualState === 'confirmed') return 'Booked'
+  return fallback
+}
+
+// The markers on a timeline block, most important first, because a narrow block cuts the row off
+// at its right edge: an allergy, then a deposit that is owed, then one that is paid, a Christmas
+// booking, and the rest. Each is a short word in its colour, never a bordered pill: a pill cut in
+// half at the edge of a block reads as a fault (owner review, 22 November 2026). The guest having
+// confirmed is a tick with an accessible name.
+export function BookingMarkers({ booking, className }: { booking: FohBooking; className?: string }) {
+  if (booking.is_private_block) return null
   const highChairs = booking.high_chair_count ?? 0
   // Allergy in red when the allergy field is filled in, a note mentions an allergen or a guest's seat
   // records one, otherwise Note when the booking carries one (BK-052): allergies have mostly arrived
@@ -77,26 +113,41 @@ function BookingBadges({ booking, className }: { booking: FohBooking; className?
   })
   // The guest tapped 'confirm' on the day-before text (BK-094).
   const guestConfirmed = Boolean(booking.guest_confirmed_at)
-  if (!booking.is_outside_seating && highChairs <= 0 && !noteMarker && !guestConfirmed) return null
-  const pill = 'inline-flex items-center rounded-pill border px-1 py-0 text-2xs font-medium leading-none'
+  // Read from the booking itself, never the payments ledger: a PayPal deposit lives on the booking.
+  const deposit = getTableBookingDepositState(booking).kind
+  const depositOwed = deposit === 'pending' || deposit === 'required'
+  const isChristmas = isChristmasBookingType(booking.booking_type)
+  if (
+    !booking.is_outside_seating && highChairs <= 0 && !noteMarker && !guestConfirmed
+    && deposit !== 'paid' && !depositOwed && !isChristmas
+  ) return null
+  const marker = 'shrink-0 text-xs font-bold leading-4'
   return (
-    <span className={cn('flex flex-wrap items-center gap-1 leading-none', className)}>
-      {guestConfirmed ? (
-        <span className={cn(pill, 'border-transparent bg-success-soft text-success-fg')} title="Confirmed by guest">
-          Confirmed ✓
+    <span className={cn('inline-flex flex-nowrap items-center gap-1.5', className)}>
+      {noteMarker === 'allergy' ? <span className={cn(marker, 'text-danger-fg')}>Allergy</span> : null}
+      {depositOwed ? (
+        <span className={cn(marker, 'text-warning-fg')} title="Deposit owed">
+          &pound; owed
         </span>
       ) : null}
-      {noteMarker === 'allergy' ? (
-        <span className={cn(pill, 'border-transparent bg-danger-soft text-danger-fg')}>Allergy</span>
-      ) : noteMarker === 'note' ? (
-        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>Note</span>
+      {deposit === 'paid' ? (
+        <span className={cn(marker, 'text-success-fg')} title="Deposit paid">
+          &pound; paid
+        </span>
       ) : null}
-      {booking.is_outside_seating ? (
-        <span className={cn(pill, 'border-transparent bg-info-soft text-info-fg')}>Outside</span>
+      {isChristmas ? (
+        <span className={cn(marker, 'text-info-fg')} title="Christmas booking">
+          Xmas
+        </span>
       ) : null}
-      {highChairs > 0 ? (
-        <span className={cn(pill, 'border-border bg-surface-2 text-text-muted')}>High chair ×{highChairs}</span>
+      {guestConfirmed ? (
+        <span className={cn(marker, 'text-success-fg')} role="img" aria-label="Confirmed by guest" title="Confirmed by guest">
+          ✓
+        </span>
       ) : null}
+      {booking.is_outside_seating ? <span className={cn(marker, 'text-info-fg')}>Outside</span> : null}
+      {highChairs > 0 ? <span className={cn(marker, 'font-medium')}>High chair ×{highChairs}</span> : null}
+      {noteMarker === 'note' ? <span className={cn(marker, 'font-medium')}>Note</span> : null}
     </span>
   )
 }
@@ -110,6 +161,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     loading,
     styleVariant,
     currentTimelineLeftPct,
+    zoom = 'day',
     sensors,
     activeDragData,
     pointerPosition,
@@ -128,76 +180,60 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     onLaneClick,
   } = props
 
-  const isManagerKioskStyle = styleVariant === 'manager_kiosk'
-  // One card treatment for both styles; the kiosk only packs it tighter.
-  const swimlaneCardClass = cn('rounded-lg border border-border bg-surface', isManagerKioskStyle ? 'p-2' : 'p-4')
-  const swimlaneHeaderRowClass = cn(
-    'flex items-center justify-between',
-    isManagerKioskStyle ? 'mb-2' : 'mb-3'
-  )
-  const tableHeaderCellClass = cn(
-    'font-semibold uppercase tracking-wide text-text-muted',
-    isManagerKioskStyle ? 'px-2 py-1.5 text-2xs' : 'px-3 py-2 text-xs'
-  )
-  // No horizontal padding. The drag snap measures this element and converts a pointer offset
-  // into a time, but the lane tracks below it have no padding, so any here made the header a
-  // few pixels wider than the lanes and skewed every snapped time by that difference.
-  const timelineHeaderTrackClass = 'relative h-10'
-  const laneMetaCellClass = cn(
-    'space-y-1 bg-surface',
-    isManagerKioskStyle ? 'px-2 py-1.5' : 'px-3 py-2'
-  )
+  // Both layouts draw the same dense timeline; styleVariant only decides whether blocks drag.
+  const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
+  // How many screen-widths of hours the track is drawn across: 1 for the whole day.
+  const zoomFactor = zoom === 'now' ? Math.max(1, timelineDuration / NOW_ZOOM_MINUTES) : 1
+
+  const laneMetaCellClass = 'flex flex-col justify-center bg-surface px-2'
+  // Two 16px lines for the name and one for the status: 52px of block in a 56px lane.
   const laneTimelineClass = cn(
-    'relative overflow-hidden bg-surface-2/60',
-    isManagerKioskStyle ? 'h-12 pt-1' : 'h-14',
+    'relative h-14 overflow-hidden bg-surface-2/60',
     canEdit && 'cursor-pointer hover:bg-primary/5'
   )
-  const laneEmptyClass = cn(
-    'absolute inset-0 flex items-center text-text-soft',
-    isManagerKioskStyle ? 'px-2 text-2xs' : 'px-3 text-xs'
-  )
+  const laneEmptyClass = 'absolute inset-0 flex items-center px-2 text-xs text-text-soft'
   // Blocks sit inside the lane's overflow-hidden track, which would clip an outer focus ring.
-  const bookingBlockBaseClass = isManagerKioskStyle
-    ? 'absolute top-0.5 h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
-    : 'absolute top-1 h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
+  // @container lets a block show less as it gets narrower: below 7rem only the name and size.
+  const bookingBlockBaseClass =
+    '@container absolute top-0.5 h-13 overflow-hidden rounded-sm border px-1 py-px text-left text-xs shadow-sm transition hover:brightness-105 focus-visible:outline-hidden focus-visible:shadow-ring-inset'
   // Status colours on blocks are tints (bg-primary/15 and so on), so each block sits on an
   // opaque card of the same shape. Without it, tick lines and any overlapping block would show
   // through the text.
-  const bookingUnderlayClass = isManagerKioskStyle
-    ? 'pointer-events-none absolute top-0.5 h-11 rounded-md bg-surface'
-    : 'pointer-events-none absolute top-1 h-12 rounded-md bg-surface'
-  const bookingOverlayBaseClass = isManagerKioskStyle
-    ? 'h-11 overflow-hidden rounded-md border px-1 py-0.5 text-left text-2xs'
-    : 'h-12 overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-2xs'
-  const timelineTickLabelClass = cn(
-    'absolute -translate-x-1/2 font-medium text-text-muted',
-    isManagerKioskStyle ? 'top-0.5 text-2xs' : 'pt-0.5 text-2xs'
-  )
-  const nowLineLabelClass = cn(
-    'absolute left-0 -translate-x-1/2 rounded-sm bg-danger text-on-dark font-semibold',
-    isManagerKioskStyle ? 'top-0.5 px-1 py-px text-2xs' : 'top-0.5 px-1.5 py-px text-2xs'
-  )
+  const bookingUnderlayClass = 'pointer-events-none absolute top-0.5 h-13 rounded-sm bg-surface'
+  const bookingOverlayBaseClass = 'h-13 overflow-hidden rounded-sm border px-1 py-px text-left text-xs'
 
-  const timelineDuration = Math.max(1, timeline.endMin - timeline.startMin)
+  // The Now label must never sit on top of an hour label. Hour labels sit just right of their
+  // tick, so the ones the Now label would cover are left out while it is there.
+  const nowMinute = currentTimelineLeftPct == null
+    ? null
+    : timeline.startMin + (currentTimelineLeftPct / 100) * timelineDuration
+  const hourLabelIsUnderNow = (tickMinute: number) =>
+    nowMinute != null && nowMinute > tickMinute - 14 / zoomFactor && nowMinute < tickMinute + 40 / zoomFactor
+
+  // --- The 'now' zoom keeps the Now line in the middle of the view ---
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const lastManualScrollAtRef = useRef(0)
+  const followScrollRef = useRef(false)
+  useEffect(() => {
+    // A fresh choice of zoom always re-centres, whatever was scrolled before.
+    lastManualScrollAtRef.current = 0
+  }, [zoom])
+  useEffect(() => {
+    const scroller = scrollRef.current
+    if (zoom !== 'now' || !scroller || currentTimelineLeftPct == null) return
+    if (Date.now() - lastManualScrollAtRef.current < FOLLOW_PAUSE_MS) return
+    const trackWidth = scroller.scrollWidth - TABLE_COLUMN_PX
+    const visibleWidth = scroller.clientWidth - TABLE_COLUMN_PX
+    const target = Math.max(0, (trackWidth * currentTimelineLeftPct) / 100 - visibleWidth / 2)
+    if (Math.abs(scroller.scrollLeft - target) < 2) return
+    followScrollRef.current = true
+    scroller.scrollLeft = target
+  }, [zoom, currentTimelineLeftPct, schedule?.date, timelineDuration])
 
   return (
-    <div className={cn(swimlaneCardClass, 'relative')}>
-      <div className={swimlaneHeaderRowClass}>
-        <h3 className="text-sm font-semibold text-text">Table availability swimlanes</h3>
-        <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
-          {schedule?.service_window?.source === 'closed' ? (
-            'Closed all day'
-          ) : (
-            <>
-              Service window {schedule?.service_window?.start_time || '09:00'} - {schedule?.service_window?.end_time || '23:00'}
-              {schedule?.service_window?.end_next_day ? ' (+1 day)' : ''}
-            </>
-          )}
-        </p>
-      </div>
-
+    <div className="relative overflow-hidden rounded-lg border border-border bg-surface">
       {loading && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center rounded-lg bg-surface/70">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-surface/70">
           <div className="h-8 w-8 animate-spin rounded-full border-2 border-border-strong border-t-primary" />
         </div>
       )}
@@ -208,26 +244,49 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
         onDragMove={onDragMove}
         onDragEnd={onDragEnd}
       >
-        <div className="overflow-x-auto">
-          <div className="min-w-[980px] border border-border">
-            <div className="grid grid-cols-[220px_1fr] border-b border-border bg-surface-2">
-              <div className={cn(tableHeaderCellClass, 'sticky left-0 z-10 bg-surface-2')}>Table</div>
-              <div ref={timelineRef} className={timelineHeaderTrackClass}>
+        <div
+          ref={scrollRef}
+          className="overflow-x-auto"
+          onScroll={() => {
+            if (followScrollRef.current) { followScrollRef.current = false; return }
+            lastManualScrollAtRef.current = Date.now()
+          }}
+        >
+          <div
+            className="min-w-[900px]"
+            style={zoomFactor > 1
+              ? { width: `calc(${TABLE_COLUMN_PX}px + (100% - ${TABLE_COLUMN_PX}px) * ${zoomFactor.toFixed(4)})` }
+              : undefined}
+          >
+            {/* The hour row: its own band above the lanes, opaque and above them, so no block
+                can ever cover an hour label. */}
+            <div className={cn(LANE_GRID_CLASS, 'relative z-20 border-b border-border bg-surface-2')}>
+              <div className="sticky left-0 z-30 flex items-center bg-surface-2 px-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+                Table
+              </div>
+              {/* No horizontal padding. The drag snap measures this element and converts a pointer
+                  offset into a time, but the lane tracks below it have no padding, so any here
+                  made the header a few pixels wider than the lanes and skewed every snapped time. */}
+              <div ref={timelineRef} className="relative h-7 overflow-hidden">
                 {timeline.ticks.map((minute) => {
                   const left = ((minute - timeline.startMin) / timelineDuration) * 100
                   return (
                     <div key={`tick-header-${minute}`} className="absolute inset-y-0" style={{ left: `${left}%` }}>
                       <div className="h-full border-l border-border" />
-                      <span className={timelineTickLabelClass}>
-                        {formatLaneMinuteLabel(minute)}
-                      </span>
+                      {hourLabelIsUnderNow(minute) ? null : (
+                        <span className="absolute left-1 top-1.5 whitespace-nowrap text-xs font-medium leading-4 text-text-muted">
+                          {formatLaneMinuteLabel(minute)}
+                        </span>
+                      )}
                     </div>
                   )
                 })}
                 {currentTimelineLeftPct != null && (
                   <div className="pointer-events-none absolute inset-y-0 z-20" style={{ left: `${currentTimelineLeftPct}%` }}>
                     <div className="h-full w-0.5 -translate-x-1/2 bg-danger/85" />
-                    <span className={nowLineLabelClass}>Now</span>
+                    <span className="absolute left-0 top-1 -translate-x-1/2 rounded-sm bg-danger px-1 text-xs font-semibold leading-4 text-on-dark">
+                      Now
+                    </span>
                   </div>
                 )}
               </div>
@@ -258,7 +317,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
         {activeDragData && pointerPosition ? (
           // The opaque card underneath keeps the tinted status colour readable over the page.
           <div
-            className="fixed z-[9999] pointer-events-none select-none rounded-md bg-surface opacity-95 shadow-lg ring-2 ring-white/70"
+            className="fixed z-[9999] pointer-events-none select-none rounded-sm bg-surface opacity-95 shadow-lg ring-2 ring-white/70"
             style={{
               left: pointerPosition.x,
               top: pointerPosition.y,
@@ -268,7 +327,7 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
             <div className={cn(bookingOverlayBaseClass, activeDragData.statusClassName)}>
               <p className="truncate font-semibold">{activeDragData.bookingLabel}</p>
               {liveSnapTime && !isOutOfBounds && (
-                <p className="truncate text-xs font-semibold opacity-80">{liveSnapTime}</p>
+                <p className="truncate text-xs font-semibold opacity-80">{formatTime12Hour(liveSnapTime)}</p>
               )}
               {isOutOfBounds && (
                 <p className="truncate text-xs font-semibold text-danger-fg">Out of range</p>
@@ -287,6 +346,43 @@ export const FohTimeline = React.memo(function FohTimeline(props: FohTimelinePro
     </div>
   )
 })
+
+/**
+ * What a timeline block says (owner review, 22 November 2026). The NAME comes first, with the
+ * party size, and may run onto a second line before it is cut. Under it, when the block is wide
+ * enough: a status dot with one short word, the markers, and the times if there is still room. A
+ * narrow block shows the name and size only; everything else is in the panel on tap.
+ */
+export function BookingBlockContent({ booking }: { booking: FohBooking }) {
+  const visualState = getBookingVisualState(booking)
+  const statusWord = shortStatusWord(visualState, getBookingVisualLabel(booking))
+  const guestLabel = booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)
+  const windowLabel = formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
+  const isPlainBooking = !booking.is_private_block && !booking.capacity_label
+
+  return (
+    <>
+      <span className="line-clamp-2 block break-words font-bold leading-4">
+        {guestLabel}
+        {isPlainBooking ? ` · ${booking.party_size || 1}` : ''}
+      </span>
+      <span className="hidden items-center gap-1.5 overflow-hidden whitespace-nowrap leading-4 @min-[7rem]:flex">
+        {booking.is_private_block ? (
+          <span className="shrink-0 font-medium">Private hire</span>
+        ) : booking.capacity_label ? (
+          <span className="shrink-0 font-medium">{booking.capacity_label}</span>
+        ) : (
+          <span className="inline-flex shrink-0 items-center gap-1 font-medium">
+            <span aria-hidden="true" className={cn('size-2 rounded-full', STATUS_DOT_CLASS[visualState] ?? 'bg-text-soft')} />
+            {statusWord}
+          </span>
+        )}
+        <BookingMarkers booking={booking} />
+        <span className="hidden shrink-0 font-normal opacity-80 @min-[13rem]:inline">{windowLabel}</span>
+      </span>
+    </>
+  )
+}
 
 // Inner lane row component
 const LaneRow = React.memo(function LaneRow(props: {
@@ -350,20 +446,27 @@ const LaneRow = React.memo(function LaneRow(props: {
         const visualClassName = statusBlockClass(visualState)
         const isEventOnlyBlock = Boolean(booking.is_communal_event_block || booking.id.startsWith('communal-') || booking.id.startsWith('standing-'))
         const isLockedBlock = isEventOnlyBlock
-        const detailLine = booking.capacity_label
-          ? `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.capacity_label}`
-          : `${formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)} · ${booking.party_size || 1}p · ${visualLabel}`
+        const windowLabel = formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
+        const guestLabel = booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)
+        const detailLine = booking.is_private_block
+          ? `Private hire · ${windowLabel}`
+          : booking.capacity_label
+            ? `${booking.capacity_label} · ${windowLabel}`
+            : `${booking.party_size || 1} people · ${visualLabel} · ${windowLabel}`
+        // A sitting cut short when the party left can be a sliver. Every block keeps room for a
+        // first name and the party size; a later booking on the lane is drawn over its tail.
+        const minWidth = { minWidth: '6rem' }
 
         return (
           <React.Fragment key={`${lane.table_id}-${booking.id}`}>
             <div
               aria-hidden="true"
               className={bookingUnderlayClass}
-              style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+              style={{ left: `${leftPct}%`, width: `${widthPct}%`, ...minWidth }}
             />
             <DraggableBookingBlock
               bookingId={booking.id}
-              bookingLabel={booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
+              bookingLabel={guestLabel}
               fromTime={booking.booking_time}
               tableId={lane.table_id}
               tableName={lane.table_name}
@@ -379,21 +482,14 @@ const LaneRow = React.memo(function LaneRow(props: {
               styleVariant={styleVariant}
               className={cn(bookingBlockBaseClass, visualClassName)}
               statusClassName={visualClassName}
-              title={`${booking.guest_name || 'Guest'} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
+              style={minWidth}
+              title={`${guestLabel} · ${booking.booking_reference || booking.id.slice(0, 8)} · ${detailLine}`}
               onClick={(event) => {
                 event.stopPropagation()
                 onBookingClick(booking, lane.table_id, lane.table_name)
               }}
             >
-              <p className="truncate font-semibold leading-tight">
-                {booking.guest_name || booking.booking_reference || booking.id.slice(0, 8)}
-              </p>
-              <p className="truncate leading-tight">
-                {booking.is_private_block
-                  ? formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)
-                  : detailLine}
-              </p>
-              <BookingBadges booking={booking} className="mt-0.5" />
+              <BookingBlockContent booking={booking} />
             </DraggableBookingBlock>
           </React.Fragment>
         )
@@ -407,26 +503,31 @@ const LaneRow = React.memo(function LaneRow(props: {
 
       {lane.bookings.length === 0 && (
         <div className={laneEmptyClass}>
-          {canEdit ? 'Tap lane to add walk-in' : 'Available for entire visible service window'}
+          {canEdit ? 'Tap to add a walk-in' : 'Free all day'}
         </div>
       )}
     </>
   )
 
+  const seats = lane.capacity ? `${lane.capacity} seats` : null
+  const fullLabel = [
+    lane.table_name,
+    lane.table_number ? `table ${lane.table_number}` : null,
+    seats,
+    lane.area,
+    lane.is_bookable === false ? 'not bookable' : null,
+  ].filter(Boolean).join(' · ')
+
   return (
-    <div className="grid grid-cols-[220px_1fr] border-b border-border last:border-b-0">
-      <div className={cn(laneMetaCellClass, 'sticky left-0 z-10')}>
-        <div>
-          <p className="text-xs font-semibold text-text">
-            {lane.table_name}
-            {lane.table_number ? <span className="ml-1 text-xs text-text-muted">({lane.table_number})</span> : null}
-          </p>
-          <p className="text-meta text-text-muted">
-            Capacity {lane.capacity || '-'}
-            {lane.area ? ` · ${lane.area}` : ''}
-            {lane.is_bookable === false ? ' · not bookable' : ''}
-          </p>
-        </div>
+    <div className={cn(LANE_GRID_CLASS, 'border-b border-border last:border-b-0')}>
+      {/* The name and the seats only: the table number and the room are in the title, for anyone
+          who needs them, and no longer take the width the hours need. */}
+      <div className={cn(laneMetaCellClass, 'sticky left-0 z-10 border-r border-border')} title={fullLabel}>
+        <p className="truncate text-sm font-semibold leading-5 text-text">{lane.table_name}</p>
+        <p className="truncate text-xs leading-4 text-text-muted">
+          {seats ?? 'Seats not set'}
+          {lane.is_bookable === false ? ' · not bookable' : ''}
+        </p>
       </div>
 
       <DroppableLaneTimeline

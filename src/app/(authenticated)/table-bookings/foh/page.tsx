@@ -10,11 +10,9 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getOpenSessions } from '@/app/actions/timeclock'
 import Image from 'next/image'
 import FohClockWidget from './FohClockWidget'
-import { LinkButton } from '@/ds'
 import { ChecklistMidShiftPrompt } from '@/app/(authenticated)/checklists/_components/ChecklistMidShiftPrompt'
 import { getDeploymentVersion } from '@/lib/foh/deployment-version'
 import { onClockScreen } from '@/lib/employees/current-staff'
-import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
 
 const MANAGER_IPAD_EMAIL = 'manager@the-anchor.pub'
 
@@ -118,7 +116,6 @@ export default async function TableBookingsFohPage() {
   // are the only exits this screen offers.
   const useManagerKioskStyle = authResult.data.user?.email?.toLowerCase() === MANAGER_IPAD_EMAIL
   const contentClassName = useManagerKioskStyle ? '!px-2 sm:!px-3 lg:!px-4 !pt-1' : undefined
-  const subtitle = useManagerKioskStyle ? undefined : 'Live swimlane view for table bookings and floor actions'
 
   const clockWidgetEmployees = clockWidget.employees
   const clockWidgetSessions = clockWidget.sessions
@@ -138,18 +135,15 @@ export default async function TableBookingsFohPage() {
           />
         </div>
       )
-    : canManageSettings ? (
-        <div className="flex items-center gap-2">
-          <LinkButton href="/settings/table-bookings" variant="secondary" size="sm">
-            Table Setup
-          </LinkButton>
-        </div>
-      ) : undefined
+    // Table Setup is in the toolbar's More menu, so the title band can go entirely.
+    : undefined
 
   return (
     <PageLayout
       title="Front of House Schedule"
-      subtitle={subtitle}
+      // The tabs already say where you are; the title stays for screen readers only, so the
+      // tables start higher up the screen (owner review, 22 November 2026).
+      hideTitle
       navItems={navItems}
       headerVariant={useManagerKioskStyle ? 'dark' : 'default'}
       contentClassName={contentClassName}
@@ -159,16 +153,15 @@ export default async function TableBookingsFohPage() {
       compactHeader={useManagerKioskStyle}
       padded={!useManagerKioskStyle}
     >
-      {/* Earlier bookings nobody marked as arrived or no-show (BK-130). Renders nothing when there are none. */}
-      <div className="mb-3">
-        <OpenEarlierBookingsStrip canEdit={canEdit} />
-      </div>
+      {/* The 'still open from earlier' strip (BK-130) now sits inside the client, so it refreshes
+          with the schedule instead of loading once and going stale. */}
       <FohScheduleClient
         initialDate={initialDate}
         deploymentVersion={getDeploymentVersion()}
         canEdit={canEdit}
         isSuperAdmin={isSuperAdmin}
         canWaiveDeposit={canWaiveDeposit}
+        canManageSettings={canManageSettings && !useManagerKioskStyle}
         styleVariant={useManagerKioskStyle ? 'manager_kiosk' : 'default'}
       />
       {/* Renders nothing unless the module + prompts flags are on and a during-service

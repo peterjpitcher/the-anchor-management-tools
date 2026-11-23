@@ -1,5 +1,6 @@
 'use client'
 
+import { formatTime12Hour } from '@/lib/dateUtils'
 import React, { useEffect, useState } from 'react'
 import { Alert, Button } from '@/ds'
 import { describeFohSlotReason, FOH_TABLES_UNJOINED_WARNING } from '@/lib/foh/availability-query'
@@ -129,8 +130,8 @@ export function FohTimeSlots(props: FohTimeSlotsProps): React.ReactElement | nul
                   title={reason ?? undefined}
                   className="h-auto min-h-touch flex-col gap-0 py-1"
                 >
-                  <span className="font-medium">{slot.time}</span>
-                  {reason && <span className="text-2xs">{reason}</span>}
+                  <span className="font-medium">{formatTime12Hour(slot.time)}</span>
+                  {reason && <span className="text-xs">{reason}</span>}
                 </Button>
               </li>
             )

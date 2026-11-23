@@ -116,6 +116,13 @@ function HeaderNav({
 
 export interface PageLayoutProps {
   title: string
+  /**
+   * Keep the title for screen readers but take it, and the subtitle, off the screen. For a
+   * working screen whose tabs already say where you are and where every row of height counts
+   * (the FOH floor screen, owner decision 22 November 2026). With no header actions the whole
+   * title band goes.
+   */
+  hideTitle?: boolean
   subtitle?: string
   /** A child page's way back: "Back to <the parent page's title>", pointing at that parent. No breadcrumbs. */
   backButton?: { label: string; href?: string; onBack?: () => void }
@@ -215,11 +222,14 @@ export function PageLayout({
   hideMobileMenuButton = true,
   compactHeader = false,
   headerVariant = 'default',
+  hideTitle = false,
 }: PageLayoutProps) {
   const router = useRouter()
   const dark = headerVariant === 'dark'
   const responsive = dark ? RESPONSIVE.dark : RESPONSIVE.default
   const insetX = compactHeader ? INSET_X_COMPACT : INSET_X
+  // A hidden title with nothing beside it leaves no band at all, only the heading for screen readers.
+  const titleBandEmpty = hideTitle && !headerActions && !backButton
   const showMobileHeaderActionsInNavRow = Boolean(headerActions) && !showHeaderActionsOnMobile
   const hasNavRow =
     (navItems && navItems.length > 0) || Boolean(navActions) || showMobileHeaderActionsInNavRow
@@ -308,14 +318,14 @@ export function PageLayout({
       <div className="flex-1 min-w-0">
         <h1
           className={cn(
-            'truncate font-bold tracking-tight',
+            hideTitle ? 'sr-only' : 'truncate font-bold tracking-tight',
             compactHeader ? 'text-base' : 'text-lg',
             titleColour,
           )}
         >
           {title}
         </h1>
-        {subtitle && <p className={cn('text-xs', subtitleColour)}>{subtitle}</p>}
+        {subtitle && !hideTitle && <p className={cn('text-xs', subtitleColour)}>{subtitle}</p>}
       </div>
       {showHeaderActionsOnMobile && headerActions && (
         <div className="ml-1 flex items-center gap-2">{headerActions}</div>
@@ -345,14 +355,14 @@ export function PageLayout({
       <div className="min-w-0 flex-1">
         <h1
           className={cn(
-            'font-bold tracking-tight',
+            hideTitle ? 'sr-only' : 'font-bold tracking-tight',
             compactHeader ? 'text-xl' : 'text-2xl',
             titleColour,
           )}
         >
           {title}
         </h1>
-        {subtitle && <p className={cn('mt-1 text-sm', subtitleColour)}>{subtitle}</p>}
+        {subtitle && !hideTitle && <p className={cn('mt-1 text-sm', subtitleColour)}>{subtitle}</p>}
       </div>
 
       {(headerActionsNode || backButton) && (
@@ -392,15 +402,23 @@ export function PageLayout({
           headerClassName,
         )}
       >
-        <div
-          className={cn(
-            insetX,
-            compactHeader ? 'pt-2 pb-2 shell:pt-3 shell:pb-3' : 'pt-3 pb-4 shell:pt-shell-pad-top',
-          )}
-        >
-          {mobileHeader}
-          {desktopHeader}
-        </div>
+        {titleBandEmpty ? (
+          <div className={cn(insetX, 'pt-3')}>
+            <h1 className="sr-only">{title}</h1>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              insetX,
+              hideTitle
+                ? 'pt-1 pb-1'
+                : compactHeader ? 'pt-2 pb-2 shell:pt-3 shell:pb-3' : 'pt-3 pb-4 shell:pt-shell-pad-top',
+            )}
+          >
+            {mobileHeader}
+            {desktopHeader}
+          </div>
+        )}
 
         {/* Sub-navigation / toolbar */}
         {(navRow || toolbar) && (

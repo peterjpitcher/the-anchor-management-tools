@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
-import { LinkButton, PageLayout } from '@/ds'
+import { PageLayout } from '@/ds'
+import { BackToFrontOfHouse } from '@/components/foh/BackToFrontOfHouse'
 import { getUserPermissions } from '@/app/actions/rbac'
 import { requireFohVoucherPermission, getLondonDateIso } from '@/lib/foh/api-auth'
 import { isFohOnlyUser } from '@/lib/foh/user-mode'
@@ -63,24 +64,14 @@ export default async function VouchersFohPage() {
     permissionsResult.success && permissionsResult.data ? permissionsResult.data : []
   const fohOnlyMode = isFohOnlyUser(permissions)
 
-  // FOH-only users get no sidebar and no topbar, and the iPad kiosk has no
-  // address bar, so this link is their only way off this screen. It stays for
-  // everyone else too, and is the only exit offered: see the note below.
-  const backToFloor = (
-    <LinkButton href="/table-bookings/foh" variant="primary" size="lg" className="min-h-touch">
-      Back to the floor
-    </LinkButton>
-  )
-
-  // No "Back to Dashboard". This is a floor screen reached from the FOH header,
-  // and the people using it work the floor: sending them to the dashboard is a
-  // dead end. "Back to the floor" is the only exit anyone needs from here, and
-  // it is what the Checklists screen offers too.
+  // FOH-only users get no sidebar and no topbar, and the iPad kiosk has no address bar, so the
+  // header's Back to Front of House is their only way off this screen. It is the only exit
+  // offered to everyone: this is a floor screen, and the dashboard would be a dead end.
   return (
     <PageLayout
       title="Vouchers"
       subtitle={fohOnlyMode ? undefined : 'Redeem and hand out gift vouchers'}
-      headerActions={backToFloor}
+      headerActions={<BackToFrontOfHouse />}
       showHeaderActionsOnMobile
     >
       <VouchersFohClient canEdit={editCheck.ok} staff={staff} todayIso={getLondonDateIso()} />

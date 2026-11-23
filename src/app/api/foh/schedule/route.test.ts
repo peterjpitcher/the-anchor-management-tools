@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { GET } from './route'
 import { requireFohPermission } from '@/lib/foh/api-auth'
@@ -400,5 +400,99 @@ describe('GET /api/foh/schedule — outside bookings', () => {
     const unassignedIds = (payload.data.unassigned_bookings as Array<{ id: string }>).map((b) => b.id)
     expect(outsideIds).not.toContain('indoor-untabled')
     expect(unassignedIds).toContain('indoor-untabled')
+  })
+})
+
+// Owner decision, 22 November 2026: no-shows stay on the floor screen, greyed, for the day they
+// happened only. They used to be filtered off entirely; and they must never pile up over days.
+describe('GET /api/foh/schedule: the day\'s no-shows and the guest phone', () => {
+  const NO_SHOW = {
+    id: 'no-show-1',
+    booking_reference: 'TB-NOSHOW',
+    booking_time: '18:00',
+    party_size: 4,
+    booking_type: 'regular',
+    status: 'no_show',
+    no_show_at: `${SERVICE_DATE}T17:30:00.000Z`,
+    start_datetime: `${SERVICE_DATE}T17:00:00.000Z`,
+    end_datetime: `${SERVICE_DATE}T18:30:00.000Z`,
+    event_booking_id: null,
+    customer: { first_name: 'Nora', last_name: 'Late', mobile_e164: '+447700900111', mobile_number: '07700 900111' },
+  }
+  const SEATED = {
+    ...OUTSIDE_BOOKING_A,
+    id: 'inside-1',
+    is_outside_seating: false,
+    customer: { first_name: 'Ada', last_name: 'Here', mobile_e164: '+447700900222', mobile_number: null },
+  }
+
+  // The live bookings and the no-shows are two reads of one table; tell them apart by the status filter.
+  function dbWithNoShows() {
+    const base = createSupabaseMock({ tables: { data: [INDOOR_TABLE], error: null } })
+    const noShowReads: string[] = []
+    const from = vi.fn((table: string) => {
+      if (table !== 'table_bookings') return base.from(table)
+      let wantsNoShows = false
+      const builder: Record<string, unknown> = {}
+      for (const method of ['select', 'in', 'not', 'order']) builder[method] = vi.fn(() => builder)
+      builder.eq = vi.fn((column: string, value: unknown) => {
+        if (column === 'status' && value === 'no_show') wantsNoShows = true
+        if (column === 'booking_date' && wantsNoShows) noShowReads.push(String(value))
+        return builder
+      })
+      builder.then = (resolve: (v: unknown) => unknown) => {
+        if (wantsNoShows) noShowReads.push('read')
+        return resolve({ data: wantsNoShows ? [NO_SHOW] : [SEATED], error: null })
+      }
+      return builder
+    })
+    return { db: { from, rpc: base.rpc }, noShowReads }
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    adminRpc.mockResolvedValue({ data: [], error: null })
+    adminFrom.mockImplementation(() => makeBuilder({ data: [], error: null }))
+    dayLoadMock.mockResolvedValue(new Map())
+    vi.useFakeTimers({ toFake: ['Date'] })
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('lists the no-shows, apart from the lanes, while their day is the day being worked', async () => {
+    vi.setSystemTime(new Date(`${SERVICE_DATE}T18:00:00.000Z`))
+    const { db } = dbWithNoShows()
+    mockAuthSuccess(db)
+
+    const body = await (await GET(makeRequest())).json()
+
+    expect(body.data.no_show_bookings).toEqual([
+      expect.objectContaining({ id: 'no-show-1', status: 'no_show', guest_name: 'Nora Late', guest_phone: '+447700900111' }),
+    ])
+    const onTheFloor = [
+      ...body.data.lanes.flatMap((lane: { bookings: Array<{ id: string }> }) => lane.bookings),
+      ...body.data.unassigned_bookings,
+    ].map((booking: { id: string }) => booking.id)
+    expect(onTheFloor).not.toContain('no-show-1')
+  })
+
+  it('does not list them on any other day, so they cannot pile up', async () => {
+    vi.setSystemTime(new Date('2026-07-10T18:00:00.000Z'))
+    const { db, noShowReads } = dbWithNoShows()
+    mockAuthSuccess(db)
+
+    const body = await (await GET(makeRequest())).json()
+
+    expect(body.data.no_show_bookings).toEqual([])
+    expect(noShowReads).toEqual([])
+  })
+
+  it('gives the panel the guest phone number', async () => {
+    vi.setSystemTime(new Date(`${SERVICE_DATE}T18:00:00.000Z`))
+    const { db } = dbWithNoShows()
+    mockAuthSuccess(db)
+
+    const body = await (await GET(makeRequest())).json()
+
+    expect(body.data.unassigned_bookings[0]).toMatchObject({ id: 'inside-1', guest_phone: '+447700900222' })
   })
 })

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { FormEvent, useEffect } from 'react'
+import React, { FormEvent, useEffect, useState } from 'react'
 import { Alert, Button, Checkbox, Input, Modal, Select, Textarea } from '@/ds'
 import { cn } from '@/lib/utils'
 import {
@@ -22,6 +22,10 @@ import type {
 import type { FohBookingPeriod } from '../hooks/useFohCreateBooking'
 import { StaffMarketingConsentField } from '@/components/features/shared/StaffMarketingConsentField'
 import { FohTimeSlots } from './FohTimeSlots'
+import { FohPartySizeStepper } from './FohPartySizeStepper'
+
+// The submit button sits in the dialog footer, outside the form element, and submits it by id.
+const CREATE_FORM_ID = 'foh-create-booking-form'
 import {
   formatEventBookingMode,
   formatEventOptionDateTime,
@@ -69,6 +73,11 @@ export type CreateForm = {
 
 type FohCreateBookingModalProps = {
   open: boolean
+  /**
+   * The service date in force: the night before, from midnight until an after-midnight close. A
+   * walk-in belongs to it, so the date box is held to it. Defaults to the calendar date.
+   */
+  serviceDateNow?: string
   createMode: FohCreateMode
   createForm: CreateForm
   canWaiveDeposit: boolean
@@ -173,6 +182,35 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
     onSetWalkInPurposeAutoSelectionEnabled,
     onSetErrorMessage,
   } = props
+  // The form holds the trading date, so the date box must be held to the same day. After
+  // midnight the calendar date is tomorrow, and the browser refused the walk-in as out of range.
+  const walkInDate = props.serviceDateNow || getLondonDateIso()
+
+  // Tapping outside a half-filled form must not throw it away without a word.
+  const [confirmingDiscard, setConfirmingDiscard] = useState(false)
+  const formHasDetails = Boolean(
+    selectedCustomer
+    || customerQuery.trim()
+    || createForm.first_name.trim()
+    || createForm.last_name.trim()
+    || createForm.phone.trim()
+    || createForm.email.trim()
+    || createForm.notes.trim()
+    || createForm.allergies.trim()
+  )
+  useEffect(() => {
+    if (!open) setConfirmingDiscard(false)
+  }, [open])
+  const closeFromOutside = () => {
+    // While the question is up, only its own buttons answer it: a second stray tap outside
+    // must not be taken as "discard".
+    if (submittingBooking || confirmingDiscard) return
+    if (formHasDetails) {
+      setConfirmingDiscard(true)
+      return
+    }
+    onClose()
+  }
 
   const partySizeNumber = Number.parseInt(createForm.party_size, 10)
   const formDepositAmount = formRequiresDeposit
@@ -210,11 +248,61 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
   return (
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={closeFromOutside}
       title={createMode === 'walk_in' ? 'Add walk-in' : 'Add booking'}
       size="lg"
+      // The buttons live in the dialog's footer, outside the scrolling form, so they stay in reach
+      // however far the form has scrolled and with the iPad keyboard up.
+      footer={
+        <div className="w-full space-y-2">
+          {errorMessage && open && (
+            <Alert tone="danger" size="sm">
+              {errorMessage}
+            </Alert>
+          )}
+          {confirmingDiscard ? (
+            <div
+              role="alertdialog"
+              aria-label="Discard this booking?"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-warning-border bg-warning-soft px-3 py-2"
+            >
+              <p className="text-sm font-medium text-warning-fg">
+                This booking has not been saved. Discard what you have typed?
+              </p>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="lg" onClick={() => setConfirmingDiscard(false)} className="min-h-touch">
+                  Keep editing
+                </Button>
+                <Button type="button" variant="danger" size="lg" onClick={onClose} className="min-h-touch">
+                  Discard
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="min-w-0 flex-1 text-xs text-text-muted">
+                {createMode === 'walk_in'
+                  ? 'Walk-ins require covers. Guest name and phone are optional.'
+                  : createForm.purpose === 'christmas'
+                  ? `Christmas bookings always require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit, whatever the party size.`
+                  : createForm.purpose !== 'event'
+                  ? `Bookings of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more people require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit.`
+                  : 'Event booking status depends on event payment mode and capacity.'}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="secondary" size="lg" onClick={onClose} className="min-h-touch">
+                  Cancel
+                </Button>
+                <Button type="submit" form={CREATE_FORM_ID} variant="primary" size="lg" disabled={submittingBooking} className="min-h-touch">
+                  {submittingBooking ? 'Creating...' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      }
     >
-      <form onSubmit={onSubmit} className="space-y-4">
+      <form id={CREATE_FORM_ID} onSubmit={onSubmit} className="space-y-4">
         <div className="rounded-md border border-border bg-surface-2 p-3">
           <Input
             label="Find existing customer"
@@ -276,8 +364,8 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             label="Booking date"
             type="date"
             required
-            min={createMode === 'walk_in' ? getLondonDateIso() : undefined}
-            max={createMode === 'walk_in' ? getLondonDateIso() : undefined}
+            min={createMode === 'walk_in' ? walkInDate : undefined}
+            max={createMode === 'walk_in' ? walkInDate : undefined}
             value={createForm.booking_date}
             onChange={(event) => onSetCreateForm((current) => ({ ...current, booking_date: event.target.value }))}
             className={FIELD_CLASS}
@@ -311,14 +399,12 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
             />
           )}
 
-          <Input
+          <FohPartySizeStepper
             label={createForm.purpose === 'event' ? 'Seats' : 'Party size'}
-            type="number"
             min={1}
             required
             value={createForm.party_size}
-            onChange={(event) => onSetCreateForm((current) => ({ ...current, party_size: event.target.value }))}
-            className={FIELD_CLASS}
+            onChange={(value) => onSetCreateForm((current) => ({ ...current, party_size: value }))}
           />
 
           {!selectedCustomer && createMode !== 'walk_in' && (
@@ -827,31 +913,6 @@ export const FohCreateBookingModal = React.memo(function FohCreateBookingModal(p
           </div>
         )}
 
-        {errorMessage && open && (
-          <Alert tone="danger" size="sm">
-            {errorMessage}
-          </Alert>
-        )}
-
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-          <p className="text-xs text-text-muted">
-            {createMode === 'walk_in'
-              ? 'Walk-ins require covers. Guest name and phone are optional.'
-              : createForm.purpose === 'christmas'
-              ? `Christmas bookings always require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit, whatever the party size.`
-              : createForm.purpose !== 'event'
-              ? `Bookings of ${LARGE_GROUP_DEPOSIT_THRESHOLD} or more people require a ${formatGbp(LARGE_GROUP_DEPOSIT_PER_PERSON_GBP)} per person deposit.`
-              : 'Event booking status depends on event payment mode and capacity.'}
-          </p>
-          <div className="flex items-center gap-2">
-            <Button type="button" variant="secondary" size="lg" onClick={onClose} className="min-h-touch">
-              Cancel
-            </Button>
-            <Button type="submit" variant="primary" size="lg" disabled={submittingBooking} className="min-h-touch">
-              {submittingBooking ? 'Creating...' : createMode === 'walk_in' ? 'Create walk-in' : 'Create booking'}
-            </Button>
-          </div>
-        </div>
       </form>
     </Modal>
   )

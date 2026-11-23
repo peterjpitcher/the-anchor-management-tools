@@ -65,7 +65,8 @@ describe('the cancel routes and screens carry the deposit outcome through', () =
   })
 
   it.each([
-    'src/app/(authenticated)/table-bookings/foh/FohScheduleClient.tsx',
+    // The floor screen's booking actions live in their own hook (22 November 2026).
+    'src/app/(authenticated)/table-bookings/foh/hooks/useFohBookingActions.ts',
     'src/app/(authenticated)/table-bookings/[id]/BookingDetailClient.tsx',
   ])('%s shows it to the person who cancelled', (path) => {
     expect(read(path)).toContain('describeDepositRefundForStaff(readDepositRefundOutcome(')

@@ -30,14 +30,14 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
     <div className={cn(cardWrapperClass, 'relative')}>
       <div className={cn('flex items-center justify-between', isManagerKioskStyle ? 'mb-2' : 'mb-3')}>
         <h3 className="text-sm font-semibold text-text">Outside bookings</h3>
-        <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-2xs' : 'text-xs')}>
+        <p className="text-xs text-text-muted">
           No physical table
         </p>
       </div>
 
       {bookings.length === 0 ? (
         loading ? null : (
-          <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-meta' : 'text-sm')}>
+          <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-xs' : 'text-sm')}>
             No outside bookings for this service.
           </p>
         )
@@ -65,7 +65,7 @@ export const FohOutsideBookings = React.memo(function FohOutsideBookings(props: 
                     {visualLabel}
                   </Badge>
                 </div>
-                <p className={cn('text-text-muted', isManagerKioskStyle ? 'text-meta' : 'text-xs')}>
+                <p className="text-xs text-text-muted">
                   {formatBookingWindow(booking.start_datetime, booking.end_datetime, booking.booking_time)}
                   {' · '}
                   {booking.party_size || 1}p

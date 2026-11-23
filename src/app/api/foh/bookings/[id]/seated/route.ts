@@ -98,5 +98,11 @@ export async function POST(
     additional_info: { source: 'foh' },
   }).catch(() => {})
 
-  return NextResponse.json({ success: true, booking: data, data })
+  // A first seating can be undone from the floor (back to not arrived). Seating a no-show or a
+  // party that had left again is a correction in itself and carries no undo.
+  const undo = !booking.seated_at && !booking.left_at && booking.status !== 'no_show'
+    ? { action: 'seated' as const, stamp: nowIso }
+    : null
+
+  return NextResponse.json({ success: true, booking: data, data, undo })
 }

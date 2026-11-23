@@ -34,6 +34,37 @@ function buildGuestName(customer: any): string | null {
   return fullName || null
 }
 
+/**
+ * The guest's phone number, for the booking panel: staff ring a party that is late. This route is
+ * staff only (table_bookings view), the same people who can already search customers by phone.
+ */
+function buildGuestPhone(customer: any): string | null {
+  const source = Array.isArray(customer) ? customer[0] : customer
+  const e164 = typeof source?.mobile_e164 === 'string' ? source.mobile_e164.trim() : ''
+  const raw = typeof source?.mobile_number === 'string' ? source.mobile_number.trim() : ''
+  return e164 || raw || null
+}
+
+/**
+ * Today's no-shows, for the greyed list with 'Undo no-show' (owner decision, 22 November 2026).
+ * They are listed for the day they happened only, so they never pile up, and they are kept out of
+ * the lanes so a no-show never reads as a table in use. A failed read loses the list, not the floor.
+ */
+async function loadNoShowRows(supabase: any, date: string): Promise<any[]> {
+  try {
+    const { data, error } = await supabase.from('table_bookings')
+      .select('id, booking_reference, booking_time, party_size, booking_type, status, no_show_at, start_datetime, end_datetime, event_booking_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name,mobile_e164,mobile_number)')
+      .eq('booking_date', date)
+      .eq('status', 'no_show')
+      .order('booking_time', { ascending: true })
+    if (error) throw error
+    return data || []
+  } catch (error) {
+    logger.error('FOH schedule could not load the day\'s no-shows', { error: errorForLog(error), metadata: { date } })
+    return []
+  }
+}
+
 function isActiveEventBookingForCapacity(booking: any): boolean {
   if (!booking) return false
   if (booking.status === 'confirmed') return true
@@ -222,7 +253,7 @@ async function loadScheduleBookingRows(
   date: string,
 ): Promise<{ data: any[]; error: unknown | null }> {
   const attempts = [
-    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, allergies, dietary_requirements, celebration_type, internal_notes, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, requires_accessible_table, christmas_course_counts, guest_confirmed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
+    'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, deposit_amount_locked, hold_expires_at, special_requirements, allergies, dietary_requirements, celebration_type, internal_notes, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, high_chair_count, is_outside_seating, requires_accessible_table, christmas_course_counts, guest_confirmed_at, customer:customers!table_bookings_customer_id_fkey(first_name,last_name,mobile_e164,mobile_number)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, payment_status, payment_method, deposit_amount, hold_expires_at, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, deposit_waived, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
     'id, booking_reference, booking_date, booking_time, party_size, booking_type, booking_purpose, status, special_requirements, seated_at, left_at, no_show_at, start_datetime, end_datetime, event_id, customer:customers!table_bookings_customer_id_fkey(first_name,last_name)',
   ]
@@ -709,6 +740,7 @@ export async function GET(request: NextRequest) {
           id: booking.id,
           booking_reference: booking.booking_reference,
           guest_name: buildGuestName(booking.customer),
+          guest_phone: buildGuestPhone(booking.customer),
           booking_time: booking.booking_time,
           party_size: booking.party_size,
           deposit_waived: booking.deposit_waived ?? false,
@@ -789,6 +821,7 @@ export async function GET(request: NextRequest) {
       id: booking.id,
       booking_reference: booking.booking_reference,
       guest_name: buildGuestName(booking.customer),
+      guest_phone: buildGuestPhone(booking.customer),
       booking_time: booking.booking_time,
       party_size: booking.party_size,
       deposit_waived: booking.deposit_waived ?? false,
@@ -906,6 +939,25 @@ export async function GET(request: NextRequest) {
       }
     })
 
+  // No-shows are listed only while the day they happened is the day being worked.
+  const noShowRows = date === tradingDayNow.date ? await loadNoShowRows(supabase, date) : []
+  const noShowBookings = noShowRows.map((booking) => ({
+    id: booking.id,
+    booking_reference: booking.booking_reference,
+    guest_name: buildGuestName(booking.customer),
+    guest_phone: buildGuestPhone(booking.customer),
+    booking_time: booking.booking_time,
+    party_size: booking.party_size,
+    booking_type: booking.booking_type ?? null,
+    // The table half of an event booking is put back from the event (BK-074).
+    booking_purpose: booking.event_booking_id ? 'event' : null,
+    status: booking.status,
+    notes: null,
+    no_show_at: booking.no_show_at || null,
+    start_datetime: booking.start_datetime || null,
+    end_datetime: booking.end_datetime || null,
+  }))
+
   return NextResponse.json({
     success: true,
     data: {
@@ -915,6 +967,7 @@ export async function GET(request: NextRequest) {
       lanes,
       unassigned_bookings: [...unassignedBookings, ...standingEventBookings],
       outside_bookings: outsideBookings,
+      no_show_bookings: noShowBookings,
       private_hires_unavailable: privateHiresUnavailable,
       load_warnings: loadWarnings,
       day_load: dayLoadResult

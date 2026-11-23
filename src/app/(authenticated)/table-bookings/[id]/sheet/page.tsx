@@ -1,3 +1,4 @@
+import { bookingSheetBackButton } from '@/lib/table-bookings/booking-sheet-back'
 import { notFound, redirect } from 'next/navigation'
 import { Alert, LinkButton, PageLayout } from '@/ds'
 import { getPermissionStatus, getUserPermissions } from '@/app/actions/rbac'
@@ -8,6 +9,7 @@ import { canDownloadBookingSheet, type BookingSheetModel } from '@/lib/table-boo
 import { loadBookingSheetModel } from '@/lib/table-bookings/booking-sheet-load'
 import { renderBookingOnePager } from '@/lib/table-booking-one-pager-template'
 import { AutoPrintSheet, PrintSheetButton } from './PrintSheetButton'
+import { BackToFrontOfHouse } from '@/components/foh/BackToFrontOfHouse'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -43,9 +45,19 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
   // Fail closed: if the permission list did not load, nobody is offered the download.
   const canDownload = permissionsResult.success === true && canDownloadBookingSheet(permissions)
   const fohOnly = isFohOnlyUser(permissions)
-  const backButton = fohOnly
-    ? { label: 'Back to Front of House', href: '/table-bookings/foh' }
-    : { label: 'Back to the booking', href: `/table-bookings/${id}` }
+  const backButton = bookingSheetBackButton(fohOnly, id)
+  // The till's way back sits where it sits on every till page: the last header action. Back to
+  // the booking (not for the till login, which may not open it) goes before it, never after.
+  const backLinks = (
+    <>
+      {!fohOnly && (
+        <LinkButton href={backButton.href} variant="secondary" size="lg" className="min-h-touch">
+          {backButton.label}
+        </LinkButton>
+      )}
+      <BackToFrontOfHouse />
+    </>
+  )
 
   if (!UUID_REGEX.test(id)) notFound()
 
@@ -56,7 +68,7 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
   } catch (error) {
     console.error('Booking sheet could not be loaded:', error instanceof Error ? error.message : error)
     return (
-      <PageLayout title="Booking sheet" backButton={backButton}>
+      <PageLayout title="Booking sheet" headerActions={backLinks} showHeaderActionsOnMobile>
         <Alert tone="danger" title="The sheet could not be loaded">
           Nothing is shown rather than a sheet with seats missing. Reload the page, and if it still fails
           check the booking before service.
@@ -68,20 +80,24 @@ export default async function BookingSheetPage({ params, searchParams }: Props) 
 
   // Only people who may print get the automatic print window too.
   const autoPrint = canDownload && query.print === '1'
-  const headerActions = canDownload ? (
+  const headerActions = (
     <>
-      <PrintSheetButton />
-      <LinkButton href={`/api/boh/table-bookings/booking-sheets/${id}`} download variant="secondary" size="sm">
-        Download PDF
-      </LinkButton>
+      {canDownload && (
+        <>
+          <PrintSheetButton />
+          <LinkButton href={`/api/boh/table-bookings/booking-sheets/${id}`} download variant="secondary" size="sm">
+            Download PDF
+          </LinkButton>
+        </>
+      )}
+      {backLinks}
     </>
-  ) : undefined
+  )
 
   return (
     <PageLayout
       title="Booking sheet"
       subtitle={`${model.header.reference} · ${model.header.dayDate} · ${model.header.time}`}
-      backButton={backButton}
       headerActions={headerActions}
       showHeaderActionsOnMobile
     >

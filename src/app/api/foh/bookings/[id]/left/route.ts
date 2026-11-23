@@ -4,6 +4,7 @@ import { getTableBookingForFoh } from '@/lib/foh/bookings'
 import { logAuditEvent } from '@/app/actions/audit'
 import { logger } from '@/lib/logger'
 import { leftBeforeArrivalProblem, leftEndDatetime, shortenAssignmentsOnLeave } from '@/lib/table-bookings/staff-status-actions'
+import { readLeftRestore } from '@/lib/table-bookings/staff-status-undo'
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
@@ -43,6 +44,8 @@ export async function POST(
   if (tooEarly) {
     return NextResponse.json({ error: tooEarly }, { status: 409 })
   }
+  // The ends this is about to replace, so an Undo can give the table its planned time back.
+  const restore = await readLeftRestore(auth.supabase, id, booking.end_datetime, nowIso)
   // Only ever shortens the table times, so a late 'left' cannot overlap the next party or a
   // private hire and be refused; and a failure there never leaves the party 'seated' (BK-093).
   const { error: assignmentError } = await shortenAssignmentsOnLeave(auth.supabase, id, nowIso)
@@ -85,5 +88,10 @@ export async function POST(
     additional_info: { source: 'foh' },
   }).catch(() => {})
 
-  return NextResponse.json({ success: true, booking: data, data })
+  return NextResponse.json({
+    success: true,
+    booking: data,
+    data,
+    undo: { action: 'left' as const, stamp: nowIso, restore },
+  })
 }

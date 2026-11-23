@@ -1,22 +1,23 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { type DragStartEvent, type DragEndEvent } from '@dnd-kit/core'
 import { createClient as createSupabaseClient } from '@/lib/supabase/client'
 import { Alert } from '@/ds'
 import { PrivateHireTodayStrip } from '@/components/day-load/PrivateHireTodayStrip'
 import { cn } from '@/lib/utils'
+import { formatTime12Hour } from '@/lib/dateUtils'
 
 import type {
   FohBooking,
   FohMoveTableAvailabilityResponse,
   FohMoveTableOption,
   FohStyleVariant,
+  FohTimelineZoom,
   FohViewMode,
   SelectedBookingContext,
 } from './types'
 import {
-  BookingActionError,
   FOH_AUTO_RETURN_IDLE_MS,
   FOH_AUTO_RETURN_POLL_MS,
   buildTimelineRange,
@@ -24,13 +25,17 @@ import {
   minutesFromServiceDate,
   postBookingAction,
   buildTimeChangeOptions,
+  formatFohClock,
+  isFohScheduleStale,
   resolveFohServiceDateNow,
   statusBlockClass,
+  type FohSearchResult,
 } from './utils'
 import { useFohBookings } from './hooks/useFohBookings'
 import { useFohRealtime } from './hooks/useFohRealtime'
 import { useFohCreateBooking } from './hooks/useFohCreateBooking'
 import { useFohDeploymentRefresh } from './hooks/useFohDeploymentRefresh'
+import { useFohBookingActions } from './hooks/useFohBookingActions'
 import { FohLoadWarningsBanner } from './components/FohLoadWarningsBanner'
 import { useFohDrag } from './useFohDrag'
 
@@ -43,36 +48,18 @@ import { FohCreateBookingModal } from './components/FohCreateBookingModal'
 import { FohPartySizeModal, FohWalkoutModal } from './components/FohMiniModals'
 import type { ChristmasPartyChange } from '@/components/features/table-bookings/ChristmasCourseFields'
 import { FohChangeTimeModal } from './components/FohChangeTimeModal'
-import {
-  describeGuestNotificationChannel,
-  describeGuestNotificationProblem,
-  readGuestNotificationOutcome,
-} from '@/lib/table-bookings/guest-notification-outcome'
-import { describeDepositRefundForStaff, readDepositRefundOutcome } from '@/lib/table-bookings/deposit-refund-outcome'
-import { describePartySizeStaffNotice } from '@/lib/table-bookings/party-size-staff-notice'
+import { FohBookingSearch } from './components/FohBookingSearch'
+import { FohFreshness } from './components/FohFreshness'
+import { FohNoShowList } from './components/FohNoShowList'
+import { OpenEarlierBookingsStrip } from '@/components/features/table-bookings/OpenEarlierBookingsStrip'
+import { UndoBar } from '@/components/features/table-bookings/UndoBar'
 import { GuestNotToldPanel } from '@/components/features/table-bookings/GuestNotToldPanel'
 import { AwaitingConfirmationPanel } from '@/components/features/table-bookings/AwaitingConfirmationPanel'
 
-/** The warning for a guest who was not told about a change, or null. */
-function describeGuestNotReached(result: unknown): string | null {
-  const payload = result && typeof result === 'object' ? (result as Record<string, unknown>) : null
-  if (!payload) return null
+const FOH_ZOOM_STORAGE_KEY = 'foh-timeline-zoom'
 
-  const cancellation = describeGuestNotificationProblem(
-    readGuestNotificationOutcome(payload.guest_notification),
-    'about the cancellation'
-  )
-  if (cancellation) return cancellation
-
-  const transition = payload.depositTransition && typeof payload.depositTransition === 'object'
-    ? (payload.depositTransition as Record<string, unknown>)
-    : null
-  const deposit = describeGuestNotificationProblem(readGuestNotificationOutcome(transition?.notification), 'about the deposit')
-  if (deposit) return `${deposit} Copy the deposit link from the booking to send it.`
-
-  // The new party size, when staff changed it and the guest could not be told (BK-091).
-  return describeGuestNotificationProblem(readGuestNotificationOutcome(payload.partySizeNotification), 'about the new party size')
-}
+// How often the 'still open from earlier' strip looks again while the schedule keeps refreshing.
+const FOH_STRIP_REFRESH_MS = 5 * 60 * 1000
 
 export function FohScheduleClient({
   initialDate,
@@ -80,7 +67,8 @@ export function FohScheduleClient({
   canEdit,
   isSuperAdmin = false,
   styleVariant = 'default',
-  canWaiveDeposit = false
+  canWaiveDeposit = false,
+  canManageSettings = false
 }: {
   initialDate: string
   deploymentVersion: string
@@ -88,23 +76,23 @@ export function FohScheduleClient({
   isSuperAdmin?: boolean
   styleVariant?: FohStyleVariant
   canWaiveDeposit?: boolean
+  /** settings manage: Table Setup is offered in the toolbar's More menu. */
+  canManageSettings?: boolean
 }) {
   const supabase = useMemo(() => createSupabaseClient(), [])
   const isManagerKioskStyle = styleVariant === 'manager_kiosk'
   const [date, setDate] = useState(initialDate)
   const [statusMessage, setStatusMessage] = useState<string | null>(null)
-  // What staff must read after a party-size change (a deposit left for a manager, food choices
-  // dropped). Kept on screen until dismissed, never cleared by the next action (BK-043).
-  const [staffNotice, setStaffNotice] = useState<string[] | null>(null)
   // Bumped after each action so the "guest not told" list looks again (BK-177).
   const [guestNotToldRefresh, setGuestNotToldRefresh] = useState(0)
-  const [bookingActionInFlight, setBookingActionInFlight] = useState<string | null>(null)
   const [moveTargets, setMoveTargets] = useState<Record<string, string>>({})
   const [selectedMoveOptions, setSelectedMoveOptions] = useState<FohMoveTableOption[]>([])
   const [loadingSelectedMoveOptions, setLoadingSelectedMoveOptions] = useState(false)
   const [selectedBookingContext, setSelectedBookingContext] = useState<SelectedBookingContext | null>(null)
   const [showCancelBookingConfirmation, setShowCancelBookingConfirmation] = useState(false)
-  const [showNoShowConfirmation, setShowNoShowConfirmation] = useState(false)
+  // Why a party size or walkout amount was not accepted, shown in that dialog itself.
+  const [miniModalError, setMiniModalError] = useState<string | null>(null)
+  const [refreshingNow, setRefreshingNow] = useState(false)
   const [partySizeEditOpen, setPartySizeEditOpen] = useState(false)
   const [christmasPartyChange, setChristmasPartyChange] = useState<ChristmasPartyChange | undefined>(undefined)
   const [partySizeEditValue, setPartySizeEditValue] = useState('')
@@ -120,6 +108,26 @@ export function FohScheduleClient({
   const [submittingFoodOrderAlert, setSubmittingFoodOrderAlert] = useState(false)
   const [clockNow, setClockNow] = useState(() => new Date())
   const [viewMode, setViewMode] = useState<FohViewMode>('inside')
+  // Day (the whole opening window) or Now (about five hours around the present). Remembered per
+  // browser; a narrow screen starts on Now. Storage can be blocked, so every touch of it is guarded.
+  const [timelineZoom, setTimelineZoom] = useState<FohTimelineZoom>('day')
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(FOH_ZOOM_STORAGE_KEY)
+      if (stored === 'day' || stored === 'now') { setTimelineZoom(stored); return }
+    } catch {
+      // No storage: fall through to the default for this screen width.
+    }
+    if (window.innerWidth < 1024) setTimelineZoom('now')
+  }, [])
+  const chooseTimelineZoom = useCallback((zoom: FohTimelineZoom) => {
+    setTimelineZoom(zoom)
+    try {
+      window.localStorage.setItem(FOH_ZOOM_STORAGE_KEY, zoom)
+    } catch {
+      // The choice still holds for this visit.
+    }
+  }, [])
 
   const lastInteractionAtMsRef = useRef(Date.now())
   const timelineRef = useRef<HTMLDivElement | null>(null)
@@ -153,12 +161,28 @@ export function FohScheduleClient({
 
   // --- Data fetching ---
   const {
-    schedule, setSchedule, loading, errorMessage, setErrorMessage, reloadSchedule,
+    schedule, setSchedule, loading, errorMessage, setErrorMessage, reloadSchedule, lastUpdatedAt,
     upcomingEvents, upcomingEventsLoaded,
   } = useFohBookings({ date, clockNow })
 
-  // --- Realtime subscriptions ---
+  // --- Staying up to date: the one refresh mechanism (realtime, a 60 second safety net, and a
+  // refetch when the tab comes back or the network returns) ---
   useFohRealtime({ supabase, date, isDragging, reloadSchedule })
+
+  // --- Booking actions, their messages and their Undo ---
+  const closeConfirmSteps = useCallback(() => setShowCancelBookingConfirmation(false), [])
+  const bumpSideLists = useCallback(() => setGuestNotToldRefresh((count) => count + 1), [])
+  const {
+    bookingActionInFlight, setBookingActionInFlight,
+    panelNotice, setPanelNotice,
+    staffNotice, setStaffNotice,
+    undoOffer, undoBusy, runUndo, dismissUndo,
+    runAction,
+  } = useFohBookingActions({
+    setSchedule, setSelectedBookingContext, reloadSchedule, setErrorMessage, setStatusMessage,
+    onActionStart: closeConfirmSteps,
+    onActionSaved: bumpSideLists,
+  })
 
   // --- Computed from schedule ---
   const timeline = useMemo(() => buildTimelineRange(schedule), [schedule])
@@ -306,127 +330,49 @@ export function FohScheduleClient({
       } catch (error) {
         if (cancelled) return
         setSelectedMoveOptions([])
-        setErrorMessage(error instanceof Error ? error.message : 'Failed to load available tables')
+        // Said in the panel, where the empty table list is.
+        setPanelNotice({ tone: 'danger', text: error instanceof Error ? error.message : 'Failed to load available tables' })
       } finally { if (!cancelled) setLoadingSelectedMoveOptions(false) }
     }
     void load()
     return () => { cancelled = true }
-  }, [selectedBooking, selectedBookingIsEventOnly, canEdit, setErrorMessage])
+  }, [selectedBooking, selectedBookingIsEventOnly, canEdit, setPanelNotice])
 
-  // --- Booking detail actions ---
-  function applyBookingPatch(patch: Partial<FohBooking> & { id: string; cancelled_at?: string | null; updated_at?: string | null }) {
-    setSchedule((cur) => {
-      if (!cur) return cur
-      const p = (bs: FohBooking[]) => bs.map((b) => b.id === patch.id ? { ...b, ...patch } : b)
-      return {
-        ...cur,
-        lanes: cur.lanes.map((l) => ({ ...l, bookings: p(l.bookings) })),
-        unassigned_bookings: p(cur.unassigned_bookings),
-        outside_bookings: cur.outside_bookings ? p(cur.outside_bookings) : cur.outside_bookings,
-      }
-    })
-    setSelectedBookingContext((cur) => {
-      if (!cur || cur.booking.id !== patch.id) return cur
-      return { ...cur, booking: { ...cur.booking, ...patch } }
-    })
-  }
-
-  function buildActionSuccessMessage(successMessage: string, result: unknown): string {
-    const payload = result as Record<string, unknown> | null
-    const data = payload && typeof payload.data === 'object' && payload.data !== null
-      ? payload.data as Record<string, unknown>
-      : null
-
-    if (data?.state === 'unchanged') {
-      return 'No change was made.'
-    }
-
-    const transition = payload && typeof payload.depositTransition === 'object' && payload.depositTransition !== null
-      ? payload.depositTransition as Record<string, unknown>
-      : null
-
-    if (transition?.state === 'deposit_required') {
-      const depositUrl = typeof transition.depositUrl === 'string' ? transition.depositUrl : null
-      // The request goes email first and says which channel reached the guest; with no outcome
-      // (staff chose not to notify), the plain wording.
-      const notification = readGuestNotificationOutcome(transition.notification)
-      const sentBy = notification
-        ? describeGuestNotificationChannel(notification)
-        : transition.smsSent === true
-          ? 'by SMS'
-          : null
-      // A confirmed booking stays confirmed with the deposit owed (D20).
-      const staysConfirmed = transition.stillConfirmed === true ? ' The booking stays confirmed.' : ''
-      return `${successMessage}. Deposit is now required${sentBy ? ` and the payment link was sent ${sentBy}` : ''}${depositUrl ? `: ${depositUrl}` : '.'}${staysConfirmed}`
-    }
-
-    if (transition?.state === 'deposit_cleared') {
-      return `${successMessage}. Pending deposit cleared.`
-    }
-
-    // An unpaid deposit that followed the new party size (D20).
-    if (transition?.state === 'deposit_repriced' && typeof payload?.depositNote === 'string') {
-      return `${successMessage}. ${payload.depositNote}`
-    }
-
-    // The guest was told about the new party size (BK-091).
-    const toldBy = describeGuestNotificationChannel(readGuestNotificationOutcome(payload?.partySizeNotification))
-    if (toldBy) {
-      return `${successMessage}. The guest was told ${toldBy}.`
-    }
-
-    return successMessage
-  }
-
-  async function runAction(action: () => Promise<unknown>, successMessage: string, inFlightLabel?: string): Promise<boolean> {
-    setShowCancelBookingConfirmation(false); setShowNoShowConfirmation(false)
-    setErrorMessage(null); setStatusMessage(null)
-    setBookingActionInFlight(inFlightLabel || successMessage)
-    try {
-      const result = await action()
-      const rp = result as Record<string, unknown> | null
-      const snap = rp && typeof rp.booking === 'object' && rp.booking !== null && typeof (rp.booking as any).id === 'string'
-        ? (rp.booking as Parameters<typeof applyBookingPatch>[0]) : null
-      if (snap) applyBookingPatch(snap)
-      await reloadSchedule()
-      // What happened to the deposit on a cancellation, said to the person who cancelled (BK-114).
-      const depositRefund = describeDepositRefundForStaff(readDepositRefundOutcome(rp?.deposit_refund))
-      const successText = buildActionSuccessMessage(successMessage, result)
-      const notice = describePartySizeStaffNotice(result)
-      if (notice.length > 0) setStaffNotice(notice)
-      setStatusMessage(depositRefund?.tone === 'success' ? `${successText} ${depositRefund.message}` : successText)
-      // The change stands, but staff must know when the guest was not told about it. Only the
-      // email-first paths report this, so without their flags nothing new shows.
-      const guestNotReached = describeGuestNotReached(result)
-      const depositProblem = depositRefund?.tone === 'error' ? depositRefund.message : null
-      if (depositProblem && guestNotReached) setErrorMessage(`${depositProblem} ${guestNotReached}`)
-      else if (depositProblem) setErrorMessage(depositProblem)
-      else if (guestNotReached) setErrorMessage(guestNotReached)
-      setGuestNotToldRefresh((count) => count + 1)
-      return true
-    } catch (error) {
-      if (error instanceof BookingActionError && error.payload) {
-        const ep = error.payload
-        if (typeof ep.booking === 'object' && ep.booking !== null && typeof (ep.booking as any).id === 'string') {
-          applyBookingPatch(ep.booking as Parameters<typeof applyBookingPatch>[0])
-        }
-      }
-      setErrorMessage(error instanceof Error ? error.message : 'Action failed')
-      return false
-    } finally { setBookingActionInFlight(null) }
-  }
-
+  // --- Booking detail panel ---
   function openBookingDetails(booking: FohBooking, ctx: { laneTableId: string | null; laneTableName: string | null }) {
     setSelectedBookingContext({ booking, laneTableId: ctx.laneTableId, laneTableName: ctx.laneTableName })
-    setShowCancelBookingConfirmation(false); setShowNoShowConfirmation(false)
-    setErrorMessage(null); setStatusMessage(null)
+    setShowCancelBookingConfirmation(false)
+    setErrorMessage(null); setStatusMessage(null); setPanelNotice(null)
   }
 
   function closeBookingDetails() {
     setSelectedBookingContext(null); setBookingActionInFlight(null)
-    setShowCancelBookingConfirmation(false); setShowNoShowConfirmation(false)
+    setShowCancelBookingConfirmation(false)
     setPartySizeEditOpen(false); setWalkoutModalOpen(false)
     setChangeTimeOpen(false); setChangeTimeError(null)
+    setPanelNotice(null); setMiniModalError(null)
+  }
+
+  async function refreshNow() {
+    setRefreshingNow(true)
+    try {
+      await reloadSchedule({ surfaceError: false })
+      bumpSideLists()
+    } catch {
+      // The warning stays up: that is the message.
+    } finally { setRefreshingNow(false) }
+  }
+
+  // A no-show put back from today's list: the same checks as any no-show coming back.
+  function undoNoShowFromList(booking: FohBooking) {
+    void runAction(
+      () => postBookingAction(`/api/foh/bookings/${booking.id}/undo`, {
+        action: 'no_show',
+        ...(booking.no_show_at ? { stamp: booking.no_show_at } : {}),
+      }),
+      `${booking.guest_name || booking.booking_reference || 'Booking'} is back as booked`,
+      `undo_no_show:${booking.id}`
+    )
   }
 
   async function sendFoodOrderAlert() {
@@ -495,7 +441,7 @@ export function FohScheduleClient({
         // Someone else got there first, or the booking moved on. Keep the modal open so the
         // message is visible, and refresh so the grid stops offering the time that failed.
         setChangeTimeError(payload?.error ?? 'That time is no longer available.')
-        await reloadSchedule()
+        await reloadSchedule({ surfaceError: false }).catch(() => {})
         return
       }
       if (!resp.ok) {
@@ -504,15 +450,17 @@ export function FohScheduleClient({
 
       setChangeTimeOpen(false)
       closeBookingDetails()
-      await reloadSchedule()
+      // Saved. A failed refresh must not turn this into an error (the "last updated" warning
+      // covers a screen that is behind).
+      await reloadSchedule({ surfaceError: false }).catch(() => {})
 
       const lostChairs = Number(payload?.data?.high_chairs_lost ?? 0)
       setStatusMessage(
         payload?.data?.state === 'unchanged'
           ? 'No change was made.'
           : lostChairs > 0
-            ? `Moved to ${time}. The guest has been told. ${lostChairs} high chair${lostChairs === 1 ? '' : 's'} could not be held at the new time.`
-            : `Moved to ${time}. The guest has been told.`
+            ? `Moved to ${formatFohClock(time)}. The guest has been told. ${lostChairs} high chair${lostChairs === 1 ? '' : 's'} could not be held at the new time.`
+            : `Moved to ${formatFohClock(time)}. The guest has been told.`
       )
     } catch (error) {
       // A network failure leaves the outcome genuinely unknown, so refresh and say so rather
@@ -531,7 +479,14 @@ export function FohScheduleClient({
   // --- Render ---
   // The manager kiosk sits on the same dark green as its PageLayout header (bg-brand-700 is the
   // sidebar green); the sidebar token itself belongs to the app shell.
-  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-2 rounded-xl bg-brand-700 p-2 sm:p-3' : 'space-y-6')
+  // Tight on both layouts: every band above the timeline pushes the tables down the screen.
+  const pageWrapperClass = cn(isManagerKioskStyle ? 'space-y-1.5 rounded-xl bg-brand-700 p-1.5' : 'space-y-2')
+  const serviceWindow = schedule?.service_window
+  const openHoursLabel = !serviceWindow
+    ? null
+    : serviceWindow.source === 'closed'
+      ? 'Closed all day'
+      : `Open ${formatTime12Hour(serviceWindow.start_time || '09:00')} to ${formatTime12Hour(serviceWindow.end_time || '23:00')}${serviceWindow.end_next_day ? ' (next day)' : ''}`
 
   return (
     /*
@@ -542,6 +497,13 @@ export function FohScheduleClient({
      * mid-service. The manager kiosk variant shrinks them further still.
      */
     <div className={pageWrapperClass} data-touch-targets>
+      {/* Earlier bookings nobody marked as arrived or no-show (BK-130). Renders nothing when there
+          are none, and reads again as the schedule refreshes so it never shows what is closed. */}
+      <OpenEarlierBookingsStrip
+        canEdit={canEdit}
+        refreshKey={`${guestNotToldRefresh}:${lastUpdatedAt ? Math.floor(lastUpdatedAt.getTime() / FOH_STRIP_REFRESH_MS) : 0}`}
+      />
+
       <FohHeader
         date={date}
         setDate={setDate as (date: string | ((current: string) => string)) => void}
@@ -561,6 +523,28 @@ export function FohScheduleClient({
         staffNotice={staffNotice}
         onDismissStaffNotice={() => setStaffNotice(null)}
         lastInteractionAtMsRef={lastInteractionAtMsRef}
+        timelineZoom={timelineZoom}
+        onTimelineZoomChange={chooseTimelineZoom}
+        openHoursLabel={openHoursLabel}
+        canManageSettings={canManageSettings}
+        search={
+          <FohBookingSearch
+            schedule={schedule}
+            onOpen={(result: FohSearchResult) => {
+              lastInteractionAtMsRef.current = Date.now()
+              openBookingDetails(result.booking, { laneTableId: result.laneTableId, laneTableName: result.laneTableName })
+            }}
+          />
+        }
+        freshnessWide={isFohScheduleStale(lastUpdatedAt, clockNow)}
+        freshness={
+          <FohFreshness
+            lastUpdatedAt={lastUpdatedAt}
+            now={clockNow}
+            refreshing={refreshingNow}
+            onRefresh={() => void refreshNow()}
+          />
+        }
         onSendFoodOrderAlert={() => void sendFoodOrderAlert()}
         onOpenCreateModal={createBooking.openCreateModal}
       />
@@ -603,6 +587,7 @@ export function FohScheduleClient({
             loading={loading}
             styleVariant={styleVariant}
             currentTimelineLeftPct={currentTimelineLeftPct}
+            zoom={timelineZoom}
             sensors={sensors}
             activeDragData={activeDragData}
             pointerPosition={pointerPosition}
@@ -634,13 +619,34 @@ export function FohScheduleClient({
         />
       )}
 
+      <FohNoShowList
+        bookings={schedule?.no_show_bookings || []}
+        canEdit={canEdit}
+        busyBookingId={bookingActionInFlight?.startsWith('undo_no_show:') ? bookingActionInFlight.slice('undo_no_show:'.length) : null}
+        styleVariant={styleVariant}
+        onUndo={undoNoShowFromList}
+      />
+
+      {undoOffer && (
+        <UndoBar
+          key={undoOffer.id}
+          offer={undoOffer}
+          busy={undoBusy}
+          floating
+          onUndo={() => void runUndo()}
+          onExpire={dismissUndo}
+        />
+      )}
+
       <FohBookingDetailModal
         selectedBookingContext={selectedBookingContext}
         canEdit={canEdit}
         canChooseRefund={canWaiveDeposit}
         bookingActionInFlight={bookingActionInFlight}
         showCancelBookingConfirmation={showCancelBookingConfirmation}
-        showNoShowConfirmation={showNoShowConfirmation}
+        notice={panelNotice}
+        onDismissNotice={() => setPanelNotice(null)}
+        now={clockNow}
         selectedMoveTarget={selectedMoveTarget}
         selectedMoveOptions={selectedMoveOptions}
         loadingSelectedMoveOptions={loadingSelectedMoveOptions}
@@ -648,15 +654,15 @@ export function FohScheduleClient({
         onRunAction={runAction}
         onMoveTargetChange={(bid, tid) => setMoveTargets((c) => ({ ...c, [bid]: tid }))}
         onSetShowCancelBookingConfirmation={setShowCancelBookingConfirmation}
-        onSetShowNoShowConfirmation={setShowNoShowConfirmation}
-        onOpenPartySizeEdit={(bid, size) => { setPartySizeEditBookingId(bid); setPartySizeEditValue(String(size)); setPartySizeEditOpen(true) }}
-        onOpenWalkoutModal={(bid) => { setWalkoutBookingId(bid); setWalkoutAmountValue(''); setWalkoutModalOpen(true) }}
+        onOpenPartySizeEdit={(bid, size) => { setPartySizeEditBookingId(bid); setPartySizeEditValue(String(size)); setMiniModalError(null); setPartySizeEditOpen(true) }}
+        onOpenWalkoutModal={(bid) => { setWalkoutBookingId(bid); setWalkoutAmountValue(''); setMiniModalError(null); setWalkoutModalOpen(true) }}
         onOpenChangeTime={(bid) => { setChangeTimeBookingId(bid); setChangeTimeError(null); setChangeTimeOpen(true) }}
         canManageDeposit={canWaiveDeposit}
       />
 
       <FohCreateBookingModal
         open={createBooking.isCreateModalOpen}
+        serviceDateNow={serviceDateNow}
         createMode={createBooking.createMode}
         createForm={createBooking.createForm}
         canWaiveDeposit={canWaiveDeposit}
@@ -701,16 +707,17 @@ export function FohScheduleClient({
         open={partySizeEditOpen}
         bookingActionInFlight={bookingActionInFlight}
         partySizeEditValue={partySizeEditValue}
+        error={partySizeEditOpen ? miniModalError : null}
         onClose={() => setPartySizeEditOpen(false)}
         onPartySizeChange={setPartySizeEditValue}
         onConfirm={(submittedValue) => {
           const nextSize = Number.parseInt(submittedValue, 10)
-          if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) { setErrorMessage('Enter a party size between 1 and 50.'); return }
+          if (!Number.isFinite(nextSize) || nextSize < 1 || nextSize > 50) { setMiniModalError('Enter a party size between 1 and 50.'); return }
           const bid = partySizeEditBookingId
           if (!bid) return
           setPartySizeEditOpen(false)
           void (async () => {
-            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, send_sms: true, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats, expected_course_counts: christmasPartyChange?.expectedCourseCounts }), 'Party size updated', 'party_size')
+            const ok = await runAction(() => postBookingAction(`/api/foh/bookings/${bid}/party-size`, { party_size: nextSize, christmas_course_counts: christmasPartyChange?.courseCounts, removed_seats: christmasPartyChange?.removedSeats, expected_course_counts: christmasPartyChange?.expectedCourseCounts }), 'Party size updated', 'party_size')
             if (ok) closeBookingDetails()
           })()
         }}
@@ -720,11 +727,12 @@ export function FohScheduleClient({
         open={walkoutModalOpen}
         bookingActionInFlight={bookingActionInFlight}
         walkoutAmountValue={walkoutAmountValue}
+        error={walkoutModalOpen ? miniModalError : null}
         onClose={() => setWalkoutModalOpen(false)}
         onAmountChange={setWalkoutAmountValue}
         onConfirm={() => {
           const amount = Number(walkoutAmountValue)
-          if (!Number.isFinite(amount) || amount <= 0) { setErrorMessage('Please enter a valid walkout amount.'); return }
+          if (!Number.isFinite(amount) || amount <= 0) { setMiniModalError('Please enter a valid walkout amount.'); return }
           const bid = walkoutBookingId
           if (!bid) return
           setWalkoutModalOpen(false)
