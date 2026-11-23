@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { PageLayout } from '@/ds'
+import { BackToFrontOfHouse } from '@/components/foh/BackToFrontOfHouse'
 import { getPermissionStatus } from '@/app/actions/rbac'
 import { PermissionsUnavailable } from '@/components/features/shared/PermissionsUnavailable'
 import { FohParkingClient } from './FohParkingClient'
@@ -21,7 +22,8 @@ export default async function FohParkingPage() {
     <PageLayout
       title="Parking"
       subtitle="What is booked, for the bar. To change a booking, ask a manager."
-      compactHeader
+      headerActions={<BackToFrontOfHouse />}
+      showHeaderActionsOnMobile
     >
       <FohParkingClient />
     </PageLayout>

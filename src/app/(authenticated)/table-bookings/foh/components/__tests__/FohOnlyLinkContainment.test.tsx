@@ -151,7 +151,7 @@ describe('the shared till login is only ever sent where it may go', () => {
     expect(bookingSheetBackButton(false, BOOKING_ID).href).toBe(`/table-bookings/${BOOKING_ID}`)
   })
 
-  it('parking view: back to the floor screen and phone numbers only', async () => {
+  it('parking view: phone numbers only', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       status: 200,
@@ -175,6 +175,7 @@ describe('the shared till login is only ever sent where it may go', () => {
 
     const hrefs = hrefsOnScreen()
     expectContained(hrefs)
-    expect(hrefs.sort()).toEqual(['/table-bookings/foh', 'tel:+447700900111'].sort())
+    // The way back is the page header's shared Back to Front of House (BackToFrontOfHouse.test.tsx).
+    expect(hrefs).toEqual(['tel:+447700900111'])
   })
 })

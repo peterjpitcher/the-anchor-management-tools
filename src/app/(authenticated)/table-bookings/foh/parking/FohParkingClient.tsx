@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Card, CardBody, CardHeader, LinkButton, SearchInput } from '@/ds'
+import { Alert, Badge, Button, Card, CardBody, CardHeader, SearchInput } from '@/ds'
 import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, toLocalIsoDate } from '@/lib/dateUtils'
 import type { FohParkingBooking, FohParkingView } from '@/lib/foh/parking-view'
 
@@ -147,10 +147,6 @@ export function FohParkingClient() {
   return (
     <div className="space-y-3" data-touch-targets>
       <div className="flex flex-wrap items-center gap-2">
-        {/* A full-size way back: the header's own back button is too small for the till. */}
-        <LinkButton href="/table-bookings/foh" variant="primary" className="min-h-touch">
-          Back to Front of House
-        </LinkButton>
         <SearchInput
           aria-label="Find a car by registration or name"
           value={query}

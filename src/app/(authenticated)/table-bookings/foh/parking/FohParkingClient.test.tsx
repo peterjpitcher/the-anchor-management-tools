@@ -133,7 +133,6 @@ describe('FohParkingClient', () => {
     render(<FohParkingClient />)
     await screen.findByText('Asha Patel')
 
-    expect(screen.getByRole('link', { name: 'Back to Front of House' })).toHaveAttribute('href', '/table-bookings/foh')
     expect(screen.getAllByRole('link', { name: '+447700900111' })[0]).toHaveAttribute('href', 'tel:+447700900111')
     const buttons = screen.getAllByRole('button').map((button) => button.textContent || button.getAttribute('aria-label'))
     expect(buttons.filter((name) => name !== 'Refresh' && name !== 'Clear search')).toEqual([])
