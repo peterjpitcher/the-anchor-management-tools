@@ -254,6 +254,33 @@ describe('undoing Seated and No-show', () => {
     expect(db.writes[0].filters).toContainEqual(['eq', 'status', 'no_show'])
   })
 
+  it('puts a no-show that still owes its deposit back to pending payment, whichever undo was used', async () => {
+    // The day's no-show list and the booking panel send no previous status (Codex review, PR 400).
+    const db = buildDb({
+      booking: { id: ID, status: 'no_show', no_show_at: LEFT_AT, event_booking_id: null, payment_status: 'pending', deposit_waived: false },
+    })
+    signIn(db)
+    mocks.canComeBack.mockResolvedValue(null)
+
+    const { status } = await callUndo({ action: 'no_show', stamp: LEFT_AT })
+
+    expect(status).toBe(200)
+    expect(db.writes[0].values).toMatchObject({ status: 'pending_payment', no_show_at: null })
+  })
+
+  it('puts a paid or waived no-show back to confirmed even if the screen said otherwise', async () => {
+    const db = buildDb({
+      booking: { id: ID, status: 'no_show', no_show_at: LEFT_AT, event_booking_id: null, payment_status: 'pending', deposit_waived: true },
+    })
+    signIn(db)
+    mocks.canComeBack.mockResolvedValue(null)
+
+    const { status } = await callUndo({ action: 'no_show', stamp: LEFT_AT, previous_status: 'pending_payment' })
+
+    expect(status).toBe(200)
+    expect(db.writes[0].values).toMatchObject({ status: 'confirmed' })
+  })
+
   it('says why a no-show cannot come back, and leaves it', async () => {
     const db = buildDb({ booking: { id: ID, status: 'no_show', no_show_at: LEFT_AT, event_booking_id: null } })
     signIn(db)

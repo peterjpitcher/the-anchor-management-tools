@@ -287,6 +287,17 @@ async function undoLeft(
   return { ok: true, booking: data }
 }
 
+/**
+ * What a no-show goes back to. Worked out from the booking itself, not from what the screen sent:
+ * only the Undo bar right after the tap still knows the earlier status, and the day's no-show list
+ * and the booking panel do not. A booking still waiting for its deposit carries payment_status
+ * 'pending' (a confirmed one never does), and it must go back to pending_payment so the deposit
+ * timeout job still sees it (Codex review on PR 400).
+ */
+export function statusBeforeNoShow(booking: { payment_status?: string | null; deposit_waived?: boolean | null }): 'confirmed' | 'pending_payment' {
+  return booking.payment_status === 'pending' && booking.deposit_waived !== true ? 'pending_payment' : 'confirmed'
+}
+
 async function undoNoShow(
   supabase: Db,
   bookingId: string,
@@ -319,7 +330,7 @@ async function undoNoShow(
   const { data, error } = await supabase
     .from('table_bookings')
     .update({
-      status: undo.previous_status ?? 'confirmed',
+      status: statusBeforeNoShow(booking),
       no_show_at: null,
       no_show_marked_at: null,
       no_show_marked_by: null,
