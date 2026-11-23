@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import {
   Alert,
   Badge,
@@ -115,7 +115,6 @@ export function MaintenanceListClient({
   todayIsoDate,
   initialError = null,
 }: MaintenanceListClientProps): React.JSX.Element {
-  const router = useRouter()
   const pathname = usePathname()
 
   const [filters, setFilters] = useState<MaintenanceFilterState>(initialFilters)
@@ -205,10 +204,13 @@ export function MaintenanceListClient({
     if (query === lastLoadedQuery.current) return
     lastLoadedQuery.current = query
 
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+    // The address bar only, with no navigation: router.replace re-rendered the server page, which
+    // read the same list and totals a second time and threw the answer away, because this
+    // component keeps them in its own state and loads them itself on the next line.
+    window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname)
     writeStoredQuery(query)
     void load(filters)
-  }, [query, filters, load, pathname, router])
+  }, [query, filters, load, pathname])
 
   // Remember the starting view too, so a first visit that already carries a query
   // is what a later bare visit restores.
