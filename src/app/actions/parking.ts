@@ -1082,6 +1082,15 @@ const ChangeParkingDatesSchema = ChangeDatesWindowSchema.extend({
   refundAmount: z.number().nonnegative().optional(),
   refundReason: z.string().trim().max(500).optional(),
   manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),
+  /**
+   * Paid bookings that now cost more (D4): text a payment link for the extra, record it as paid
+   * at the venue, or charge nothing extra (reason required).
+   */
+  extraChoice: z.enum(['link', 'venue', 'waive']).optional(),
+  /** The extra the screen showed. If the server works out a different one, nothing happens. */
+  expectedExtra: z.number().nonnegative().optional(),
+  venueMethod: z.enum(['cash', 'card_terminal']).default('cash'),
+  waiveReason: z.string().trim().max(500).optional(),
 })
 
 export type ParkingDateChangePreview = {
@@ -1102,7 +1111,7 @@ export type ParkingDateChangePreview = {
   overridePrice: number | null
   canRefund: boolean
   paypalRefundPossible: boolean
-  /** Phase 1: a paid booking that would cost more cannot be changed yet. */
+  /** True: a paid booking that would cost more can be changed, with one of the three choices. */
   extendingPaidAvailable: boolean
 }
 
@@ -1167,7 +1176,7 @@ export async function previewParkingDateChange(
         overridePrice: plan.hadOverride ? Number(context.booking.override_price) : null,
         canRefund,
         paypalRefundPossible: plan.paypalRefundPossible,
-        extendingPaidAvailable: false,
+        extendingPaidAvailable: true,
       },
     }
   } catch (error) {
@@ -1198,7 +1207,8 @@ export type ChangeParkingBookingDatesResult = {
  * refuses) the new space, and only then does any money move or any text go. A failure after the
  * save never rolls the dates back: it comes back as `success` with a `warning` saying what did not
  * happen, and the booking keeps showing its balance until someone settles it. Paid bookings that
- * would cost more are refused for now ("Extending a paid booking is not available yet").
+ * would cost more take one of three choices (D4): a payment link for the extra, paid at the venue,
+ * or no extra charge with a reason.
  *
  * Needs parking "manage". Sending a refund also needs parking "refund"; without it the change
  * saves and the booking shows the refund as still to do. Refunds are keyed on the changeId plus
@@ -1253,8 +1263,20 @@ export async function changeParkingBookingDates(
       }
     }
 
+    // How a dearer stay is settled (D4). The extra is re-checked against the screen, because a
+    // top-up captured since the dialog opened changes what is owed without touching updated_at.
     if (plan.kind === 'extra') {
-      return { error: `This change costs £${plan.extraDue.toFixed(2)} more. Extending a paid booking is not available yet.` }
+      if (!data.extraChoice) {
+        return { error: `This change costs £${plan.extraDue.toFixed(2)} more. Choose how the extra is settled.` }
+      }
+      if (data.expectedExtra !== undefined && Math.abs(plan.extraDue - data.expectedExtra) > 0.005) {
+        return {
+          error: `The extra to pay is now £${plan.extraDue.toFixed(2)}, not £${data.expectedExtra.toFixed(2)}. Check the figures and save again.`,
+        }
+      }
+      if (data.extraChoice === 'waive' && !data.waiveReason) {
+        return { error: 'Give a reason for not charging the extra.' }
+      }
     }
 
     // How a cheaper stay is settled (D1 to D3, D6, and "an amount settled is settled").
@@ -1276,6 +1298,12 @@ export async function changeParkingBookingDates(
         overridePrice = roundPence(plan.netPaid - chosen)
         overrideReason = `Dates changed; £${roundPence(plan.refundDue - chosen).toFixed(2)} of the difference kept: ${data.refundReason}`
       }
+    }
+
+    if (plan.kind === 'extra' && data.extraChoice === 'waive') {
+      // No extra charge: the price becomes what has been paid, so the balance is zero.
+      overridePrice = plan.netPaid
+      overrideReason = `Dates changed; £${plan.extraDue.toFixed(2)} extra not charged: ${data.waiveReason}`
     }
 
     const now = new Date()
@@ -1457,13 +1485,64 @@ export async function changeParkingBookingDates(
       })
       if (finalised) updated = { ...updated, ...finalised }
       else warnings.push('The refund was sent, but the booking price could not be updated. Check the booking before refunding again.')
-      if (refundResult.refunded > 0 && refundResult.viaPayPal) {
-        outcome = { kind: 'refund', amount: refundResult.refunded }
+      // Only the part PayPal is sending back is "refunded to the way you paid". A part refunded by
+      // cash or bank transfer is handed over by staff and is not named in the text.
+      if (refundResult.refundedViaPayPal > 0) {
+        outcome = { kind: 'refund', amount: refundResult.refundedViaPayPal }
       }
       if (!refundResult.complete) {
         const missing = roundPence(refundToSend - refundResult.refunded)
         warnings.push(
           `The dates were changed, but the £${missing.toFixed(2)} refund did not go through. Nothing was sent to the customer about that refund. The booking shows it as a refund to do. ${refundResult.failures.join(' ')}`.trim()
+        )
+      }
+    } else if (plan.kind === 'extra' && data.extraChoice === 'link') {
+      // A PayPal order for the extra only, texted in the change message.
+      try {
+        const appUrl = getAppUrl()
+        const order = await createParkingPaymentOrder(updated, {
+          returnUrl: parkingPaymentReturnUrl(appUrl, updated.id),
+          cancelUrl: parkingGuestUrl(appUrl, updated.id, 'cancelled'),
+          client: adminClient,
+          amount: plan.extraDue,
+          purpose: 'top_up',
+        })
+        paymentLink = order.approveUrl || undefined
+      } catch (orderError) {
+        console.error('Failed to make a parking top-up link after a date change', orderError)
+      }
+      if (paymentLink) {
+        outcome = { kind: 'pay_link', amount: plan.extraDue, link: paymentLink }
+      } else {
+        warnings.push(
+          `The dates were changed, but a payment link for the £${plan.extraDue.toFixed(2)} extra could not be made. The booking shows it as to pay: press Payment link on the booking.`
+        )
+      }
+    } else if (plan.kind === 'extra' && data.extraChoice === 'venue') {
+      // Paid at the venue: a manual payment row for the extra. No PayPal call.
+      const recorded = await settleWrite(
+        adminClient.from('parking_booking_payments').insert({
+          booking_id: booking.id,
+          provider: 'manual',
+          status: 'paid',
+          amount: plan.extraDue,
+          currency: 'GBP',
+          paid_at: now.toISOString(),
+          metadata: {
+            manual_settlement: true,
+            settled_by: user.id,
+            method: data.venueMethod,
+            purpose: 'top_up',
+            change_id: data.changeId,
+          },
+        }),
+        { table: 'parking_booking_payments', what: 'Recording the extra paid at the venue', ids: { bookingId: booking.id, changeId: data.changeId } }
+      )
+      if (recorded) {
+        outcome = { kind: 'paid_at_venue', amount: plan.extraDue }
+      } else {
+        warnings.push(
+          `The dates were changed, but the £${plan.extraDue.toFixed(2)} paid at the venue could not be recorded. The booking shows it as to pay: press Mark paid on the booking.`
         )
       }
     } else if (plan.kind === 'refund' && !canRefund) {
@@ -1528,6 +1607,8 @@ export async function changeParkingBookingDates(
         refund_chosen: refundToSend,
         refunded,
         kept_by_override: overridePrice !== null,
+        extra_choice: plan.kind === 'extra' ? data.extraChoice : null,
+        extra_due: plan.extraDue,
         payment_link_made: Boolean(paymentLink),
         text_status: textStatus,
         warnings,
