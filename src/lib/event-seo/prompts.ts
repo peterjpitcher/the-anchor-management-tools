@@ -280,6 +280,16 @@ export function buildRepairMessages(
       ].join('\n')
     : ''
 
+  // The fact check insists a conditional prize carries every condition wherever it appears,
+  // and a model asked to add one condition tends to drop another. Give it one move that
+  // always passes: the prize lives only in the long description, stated in full, or nowhere.
+  const prizeDirective = issues.some((i) => i.code === 'fact_check' && /prize|snowball|jackpot|condition|caveat|eligib/i.test(i.message))
+    ? [
+        '',
+        'PRIZE CONDITIONS: take the prize out of the meta description, short description, highlights and FAQs. In the long description, either state it with every condition FACTS_JSON gives (that the amount is projected, what it takes to win it, that it assumes nobody wins it at an earlier night, and who can play for it), or leave it out. Never mention it without all of them.',
+      ].join('\n')
+    : ''
+
   const userContent = [
     ANCHOR_VENUE_CONTEXT_PROMPT,
     '',
@@ -300,6 +310,7 @@ export function buildRepairMessages(
     lengthDirective,
     keywordDirective,
     invitationDirective,
+    prizeDirective,
     '',
     'Repair the draft so it passes every validation issue listed above.',
     'Preserve accurate facts. Do not introduce facts outside FACTS_JSON or VENUE_CONTEXT.',

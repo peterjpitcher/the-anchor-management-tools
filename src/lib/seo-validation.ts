@@ -12,7 +12,7 @@
  * pages; its copy must still read true after the night.
  */
 
-import { checkHouseStyle } from '@/lib/copy/house-style'
+import { checkHouseStyle, SENTENCE_REVIEW_LENGTH } from '@/lib/copy/house-style'
 import { EVENT_SEO_LIMITS, HOME_PLACE, NEARBY_PLACES, withinRange, withinTolerance } from '@/lib/event-seo/limits'
 import type { Range } from '@/lib/event-seo/limits'
 import { copyableKeyword, focusPhrase, keywordTokens, matchesKeyword } from '@/lib/event-seo/keyword-match'
@@ -606,6 +606,27 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
   }
 
   return issues
+}
+
+/**
+ * Sentences over the house style's review length in the copy a reader sees, in full, so a
+ * repair can be told exactly which ones to split. Splits on lines and sentence endings the
+ * same way the house style checker does.
+ */
+export function findLongSentences(draft: Record<string, unknown>): string[] {
+  const text = (value: unknown) => (typeof value === 'string' ? value : '')
+  const faqs = Array.isArray(draft.faqs) ? (draft.faqs as Array<Record<string, unknown>>) : []
+  const fields = [
+    text(draft.metaDescription),
+    text(draft.shortDescription),
+    text(draft.longDescription),
+    text(draft.imageAltText),
+    ...faqs.map((faq) => text(faq?.answer)),
+  ]
+  return fields
+    .flatMap((field) => field.split(/\n+/).flatMap((line) => line.split(/(?<=[.!?])\s+/)))
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.split(/\s+/).filter(Boolean).length > SENTENCE_REVIEW_LENGTH)
 }
 
 /**

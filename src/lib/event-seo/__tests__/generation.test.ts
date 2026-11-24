@@ -503,6 +503,12 @@ describe('buildRepairMessages', () => {
     expect(user).toContain('Return the complete JSON object, not a patch.')
   })
 
+  it('tells a prize the fact check flagged to live only in the long description, in full', () => {
+    const prize = [{ code: 'fact_check', severity: 'repairable', message: 'The Snowball is mentioned without its eligibility condition.' }]
+    expect(buildRepairMessages(facts, failedDraft, prize)[1].content).toContain('PRIZE CONDITIONS')
+    expect(buildRepairMessages(facts, failedDraft, issues)[1].content).not.toContain('PRIZE CONDITIONS')
+  })
+
   it('has static content before facts JSON', () => {
     const msgs = buildRepairMessages(facts, failedDraft, issues)
     const user = msgs[1].content
