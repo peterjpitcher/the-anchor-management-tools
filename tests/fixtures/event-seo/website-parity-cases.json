@@ -1,0 +1,40 @@
+{
+  "_source": "OJ-The-Anchor.pub origin/main da0c7609, tests/event-seo-strategy.test.ts and lib/event-copy.ts. Keep in step with the website: this file is the contract for src/lib/event-seo/website-parity.ts.",
+  "titles": [
+    { "metaTitle": "Only Fools and Horses Charity Quiz | The Anchor", "name": "Lovely Jubbly: Only Fools and Horses Charity Quiz Night", "date": "2026-09-25", "onSale": "Only Fools and Horses Charity Quiz, Fri 25 Sept" },
+    { "metaTitle": "Screams & Soundtracks: Classic Horror Music Bingo | The Anchor", "name": "Screams & Soundtracks: Classic Horror Music Bingo", "date": "2026-10-16", "onSale": "Classic Horror Music Bingo, Fri 16 Oct" },
+    { "metaTitle": "Back to School Music Bingo | The Anchor", "name": "Detention Disco: Back to School Music Bingo", "date": "2026-09-11", "onSale": "Back to School Music Bingo, Fri 11 Sept" },
+    { "metaTitle": "Sleigh My Name: Festive Music Bingo | The Anchor", "name": "Sleigh My Name: Festive Music Bingo", "date": "2026-12-11", "onSale": "Sleigh My Name: Festive Music Bingo, Fri 11 Dec" },
+    { "metaTitle": "Christmas Music Bingo", "name": "Sleigh My Name: Festive Music Bingo", "date": "2026-12-11", "onSale": "Sleigh My Name: Festive Music Bingo, Fri 11 Dec", "after": "Festive Music Bingo, 11 December 2026" },
+    { "metaTitle": "A Hint of Halloween Quiz Night | 7 October | The Anchor", "name": "Any Name", "date": "2026-10-07", "onSale": "A Hint of Halloween Quiz Night | 7 October", "after": "A Hint of Halloween Quiz Night | 7 October" },
+    { "metaTitle": "Quiz Night - Join Us for Fun and Prizes! | The Anchor", "name": "Quiz Night", "date": "2026-03-04", "after": "Quiz Night, 4 March 2026" },
+    { "metaTitle": "Cash Bingo | The Anchor", "name": "Cash Bingo 30 September", "date": "2026-09-30", "onSale": "Cash Bingo 30 September" },
+    { "metaTitle": null, "name": "An Exceptionally Long Themed Evening of Questions About Everything", "date": "2026-10-07", "onSale": "An Exceptionally Long Themed Evening of Questions About Everything, Wed 7 Oct" }
+  ],
+  "invitations": [
+    { "text": "Join us for Music Bingo on June 12th.", "invitation": true },
+    { "text": "Enjoy a thrilling Cash Bingo Night at The Anchor with 10 games, great prizes, and a lively atmosphere!", "invitation": true },
+    { "text": "Don’t miss the festive quiz.", "invitation": true },
+    { "text": "Get ready for big tunes.", "invitation": true },
+    { "text": "Book your table early.", "invitation": true },
+    { "text": "See you there.", "invitation": true },
+    { "text": "Karaoke this Friday at the pub.", "invitation": true },
+    { "text": "Two rounds of Christmas music bingo with Nikki at The Anchor, Stanwell Moor, on Friday 11 December 2026.", "invitation": false },
+    { "text": "Booking is through the form on this page, or by phone on 01753 682707.", "invitation": false },
+    { "text": "Teams of up to six played ten rounds of general knowledge.", "invitation": false }
+  ],
+  "bannedClaims": [
+    { "text": "We don't have an accessible toilet.", "claims": ["accessible toilet"] },
+    { "text": "Gluten-free options available.", "claims": ["gluten free"] },
+    { "text": "Watch the Champions League on Sky Sports.", "claims": ["Champions League", "Sky or TNT Sports"] },
+    { "text": "Two rounds of music bingo.", "claims": [] }
+  ],
+  "retiredFormats": [
+    { "text": "live music bingo near me", "formats": [] },
+    { "text": "Live music with a local band", "formats": ["live music"] },
+    { "text": "Nikki's Games Night", "formats": ["games night"] },
+    { "text": "Drag cabaret and karaoke", "formats": ["drag cabaret"] },
+    { "text": "Open mic night", "formats": ["open mic"] },
+    { "text": "music bingo, drag bingo", "formats": [] }
+  ]
+}
