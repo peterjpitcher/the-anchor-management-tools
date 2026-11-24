@@ -12,7 +12,7 @@ import {
   validateGeneratedContent,
   applyDeterministicRepair,
   normalizeSlug,
-  capAndDeduplicate,
+  focusPhrase,
 } from '@/lib/seo-validation'
 import type { SeoValidationIssue } from '@/lib/seo-validation'
 import {
@@ -46,7 +46,6 @@ const SEO_RESPONSE_SCHEMA = {
         shortDescription: { type: ['string', 'null'] },
         longDescription: { type: ['string', 'null'] },
         highlights: { type: 'array', items: { type: 'string' } },
-        keywords: { type: 'array', items: { type: 'string' } },
         slug: { type: ['string', 'null'] },
         imageAltText: { type: ['string', 'null'] },
         faqs: {
@@ -66,7 +65,7 @@ const SEO_RESPONSE_SCHEMA = {
       },
       required: [
         'metaTitle', 'metaDescription', 'shortDescription', 'longDescription',
-        'highlights', 'keywords', 'slug', 'imageAltText', 'faqs',
+        'highlights', 'slug', 'imageAltText', 'faqs',
         'cancellationPolicy', 'accessibilityNotes',
       ],
       additionalProperties: false,
@@ -170,7 +169,6 @@ type EventSeoContentInput = {
   existingMetaTitle?: string | null
   existingMetaDescription?: string | null
   existingHighlights?: string[]
-  existingKeywords?: string[]
   primaryKeywords?: string[]
   secondaryKeywords?: string[]
   localSeoKeywords?: string[]
@@ -184,8 +182,12 @@ type EventSeoContentResult = {
     shortDescription: string | null
     longDescription: string | null
     highlights: string[]
-    keywords: string[]
     slug: string | null
+    /**
+     * True when the event is published or has bookings: its address is then kept as it is,
+     * because regenerating copy must never move a live page.
+     */
+    slugLocked: boolean
     imageAltText: string | null
     faqs: { question: string; answer: string }[]
     cancellationPolicy: string | null
@@ -264,13 +266,14 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     existingShortDescription: input.existingShortDescription,
     existingLongDescription: input.existingLongDescription,
     existingHighlights: input.existingHighlights,
-    existingKeywords: input.existingKeywords,
     primaryKeywords: input.primaryKeywords,
     secondaryKeywords: input.secondaryKeywords,
     localSeoKeywords: input.localSeoKeywords,
   }
 
   let dbData: BuildFactsDbData | null = null
+  let storedSlug: string | null = null
+  let slugLocked = false
   if (input.eventId) {
     const supabase = await createClient()
     const { data } = await supabase
@@ -288,10 +291,23 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         price,
         is_free,
         booking_url,
-        brief
+        brief,
+        slug,
+        event_status
       `)
       .eq('id', input.eventId)
       .maybeSingle()
+
+    // A published event, or one with bookings, keeps its address. Decided from the stored
+    // record, never from the form, so a drawer edit cannot unlock it.
+    if (data) {
+      storedSlug = typeof data.slug === 'string' && data.slug.trim() ? data.slug.trim() : null
+      const { count: bookingCount } = await supabase
+        .from('bookings')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', input.eventId)
+      slugLocked = Boolean(storedSlug) && (data.event_status !== 'draft' || (bookingCount ?? 0) > 0)
+    }
 
     if (data) {
       const categoryName = Array.isArray((data as Record<string, unknown>).category_details)
@@ -414,12 +430,11 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     // 8. Apply deterministic repair
     const repaired = applyDeterministicRepair(parsed, validationFacts)
 
-    // Overwrite deterministic fields
-    repaired.slug = normalizeSlug(
-      facts.name,
-      facts.date,
-      facts.keywords.primary[0] ?? null,
-    )
+    // Overwrite deterministic fields. The slug is set once: a published event keeps its address.
+    const slug = slugLocked && storedSlug
+      ? storedSlug
+      : normalizeSlug(facts.name, facts.date, focusPhrase(facts.keywords.primary))
+    repaired.slug = slug
 
     if (facts.isFree) {
       repaired.cancellationPolicy = "It's a free event, so there's no cancellation policy."
@@ -434,22 +449,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     // toilet, which the pub does not have, on every event it generated.
     repaired.accessibilityNotes = `Getting in from the car park is step free, and so are the bar and the dining area. The beer garden is step free straight from the car park. From inside, there's one step between the bar and the garden, and we'll put our ramp out for it if you ask. We don't have an accessible toilet. If you'd like to check what will work best for you, give us a call on ${ANCHOR_VENUE_CONTEXT.phone} and we'll help. Assistance dogs are always welcome.`
 
-    // Merge keywords: facts keywords + model-suggested, deduplicated, capped at 10
-    const modelKeywords = Array.isArray(repaired.keywords)
-      ? (repaired.keywords as string[]).filter((x): x is string => typeof x === 'string')
-      : []
-    const allKeywords = [
-      ...facts.keywords.primary,
-      ...facts.keywords.secondary,
-      ...facts.keywords.local,
-      ...modelKeywords,
-    ]
-    repaired.keywords = capAndDeduplicate(allKeywords, 10)
-
     // 9. Validate with quality gate
     const validation = validateGeneratedContent(repaired, {
       facts: validationFacts,
-      requireKeywords: true,
       mode: 'final',
     })
 
@@ -459,7 +461,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       repairType = 'deterministic'
       postRepairIssueCodes = []
       succeeded = true
-      return buildSuccessResult(repaired)
+      return buildSuccessResult(repaired, slugLocked)
     }
 
     // 10. Model repair for remaining issues; check the budget first
@@ -515,29 +517,13 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     const reRepairedDraft = applyDeterministicRepair(repairParsed, validationFacts)
 
     // Overwrite deterministic fields again
-    reRepairedDraft.slug = normalizeSlug(
-      facts.name,
-      facts.date,
-      facts.keywords.primary[0] ?? null,
-    )
+    reRepairedDraft.slug = slug
     reRepairedDraft.cancellationPolicy = repaired.cancellationPolicy
     reRepairedDraft.accessibilityNotes = repaired.accessibilityNotes
-
-    const reRepairedModelKeywords = Array.isArray(reRepairedDraft.keywords)
-      ? (reRepairedDraft.keywords as string[]).filter((x): x is string => typeof x === 'string')
-      : []
-    const allReRepairedKeywords = [
-      ...facts.keywords.primary,
-      ...facts.keywords.secondary,
-      ...facts.keywords.local,
-      ...reRepairedModelKeywords,
-    ]
-    reRepairedDraft.keywords = capAndDeduplicate(allReRepairedKeywords, 10)
 
     // Validate again
     const reValidation = validateGeneratedContent(reRepairedDraft, {
       facts: validationFacts,
-      requireKeywords: true,
       mode: 'final',
     })
 
@@ -545,7 +531,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
 
     if (reValidation.passed) {
       succeeded = true
-      return buildSuccessResult(reRepairedDraft)
+      return buildSuccessResult(reRepairedDraft, slugLocked)
     }
 
     // 11. NEVER fall back to invalid draft as success
@@ -577,7 +563,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
   }
 }
 
-function buildSuccessResult(draft: Record<string, unknown>): EventSeoContentResult {
+function buildSuccessResult(draft: Record<string, unknown>, slugLocked: boolean): EventSeoContentResult {
   return {
     success: true,
     data: {
@@ -586,8 +572,8 @@ function buildSuccessResult(draft: Record<string, unknown>): EventSeoContentResu
       shortDescription: typeof draft.shortDescription === 'string' ? draft.shortDescription : null,
       longDescription: typeof draft.longDescription === 'string' ? draft.longDescription : null,
       highlights: Array.isArray(draft.highlights) ? draft.highlights.filter(Boolean) : [],
-      keywords: Array.isArray(draft.keywords) ? draft.keywords.filter(Boolean) : [],
       slug: typeof draft.slug === 'string' ? draft.slug : null,
+      slugLocked,
       imageAltText: typeof draft.imageAltText === 'string' ? draft.imageAltText : null,
       faqs: Array.isArray(draft.faqs) ? draft.faqs : [],
       cancellationPolicy: typeof draft.cancellationPolicy === 'string' ? draft.cancellationPolicy : null,

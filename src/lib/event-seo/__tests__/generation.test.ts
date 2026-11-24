@@ -24,6 +24,8 @@ import {
   FIELD_RULES,
   KEYWORD_RULES,
 } from '../prompts'
+import { EVENT_SEO_LIMITS } from '../limits'
+import { readsAsInvitation } from '../website-parity'
 
 // ── Fixtures ────────────────────────────────────────────────
 
@@ -47,7 +49,6 @@ function completeInput(): BuildFactsInput {
     existingShortDescription: 'Short desc',
     existingLongDescription: 'A longer existing description paragraph.',
     existingHighlights: ['Great atmosphere', 'Free parking'],
-    existingKeywords: ['live music', 'stanwell moor'],
     primaryKeywords: ['Live Music'],
     secondaryKeywords: ['acoustic night', 'pub gig'],
     localSeoKeywords: ['Stanwell Moor', 'near Heathrow'],
@@ -301,7 +302,7 @@ describe('preflightCheck', () => {
     facts.keywords = { primary: [], secondary: [], local: [] }
     const result = preflightCheck(facts)
     expect(result.pass).toBe(false)
-    expect(result.hardErrors).toContain('At least one primary keyword is required.')
+    expect(result.hardErrors).toContain('Add a focus phrase: the one search this page should be found for.')
   })
 
   it('hard error: insufficient detail (name + date only)', () => {
@@ -461,8 +462,10 @@ describe('buildFactsJson', () => {
     const json = buildFactsJson(facts)
     const parsed = JSON.parse(json)
     expect(parsed.name).toBe('Live Music — Jessica Lovelock')
-    expect(parsed.date).toBe('2026-06-14')
-    expect(parsed.end_time).toBe('10:00 PM')
+    // Dates and times reach the model already worked out on the London clock.
+    expect(parsed.date_long).toBe('Sunday 14 June 2026')
+    expect(parsed.date_short).toBe('Sun 14 Jun')
+    expect(parsed.date).toBeUndefined()
     expect(parsed.kitchen_service).toBe('The kitchen is closed on this event date.')
     expect(parsed.performer_name).toBe('Jessica Lovelock')
     expect(parsed.venue.phone).toBe('01753 682707')
@@ -548,7 +551,7 @@ describe('prompt constants', () => {
     expect(ANCHOR_VENUE_CONTEXT_PROMPT).toContain('Full menu available while the kitchen is open')
     expect(ANCHOR_VENUE_CONTEXT_PROMPT).not.toContain('Kitchen serves pizza on event nights')
     expect(FIELD_RULES).toContain('only when FACTS_JSON.kitchen_service confirms')
-    expect(FIELD_RULES).toContain('Never present pizza as the only food available')
+    expect(FIELD_RULES).toContain('Never present pizza as the only food')
   })
 
   it('OUTPUT_RUBRIC bans filler phrases', () => {
@@ -556,11 +559,25 @@ describe('prompt constants', () => {
     expect(OUTPUT_RUBRIC).toContain('hidden gem')
   })
 
-  it('FIELD_RULES specifies metaTitle character limits', () => {
-    expect(FIELD_RULES).toContain('20-40 characters')
+  it('FIELD_RULES takes its numbers from the limits module', () => {
+    expect(FIELD_RULES).toContain(`${EVENT_SEO_LIMITS.metaTitleChars.max} characters or fewer`)
+    expect(FIELD_RULES).toContain(`${EVENT_SEO_LIMITS.longDescriptionWords.min} to ${EVENT_SEO_LIMITS.longDescriptionWords.max} words`)
+    expect(FIELD_RULES).toContain('NEVER a date')
   })
 
-  it('KEYWORD_RULES mentions keyword placement', () => {
-    expect(KEYWORD_RULES).toContain('Work a primary keyword into')
+  it('KEYWORD_RULES aims the page at its focus phrase, not head terms', () => {
+    expect(KEYWORD_RULES).toContain('FACTS_JSON.keywords.focus')
+    expect(KEYWORD_RULES).toContain('Never write "near me" in copy')
+  })
+
+  it('every example in the prompt passes the website invitation test', () => {
+    const quoted = [...OUTPUT_RUBRIC.matchAll(/Aim for this tone:\n"([^"]+)"/g)].map((m) => m[1])
+    expect(quoted.length).toBe(1)
+    for (const example of quoted) expect(readsAsInvitation(example)).toBe(false)
+    expect(OUTPUT_RUBRIC).not.toContain('"book your seats"')
+  })
+
+  it('no longer asks the model for keywords', () => {
+    expect(FIELD_RULES).not.toMatch(/^keywords:/m)
   })
 })

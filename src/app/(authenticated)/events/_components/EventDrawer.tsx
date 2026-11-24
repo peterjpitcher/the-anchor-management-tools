@@ -25,6 +25,16 @@ import { resolveEventPaymentMode, resolveEventTicketPriceAmount } from '@/lib/ev
 import { utcIsoToLondonLocalInput } from '@/lib/dateUtils'
 import { ACCESSIBILITY_NOTES_MAX_LENGTH } from '@/lib/events/field-limits'
 import { eventPreflightIssueTextClass } from '../_shared/status-ui'
+import { EVENT_SEO_LIMITS } from '@/lib/event-seo/limits'
+import { titleCarriesDate, websiteEventPageTitle } from '@/lib/event-seo/website-parity'
+
+/**
+ * Highlights are edited one per line. They used to be one comma separated line, so a highlight
+ * with a comma in it ("Two rounds, one jackpot") was split in two on save.
+ */
+function splitHighlights(text: string): string[] {
+  return text.split(/\n/).map((h) => h.trim()).filter(Boolean)
+}
 
 type GenerationPhase = 'checking' | 'drafting' | null
 
@@ -221,7 +231,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       setMetaDescription(event.meta_description || '')
       setShortDescription(event.short_description || '')
       setLongDescription(event.long_description || '')
-      setHighlights(event.highlights?.join(', ') || '')
+      setHighlights(event.highlights?.join('\n') || '')
       setImageAltText((event as any).image_alt_text ?? '')
       setCancellationPolicy((event as any).cancellation_policy ?? '')
       setAccessibilityNotes((event as any).accessibility_notes ?? '')
@@ -345,7 +355,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
     if (!heroImageUrl && cat.default_image_url) setHeroImageUrl(cat.default_image_url)
     if (!shortDescription && cat.short_description) setShortDescription(cat.short_description)
     if (!longDescription && cat.long_description) setLongDescription(cat.long_description)
-    if (!highlights && cat.highlights) setHighlights(cat.highlights.join(', '))
+    if (!highlights && cat.highlights) setHighlights(cat.highlights.join('\n'))
     if (!metaTitle && cat.meta_title) setMetaTitle(cat.meta_title)
     if (!metaDescription && cat.meta_description) setMetaDescription(cat.meta_description)
     const catAny = cat as any
@@ -438,7 +448,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       if (brief.trim()) formData.set('brief', brief.trim())
       if (shortDescription.trim()) formData.set('short_description', shortDescription.trim())
       if (longDescription.trim()) formData.set('long_description', longDescription.trim())
-      if (highlights) formData.set('highlights', JSON.stringify(highlights.split(',').map(h => h.trim()).filter(Boolean)))
+      if (highlights) formData.set('highlights', JSON.stringify(splitHighlights(highlights)))
 
       // SEO
       if (slug.trim()) formData.set('slug', slug.trim())
@@ -610,8 +620,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
         existingLongDescription: longDescription || null,
         existingMetaTitle: metaTitle || null,
         existingMetaDescription: metaDescription || null,
-        existingHighlights: highlights ? highlights.split(',').map(h => h.trim()).filter(Boolean) : [],
-        existingKeywords: buildKeywordsUnion(pk, sk, lk),
+        existingHighlights: splitHighlights(highlights),
         primaryKeywords: pk,
         secondaryKeywords: sk,
         localSeoKeywords: lk,
@@ -628,8 +637,9 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       if (d.metaDescription) setMetaDescription(d.metaDescription)
       if (d.shortDescription) setShortDescription(d.shortDescription)
       if (d.longDescription) setLongDescription(d.longDescription)
-      if (d.highlights) setHighlights(d.highlights.join(', '))
-      if (d.slug) setSlug(d.slug)
+      if (d.highlights) setHighlights(d.highlights.join('\n'))
+      // A published event, or one with bookings, keeps its address; the server sends it back unchanged.
+      if (d.slug && !d.slugLocked) setSlug(d.slug)
       if (d.imageAltText) setImageAltText(d.imageAltText)
       if (d.faqs?.length) {
         setFaqs(d.faqs.map((faq: { question: string; answer: string }, i: number) => ({ ...faq, sort_order: i })))
@@ -647,6 +657,17 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       setGenerationPhase(null)
     }
   }
+
+  // The page title the website builds from the name, date and stored title (its getEventPageTitle).
+  const titlePreviewOnSale = websiteEventPageTitle({ name: name.trim(), metaTitle, date: date || null }, false)
+  const titlePreviewAfter = websiteEventPageTitle({ name: name.trim(), metaTitle, date: date || null }, true)
+  const metaTitleWarning = titleCarriesDate(metaTitle)
+    ? 'Take the date out. A stored date fixes the search title for good and drops the year after the night.'
+    : metaTitle.length > EVENT_SEO_LIMITS.metaTitleChars.max
+      ? `Keep it to ${EVENT_SEO_LIMITS.metaTitleChars.max} characters so the website can add the date.`
+      : undefined
+  // Published, or already booked: the address is live.
+  const addressIsLive = Boolean(event && (event.event_status !== 'draft' || (seatsSold ?? 0) > 0))
 
   // Queued artwork lives in component state only, so closing the drawer or
   // reloading the page loses it. There was no guard here at all before.
@@ -981,22 +1002,34 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Input
               label="URL Slug"
-            error={fieldErrors.slug}
+              error={fieldErrors.slug}
+              warning={addressIsLive && event?.slug && slug !== event.slug
+                ? 'This page is live. Changing its address moves it; the old address redirects, but links already shared will take the long way round.'
+                : undefined}
+              hint={addressIsLive ? 'This page is live, so Generate leaves its address alone.' : undefined}
               value={slug}
               onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
               placeholder="event-name-2024-01-01"
             />
             <Input
-              label={`Meta Title (${metaTitle.length}/60)`}
+              label={`Meta Title (${metaTitle.length}/${EVENT_SEO_LIMITS.metaTitleChars.max})`}
               error={fieldErrors.meta_title}
+              warning={metaTitleWarning}
+              hint="A short name for the night, with no date. The website adds the date."
               value={metaTitle}
               onChange={(e) => { setMetaTitle(e.target.value); clearFieldError('meta_title') } }
-              maxLength={60}
-              placeholder="SEO page title"
+              placeholder="Christmas Music Bingo"
             />
           </div>
+          {name.trim() && date && (
+            <div className="rounded-default border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted" data-testid="website-title-preview">
+              <p className="font-semibold text-text">What the website will show in search</p>
+              <p>While on sale: {titlePreviewOnSale} | The Anchor</p>
+              <p>After the night: {titlePreviewAfter} | The Anchor</p>
+            </div>
+          )}
           <Textarea
-            label={`Meta Description (${metaDescription.length}/160)`}
+            label={`Meta Description (${metaDescription.length}/${EVENT_SEO_LIMITS.metaDescriptionChars.max})`}
             error={fieldErrors.meta_description}
             value={metaDescription}
             onChange={(e) => { setMetaDescription(e.target.value); clearFieldError('meta_description') } }
@@ -1021,13 +1054,14 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
             rows={4}
             placeholder="Detailed description for the event page"
           />
-          <Input
+          <Textarea
             label="Highlights"
             error={fieldErrors.highlights}
             value={highlights}
             onChange={(e) => { setHighlights(e.target.value); clearFieldError('highlights') } }
-            placeholder="Great prizes, Fun atmosphere, Live music"
-            hint="Separate with commas"
+            rows={4}
+            placeholder={'Two rounds of festive music bingo\nHosted by Nikki\nExtra points for Christmas jumpers'}
+            hint={`One per line, ${EVENT_SEO_LIMITS.highlightsCount.min} to ${EVENT_SEO_LIMITS.highlightsCount.max} of them`}
           />
 
           {/* Image & accessibility */}
@@ -1068,18 +1102,18 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
           {(metaTitle || metaDescription || longDescription) && (
             <div>
               <SeoHealthIndicator
+                date={date || null}
                 metaTitle={metaTitle}
                 metaDescription={metaDescription}
                 shortDescription={shortDescription}
                 longDescription={longDescription}
                 slug={slug}
-                highlights={highlights}
+                highlights={splitHighlights(highlights)}
                 primaryKeywords={parseKeywords(primaryKeywords)}
                 secondaryKeywords={parseKeywords(secondaryKeywords)}
                 localSeoKeywords={parseKeywords(localSeoKeywords)}
                 imageAltText={imageAltText}
                 faqs={faqs}
-                accessibilityNotes={accessibilityNotes}
               />
             </div>
           )}

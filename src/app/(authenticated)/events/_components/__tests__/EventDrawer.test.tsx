@@ -404,3 +404,54 @@ describe('EventDrawer confirmations and cancelling', () => {
     await waitFor(() => expect(cancelEvent).toHaveBeenCalledWith('event-1', { confirmed: true }))
   })
 })
+
+
+describe('EventDrawer event page copy', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(updateEvent).mockResolvedValue({ error: 'Fixture stops after submission' })
+  })
+
+  function renderCopyDrawer(overrides: Partial<Event> = {}, seatsSold?: number) {
+    render(<EventDrawer open onClose={vi.fn()} onSave={vi.fn()} categories={[]} seatsSold={seatsSold} event={{
+      id: 'event-1', name: 'Sleigh My Name: Festive Music Bingo', date: '2026-12-11', time: '19:00',
+      capacity: 60, created_at: '2026-09-01T12:00:00Z', slug: 'sleigh-my-name-2026-12-11',
+      is_free: true, payment_mode: 'free', booking_mode: 'table', event_status: 'scheduled',
+      highlights: ['Two rounds, one jackpot', 'Hosted by Nikki'],
+      meta_title: 'Christmas Music Bingo',
+      ...overrides,
+    } as Event} />)
+  }
+
+  it('keeps a comma inside a highlight when saving', async () => {
+    renderCopyDrawer()
+    const field = screen.getByRole('textbox', { name: 'Highlights' })
+    expect(field).toHaveValue('Two rounds, one jackpot\nHosted by Nikki')
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }))
+    await waitFor(() => expect(updateEvent).toHaveBeenCalledTimes(1))
+    const data = vi.mocked(updateEvent).mock.calls[0][1] as FormData
+    expect(JSON.parse(String(data.get('highlights')))).toEqual(['Two rounds, one jackpot', 'Hosted by Nikki'])
+  })
+
+  it('previews both titles the website will build', () => {
+    renderCopyDrawer()
+    const preview = screen.getByTestId('website-title-preview')
+    expect(preview).toHaveTextContent('While on sale: Sleigh My Name: Festive Music Bingo, Fri 11 Dec | The Anchor')
+    expect(preview).toHaveTextContent('After the night: Festive Music Bingo, 11 December 2026 | The Anchor')
+  })
+
+  it('warns when a date is typed into the meta title', () => {
+    renderCopyDrawer({ meta_title: 'Music Bingo | 11 December' })
+    expect(screen.getByText(/Take the date out/)).toBeInTheDocument()
+  })
+
+  it('says a live page keeps its address', () => {
+    renderCopyDrawer()
+    expect(screen.getByText('This page is live, so Generate leaves its address alone.')).toBeInTheDocument()
+  })
+
+  it('treats a draft with no bookings as free to change its address', () => {
+    renderCopyDrawer({ event_status: 'draft' }, 0)
+    expect(screen.queryByText('This page is live, so Generate leaves its address alone.')).not.toBeInTheDocument()
+  })
+})

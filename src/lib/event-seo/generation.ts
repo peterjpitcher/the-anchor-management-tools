@@ -72,7 +72,6 @@ export type EventSeoFacts = {
     shortDescription: string | null
     longDescription: string | null
     highlights: string[]
-    keywords: string[]
   }
   keywords: {
     primary: string[]
@@ -101,7 +100,6 @@ export type BuildFactsInput = {
   existingShortDescription?: string | null
   existingLongDescription?: string | null
   existingHighlights?: string[]
-  existingKeywords?: string[]
   primaryKeywords?: string[]
   secondaryKeywords?: string[]
   localSeoKeywords?: string[]
@@ -350,7 +348,6 @@ export function buildEventSeoFacts(
       shortDescription: nonEmpty(input.existingShortDescription) ?? null,
       longDescription: nonEmpty(input.existingLongDescription) ?? null,
       highlights: (input.existingHighlights ?? []).filter(Boolean),
-      keywords: (input.existingKeywords ?? []).filter(Boolean),
     },
     keywords,
     venue: ANCHOR_VENUE_CONTEXT,
@@ -379,7 +376,7 @@ export function preflightCheck(facts: EventSeoFacts): PreflightResult {
     hardErrors.push('Event date is required.')
   }
   if (facts.keywords.primary.length === 0) {
-    hardErrors.push('At least one primary keyword is required.')
+    hardErrors.push('Add a focus phrase: the one search this page should be found for.')
   }
 
   const hasDetailSource =

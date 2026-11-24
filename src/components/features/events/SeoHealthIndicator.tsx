@@ -3,151 +3,44 @@
 import { useMemo } from 'react'
 import { Card, ProgressBar } from '@/ds'
 import { seoHealthStyles } from '@/app/(authenticated)/events/_shared/status-ui'
-import {
-  containsKeyword,
-  keywordCoverage,
-  countWords,
-  getFirstNWords,
-  countParagraphs,
-  countValidFaqs,
-} from '@/lib/seo-validation'
+import { eventSeoHealthChecks, eventSeoHealthScore } from '@/lib/event-seo/health'
 
 interface SeoHealthProps {
+  /** The event date, YYYY-MM-DD. */
+  date: string | null
   metaTitle: string
   metaDescription: string
   shortDescription: string
   longDescription: string
   slug: string
-  highlights: string          // comma-separated string
+  highlights: string[]
   primaryKeywords: string[]
   secondaryKeywords: string[]
   localSeoKeywords: string[]
   imageAltText: string
   faqs: { question: string; answer: string }[]
-  accessibilityNotes: string
 }
 
-interface SeoCheck {
-  label: string
-  passed: boolean
-  points: number
-}
-
-export function SeoHealthIndicator({
-  metaTitle,
-  metaDescription,
-  shortDescription,
-  longDescription,
-  slug,
-  highlights,
-  primaryKeywords,
-  secondaryKeywords,
-  localSeoKeywords,
-  imageAltText,
-  faqs,
-  accessibilityNotes,
-}: SeoHealthProps) {
-  const checks = useMemo((): SeoCheck[] => {
-    const highlightItems = highlights
-      ? highlights.split(',').map(h => h.trim()).filter(Boolean)
-      : []
-
-    return [
-      {
-        label: 'Meta title present and under 60 chars',
-        passed: !!metaTitle && metaTitle.length > 0 && metaTitle.length <= 60,
-        points: 8,
-      },
-      {
-        label: 'Meta description present and under 155 chars',
-        passed: !!metaDescription && metaDescription.length > 0 && metaDescription.length <= 155,
-        points: 7,
-      },
-      {
-        label: 'Primary keyword in meta title',
-        passed: containsKeyword(metaTitle, primaryKeywords),
-        points: 8,
-      },
-      {
-        label: 'Primary keyword in meta description',
-        passed: containsKeyword(metaDescription, primaryKeywords),
-        points: 7,
-      },
-      {
-        label: 'Short description 120\u2013300 chars',
-        passed: !!shortDescription && shortDescription.trim().length >= 120 && shortDescription.trim().length <= 300,
-        points: 5,
-      },
-      {
-        label: 'Long description 250+ words',
-        passed: countWords(longDescription) >= 250,
-        points: 10,
-      },
-      {
-        label: 'Long description has 3+ paragraphs',
-        passed: countParagraphs(longDescription) >= 3,
-        points: 5,
-      },
-      {
-        label: 'Primary keyword in first 100 words',
-        passed: containsKeyword(getFirstNWords(longDescription, 100), primaryKeywords),
-        points: 8,
-      },
-      {
-        label: 'Secondary keywords in long description (2+)',
-        passed: keywordCoverage(longDescription, secondaryKeywords, 2),
-        points: 8,
-      },
-      {
-        label: 'Local SEO keywords in long description (2+)',
-        passed: keywordCoverage(longDescription, localSeoKeywords, 2),
-        points: 7,
-      },
-      {
-        label: 'At least 3 FAQs with substantive answers',
-        passed: countValidFaqs(faqs) >= 3,
-        points: 7,
-      },
-      {
-        label: 'Image alt text contains primary keyword',
-        passed: !!imageAltText && imageAltText.trim().length > 0 && containsKeyword(imageAltText, primaryKeywords),
-        points: 5,
-      },
-      {
-        label: 'Highlights present (3+ items)',
-        passed: highlightItems.length >= 3,
-        points: 5,
-      },
-      {
-        label: 'Slug contains primary keyword',
-        passed: containsKeyword(slug.replace(/-/g, ' '), primaryKeywords),
-        points: 5,
-      },
-      {
-        label: 'Accessibility notes present',
-        passed: !!accessibilityNotes && accessibilityNotes.trim().length > 0,
-        points: 5,
-      },
-    ]
-  }, [
-    metaTitle,
-    metaDescription,
-    shortDescription,
-    longDescription,
-    slug,
-    highlights,
-    primaryKeywords,
-    secondaryKeywords,
-    localSeoKeywords,
-    imageAltText,
-    faqs,
-    accessibilityNotes,
-  ])
-
-  const score = useMemo(
-    () => checks.reduce((sum, check) => sum + (check.passed ? check.points : 0), 0),
-    [checks]
+/**
+ * Scores the drawer's copy with the same rules as the generator's quality gate
+ * (src/lib/event-seo/health.ts). Accessibility notes are not scored: code always
+ * fills them.
+ */
+export function SeoHealthIndicator(props: SeoHealthProps) {
+  const {
+    date, metaTitle, metaDescription, shortDescription, longDescription, slug,
+    highlights, primaryKeywords, secondaryKeywords, localSeoKeywords, imageAltText, faqs,
+  } = props
+  const checks = useMemo(
+    () => eventSeoHealthChecks({
+      date, metaTitle, metaDescription, shortDescription, longDescription, slug,
+      highlights, primaryKeywords, secondaryKeywords, localSeoKeywords, imageAltText, faqs,
+    }),
+    [date, metaTitle, metaDescription, shortDescription, longDescription, slug,
+      highlights, primaryKeywords, secondaryKeywords, localSeoKeywords, imageAltText, faqs],
   )
+
+  const score = useMemo(() => eventSeoHealthScore(checks), [checks])
 
   const colourClasses = seoHealthStyles(score)
   const scoreLabel = colourClasses.label
