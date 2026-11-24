@@ -1,9 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendSMS } from '@/lib/twilio'
 import { logger } from '@/lib/logger'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { formatDateTimeInLondon } from '@/lib/dateUtils'
-import { resolveParkingSmsEligibility } from '@/lib/parking/sms-safety'
+import { customerMessagePayload, parkingChangeEmail, sendParkingCustomerMessage } from '@/lib/parking/customer-message'
 import { buildBookingChangedSms, type ParkingChangeOutcome, type ParkingNotificationBooking } from '@/lib/parking/notifications'
 import { allocateRefund, roundPence, type RefundablePayment } from '@/lib/parking/balance'
 import { changeRefundKey, refundsThroughPayPal } from '@/lib/parking/change-dates'
@@ -15,15 +14,18 @@ export type ParkingChangeTextStatus = 'sent' | 'held' | 'skipped' | 'failed'
 
 export interface ParkingChangeTextResult {
   status: ParkingChangeTextStatus
-  /** Plain words for staff when the customer was not texted, or was texted later. */
+  /** Plain words for staff when the customer was not told, or will be told later. */
   note: string | null
   body: string
+  /** How the customer was told: email first, a text when there is no usable email. */
+  channel?: 'email' | 'sms' | null
 }
 
 /**
- * Sends the one change text and records it on the change's marker row (a `booking_changed`
- * notification). Goes through sendSMS, so the opt-out, quiet hours, limits and kill switches all
- * apply exactly as for every other parking text. Never throws.
+ * Tells the customer about the change, by email when they have a usable address and by text
+ * otherwise (owner, 24 November 2026), and records it on the change's marker row (a
+ * `booking_changed` notification). Goes through notifyCustomer, so the suppression list, the
+ * SMS opt-out, quiet hours, limits and kill switches all apply. Never throws.
  */
 export async function sendParkingChangeText(input: {
   client: GenericClient
@@ -34,8 +36,9 @@ export async function sendParkingChangeText(input: {
 }): Promise<ParkingChangeTextResult> {
   const { client, booking, outcome, changeId, markerId } = input
   const body = buildBookingChangedSms(booking, outcome)
+  const email = parkingChangeEmail(booking, outcome)
 
-  const record = async (status: string, extra: Record<string, unknown>) => {
+  const record = async (status: string, extra: Record<string, unknown>, channel: 'email' | 'sms' | null) => {
     if (!markerId) return
     try {
       const { data: existing } = await client
@@ -48,90 +51,66 @@ export async function sendParkingChangeText(input: {
           .from('parking_booking_notifications')
           .update({
             status,
+            ...(channel ? { channel } : {}),
             ...(status === 'sent' ? { sent_at: new Date().toISOString() } : {}),
             ...(typeof extra.message_sid === 'string' ? { message_sid: extra.message_sid } : {}),
-            payload: { ...((existing?.payload as Record<string, unknown> | null) ?? {}), sms: body, ...extra },
+            payload: { ...((existing?.payload as Record<string, unknown> | null) ?? {}), ...extra },
           })
           .eq('id', markerId),
-        { table: 'parking_booking_notifications', what: 'Recording the parking change text', ids: { bookingId: booking.id, changeId } }
+        { table: 'parking_booking_notifications', what: 'Recording the parking change message', ids: { bookingId: booking.id, changeId } }
       )
     } catch (error) {
-      logger.error('Failed to record the parking change text', {
+      logger.error('Failed to record the parking change message', {
         error: error instanceof Error ? error : new Error(String(error)),
         metadata: { bookingId: booking.id, changeId },
       })
     }
   }
 
-  if (!booking.customer_mobile) {
-    await record('skipped', { reason: 'No customer mobile number on booking' })
-    return { status: 'skipped', note: 'The booking has no mobile number, so the customer was not texted.', body }
-  }
+  const result = await sendParkingCustomerMessage({
+    client,
+    booking,
+    eventType: 'booking_changed',
+    templateKey: 'parking_booking_changed',
+    email,
+    smsBody: body,
+    dedupe: { change_id: changeId },
+  })
+  const payload = customerMessagePayload(result, email, body)
+  const by = result.channel === 'email' ? 'emailed' : 'texted'
 
-  if (booking.customer_id) {
-    const eligibility = await resolveParkingSmsEligibility(client, booking.customer_id)
-    if (!eligibility.allowed) {
-      const reason = eligibility.reason === 'customer_opted_out' ? 'Customer has opted out of SMS' : 'Customer SMS eligibility lookup failed'
-      await record('skipped', { reason })
-      return {
-        status: 'skipped',
-        note:
-          eligibility.reason === 'customer_opted_out'
-            ? 'The customer has opted out of texts, so they were not told.'
-            : 'The customer could not be texted (their text preference could not be read).',
-        body,
-      }
+  if (result.status === 'skipped') {
+    await record('skipped', payload, null)
+    return { status: 'skipped', note: 'The booking has no email address and no mobile number we can text, so the customer was not told.', body, channel: result.channel }
+  }
+  if (result.status === 'failed') {
+    await record('failed', payload, result.channel)
+    const suspended = result.code === 'sms_suspended' || result.code === 'email_suspended'
+    return {
+      status: 'failed',
+      note: suspended
+        ? 'Customer messages are switched off at the moment, so the customer was not told.'
+        : 'The message to the customer did not send, so they have not been told.',
+      body,
+      channel: result.channel,
     }
   }
-
-  try {
-    const result = await sendSMS(booking.customer_mobile, body, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'booking_changed',
-        template_key: 'parking_booking_changed',
-        change_id: changeId,
-      },
-      customerFallback: { email: booking.customer_email ?? undefined },
-    })
-    const sid = typeof (result as { sid?: unknown }).sid === 'string' ? (result as { sid: string }).sid : null
-    if (!result.success) {
-      const code = typeof (result as { code?: unknown }).code === 'string' ? (result as { code: string }).code : null
-      await record('failed', { sms_code: code, error: (result as { error?: unknown }).error ?? null })
-      const suspended = code === 'sms_suspended'
-      return {
-        status: 'failed',
-        note: suspended
-          ? 'Texts are switched off at the moment, so the customer was not told.'
-          : 'The text to the customer did not send, so they have not been told.',
-        body,
-      }
+  if (result.status === 'held' && result.scheduledFor) {
+    await record('sent', { ...payload, message_sid: result.messageId }, 'sms')
+    return {
+      status: 'held',
+      note: `It is quiet hours, so the text to the customer will go at ${formatDateTimeInLondon(result.scheduledFor, {
+        hour: '2-digit',
+        minute: '2-digit',
+        day: 'numeric',
+        month: 'short',
+      })}.`,
+      body,
+      channel: result.channel,
     }
-    const scheduledFor = (result as { scheduledFor?: unknown }).scheduledFor
-    if ((result as { deferred?: unknown }).deferred === true && typeof scheduledFor === 'string') {
-      await record('sent', { message_sid: sid, deferred: true, scheduled_for: scheduledFor })
-      return {
-        status: 'held',
-        note: `It is quiet hours, so the text to the customer will go at ${formatDateTimeInLondon(scheduledFor, {
-          hour: '2-digit',
-          minute: '2-digit',
-          day: 'numeric',
-          month: 'short',
-        })}.`,
-        body,
-      }
-    }
-    await record('sent', { message_sid: sid })
-    return { status: 'sent', note: null, body }
-  } catch (error) {
-    logger.error('Unexpected error sending the parking change text', {
-      error: error instanceof Error ? error : new Error(String(error)),
-      metadata: { bookingId: booking.id, changeId },
-    })
-    await record('failed', { error: error instanceof Error ? error.message : String(error) })
-    return { status: 'failed', note: 'The text to the customer did not send, so they have not been told.', body }
   }
+  await record('sent', { ...payload, ...(result.channel === 'sms' ? { message_sid: result.messageId } : {}) }, result.channel)
+  return { status: 'sent', note: result.fallbackUsed ? `The email did not send, so the customer was ${by} instead.` : null, body, channel: result.channel }
 }
 
 export interface ParkingRefundOutcome {

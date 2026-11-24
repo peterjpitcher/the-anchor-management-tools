@@ -1,6 +1,14 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { sendSMS } from '@/lib/twilio'
+import {
+  customerMessagePayload,
+  firstChoiceChannel,
+  parkingPaymentReminderEmail,
+  parkingSessionReminderEmail,
+  sendParkingCustomerMessage,
+  type ParkingEmailContent,
+} from '@/lib/parking/customer-message'
+import { formatDateInLondon, formatTimeInLondon } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import {
   buildPaymentReminderSmsForStage,
@@ -13,7 +21,6 @@ import type { ParkingBooking } from '@/types/parking'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { persistCronRunResult, recoverCronRunLock } from '@/lib/cron-run-results'
 import { reportCronFailure } from '@/lib/cron/alerting'
-import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 import { settleWrite } from '@/lib/supabase/settle-write'
 import { hasParkingReminderBeenSent } from '@/lib/parking/reminder-history'
@@ -549,14 +556,16 @@ async function processPendingPaymentLifecycle(
     }
 
     if (shouldSendDayBefore) {
-      // Word it for the day the customer reads it. Quiet hours hold a send from 21:00 until
-      // 09:00, which for an offer due after about 20:45 is the day it expires, where "expires
-      // tomorrow" was wrong. If it could only arrive once the offer has gone, it is not sent.
+      // Word the text for the day the customer reads it. Quiet hours hold a text from 21:00
+      // until 09:00, which for an offer due after about 20:45 is the day it expires, where
+      // "expires tomorrow" was wrong. A text that could only arrive once the offer has gone is
+      // not sent. Email is not held, so it carries the absolute deadline and still goes.
       const expiresOn = resolveTextLandingDay(dueAt, now)
-      if (!expiresOn) {
+      if (!expiresOn && firstChoiceChannel(booking) !== 'email') {
         skipped += 1
         continue
       }
+      const deadline = `${formatDateInLondon(dueAt, { weekday: 'long', day: 'numeric', month: 'long' })} at ${formatTimeInLondon(dueAt)}`
 
       const reminderPayload = { stage: 'day_before_expiry' }
       const alreadySent = await hasParkingReminderBeenSent(supabase, {
@@ -586,10 +595,13 @@ async function processPendingPaymentLifecycle(
         booking,
         eventType: 'payment_reminder',
         templateKey: TEMPLATE_PARKING_PAYMENT_REMINDER_DAY,
-        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, {
-          day: expiresOn,
-          at: dueAt,
-        }),
+        smsBody: expiresOn
+          ? buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, {
+              day: expiresOn,
+              at: dueAt,
+            })
+          : null,
+        email: parkingPaymentReminderEmail(booking, 'day_before_expiry', paymentLink, deadline),
         payload: reminderPayload,
         safety,
       })
@@ -644,6 +656,7 @@ async function processPendingPaymentLifecycle(
       eventType: 'payment_reminder',
       templateKey: TEMPLATE_PARKING_PAYMENT_REMINDER_WEEK,
       smsBody: buildPaymentReminderSmsForStage(booking, 'week_before_expiry', paymentLink || undefined),
+      email: parkingPaymentReminderEmail(booking, 'week_before_expiry', paymentLink),
       payload: reminderPayload,
       safety,
     })
@@ -747,6 +760,7 @@ async function processPaidSessionReminders(
         eventType: 'session_start',
         templateKey: TEMPLATE_PARKING_SESSION_START_3D,
         smsBody: buildSessionThreeDayReminderSms(booking, 'start'),
+        email: parkingSessionReminderEmail(booking, 'start'),
         payload: reminderPayload,
         safety,
       })
@@ -801,6 +815,7 @@ async function processPaidSessionReminders(
         eventType: 'session_end',
         templateKey: TEMPLATE_PARKING_SESSION_END_3D,
         smsBody: buildSessionThreeDayReminderSms(booking, 'end'),
+        email: parkingSessionReminderEmail(booking, 'end'),
         payload: reminderPayload,
         safety,
       })
@@ -848,97 +863,47 @@ async function sendParkingReminderSms(params: {
   booking: ParkingNotificationBooking
   eventType: 'payment_reminder' | 'session_start' | 'session_end'
   templateKey: string
-  smsBody: string
+  /** Null when only an email may go (see the day-before reminder). */
+  smsBody: string | null
+  /** The email version. Parking reminders go by email first, a text only without one. */
+  email: ParkingEmailContent
   payload?: Record<string, unknown>
   safety: ParkingCronSafetyState
 }): Promise<{ sent: boolean; skipped: boolean }> {
-  const { supabase, booking, eventType, templateKey, smsBody, payload, safety } = params
+  const { supabase, booking, eventType, templateKey, smsBody, email, payload, safety } = params
 
-  if (!booking.customer_mobile) {
-    try {
-      await logParkingNotification(
-        {
-          booking_id: booking.id,
-          channel: 'sms',
-          event_type: eventType,
-          status: 'skipped',
-          payload: {
-            template_key: templateKey,
-            reason: 'No customer mobile number on booking',
-            ...(payload || {}),
-          },
-        },
-        supabase
+  const smsWithReply = smsBody
+    ? ensureReplyInstruction(
+        smsBody,
+        process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
       )
-    } catch (error) {
-      console.error('Failed to log skipped parking notification', booking.id, error)
-    }
-    return { sent: false, skipped: true }
-  }
+    : null
 
-  const smsWithReply = ensureReplyInstruction(
-    smsBody,
-    process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  )
-
-  let smsResult: Awaited<ReturnType<typeof sendSMS>>
-  try {
-    smsResult = await sendSMS(booking.customer_mobile, smsWithReply, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: eventType,
-        template_key: templateKey,
-        ...(payload || {}),
-        // Scopes the SMS dedupe to the dates this reminder is about, so a reminder for moved
-        // dates is not refused as a conflicting retry of the one sent for the old dates.
-        subject_at: reminderSubjectAt(eventType, booking),
-      },
-      customerFallback: {
-        email: booking.customer_email ?? undefined,
-      },
-    })
-  } catch (smsError) {
-    console.error('Parking reminder SMS send threw unexpectedly', booking.id, smsError)
-    try {
-      await logParkingNotification(
-        {
-          booking_id: booking.id,
-          channel: 'sms',
-          event_type: eventType,
-          status: 'failed',
-          payload: {
-            template_key: templateKey,
-            sms: smsWithReply,
-            reason: smsError instanceof Error ? smsError.message : String(smsError),
-            ...(payload || {}),
-          },
-        },
-        supabase
-      )
-    } catch (logError) {
-      console.error('Failed to log parking reminder SMS exception', booking.id, logError)
-    }
-    return { sent: false, skipped: false }
-  }
-
-  const { code: smsCode } = extractSmsSafetyInfo(smsResult)
-  const smsLogFailure = extractSmsSafetyInfo(smsResult).logFailure
+  const stage = typeof payload?.stage === 'string' ? payload.stage : undefined
+  const result = await sendParkingCustomerMessage({
+    client: supabase,
+    booking,
+    eventType,
+    templateKey,
+    email,
+    smsBody: smsWithReply,
+    // Scopes the dedupe to the dates this reminder is about, so a reminder for moved dates is not
+    // refused as a conflicting retry of the one sent for the old dates.
+    dedupe: { stage, subject_at: reminderSubjectAt(eventType, booking) },
+  })
 
   try {
     await logParkingNotification(
       {
         booking_id: booking.id,
-        channel: 'sms',
+        channel: result.channel ?? firstChoiceChannel(booking),
         event_type: eventType,
-        status: smsResult.success ? 'sent' : 'failed',
-        sent_at: smsResult.success ? new Date().toISOString() : null,
-        message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+        status: result.status === 'held' ? 'sent' : result.status,
+        sent_at: result.status === 'sent' || result.status === 'held' ? new Date().toISOString() : null,
+        message_sid: result.channel === 'sms' ? result.messageId : null,
         payload: {
           template_key: templateKey,
-          sms: smsWithReply,
-          sms_code: smsCode,
-          sms_log_failure: smsLogFailure,
+          ...customerMessagePayload(result, email, smsWithReply),
           ...(payload || {}),
         },
       },
@@ -946,7 +911,7 @@ async function sendParkingReminderSms(params: {
     )
   } catch (error) {
     console.error('Failed to log parking reminder notification result', booking.id, error)
-    if (smsResult.success) {
+    if (result.status === 'sent' || result.status === 'held') {
       safety.recordSafetyAbort({
         stage: 'parking_notification_log',
         bookingId: booking.id,
@@ -958,25 +923,29 @@ async function sendParkingReminderSms(params: {
     }
   }
 
+  // The SMS safety codes stop the run, as before. They only come from a text: an email that
+  // fails falls back to a text inside the send, and a failure leaves the flag unset so the
+  // reminder is tried again next run rather than lost.
   if (
-    smsLogFailure ||
-    smsCode === 'logging_failed' ||
-    smsCode === 'safety_unavailable' ||
-    smsCode === 'idempotency_conflict'
+    result.channel !== 'email' &&
+    (result.logFailure ||
+      result.code === 'logging_failed' ||
+      result.code === 'safety_unavailable' ||
+      result.code === 'idempotency_conflict')
   ) {
     safety.recordSafetyAbort({
       stage: 'send_sms',
       bookingId: booking.id,
       eventType,
       templateKey,
-      code: smsCode ?? 'logging_failed',
-      logFailure: smsLogFailure,
+      code: result.code ?? 'logging_failed',
+      logFailure: result.logFailure,
     })
   }
 
   return {
-    sent: smsResult.success,
-    skipped: false,
+    sent: result.status === 'sent' || result.status === 'held',
+    skipped: result.status === 'skipped',
   }
 }
 

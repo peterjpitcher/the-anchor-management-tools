@@ -36,7 +36,8 @@ const TEMPLATE_ROUTE_RULES: TemplateRouteRule[] = [
   // The one promotional text left under the 11 September 2026 policy; `event_last_push_paid` too.
   { type: 'prefix', match: 'event_last_push', channels: SMS_ONLY },
   { type: 'prefix', match: 'private_booking_', channels: EMAIL_THEN_MESSAGING },
-  { type: 'prefix', match: 'parking_payment_', channels: EMAIL_THEN_MESSAGING },
+  // Every parking customer message: email first, a text only without one (owner, 24 November 2026).
+  { type: 'prefix', match: 'parking_', channels: EMAIL_THEN_MESSAGING },
   { type: 'prefix', match: 'refund_confirmation', channels: EMAIL_THEN_MESSAGING },
   { type: 'exact', match: 'bulk_sms_campaign', channels: SMS_ONLY },
   { type: 'exact', match: 'message_thread_reply', channels: SMS_ONLY },

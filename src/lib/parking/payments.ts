@@ -5,7 +5,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { formatDateTime } from '@/lib/dateUtils'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { sendSMS } from '@/lib/twilio'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import { sendEmail } from '@/lib/email/emailService'
 import {
@@ -15,7 +14,14 @@ import {
   buildTopUpReceivedSms,
 } from '@/lib/parking/notifications'
 import { enforcePendingPaymentRule, isTopUpBooking } from '@/lib/parking/payment-due'
-import { resolveParkingSmsEligibility } from '@/lib/parking/sms-safety'
+import {
+  customerMessagePayload,
+  firstChoiceChannel,
+  parkingConfirmationEmail,
+  parkingPaymentRequestEmail,
+  parkingTopUpReceivedEmail,
+  sendParkingCustomerMessage
+} from '@/lib/parking/customer-message'
 
 interface CreatePaymentOptions {
   returnUrl: string
@@ -30,33 +36,6 @@ interface CreatePaymentOptions {
   amount?: number
   /** 'top_up' marks the row as extra on a confirmed booking: no offer deadline, expires at end_at. */
   purpose?: 'booking' | 'top_up'
-}
-
-function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
-  const thrownCode = typeof (error as any)?.code === 'string' ? (error as any).code : null
-  const thrownLogFailure = (error as any)?.logFailure === true || thrownCode === 'logging_failed'
-
-  if (thrownLogFailure) {
-    return {
-      code: 'logging_failed',
-      logFailure: true
-    }
-  }
-
-  if (
-    thrownCode === 'safety_unavailable'
-    || thrownCode === 'idempotency_conflict'
-  ) {
-    return {
-      code: thrownCode,
-      logFailure: false
-    }
-  }
-
-  return {
-    code: 'safety_unavailable',
-    logFailure: false
-  }
 }
 
 function parsePayPalMoney(value: unknown): number | null {
@@ -228,156 +207,53 @@ export async function sendParkingPaymentRequest(
 ): Promise<{ sent: boolean; skipped: boolean; code: string | null; logFailure: boolean }> {
   const supabase = options.client ?? createAdminClient()
   const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-
-  let smsAllowed = true
-  let smsSkipReason: string | null = null
-  if (booking.customer_id) {
-    const smsEligibility = await resolveParkingSmsEligibility(supabase, booking.customer_id)
-
-    if (!smsEligibility.allowed) {
-      smsAllowed = false
-      smsSkipReason =
-        smsEligibility.reason === 'customer_opted_out'
-          ? 'Customer has opted out of SMS'
-          : 'Customer SMS eligibility lookup failed'
-
-      if (smsEligibility.reason === 'customer_lookup_failed') {
-        logger.warn('Failed to load customer sms preference for payment request; blocking send', {
-          metadata: {
-            bookingId: booking.id,
-            customerId: booking.customer_id,
-            detail: smsEligibility.detail
-          }
-        })
-      }
-    }
-  }
-
-  if (!booking.customer_mobile) {
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'payment_request',
-      status: 'skipped',
-      payload: {
-        template_key: 'parking_payment_request',
-        stage: 'week_before_expiry',
-        reason: 'No customer mobile number on booking'
-      }
-    }, supabase)
-    return { sent: false, skipped: true, code: null, logFailure: false }
-  }
-
-  if (!smsAllowed) {
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'payment_request',
-      status: 'skipped',
-      payload: {
-        template_key: 'parking_payment_request',
-        stage: 'week_before_expiry',
-        reason: smsSkipReason || 'Customer not eligible for SMS'
-      }
-    }, supabase)
-    return { sent: false, skipped: true, code: null, logFailure: false }
-  }
-
   const smsBody = ensureReplyInstruction(buildPaymentRequestSms(booking, paymentLink), replyNumber)
+  const email = parkingPaymentRequestEmail(booking, paymentLink || null)
 
-  let smsResult: Awaited<ReturnType<typeof sendSMS>>
-  try {
-    smsResult = await sendSMS(booking.customer_mobile, smsBody, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'payment_request',
-        template_key: 'parking_payment_request',
-        ...(options.changeId ? { change_id: options.changeId } : {})
-      },
-      customerFallback: {
-        email: (booking as any)?.customer_email ?? null
-      }
-    })
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error))
-    const normalizedSmsSafety = normalizeThrownSmsSafety(error)
-    logger.error('Unexpected error sending parking payment request SMS', {
-      error: err,
-      metadata: {
-        bookingId: booking.id,
-        code: normalizedSmsSafety.code,
-        logFailure: normalizedSmsSafety.logFailure
-      }
-    })
-
-    await logParkingNotification({
-      booking_id: booking.id,
-      channel: 'sms',
-      event_type: 'payment_request',
-      status: 'failed',
-      payload: {
-        template_key: 'parking_payment_request',
-        stage: 'week_before_expiry',
-        error: err.message
-      }
-    }, supabase)
-    return {
-      sent: false,
-      skipped: false,
-      code: normalizedSmsSafety.code,
-      logFailure: normalizedSmsSafety.logFailure
-    }
-  }
-
-  const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-  const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-
-  if (smsLogFailure) {
-    logger.error('Parking payment request SMS sent but outbound message logging failed', {
-      metadata: {
-        bookingId: booking.id,
-        customerId: booking.customer_id ?? null,
-        code: smsCode,
-        logFailure: smsLogFailure
-      }
-    })
-  }
+  // Email first; a text only for someone with no usable email (owner, 24 November 2026).
+  const result = await sendParkingCustomerMessage({
+    client: supabase,
+    booking,
+    eventType: 'payment_request',
+    templateKey: 'parking_payment_request',
+    email,
+    smsBody,
+    dedupe: { change_id: options.changeId },
+  })
 
   let notificationPersistFailed = false
   try {
     await logParkingNotification({
       booking_id: booking.id,
-      channel: 'sms',
+      channel: result.channel ?? firstChoiceChannel(booking),
       event_type: 'payment_request',
-      status: smsResult.success ? 'sent' : 'failed',
-      sent_at: smsResult.success ? new Date().toISOString() : null,
-      message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
+      status: result.status === 'held' ? 'sent' : result.status,
+      sent_at: result.status === 'sent' || result.status === 'held' ? new Date().toISOString() : null,
+      message_sid: result.channel === 'sms' ? result.messageId : null,
       payload: {
         template_key: 'parking_payment_request',
         stage: 'week_before_expiry',
-        sms: smsBody,
-        sms_code: smsCode,
-        sms_log_failure: smsLogFailure
+        ...(options.changeId ? { change_id: options.changeId } : {}),
+        ...customerMessagePayload(result, email, smsBody)
       }
     }, supabase)
   } catch (logError) {
     notificationPersistFailed = true
     logger.error('Failed to persist parking payment request notification result', {
       error: logError instanceof Error ? logError : new Error(String(logError)),
-      metadata: {
-        bookingId: booking.id,
-        code: smsCode,
-        logFailure: smsLogFailure
-      }
+      metadata: { bookingId: booking.id, code: result.code, logFailure: result.logFailure }
     })
   }
 
-  if (!smsResult.success) {
-    logger.warn('Parking payment request SMS failed', {
-      metadata: { bookingId: booking.id, error: smsResult.error, code: smsCode }
+  if (result.status === 'skipped') {
+    return { sent: false, skipped: true, code: null, logFailure: false }
+  }
+
+  if (result.status === 'failed') {
+    logger.warn('Parking payment request failed to send', {
+      metadata: { bookingId: booking.id, channel: result.channel, error: result.reason, code: result.code }
     })
-    return { sent: false, skipped: false, code: smsCode, logFailure: smsLogFailure }
+    return { sent: false, skipped: false, code: result.code, logFailure: result.logFailure }
   }
 
   const { data: updatedBookingFlags, error: updateBookingError } = await supabase
@@ -393,18 +269,17 @@ export async function sendParkingPaymentRequest(
 
   const bookingFlagPersistFailed = Boolean(updateBookingError) || !updatedBookingFlags
   if (bookingFlagPersistFailed) {
-    logger.error('Parking payment request SMS sent but failed to persist booking reminder flags', {
+    logger.error('Parking payment request sent but failed to persist booking reminder flags', {
       error: updateBookingError ?? new Error('Parking reminder-flag update affected no rows'),
       metadata: { bookingId: booking.id }
     })
   }
 
-  const persistFailed = notificationPersistFailed || bookingFlagPersistFailed
-  if (persistFailed) {
+  if (notificationPersistFailed || bookingFlagPersistFailed) {
     return { sent: true, skipped: false, code: 'logging_failed', logFailure: true }
   }
 
-  return { sent: true, skipped: false, code: smsCode, logFailure: smsLogFailure }
+  return { sent: true, skipped: false, code: result.code, logFailure: result.logFailure }
 }
 
 /**
@@ -714,59 +589,34 @@ async function sendTopUpReceipt(
 ): Promise<void> {
   const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
   const smsBody = ensureReplyInstruction(buildTopUpReceivedSms(booking, amount), replyNumber)
-  const log = async (status: 'sent' | 'failed' | 'skipped', payload: Record<string, unknown>, extra: { sent_at?: string | null; message_sid?: string | null } = {}) => {
-    try {
-      await logParkingNotification({
-        booking_id: booking.id,
-        channel: 'sms',
-        event_type: 'top_up_received',
-        status,
-        ...extra,
-        payload: { template_key: 'parking_top_up_received', payment_id: paymentId, amount, ...payload }
-      }, supabase)
-    } catch (logError) {
-      logger.error('Failed to log the parking top-up receipt text', {
-        error: logError instanceof Error ? logError : new Error(String(logError)),
-        metadata: { bookingId: booking.id, paymentId }
-      })
-    }
-  }
+  const email = parkingTopUpReceivedEmail(booking, amount)
 
-  if (!booking.customer_mobile) {
-    await log('skipped', { reason: 'No customer mobile number on booking' })
-    return
-  }
-  if (booking.customer_id) {
-    const eligibility = await resolveParkingSmsEligibility(supabase, booking.customer_id)
-    if (!eligibility.allowed) {
-      await log('skipped', {
-        reason: eligibility.reason === 'customer_opted_out' ? 'Customer has opted out of SMS' : 'Customer SMS eligibility lookup failed'
-      })
-      return
-    }
-  }
-
+  // Each top-up is its own receipt: payment_id keeps a second top-up of the same amount from
+  // being refused as a duplicate of the first, in both channels.
+  const result = await sendParkingCustomerMessage({
+    client: supabase,
+    booking,
+    eventType: 'top_up_received',
+    templateKey: 'parking_top_up_received',
+    email,
+    smsBody,
+    dedupe: { payment_id: paymentId },
+  })
   try {
-    const result = await sendSMS(booking.customer_mobile, smsBody, {
-      customerId: booking.customer_id ?? undefined,
-      metadata: {
-        parking_booking_id: booking.id,
-        event_type: 'top_up_received',
-        template_key: 'parking_top_up_received',
-        // Each top-up is its own receipt: a second top-up of the same amount must not be
-        // refused as a duplicate of the first.
-        payment_id: paymentId
-      },
-      customerFallback: { email: (booking as any)?.customer_email ?? null }
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: result.channel ?? firstChoiceChannel(booking),
+      event_type: 'top_up_received',
+      status: result.status === 'held' ? 'sent' : result.status,
+      sent_at: result.status === 'sent' || result.status === 'held' ? new Date().toISOString() : null,
+      message_sid: result.channel === 'sms' ? result.messageId : null,
+      payload: { template_key: 'parking_top_up_received', payment_id: paymentId, amount, ...customerMessagePayload(result, email, smsBody) }
+    }, supabase)
+  } catch (logError) {
+    logger.error('Failed to log the parking top-up receipt', {
+      error: logError instanceof Error ? logError : new Error(String(logError)),
+      metadata: { bookingId: booking.id, paymentId }
     })
-    await log(result.success ? 'sent' : 'failed', { sms: smsBody, sms_code: typeof result.code === 'string' ? result.code : null }, {
-      sent_at: result.success ? new Date().toISOString() : null,
-      message_sid: result.success && result.sid ? result.sid : null
-    })
-  } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error))
-    logger.error('Unexpected error sending the parking top-up receipt', { error: err, metadata: { bookingId: booking.id, paymentId } })
-    await log('failed', { error: err.message })
   }
 }
 
@@ -916,84 +766,38 @@ export async function reconcileCapturedParkingPayment(
 
 async function sendConfirmationNotifications(booking: ParkingBooking, supabase: SupabaseClient<any, 'public', any>) {
   const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  const smsBody = ensureReplyInstruction(buildPaymentConfirmationSms(booking), replyNumber)
+  const email = parkingConfirmationEmail(booking)
 
-  // Determine SMS opt-in
-  let smsAllowed = true
-  if (booking.customer_id) {
-    const smsEligibility = await resolveParkingSmsEligibility(supabase, booking.customer_id)
-    if (!smsEligibility.allowed) {
-      smsAllowed = false
-      if (smsEligibility.reason === 'customer_lookup_failed') {
-        logger.warn('Failed to load customer sms preference for payment confirmation; blocking send', {
-          metadata: {
-            bookingId: booking.id,
-            customerId: booking.customer_id,
-            detail: smsEligibility.detail
-          }
-        })
-      }
-    }
+  // Email first; a text only for someone with no usable email (owner, 24 November 2026).
+  const result = await sendParkingCustomerMessage({
+    client: supabase,
+    booking,
+    eventType: 'payment_confirmation',
+    templateKey: 'parking_payment_confirmation',
+    email,
+    smsBody,
+  })
+  try {
+    await logParkingNotification({
+      booking_id: booking.id,
+      channel: result.channel ?? firstChoiceChannel(booking),
+      event_type: 'payment_confirmation',
+      status: result.status === 'held' ? 'sent' : result.status,
+      sent_at: result.status === 'sent' || result.status === 'held' ? new Date().toISOString() : null,
+      message_sid: result.channel === 'sms' ? result.messageId : null,
+      payload: { template_key: 'parking_payment_confirmation', ...customerMessagePayload(result, email, smsBody) }
+    }, supabase)
+  } catch (logError) {
+    logger.error('Failed to log the parking confirmation', {
+      error: logError instanceof Error ? logError : new Error(String(logError)),
+      metadata: { bookingId: booking.id }
+    })
   }
-
-  if (smsAllowed && booking.customer_mobile) {
-    try {
-      const smsBody = ensureReplyInstruction(buildPaymentConfirmationSms(booking), replyNumber)
-      
-      const smsResult = await sendSMS(booking.customer_mobile, smsBody, {
-        customerId: booking.customer_id ?? undefined,
-        metadata: {
-          parking_booking_id: booking.id,
-          event_type: 'payment_confirmation',
-          template_key: 'parking_payment_confirmation'
-        },
-        customerFallback: {
-          email: (booking as any)?.customer_email ?? null
-        }
-      })
-
-      const smsCode = typeof smsResult.code === 'string' ? smsResult.code : null
-      const smsLogFailure = smsResult.logFailure === true || smsCode === 'logging_failed'
-
-      if (smsLogFailure) {
-        logger.error('Parking payment confirmation SMS sent but outbound message logging failed', {
-          metadata: {
-            bookingId: booking.id,
-            customerId: booking.customer_id ?? null,
-            code: smsCode,
-            logFailure: smsLogFailure
-          }
-        })
-      }
-
-      await logParkingNotification({
-        booking_id: booking.id,
-        channel: 'sms',
-        event_type: 'payment_confirmation',
-        status: smsResult.success ? 'sent' : 'failed',
-        sent_at: smsResult.success ? new Date().toISOString() : null,
-        message_sid: smsResult.success && smsResult.sid ? smsResult.sid : null,
-        payload: { sms: smsBody, sms_code: smsCode, sms_log_failure: smsLogFailure }
-      }, supabase)
-
-      if (!smsResult.success) {
-        logger.warn('Parking payment confirmation SMS failed', {
-          metadata: { bookingId: booking.id, error: smsResult.error, code: smsCode }
-        })
-      }
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error))
-      logger.error('Unexpected error sending parking confirmation SMS', {
-        error: err,
-        metadata: { bookingId: booking.id }
-      })
-      await logParkingNotification({
-        booking_id: booking.id,
-        channel: 'sms',
-        event_type: 'payment_confirmation',
-        status: 'failed',
-        payload: { error: err.message }
-      }, supabase)
-    }
+  if (result.status === 'failed') {
+    logger.warn('Parking payment confirmation failed to send', {
+      metadata: { bookingId: booking.id, channel: result.channel, error: result.reason, code: result.code }
+    })
   }
 
   try {
@@ -1006,7 +810,7 @@ async function sendConfirmationNotifications(booking: ParkingBooking, supabase: 
       event_type: 'payment_confirmation',
       status: emailResult.success ? 'sent' : 'failed',
       sent_at: emailResult.success ? new Date().toISOString() : null,
-      payload: { subject: managerEmail.subject }
+      payload: { subject: managerEmail.subject, audience: 'manager' }
     }, supabase)
 
     if (!emailResult.success) {
