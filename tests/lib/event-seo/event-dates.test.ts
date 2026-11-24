@@ -29,6 +29,13 @@ describe('event date labels', () => {
     expect(mentionsDayMonth('on 2026-12-11', '2026-12-11')).toBe(false)
     expect(mentionsWeekdayAndDate('Fri 11 December', '2026-12-11')).toBe(true)
     expect(mentionsWeekdayAndDate('11 December', '2026-12-11')).toBe(false)
+    // date_short is offered to the model, so its abbreviated month must pass too.
+    expect(mentionsWeekdayAndDate('Fri 11 Dec, 7pm', '2026-12-11')).toBe(true)
+    expect(mentionsWeekdayAndDate('Fri 18 Sept, 7pm', '2026-09-18')).toBe(true)
+    expect(mentionsWeekdayAndDate('Fri 18 Sep 7pm', '2026-09-18')).toBe(true)
+    expect(mentionsDayMonth('on 11 Dec.', '2026-12-11')).toBe(true)
+    expect(mentionsDayMonth('on 11 Decor', '2026-12-11')).toBe(false)
+    expect(mentionsDayMonth('on 11 Nov', '2026-12-11')).toBe(false)
   })
 })
 

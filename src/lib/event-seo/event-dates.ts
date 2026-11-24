@@ -39,12 +39,17 @@ export function eventTime12h(time: string | null | undefined): string | null {
   return formatTime12Hour(value)
 }
 
-/** True when the text names the day and month ("11 December", "11th December"). */
+/**
+ * True when the text names the day and month: "11 December", "11th December", or the
+ * short form the prompt also offers as date_short ("11 Dec", "18 Sept").
+ */
 export function mentionsDayMonth(text: string, isoDate: string | null | undefined): boolean {
   const labels = eventDateLabels(isoDate)
   if (!labels || !text) return false
   const [day, month] = labels.dayMonth.split(' ')
-  return new RegExp(`\\b${day}(?:st|nd|rd|th)?\\s+${month}\\b`, 'i').test(text)
+  const shortMonth = labels.dateShort.split(' ').pop() ?? month.slice(0, 3)
+  const months = Array.from(new Set([month, shortMonth, month.slice(0, 3)])).join('|')
+  return new RegExp(`\\b${day}(?:st|nd|rd|th)?\\s+(?:${months})\\.?(?![a-z])`, 'i').test(text)
 }
 
 /** True when the text names the weekday as well as the day and month. */
