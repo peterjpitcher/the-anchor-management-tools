@@ -431,3 +431,50 @@ describe('processManualRefund: a caller key', () => {
     expect(db.rpc).not.toHaveBeenCalled()
   })
 })
+
+describe('processPayPalRefund: a part refund on a parking payment (the date change path)', () => {
+  it('records the payment as part refunded and leaves the payment and the booking live', async () => {
+    const writes: Array<{ table: string; payload: any }> = []
+    const rpc = vi.fn().mockResolvedValue({ data: [{ refund_id: 'refund-1' }], error: null })
+    const from = vi.fn((table: string) => {
+      let result: any = { data: null, error: null }
+      if (table === 'parking_booking_payments') {
+        result = {
+          data: {
+            id: 'pay-1',
+            transaction_id: 'CAPTURE-P',
+            paid_at: new Date().toISOString(),
+            amount: 10,
+            currency: 'GBP',
+            booking_id: 'parking-1',
+            parking_bookings: { customer_first_name: 'Pat', customer_mobile: '+447700900000', reference: 'PAR-1' },
+          },
+          error: null,
+        }
+      }
+      if (table === 'payment_refunds') result = { data: [{ amount: 5 }], error: null }
+      const c = chain(result)
+      c.update = vi.fn((payload: any) => {
+        writes.push({ table, payload })
+        return c
+      })
+      // The key lookup must find nothing, so the refund is reserved and sent.
+      if (table === 'payment_refunds') c.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }))
+      return c
+    })
+    mockedAdmin.mockReturnValue({ from, rpc })
+    mockedRefund.mockResolvedValue({ status: 'COMPLETED', refundId: 'pp-refund-1', currency: 'GBP' })
+
+    const result = await processPayPalRefund('parking', 'pay-1', 5, 'Dates changed', {
+      requestKey: '33333333-3333-5333-8333-333333333333',
+      skipCustomerNotification: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(mockedRefund).toHaveBeenCalledWith('CAPTURE-P', 5, '33333333-3333-5333-8333-333333333333', 'GBP')
+    expect(writes).toContainEqual({ table: 'parking_booking_payments', payload: { refund_status: 'partially_refunded' } })
+    // The payment stays 'paid' (the balance counts only paid rows) and the booking is not touched.
+    expect(writes.some((w) => w.table === 'parking_booking_payments' && 'status' in w.payload)).toBe(false)
+    expect(writes.some((w) => w.table === 'parking_bookings')).toBe(false)
+  })
+})

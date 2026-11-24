@@ -73,7 +73,12 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
     setLinkToCopy(null)
   }, [open, booking.id, booking.start_at, booking.end_at])
 
-  const startIso = useMemo(() => parseLondonDateTimeLocalToIso(startLocal), [startLocal])
+  // A started stay's start cannot move, so send the stored instant itself rather than a minute-
+  // rounded round trip through the input, which the server would read as a moved start.
+  const startIso = useMemo(
+    () => (started ? booking.start_at : parseLondonDateTimeLocalToIso(startLocal)),
+    [started, booking.start_at, startLocal]
+  )
   const endIso = useMemo(() => parseLondonDateTimeLocalToIso(endLocal), [endLocal])
   const unchanged =
     startIso !== null &&

@@ -16,10 +16,8 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 import { settleWrite } from '@/lib/supabase/settle-write'
-import { getAppUrl } from '@/lib/env'
-import { createParkingPaymentOrder } from '@/lib/parking/payments'
 import { hasParkingReminderBeenSent } from '@/lib/parking/reminder-history'
-import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
+import { ensurePendingPaymentLink } from '@/lib/parking/reminder-payment-link'
 
 // Its own time limit rather than the 15-second project default (BK-212).
 export const maxDuration = 60
@@ -964,41 +962,3 @@ async function sendParkingReminderSms(params: {
   }
 }
 
-async function ensurePendingPaymentLink(
-  supabase: ReturnType<typeof createAdminClient>,
-  booking: Pick<ParkingBooking, 'id' | 'reference' | 'start_at' | 'end_at' | 'calculated_price' | 'override_price' | 'payment_due_at'>
-): Promise<string | null> {
-  const existing = await lookupPendingPaymentLink(supabase, booking.id)
-  if (existing) return existing
-  try {
-    const appUrl = getAppUrl()
-    const order = await createParkingPaymentOrder(booking as ParkingBooking, {
-      returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
-      cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
-      client: supabase,
-    })
-    return order.approveUrl || null
-  } catch (error) {
-    console.error('Failed to make a parking payment link for a reminder', booking.id, error)
-    return null
-  }
-}
-
-async function lookupPendingPaymentLink(supabase: ReturnType<typeof createAdminClient>, bookingId: string) {
-  const { data, error } = await supabase
-    .from('parking_booking_payments')
-    .select('metadata')
-    .eq('booking_id', bookingId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    console.error('Failed to lookup parking payment metadata', bookingId, error)
-    return null
-  }
-
-  const metadata = data?.metadata as { approve_url?: string } | null
-  return metadata?.approve_url ?? null
-}
