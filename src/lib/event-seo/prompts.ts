@@ -11,6 +11,7 @@ import { ANCHOR_VENUE_CONTEXT } from './generation'
 import { EVENT_SEO_LIMITS as L, HOME_PLACE, NEARBY_PLACES } from './limits'
 import { eventDateLabels, eventTime12h } from './event-dates'
 import { copyableKeyword, focusPhrase } from './keyword-match'
+import { invitationSentences } from './website-parity'
 
 // ── Static prompt sections ──────────────────────────────────
 
@@ -45,11 +46,14 @@ export const OUTPUT_RUBRIC = `HOW TO WRITE, follow strictly:
 - One exclamation mark in the whole piece at most, and usually none.
 - Never open a sentence with a command such as "Indulge in", "Savour", "Delight in", "Treat yourself to", "Experience", "Discover" or "Enjoy".
 - Sound like these: "a proper night out", "big laughs", "bring your mates", "get involved", "sing along", "loads of fun", "a brilliant night at your local".
-- The page stays on the website after the night, so the short and long descriptions must still read true the morning after. No exclamation marks in them. Never write "join", "get ready", "book your", "book now", "come along", "come down", "don't miss", "grab your", "get your tickets", "secure your", "coming up", "see you there" or "this Friday". The warmth comes from what happens on the night, not from commands. State booking and arrival as facts ("Booking is through the form on this page").
+- The page stays on the website after the night, so the short and long descriptions must still read true the morning after. No exclamation marks in them. Never write "join" in any sense, even a factual one ("we can put you with another team", not "join another team"), and never "get ready", "book your", "book now", "come along", "come down", "don't miss", "grab your", "get your tickets", "secure your", "coming up", "see you there" or "this Friday". The warmth comes from what happens on the night, not from commands. State booking and arrival as facts ("Booking is through the form on this page").
 - Never sound posh, corporate or salesy. Banned words and phrases, and anything close to them: "premium experience", "elevated entertainment", "curated evening", "sophisticated event", "unforgettable journey/evening", "exclusive night", "hidden gem", "nestled", "boasts", "great atmosphere", "vibrant atmosphere", "something for everyone", "look no further", "a must-visit", "a night to remember", "set to be", "promises to", "guarantees", "filled with entertainment", "plays a vital role", "high-energy experience". Never use: quintessentially, sophisticated, elegant, effervescent, utterly, iconic, premium, artisan, indulgent, luxurious, elevates, sensation, pinnacle.
 - No empty hype adjectives (thrilling, exhilarating, unmissable, incredible) and no section labels ("Practical information includes", "Food and drink play a part"). Just say it plainly.
 - Write for someone who has never been to a pub night: no in-jokes and no assumed knowledge. Drinking is never the price of entry.
 - Don't over-explain and don't repeat yourself. Don't lead with Heathrow or airport talk: name the location plainly and only mention Heathrow if it genuinely helps.
+- Name a performer by first name only: "Nikki hosts", never the surname.
+- A prize that depends on something (a projected Snowball, a jackpot built from book sales, a prize only some people can win) goes only in the long description, with its condition and who can win it exactly as FACTS_JSON.brief states them. Never put it in the meta description, the short description or the highlights.
+- Prices come only from FACTS_JSON. If the brief gives no price for an extra (a dabber, a drink), do not give one.
 - Every claim must trace to FACTS_JSON or VENUE_CONTEXT. If neither supports it, drop it.
 - UK English throughout. No em dashes: use commas, full stops or brackets. No markdown (no **, *, _, #, [](), or - bullets). No raw URLs in prose.
 
@@ -81,7 +85,7 @@ slug: return "". Code sets the address.
 imageAltText: ${L.imageAltTextChars.min} to ${L.imageAltTextChars.max} characters describing what the picture shows for someone who cannot see it, naming the event. No keyword rule. Do not start with "image of" or "photo of".
 
 faqs: ${L.faqCount.min} to ${L.faqCount.max} pairs. Answers ${L.faqAnswerWords.min} to ${L.faqAnswerWords.max} words, each adding something the long description does not say (do I need to know the music, can I come on my own, are under 18s welcome, how long it runs, how to pay). Include:
-  one question phrased the way someone would search, containing the focus phrase word for word ("Is there christmas music bingo near Staines in December?"),
+  one question phrased the way someone would search, containing the focus phrase word for word ("Is there Christmas music bingo near Staines in December?"),
   one on who can come,
   one on getting there.
   At most one question about booking, paying or cancelling: the website hides those after the night.
@@ -92,12 +96,56 @@ accessibilityNotes: overwritten by code; return "".`
 
 export const KEYWORD_RULES = `KEYWORD RULES: an event page holds its own dated, themed search terms; the hub pages hold the general ones. Keep keywords natural, never at the cost of the voice.
 - The focus phrase is FACTS_JSON.keywords.focus. Use it word for word, as a whole phrase, in the meta description, the first paragraph and one FAQ question. Nowhere else needs it.
+- "Word for word" means the same words in the same order, not the same capitals. Capitalise it as the sentence and UK English need: "Christmas music bingo" at the start of a sentence, "Christmas" and place names always with a capital, so "a night of Christmas music bingo", never "christmas music bingo" mid-sentence.
 - Supporting terms (FACTS_JSON.keywords.supporting): use at least ${L.supportingInBody} in the long description where they are true and read naturally.
 - Local terms (FACTS_JSON.keywords.local) are place names. Use them in the location paragraph and one FAQ.
 - Never write "near me" in copy: place names do that job.
 - Never keyword-stuff. If a keyword would make a sentence sound robotic, leave it out.`
 
 // ── Dynamic builders ────────────────────────────────────────
+
+/**
+ * The brief is typed in the drawer and often pasted from a document, headings and bold included.
+ * The model copied that markdown straight into the copy, so it is taken out before sending.
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/```[^\n]*\n?/g, '')
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]{0,3}>[ \t]?/gm, '')
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
+    .replace(/(^|[^\w_])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * The copy already on the event, shown to the model as a draft to improve, never as facts.
+ * It used to sit inside FACTS_JSON, so a wrong price or a retired claim in an old draft was
+ * read as a fact and written straight back. Null when there is nothing on the event yet.
+ */
+export function buildPreviousDraftBlock(facts: EventSeoFacts): string | null {
+  const existing: Record<string, unknown> = {}
+  if (facts.existingContent.metaTitle) existing.meta_title = facts.existingContent.metaTitle
+  if (facts.existingContent.metaDescription) existing.meta_description = facts.existingContent.metaDescription
+  if (facts.existingContent.shortDescription) existing.short_description = facts.existingContent.shortDescription
+  if (facts.existingContent.longDescription) existing.long_description = facts.existingContent.longDescription
+  if (facts.existingContent.highlights.length > 0) existing.highlights = facts.existingContent.highlights
+  if (Object.keys(existing).length === 0) return null
+  return [
+    'PREVIOUS DRAFT (not a source of facts):',
+    'This is the copy currently on the event. It may be out of date or wrong. Reuse its wording only where FACTS_JSON or VENUE_CONTEXT supports it; where they differ, FACTS_JSON and VENUE_CONTEXT win. Never take a date, time, price, prize, performer or claim from it.',
+    JSON.stringify(existing, null, 2),
+  ].join('\n')
+}
 
 export function buildFactsJson(facts: EventSeoFacts): string {
   // Build a concise object omitting null/empty fields
@@ -121,18 +169,10 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   if (facts.performerName) obj.performer_name = facts.performerName
   if (facts.performerType) obj.performer_type = facts.performerType
   obj.booking_url_present = facts.bookingUrlPresent
-  if (facts.brief) obj.brief = facts.brief
+  const brief = facts.brief ? stripMarkdown(facts.brief) : ''
+  if (brief) obj.brief = brief
   if (facts.kitchenService) obj.kitchen_service = facts.kitchenService
   obj.is_free = facts.isFree
-
-  // Existing content: only non-empty fields
-  const existing: Record<string, unknown> = {}
-  if (facts.existingContent.metaTitle) existing.meta_title = facts.existingContent.metaTitle
-  if (facts.existingContent.metaDescription) existing.meta_description = facts.existingContent.metaDescription
-  if (facts.existingContent.shortDescription) existing.short_description = facts.existingContent.shortDescription
-  if (facts.existingContent.longDescription) existing.long_description = facts.existingContent.longDescription
-  if (facts.existingContent.highlights.length > 0) existing.highlights = facts.existingContent.highlights
-  if (Object.keys(existing).length > 0) obj.existing_content = existing
 
   // Keywords: focus is one phrase ("near me" taken off), supporting and local are lists.
   const kw: Record<string, unknown> = {}
@@ -161,6 +201,11 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   return JSON.stringify(obj, null, 2)
 }
 
+function previousDraftLines(facts: EventSeoFacts): string[] {
+  const block = buildPreviousDraftBlock(facts)
+  return block ? [block, ''] : []
+}
+
 export function buildGenerationMessages(
   facts: EventSeoFacts
 ): Array<{ role: 'system' | 'user'; content: string }> {
@@ -175,6 +220,7 @@ export function buildGenerationMessages(
     '',
     'Return a single JSON object with keys: metaTitle, metaDescription, shortDescription, longDescription, highlights (string[]), slug, imageAltText, faqs ({question, answer}[]), cancellationPolicy, accessibilityNotes. Use "" for missing string values.',
     '',
+    ...previousDraftLines(facts),
     'FACTS_JSON:',
     buildFactsJson(facts),
   ].join('\n')
@@ -218,14 +264,19 @@ export function buildRepairMessages(
   const keywordDirective = hasFocusIssue && focus
     ? [
         '',
-        `FOCUS PHRASE: write "${focus}" word for word, as a whole phrase, in the meta description, the first paragraph and one FAQ question. Keep the sentence natural around it.`,
+        `FOCUS PHRASE: write "${focus}" word for word, as a whole phrase, in the meta description, the first paragraph and one FAQ question. Same words in the same order; capitalise them as the sentence needs. Keep the sentence natural around it.`,
       ].join('\n')
     : ''
 
+  const caught = [
+    ...invitationSentences(String(failedDraft.shortDescription ?? '')),
+    ...invitationSentences(String(failedDraft.longDescription ?? '')),
+  ]
   const invitationDirective = issues.some((i) => i.code === 'reads_as_invitation')
     ? [
         '',
-        'AFTER THE NIGHT: the short and long descriptions must read true the morning after the event. Remove every exclamation mark and every invitation ("join", "get ready", "book your", "come along", "don\'t miss", "see you there"). Say what happens and how booking works as plain statements.',
+        'AFTER THE NIGHT: the short and long descriptions must read true the morning after the event. Remove every exclamation mark and every invitation ("join", "get ready", "book your", "come along", "don\'t miss", "see you there"). The word "join" is caught in any sense, so "join another team" must become "go in with another team". Say what happens and how booking works as plain statements.',
+        ...(caught.length > 0 ? ['Rewrite each of these sentences so that none of those words is left:', ...caught.map((sentence) => `- "${sentence}"`)] : []),
       ].join('\n')
     : ''
 

@@ -3,6 +3,7 @@
 import { buildStaffCancellationRefundNote } from '@/lib/events/staff-cancellation-refund-note'
 import { isSundayLunchOnlyEvent, SUNDAY_LUNCH_ONLY_EVENT_MESSAGE } from '@/lib/events/sunday-lunch-only-policy'
 import { z } from 'zod'
+import { retiredKeywordTierError } from '@/lib/event-seo/website-parity'
 import { revalidatePath, revalidateTag } from 'next/cache'
 import { logAuditEvent } from './audit'
 import type { Event, EventFAQ } from '@/types/database'
@@ -458,6 +459,12 @@ export async function createEvent(formData: FormData): Promise<CreateEventResult
     }
 
     const rawData = await prepareEventDataFromFormData(formData);
+    const retiredKeywords = retiredKeywordTierError({
+      primary: rawData.primary_keywords as string[] | undefined,
+      secondary: rawData.secondary_keywords as string[] | undefined,
+      local: rawData.local_seo_keywords as string[] | undefined,
+    })
+    if (retiredKeywords) return { error: retiredKeywords };
     const validationResult = eventSchema.safeParse(rawData);
 
     if (!validationResult.success) {
@@ -515,6 +522,12 @@ export async function updateEvent(id: string, formData: FormData) {
     }
 
     const rawData = await prepareEventDataFromFormData(formData, id); // Pass existingEventId if needed
+    const retiredKeywords = retiredKeywordTierError({
+      primary: rawData.primary_keywords as string[] | undefined,
+      secondary: rawData.secondary_keywords as string[] | undefined,
+      local: rawData.local_seo_keywords as string[] | undefined,
+    })
+    if (retiredKeywords) return { error: retiredKeywords };
 
     // For updates, we allow partial data, but still validate if fields are present
     const validationResult = eventSchema.partial().safeParse(rawData);

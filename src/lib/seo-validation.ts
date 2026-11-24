@@ -17,7 +17,13 @@ import { EVENT_SEO_LIMITS, HOME_PLACE, NEARBY_PLACES, withinRange, withinToleran
 import type { Range } from '@/lib/event-seo/limits'
 import { copyableKeyword, focusPhrase, keywordTokens, matchesKeyword } from '@/lib/event-seo/keyword-match'
 import { mentionsDayMonth, mentionsWeekdayAndDate } from '@/lib/event-seo/event-dates'
-import { invitationPhrases, readsAsInvitation, titleCarriesDate } from '@/lib/event-seo/website-parity'
+import {
+  findRetiredFormats,
+  findWebsiteBannedClaims,
+  invitationPhrases,
+  readsAsInvitation,
+  titleCarriesDate,
+} from '@/lib/event-seo/website-parity'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -569,6 +575,27 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
       message: `Carries a claim the brand rules ban: ${bannedClaims.map((f) => `"${f.matched}"`).join(', ')}. ${bannedClaims[0].message}`,
     })
   }
+  // --- What the website would take out of search (raw patterns, not denial aware) ---
+  // The website checks the name, descriptions and highlights for these claims whichever way
+  // they are phrased, so "we don't have an accessible toilet" in the long description would
+  // remove the page too. The accessibility notes field says it, and is not checked here.
+  const websiteClaims = findWebsiteBannedClaims([shortDescription, longDescription, ...highlights])
+  if (websiteClaims.length > 0) {
+    issues.push({
+      code: 'website_banned_claim',
+      severity: 'repairable',
+      message: `Mentions ${websiteClaims.map((c) => `"${c}"`).join(', ')}. The website takes an event page out of search when its descriptions or highlights mention this, even to say we do not have it. Leave it out of the descriptions and highlights.`,
+    })
+  }
+  const retired = findRetiredFormats([metaTitle, metaDescription, shortDescription, longDescription, ...highlights, ...faqs.map((f) => `${f.question} ${f.answer}`)])
+  if (retired.length > 0) {
+    issues.push({
+      code: 'retired_format',
+      severity: 'repairable',
+      message: `Names a format we no longer run: ${retired.map((r) => `"${r}"`).join(', ')}. The website takes the page out of search when it does. Leave it out.`,
+    })
+  }
+
   const voiceFindings = houseStyle.filter((finding) => finding.severity === 'warning' && finding.rule !== 'filler')
   if (voiceFindings.length > 0) {
     issues.push({
@@ -688,6 +715,41 @@ export function capAndDeduplicate(items: string[], max: number, options: { lower
 }
 
 /**
+ * Names that always take capitals in UK English. The focus phrase is stored in lower case
+ * ("christmas music bingo") and the model copied it as it stands mid-sentence. The keyword
+ * matcher ignores case and apostrophes, so the fixed text still carries the phrase.
+ */
+const ALWAYS_CAPITALISED: ReadonlyArray<[RegExp, string]> = [
+  [/\bnew\s+year[\u2019']?s\s+eve\b/gi, "New Year's Eve"],
+  [/\bnew\s+year[\u2019']?s\s+day\b/gi, "New Year's Day"],
+  [/\bchristmas\s+eve\b/gi, 'Christmas Eve'],
+  [/\bchristmas\b/gi, 'Christmas'],
+  [/\bboxing\s+day\b/gi, 'Boxing Day'],
+  [/\bhalloween\b/gi, 'Halloween'],
+  [/\beaster\b/gi, 'Easter'],
+  [/\bbonfire\s+night\b/gi, 'Bonfire Night'],
+  [/\bvalentine[\u2019']?s\s+day\b/gi, "Valentine's Day"],
+  [/\bmother[\u2019']?s\s+day\b/gi, "Mother's Day"],
+  [/\bfather[\u2019']?s\s+day\b/gi, "Father's Day"],
+  [/\bst\.?\s+patrick[\u2019']?s\s+day\b/gi, "St Patrick's Day"],
+  [/\bstanwell\s+moor\b/gi, 'Stanwell Moor'],
+]
+
+/** House style has no em dashes (SSOT section 1): one between words becomes a comma. */
+export function replaceEmDashes(text: string): string {
+  return text.replace(/\s*\u2014\s*/g, ', ').replace(/,\s*,/g, ',').replace(/^,\s*/, '')
+}
+
+export function capitaliseProperNames(text: string): string {
+  // Typographic apostrophes are kept where the model used them.
+  return ALWAYS_CAPITALISED.reduce(
+    (out, [pattern, fixed]) =>
+      out.replace(pattern, (match) => (match.includes('\u2019') ? fixed.replace(/'/g, '\u2019') : fixed)),
+    text,
+  )
+}
+
+/**
  * Repairs that need no model: whitespace, markdown, raw URLs, placeholders and
  * duplicate highlights. Returns a copy. The slug is not touched here: the
  * caller decides it, because a published event's address must not move.
@@ -707,20 +769,20 @@ export function applyDeterministicRepair(
   const proseKeys = ['shortDescription', 'longDescription', 'metaTitle', 'metaDescription', 'imageAltText']
   for (const key of proseKeys) {
     if (typeof patched[key] === 'string') {
-      patched[key] = removeRawUrls(removeMarkdownMarkers(patched[key] as string))
+      patched[key] = replaceEmDashes(capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(patched[key] as string))))
     }
   }
 
   if (Array.isArray(patched.faqs)) {
     patched.faqs = arrFaq(patched.faqs).map((faq) => ({
-      question: trimAndNormalizeWhitespace(faq.question),
-      answer: removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer))),
+      question: replaceEmDashes(capitaliseProperNames(trimAndNormalizeWhitespace(faq.question))),
+      answer: replaceEmDashes(capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer))))),
     }))
   }
 
   if (Array.isArray(patched.highlights)) {
     patched.highlights = capAndDeduplicate(
-      arrStr(patched.highlights).map((h) => removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, '')),
+      arrStr(patched.highlights).map((h) => replaceEmDashes(capitaliseProperNames(removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, '')))),
       EVENT_SEO_LIMITS.highlightsCount.max,
     )
   }

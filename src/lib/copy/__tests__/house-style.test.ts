@@ -317,3 +317,23 @@ describe('the roast is not carved fresh, 13 November 2026', () => {
     expect(houseStyleErrors('28-day topside. Comes with a fluffy Yorkshire pudding.').map((f) => f.rule)).not.toContain('roast-carved-fresh')
   })
 })
+
+describe('claims the website takes an event page out of search for (spec 6.2.6)', () => {
+  const claims: Array<[string, string, string]> = [
+    ['baby-changing-claim', 'There is baby changing in the toilets.', "We don't have baby changing facilities."],
+    ['air-conditioning-claim', 'The bar is air conditioned all summer.', 'The pub is not air conditioned.'],
+    ['air-conditioning-claim', 'A climate-controlled function room.', 'We do not have a climate-controlled room.'],
+    ['wedding-reception-claim', 'Book your wedding reception with us.', 'We do not host wedding receptions.'],
+    ['champions-league-claim', 'Every Champions League game, live.', "We don't show the Champions League."],
+    ['sky-tnt-sports-claim', 'Sky Sports and TNT Sports on the big screen.', 'We do not have Sky Sports.'],
+    ['sky-tnt-sports-claim', 'Watch it on TNT Sports.', 'Without TNT Sports, we show the free-to-air games.'],
+  ]
+
+  it.each(claims)('%s is an error when claimed', (rule, claim) => {
+    expect(houseStyleErrors(claim).map((f) => f.rule)).toContain(rule)
+  })
+
+  it.each(claims)('%s lets its denial through', (rule, _claim, denial) => {
+    expect(houseStyleErrors(denial).map((f) => f.rule)).not.toContain(rule)
+  })
+})

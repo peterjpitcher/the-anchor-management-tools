@@ -211,6 +211,20 @@ describe('Events actions', () => {
       expect(EventService.createEvent).not.toHaveBeenCalled()
     })
 
+    it('refuses keyword tiers that name a retired format, and says why', async () => {
+      mockedPermission.mockResolvedValue(true)
+      mockSupabaseClientForEvents()
+
+      const result = await createEvent(buildFormData({
+        name: 'Quiz Night',
+        date: '2026-04-10',
+        secondary_keywords: JSON.stringify(['pub quiz', 'live music']),
+      }))
+
+      expect(result).toEqual({ error: expect.stringContaining('Remove "live music" from the keywords.') })
+      expect(EventService.createEvent).not.toHaveBeenCalled()
+    })
+
     it('returns field errors for every invalid event field without creating the event', async () => {
       mockedPermission.mockResolvedValue(true)
       mockSupabaseClientForEvents()

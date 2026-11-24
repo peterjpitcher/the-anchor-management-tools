@@ -15,6 +15,7 @@ import { getEventChecklist, toggleEventChecklistTask } from '@/app/actions/event
 import { generateEventSeoContent } from '@/app/actions/event-content'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
+import { retiredKeywordTierError } from '@/lib/event-seo/website-parity'
 import { FaqEditor } from '@/components/features/events/FaqEditor'
 import { SeoHealthIndicator } from '@/components/features/events/SeoHealthIndicator'
 import { EventImagePanel, type EventImagePanelHandle } from './EventImagePanel'
@@ -396,6 +397,16 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       return
     }
 
+    const retiredKeywords = retiredKeywordTierError({
+      primary: parseKeywords(primaryKeywords),
+      secondary: parseKeywords(secondaryKeywords),
+      local: parseKeywords(localSeoKeywords),
+    })
+    if (retiredKeywords) {
+      toast.error(retiredKeywords)
+      return
+    }
+
     startTransition(() => submit(false))
   }
 
@@ -552,6 +563,14 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
     const pk = parseKeywords(primaryKeywords)
     if (pk.length === 0) {
       issues.push({ type: 'error', message: 'At least one primary keyword is required' })
+    }
+    const retiredKeywords = retiredKeywordTierError({
+      primary: pk,
+      secondary: parseKeywords(secondaryKeywords),
+      local: parseKeywords(localSeoKeywords),
+    })
+    if (retiredKeywords) {
+      issues.push({ type: 'error', message: retiredKeywords })
     }
 
     // Check for at least one detail source beyond just the name

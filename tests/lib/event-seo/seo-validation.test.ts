@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyDeterministicRepair,
+  capitaliseProperNames,
+  replaceEmDashes,
   capAndDeduplicate,
   containsKeyword,
   countKeywordMatches,
@@ -235,5 +237,72 @@ describe('deterministic repair', () => {
   it('lower cases only when asked', () => {
     expect(capAndDeduplicate(['Music Bingo', 'music bingo', 'Drag Bingo'], 5)).toEqual(['Music Bingo', 'Drag Bingo'])
     expect(capAndDeduplicate(['Music Bingo', 'Drag Bingo'], 5, { lowercase: true })).toEqual(['music bingo', 'drag bingo'])
+  })
+})
+
+describe('what the website would take out of search (spec 6.2.6, 6.2.7)', () => {
+  it('blocks "accessible toilet" in the descriptions and highlights however it is phrased', () => {
+    const long = `${validDraft().longDescription}\n\nWe don't have an accessible toilet.`
+    expect(codes(check({ longDescription: long }), 'repairable')).toContain('website_banned_claim')
+    expect(codes(check({ highlights: [...(validDraft().highlights as string[]), 'No accessible toilet'] }), 'repairable')).toContain(
+      'website_banned_claim',
+    )
+  })
+
+  it('blocks baby changing in the short description, even as a denial', () => {
+    const short = 'Two rounds of Christmas music bingo with Nikki at The Anchor, Stanwell Moor, on Friday 11 December 2026. No baby changing.'
+    expect(codes(check({ shortDescription: short }), 'repairable')).toContain('website_banned_claim')
+  })
+
+  it('blocks a retired format anywhere in the copy, but not music bingo', () => {
+    const faqs = [...(validDraft().faqs as Array<{ question: string; answer: string }>)]
+    faqs[1] = { ...faqs[1], answer: `${faqs[1].answer} There is live music afterwards.` }
+    expect(codes(check({ faqs }), 'repairable')).toContain('retired_format')
+    expect(codes(check())).not.toContain('retired_format')
+  })
+
+  it('passes the clean draft', () => {
+    expect(codes(check())).not.toContain('website_banned_claim')
+  })
+})
+
+describe('capitaliseProperNames', () => {
+  it('capitalises seasonal names the model copied from a lower-case focus phrase', () => {
+    expect(capitaliseProperNames('A night of christmas pub quiz in stanwell moor.')).toBe(
+      'A night of Christmas pub quiz in Stanwell Moor.',
+    )
+    expect(capitaliseProperNames('A new years eve party.')).toBe("A New Year's Eve party.")
+    expect(capitaliseProperNames('A new year’s eve party.')).toBe('A New Year’s Eve party.')
+    expect(capitaliseProperNames('halloween party and boxing day')).toBe('Halloween party and Boxing Day')
+  })
+
+  it('still carries the focus phrase for the gate', () => {
+    expect(containsKeyword(capitaliseProperNames('A new years eve party at The Anchor'), ['new years eve party'])).toBe(true)
+  })
+
+  it('is applied by the deterministic repair to every prose field', () => {
+    const draft = validDraft()
+    draft.longDescription = String(draft.longDescription).replace('Christmas music bingo', 'christmas music bingo')
+    draft.highlights = ['Two rounds of christmas songs', 'Hosted by Nikki', 'Dinner from 4pm', 'Entry £5']
+    const fixed = applyDeterministicRepair(draft)
+    expect(fixed.longDescription).toContain('Christmas music bingo')
+    expect(fixed.longDescription).not.toContain('christmas')
+    expect((fixed.highlights as string[])[0]).toBe('Two rounds of Christmas songs')
+  })
+})
+
+describe('replaceEmDashes', () => {
+  // Built from its code point: the character itself is banned from files in this workspace.
+  const DASH = String.fromCharCode(0x2014)
+  it('turns an em dash between words into a comma', () => {
+    expect(replaceEmDashes(`Two rounds ${DASH} both festive.`)).toBe('Two rounds, both festive.')
+    expect(replaceEmDashes(`Two rounds${DASH}both festive.`)).toBe('Two rounds, both festive.')
+  })
+
+  it('is applied by the deterministic repair', () => {
+    const draft = validDraft()
+    draft.shortDescription = String(draft.shortDescription).replace(', on Friday', ` ${DASH} on Friday`)
+    const fixed = applyDeterministicRepair(draft)
+    expect(String(fixed.shortDescription)).not.toContain(DASH)
   })
 })

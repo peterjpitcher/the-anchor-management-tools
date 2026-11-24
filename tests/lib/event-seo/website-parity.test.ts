@@ -4,6 +4,8 @@ import {
   findRetiredFormats,
   findWebsiteBannedClaims,
   readsAsInvitation,
+  invitationSentences,
+  retiredKeywordTierError,
   titleCarriesDate,
   websiteEventPageTitle,
 } from '@/lib/event-seo/website-parity'
@@ -46,5 +48,43 @@ describe('banned claims and retired formats', () => {
 
   it.each(cases.retiredFormats)('$text', (c) => {
     expect(findRetiredFormats([c.text])).toEqual(c.formats)
+  })
+})
+
+describe('keyword tiers that name a retired format (spec 6.2.6)', () => {
+  it('refuses a tier with live music, open mic, games night, drag cabaret or drag show', () => {
+    for (const term of ['live music', 'Open Mic Night', 'games night', 'drag cabaret', 'drag show']) {
+      expect(retiredKeywordTierError({ secondary: [term] })).toMatch(/Remove/)
+    }
+  })
+
+  it('names the format and says why', () => {
+    expect(retiredKeywordTierError({ primary: ['christmas live music'] })).toBe(
+      'Remove "live music" from the keywords. We no longer run that format, and the website takes the event page out of search when its keywords name it.',
+    )
+  })
+
+  it('lets music bingo through, including "live music bingo"', () => {
+    expect(retiredKeywordTierError({ primary: ['live music bingo'], secondary: ['music bingo night'] })).toBeNull()
+  })
+
+  it('checks each term on its own, so neighbours cannot join into a retired phrase', () => {
+    expect(retiredKeywordTierError({ secondary: ['karaoke live', 'music quiz'] })).toBeNull()
+  })
+
+  it('accepts the approved category tiers', () => {
+    expect(
+      retiredKeywordTierError({
+        secondary: ['music bingo', 'drag bingo', 'musical bingo', 'music bingo night', 'pub quiz', 'karaoke night'],
+        local: ['Stanwell Moor', 'Staines', 'Heathrow', 'Feltham'],
+      }),
+    ).toBeNull()
+  })
+})
+
+describe('invitationSentences', () => {
+  it('quotes only the sentences the website would catch', () => {
+    const text = 'The quiz starts at 7pm. If you come alone we can help you join another team.\n\nEntry is £3.'
+    expect(invitationSentences(text)).toEqual(['If you come alone we can help you join another team.'])
   })
 })
