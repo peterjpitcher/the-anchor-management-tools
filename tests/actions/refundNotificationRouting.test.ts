@@ -53,12 +53,19 @@ function buildDb(state: {
   const db: any = {
     from: vi.fn((table: string) => {
       if (table === 'parking_booking_payments') {
+        // One row lookup (`eq` then `maybeSingle`) and one list of the booking's paid payments
+        // (`eq`, `eq`, awaited) for the whole-booking refund check.
+        const paymentLink = (): any => {
+          const node: any = Promise.resolve({
+            data: state.parkingPayment ? [{ id: state.parkingPayment.id, amount: state.parkingPayment.amount }] : [],
+            error: null,
+          })
+          node.eq = vi.fn(paymentLink)
+          node.maybeSingle = vi.fn().mockResolvedValue({ data: state.parkingPayment ?? null, error: null })
+          return node
+        }
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              maybeSingle: vi.fn().mockResolvedValue({ data: state.parkingPayment ?? null, error: null }),
-            }),
-          }),
+          select: vi.fn(paymentLink),
           update: vi.fn().mockReturnValue({ eq: vi.fn().mockResolvedValue({ error: null }) }),
         }
       }
@@ -85,6 +92,9 @@ function buildDb(state: {
             error: null,
           })
           node.eq = vi.fn(link)
+          node.in = vi.fn(link)
+          node.order = vi.fn(link)
+          node.limit = vi.fn(link)
           node.maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
           return node
         }

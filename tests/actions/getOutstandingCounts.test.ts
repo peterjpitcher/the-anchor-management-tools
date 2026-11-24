@@ -122,7 +122,7 @@ describe('getOutstandingCounts', () => {
 
     expect(counts).toEqual({
       events: 0, menu_management: 0, private_bookings: 0, cashing_up: 0,
-      invoices: 0, receipts: 0, rota: 0, checklists: 0, feedback: 0,
+      invoices: 0, receipts: 0, rota: 0, checklists: 0, feedback: 0, parking: 0,
     })
     expect('maintenance' in counts).toBe(false)
     expect(adminTables).toEqual([])

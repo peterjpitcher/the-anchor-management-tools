@@ -9,6 +9,7 @@ import { currentBusinessDate } from '@/lib/checklists/settings'
 import { buildEventChecklist, type EventChecklistStatusRecord } from '@/lib/event-checklist'
 import { maintenanceDueSoonCutoff } from '@/lib/maintenance/counts'
 import { MAINTENANCE_OPEN_STATUSES } from '@/types/maintenance'
+import { loadParkingBalances } from '@/lib/parking/balance'
 
 /**
  * Every field here is a count of work a staff member can clear themselves. A
@@ -18,8 +19,10 @@ import { MAINTENANCE_OPEN_STATUSES } from '@/types/maintenance'
  * to ignore all of them.
  *
  * Deliberately absent:
- * - parking. Every parking queue is "waiting on the guest to pay", which
- *   resolves itself to paid or expired. There is no staff action.
+ * - parking bookings waiting for their first payment. That queue is "waiting
+ *   on the guest to pay", which resolves itself to paid or expired. The parking
+ *   count below is only confirmed bookings whose dates were changed and that
+ *   now owe money or are owed a refund: staff collect it or send it.
  * - table bookings. The only queue there was charge requests awaiting a manager
  *   decision, and charge requests were withdrawn entirely (nothing raises them
  *   and none could ever be charged).
@@ -34,6 +37,8 @@ export type OutstandingCounts = {
   rota: number
   checklists: number
   feedback: number
+  /** Confirmed parking bookings with money to collect or a refund to do (spec D5). */
+  parking: number
   /**
    * Maintenance is the one count that is not for everyone, so it is the one
    * count with three states rather than two:
@@ -63,6 +68,7 @@ const EMPTY_COUNTS: OutstandingCounts = {
   rota: 0,
   checklists: 0,
   feedback: 0,
+  parking: 0,
 }
 
 /**
@@ -256,6 +262,7 @@ async function computeOutstandingCounts(): Promise<CachedOutstandingCounts> {
   }
 
   return {
+    parking: await countParkingBalances(db),
     events: eventsCount,
     menu_management: menuCount,
     private_bookings: privateBookingsCount,
@@ -266,6 +273,31 @@ async function computeOutstandingCounts(): Promise<CachedOutstandingCounts> {
     checklists: checklistsCount,
     feedback: feedbackCount,
     maintenance: maintenanceCount
+  }
+}
+
+/**
+ * Confirmed parking bookings whose balance is not zero: extra to collect or a refund to do. A
+ * failed read counts as zero rather than failing every other count.
+ */
+async function countParkingBalances(db: ReturnType<typeof createAdminClient>): Promise<number> {
+  try {
+    const { data, error } = await db
+      .from('parking_bookings')
+      .select('id, status, payment_status, calculated_price, override_price')
+      .eq('status', 'confirmed')
+      .neq('payment_status', 'pending')
+      .limit(1000)
+    if (error) throw new Error(error.message)
+    const balances = await loadParkingBalances(db, (data ?? []) as Parameters<typeof loadParkingBalances>[1])
+    let count = 0
+    for (const balance of balances.values()) {
+      if (balance.state === 'to_pay' || balance.state === 'refund_due') count += 1
+    }
+    return count
+  } catch (error) {
+    console.error('Failed to count parking balances', error)
+    return 0
   }
 }
 

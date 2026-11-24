@@ -16,6 +16,10 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { getAppUrl } from '@/lib/env'
+import { createParkingPaymentOrder } from '@/lib/parking/payments'
+import { hasParkingReminderBeenSent } from '@/lib/parking/reminder-history'
+import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
 // Its own time limit rather than the 15-second project default (BK-212).
 export const maxDuration = 60
@@ -93,10 +97,6 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
 
 function allowParkingSendGuardSchemaGaps(): boolean {
   return parseBooleanEnv('PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
-}
-
-function allowParkingDedupeSchemaGaps(): boolean {
-  return parseBooleanEnv('PARKING_DEDUPE_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
 }
 
 function pad2(value: number): string {
@@ -343,49 +343,6 @@ async function evaluateParkingSendGuard(
   }
 }
 
-async function hasParkingReminderBeenSent(
-  supabase: ReturnType<typeof createAdminClient>,
-  input: {
-    bookingId: string
-    eventType: 'payment_reminder' | 'session_start' | 'session_end'
-    templateKey: string
-    payload?: Record<string, unknown>
-  }
-): Promise<boolean> {
-  let query = supabase.from('parking_booking_notifications')
-    .select('id')
-    .eq('booking_id', input.bookingId)
-    .eq('channel', 'sms')
-    .eq('event_type', input.eventType)
-    .eq('status', 'sent')
-    .limit(1)
-
-  const stage = typeof input.payload?.stage === 'string' ? input.payload.stage : null
-  if (stage) {
-    query = query.contains('payload', { stage })
-  } else if (input.templateKey) {
-    query = query.contains('payload', { template_key: input.templateKey })
-  }
-
-  const { data, error } = await query
-  if (error) {
-    const pgError = error as { code?: string; message?: string }
-    if (pgError?.code === '42703' || pgError?.code === '42P01') {
-      if (allowParkingDedupeSchemaGaps()) {
-        console.warn('Parking reminder dedupe skipped because schema is missing expected columns', pgError.message)
-        return false
-      }
-
-      console.error('Parking reminder dedupe blocked send because schema is unavailable', input.bookingId, pgError.message)
-      return true
-    }
-    console.error('Failed to evaluate parking reminder dedupe state', input.bookingId, error)
-    return true
-  }
-
-  return Array.isArray(data) && data.length > 0
-}
-
 export async function GET(request: Request) {
   let runContext: {
     supabase: ReturnType<typeof createAdminClient>
@@ -584,7 +541,14 @@ async function processPendingPaymentLifecycle(
       continue
     }
 
-    const paymentLink = await lookupPendingPaymentLink(supabase, booking.id)
+    // Every reminder carries a real link. After a repriced change there may be no pending
+    // payment, and the text used to go out saying "We'll text your payment link shortly" with
+    // nothing following. Make one; if that fails, skip the text and count it as an error.
+    const paymentLink = await ensurePendingPaymentLink(supabase, booking)
+    if (!paymentLink) {
+      errors += 1
+      continue
+    }
 
     if (shouldSendDayBefore) {
       // Word it for the day the customer reads it. Quiet hours hold a send from 21:00 until
@@ -997,6 +961,26 @@ async function sendParkingReminderSms(params: {
   return {
     sent: smsResult.success,
     skipped: false,
+  }
+}
+
+async function ensurePendingPaymentLink(
+  supabase: ReturnType<typeof createAdminClient>,
+  booking: Pick<ParkingBooking, 'id' | 'reference' | 'start_at' | 'end_at' | 'calculated_price' | 'override_price' | 'payment_due_at'>
+): Promise<string | null> {
+  const existing = await lookupPendingPaymentLink(supabase, booking.id)
+  if (existing) return existing
+  try {
+    const appUrl = getAppUrl()
+    const order = await createParkingPaymentOrder(booking as ParkingBooking, {
+      returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
+      cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
+      client: supabase,
+    })
+    return order.approveUrl || null
+  } catch (error) {
+    console.error('Failed to make a parking payment link for a reminder', booking.id, error)
+    return null
   }
 }
 

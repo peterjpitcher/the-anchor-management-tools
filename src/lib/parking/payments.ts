@@ -1,4 +1,4 @@
-import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder, refundPayPalPayment } from '@/lib/paypal'
+import { PAYPAL_DEFAULT_CURRENCY, createSimplePayPalOrder, capturePayPalPayment, getPayPalOrder } from '@/lib/paypal'
 import { insertParkingPayment, getPendingParkingPayment, updateParkingBooking, logParkingNotification } from './repository'
 import { ParkingBooking, ParkingPaymentRecord } from '@/types/parking'
 import { createAdminClient } from '@/lib/supabase/admin'
@@ -583,68 +583,6 @@ export async function reconcileCapturedParkingPayment(
   // They paid and never got a confirmation, so send it now.
   await sendConfirmationNotifications(updatedBooking, supabase)
   return updatedBooking
-}
-
-async function refundParkingPayment(
-  booking: ParkingBooking,
-  amount: number,
-  options: { reason?: string; client?: SupabaseClient<any, 'public', any> } = {}
-) {
-  const supabase = options.client ?? createAdminClient()
-
-  const { data: payment, error } = await supabase
-    .from('parking_booking_payments')
-    .select('*')
-    .eq('booking_id', booking.id)
-    .eq('status', 'paid')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  if (!payment || !payment.transaction_id) {
-    throw new Error('No captured payment found to refund')
-  }
-
-  const { randomUUID } = await import('crypto')
-  await refundPayPalPayment(payment.transaction_id, amount, randomUUID(), payment.currency)
-
-  await updateParkingBooking(
-    booking.id,
-    {
-      status: 'cancelled',
-      payment_status: 'refunded',
-      cancelled_at: new Date().toISOString()
-    },
-    supabase
-  )
-
-  const { data: refundedPayment, error: refundUpdateError } = await supabase
-    .from('parking_booking_payments')
-    .update({
-      status: 'refunded',
-      refunded_at: new Date().toISOString(),
-      metadata: {
-        ...(payment.metadata || {}),
-        refund_reason: options.reason,
-        refunded_amount: amount
-      }
-    })
-    .eq('id', payment.id)
-    .eq('status', 'paid')
-    .select('id')
-    .maybeSingle()
-
-  if (refundUpdateError) {
-    throw new Error(refundUpdateError.message || 'Failed to update refunded payment status')
-  }
-
-  if (!refundedPayment) {
-    throw new Error('Parking payment status was not updated to refunded')
-  }
 }
 
 async function sendConfirmationNotifications(booking: ParkingBooking, supabase: SupabaseClient<any, 'public', any>) {

@@ -38,6 +38,7 @@ vi.mock('@/hooks/useOutstandingCounts', () => ({
       rota: 0,
       checklists: 0,
       feedback: 0,
+      parking: 0,
       // Absent for anyone who is not a super-admin. The server strips it, so this
       // fixture is what an ordinary member of staff's payload actually looks like.
       maintenance: undefined,
@@ -69,6 +70,7 @@ const FULL_COUNTS: OutstandingCounts = {
   checklists: 13,
   feedback: 14,
   maintenance: 15,
+  parking: 16,
 }
 
 describe('NAV_GROUPS', () => {
@@ -136,10 +138,11 @@ describe('navCount', () => {
     expect(navCount({ id: 'feedback' }, 0, FULL_COUNTS)).toBe(14)
   })
 
-  it('gives Parking no badge, because nothing there is staff-actionable', () => {
-    // Parking only ever waited on the guest to pay, which resolves itself to
-    // paid or expired. A badge there could never be worked down to zero.
-    expect(navCount({ id: 'parking' }, 0, FULL_COUNTS)).toBeUndefined()
+  it('badges Parking with confirmed bookings that have money to collect or refund', () => {
+    // Unpaid bookings still get no badge: they resolve themselves to paid or
+    // expired. A balance left by a date change is staff work, so it counts.
+    expect(navCount({ id: 'parking' }, 0, FULL_COUNTS)).toBe(16)
+    expect(navCount({ id: 'parking' }, 0, { ...FULL_COUNTS, parking: 0 })).toBe(0)
   })
 
   it('falls back to the static badge when live counts are unavailable', () => {
@@ -268,6 +271,7 @@ describe('SidebarNav', () => {
       rota: 0,
       checklists: 0,
       feedback: 0,
+      parking: 0,
       maintenance: null,
     }
 

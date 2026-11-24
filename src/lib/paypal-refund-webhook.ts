@@ -628,7 +628,36 @@ async function updateBookingRefundStatus(
       throw new Error(`Failed to look up the parking booking for a refund: ${paymentRowError.message}`)
     }
 
+    // Only once every paid payment on the booking has gone back: a booking extended after a date
+    // change holds two payments, and a full refund of one is not a refund of the booking.
+    let wholeBookingRefunded = false
     if (paymentRow?.booking_id) {
+      const { data: paidRows, error: paidRowsError } = await supabase
+        .from('parking_booking_payments')
+        .select('id, amount')
+        .eq('booking_id', paymentRow.booking_id)
+        .eq('status', 'paid')
+      if (paidRowsError) {
+        throw new Error(`Failed to read the parking booking's payments for a refund: ${paidRowsError.message}`)
+      }
+      const totalPaid = (paidRows ?? []).reduce((sum: number, row: { amount: unknown }) => sum + Number(row.amount || 0), 0)
+      const { data: bookingRefunds, error: bookingRefundsError } = await supabase
+        .from('payment_refunds')
+        .select('amount')
+        .eq('source_type', 'parking')
+        .in('source_id', (paidRows ?? []).map((row: { id: string }) => row.id))
+        .eq('status', 'completed')
+      if (bookingRefundsError) {
+        throw new Error(`Failed to read the parking booking's refunds: ${bookingRefundsError.message}`)
+      }
+      const totalRefundedOnBooking = (bookingRefunds ?? []).reduce(
+        (sum: number, row: { amount: unknown }) => sum + Number(row.amount || 0),
+        0
+      )
+      wholeBookingRefunded = Math.round(totalRefundedOnBooking * 100) >= Math.round(totalPaid * 100)
+    }
+
+    if (paymentRow?.booking_id && wholeBookingRefunded) {
       const { error: bookingUpdateError } = await supabase
         .from('parking_bookings')
         .update({ payment_status: 'refunded' })

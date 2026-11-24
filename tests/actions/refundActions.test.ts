@@ -378,3 +378,56 @@ describe('processManualRefund', () => {
     expect(result).toEqual({ error: 'Amount exceeds refundable balance' })
   })
 })
+
+describe('processPayPalRefund: a caller key (the parking date change)', () => {
+  it('replays a completed refund under the same key and never calls PayPal again', async () => {
+    const db = makeDb({ pendingRefund: { id: 'refund-done', status: 'completed' } })
+    mockedAdmin.mockReturnValue(db)
+
+    const result = await processPayPalRefund('private_booking', 'pb-1', 50, 'Dates changed', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+    })
+
+    expect(result).toMatchObject({ success: true, refundId: 'refund-done', replayed: true })
+    expect(mockedRefund).not.toHaveBeenCalled()
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('reserves under the caller key and, when asked, leaves telling the customer to the caller', async () => {
+    const updates: any[] = []
+    const db = makeDb({ updates })
+    mockedAdmin.mockReturnValue(db)
+    mockedRefund.mockResolvedValue({ status: 'COMPLETED', refundId: 'pp-refund-1', currency: 'GBP' })
+    const { sendRefundNotification } = await import('@/lib/refund-notifications')
+    const { sendPrivateBookingRefundSentEmail } = await import('@/lib/email/private-booking-emails')
+
+    const result = await processPayPalRefund('private_booking', 'pb-1', 50, 'Dates changed', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+      skipCustomerNotification: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.rpc).toHaveBeenCalledWith(
+      'reserve_refund_balance',
+      expect.objectContaining({ p_paypal_request_id: '22222222-2222-5222-8222-222222222222' })
+    )
+    expect(mockedRefund).toHaveBeenCalledWith('CAPTURE-1', 50, '22222222-2222-5222-8222-222222222222', 'GBP')
+    expect(updates).toContainEqual(expect.objectContaining({ notification_status: 'skipped' }))
+    expect(sendRefundNotification).not.toHaveBeenCalled()
+    expect(sendPrivateBookingRefundSentEmail).not.toHaveBeenCalled()
+  })
+})
+
+describe('processManualRefund: a caller key', () => {
+  it('replays rather than records a second manual refund under the same key', async () => {
+    const db = makeDb({ pendingRefund: { id: 'refund-done', status: 'completed' } })
+    mockedAdmin.mockReturnValue(db)
+
+    const result = await processManualRefund('private_booking', 'pb-1', 50, 'Dates changed', 'cash', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+})

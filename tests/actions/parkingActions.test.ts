@@ -269,8 +269,60 @@ describe('Parking action payment mutation guards', () => {
 
     const result = await updateParkingBookingDetails('booking-1', formData)
 
-    expect(result).toEqual({ error: 'Paid parking bookings cannot have price-affecting fields edited' })
+    // Dates move only through Change dates, which reprices and settles the money.
+    expect(result).toEqual({ error: "Use Change dates to move a booking's dates. It reprices the stay and settles the money." })
     expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
+  })
+
+  it('refuses an agreed-price change on a paid booking', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'confirmed',
+      payment_status: 'paid',
+      start_at: '2026-07-20T10:00:00.000Z',
+      end_at: '2026-07-20T12:00:00.000Z',
+      override_price: null,
+      calculated_price: 20,
+    })
+    const formData = new FormData()
+    formData.append('customer_first_name', 'Pat')
+    formData.append('customer_mobile', '+447700900001')
+    formData.append('default_country_code', '44')
+    formData.append('vehicle_registration', 'AB12CDE')
+    formData.append('override_price', '5')
+
+    const result = await updateParkingBookingDetails('booking-1', formData)
+
+    expect(result.error).toMatch(/cannot be edited here/)
+    expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
+  })
+
+  it('still saves name, vehicle and notes on a paid booking, and never rewrites its dates or price', async () => {
+    mockedGetParkingBooking.mockResolvedValue({
+      id: 'booking-1',
+      status: 'confirmed',
+      payment_status: 'paid',
+      start_at: '2026-07-20T10:00:00.000Z',
+      end_at: '2026-07-20T12:00:00.000Z',
+      override_price: null,
+      calculated_price: 20,
+    })
+    mockedUpdateParkingBooking.mockResolvedValue({ id: 'booking-1', payment_status: 'paid' })
+    const formData = new FormData()
+    formData.append('customer_first_name', 'Patricia')
+    formData.append('customer_mobile', '+447700900001')
+    formData.append('default_country_code', '44')
+    formData.append('vehicle_registration', 'ZZ99ZZZ')
+    formData.append('notes', 'Blue estate')
+
+    const result = await updateParkingBookingDetails('booking-1', formData)
+
+    expect(result.error).toBeUndefined()
+    const payload = mockedUpdateParkingBooking.mock.calls[0][1]
+    expect(payload).toMatchObject({ customer_first_name: 'Patricia', vehicle_registration: 'ZZ99ZZZ', notes: 'Blue estate' })
+    for (const key of ['start_at', 'end_at', 'calculated_price', 'pricing_breakdown', 'duration_minutes']) {
+      expect(payload).not.toHaveProperty(key)
+    }
   })
 
   it('saves a new parking rate row', async () => {
@@ -350,12 +402,11 @@ describe('Parking actions: a capacity refusal', () => {
     formData.append('customer_mobile', '+447700900001')
     formData.append('default_country_code', '44')
     formData.append('vehicle_registration', 'AB12CDE')
-    formData.append('start_at', '2026-07-21T10:00:00.000Z')
-    formData.append('end_at', '2026-07-21T12:00:00.000Z')
     return formData
   }
 
-  it('tells staff the dates are full when an edit moves a booking onto them', async () => {
+  // An edit no longer moves dates, but switching capacity override off can still meet a full car park.
+  it('tells staff the dates are full when an edit is refused by the capacity check', async () => {
     mockedGetParkingBooking.mockResolvedValue({
       id: 'booking-1',
       status: 'pending_payment',

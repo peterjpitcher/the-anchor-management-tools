@@ -42,6 +42,7 @@ function ParkingRow({ booking, listDayIso }: { booking: FohParkingBooking; listD
           </span>
           <span className="font-semibold">{booking.guest_name}</span>
           {!booking.paid && <Badge tone="warning">Not paid</Badge>}
+          {booking.paid && booking.owes && <Badge tone="warning">Owes {booking.owes}</Badge>}
         </p>
         <p className="mt-0.5 text-sm text-text-muted">
           Arrives {formatWhen(booking.arrives_at, listDayIso)} · Leaves {formatWhen(booking.leaves_at, listDayIso)}

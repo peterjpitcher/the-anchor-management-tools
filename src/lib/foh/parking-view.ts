@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/dateUtils'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { logger } from '@/lib/logger'
+import { loadParkingBalances } from '@/lib/parking/balance'
 
 /**
  * Parking as the till sees it (owner request, 23 November 2026): which cars are due, which are on
@@ -7,7 +10,12 @@ import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/da
  * and with NO money: the shared FOH login holds no parking permission and must never see a price,
  * a rate, an amount or a payment record. It gets one fact about payment, paid or not paid.
  *
- * That is enforced here in two places. The column list below is the only thing read from
+ * One exception, by owner decision D5 (24 November 2026, spec
+ * tasks/spec-2026-11-24-parking-change-time-and-settle.md): when a paid booking's dates were changed
+ * and the customer still owes extra, the till sees "owes £X" so it is collected with the car. That
+ * figure is worked out server side from the payment rows and is the only amount in the response.
+ *
+ * Otherwise that is enforced here in two places. The column list below is the only thing read from
  * parking_bookings, and it names no money column (calculated_price, override_price and
  * pricing_breakdown are never selected). And each row is rebuilt field by field, so a column added
  * to the select by mistake still would not reach the response. tests/api/fohParkingRoute.test.ts
@@ -16,7 +24,7 @@ import { parseLondonDateTimeLocal, shiftIsoDate, toLocalIsoDate } from '@/lib/da
 
 /** Every column read from parking_bookings. Explicit, never '*'. No money columns. */
 export const FOH_PARKING_COLUMNS =
-  'reference, customer_first_name, customer_last_name, customer_mobile, vehicle_registration, vehicle_make, vehicle_model, vehicle_colour, start_at, end_at, status, payment_status'
+  'id, reference, customer_first_name, customer_last_name, customer_mobile, vehicle_registration, vehicle_make, vehicle_model, vehicle_colour, start_at, end_at, status, payment_status'
 
 /** Bookings that still mean a car: cancelled, expired and completed ones are left out. */
 export const FOH_PARKING_LIVE_STATUSES = ['pending_payment', 'confirmed'] as const
@@ -37,8 +45,13 @@ export type FohParkingBooking = {
   leaves_at: string
   /** 'confirmed', or 'pending_payment' for a booking still waiting to be paid. */
   status: string
-  /** The one payment fact the till gets. Never an amount. */
+  /** Whether the booking is paid. */
   paid: boolean
+  /**
+   * What is still to collect on a paid booking whose dates were changed (D5), as "£30.00", or null.
+   * The only figure the till ever gets.
+   */
+  owes: string | null
 }
 
 export type FohParkingView = {
@@ -56,7 +69,7 @@ type Row = Record<string, unknown>
 const text = (value: unknown): string | null => (typeof value === 'string' && value.trim() ? value.trim() : null)
 
 /** Rebuilds a row from the named fields only, so nothing else can ride along. */
-function toBooking(row: Row): FohParkingBooking | null {
+function toBooking(row: Row, owing: Map<string, number>): FohParkingBooking | null {
   const reference = text(row.reference)
   const arrivesAt = text(row.start_at)
   const leavesAt = text(row.end_at)
@@ -75,6 +88,10 @@ function toBooking(row: Row): FohParkingBooking | null {
     leaves_at: new Date(leavesAt).toISOString(),
     status: text(row.status) ?? 'confirmed',
     paid: row.payment_status === 'paid',
+    owes: (() => {
+      const amount = typeof row.id === 'string' ? owing.get(row.id) : undefined
+      return amount && amount > 0 ? `£${amount.toFixed(2)}` : null
+    })(),
   }
 }
 
@@ -82,9 +99,14 @@ function toBooking(row: Row): FohParkingBooking | null {
  * Sorts the bookings into the till's four lists. Days are London days: a car due at 00:30 on the
  * 24th arrives on the 24th whatever zone the server runs in.
  */
-export function buildFohParkingView(rows: Row[], todayIso: string, now: Date): FohParkingView {
+export function buildFohParkingView(
+  rows: Row[],
+  todayIso: string,
+  now: Date,
+  owing: Map<string, number> = new Map()
+): FohParkingView {
   const bookings = rows
-    .map(toBooking)
+    .map((row) => toBooking(row, owing))
     .filter((booking): booking is FohParkingBooking => booking !== null)
   const byArrival = (a: FohParkingBooking, b: FohParkingBooking) => a.arrives_at.localeCompare(b.arrives_at)
   const byDeparture = (a: FohParkingBooking, b: FohParkingBooking) => a.leaves_at.localeCompare(b.leaves_at)
@@ -136,5 +158,36 @@ export async function loadFohParkingView(
     .limit(500)
 
   if (error) throw new Error(error.message)
-  return buildFohParkingView((data ?? []) as Row[], todayIso, now)
+  const rows = (data ?? []) as Row[]
+  return buildFohParkingView(rows, todayIso, now, await loadOwing(rows))
+}
+
+/**
+ * The amount still owed on each confirmed, paid booking (D5). Read with the admin client because
+ * the FOH login cannot read prices or payments, and only the "to pay" figure leaves here. If it
+ * cannot be read the view still loads, without the flags.
+ */
+async function loadOwing(rows: Row[]): Promise<Map<string, number>> {
+  const ids = rows
+    .filter((row) => row.status === 'confirmed' && row.payment_status === 'paid' && typeof row.id === 'string')
+    .map((row) => row.id as string)
+  const owing = new Map<string, number>()
+  if (ids.length === 0) return owing
+  try {
+    const admin = createAdminClient()
+    const { data, error } = await admin
+      .from('parking_bookings')
+      .select('id, status, payment_status, calculated_price, override_price')
+      .in('id', ids)
+    if (error) throw new Error(error.message)
+    const balances = await loadParkingBalances(admin, (data ?? []) as Parameters<typeof loadParkingBalances>[1])
+    for (const [id, balance] of balances) {
+      if (balance.state === 'to_pay') owing.set(id, balance.balance)
+    }
+  } catch (error) {
+    logger.error('FOH parking view could not read what is owed', {
+      error: error instanceof Error ? error : new Error(String(error)),
+    })
+  }
+  return owing
 }
