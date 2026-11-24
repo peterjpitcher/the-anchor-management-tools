@@ -99,6 +99,49 @@ export const KEYWORD_RULES = `KEYWORD RULES: an event page holds its own dated, 
 
 // ── Dynamic builders ────────────────────────────────────────
 
+/**
+ * The brief is typed in the drawer and often pasted from a document, headings and bold included.
+ * The model copied that markdown straight into the copy, so it is taken out before sending.
+ */
+export function stripMarkdown(text: string): string {
+  return text
+    .replace(/\r\n?/g, '\n')
+    .replace(/```[^\n]*\n?/g, '')
+    .replace(/^[ \t]{0,3}#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]{0,3}>[ \t]?/gm, '')
+    .replace(/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+/gm, '')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__)(.+?)\1/g, '$2')
+    .replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1$2')
+    .replace(/(^|[^\w_])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1$2')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * The copy already on the event, shown to the model as a draft to improve, never as facts.
+ * It used to sit inside FACTS_JSON, so a wrong price or a retired claim in an old draft was
+ * read as a fact and written straight back. Null when there is nothing on the event yet.
+ */
+export function buildPreviousDraftBlock(facts: EventSeoFacts): string | null {
+  const existing: Record<string, unknown> = {}
+  if (facts.existingContent.metaTitle) existing.meta_title = facts.existingContent.metaTitle
+  if (facts.existingContent.metaDescription) existing.meta_description = facts.existingContent.metaDescription
+  if (facts.existingContent.shortDescription) existing.short_description = facts.existingContent.shortDescription
+  if (facts.existingContent.longDescription) existing.long_description = facts.existingContent.longDescription
+  if (facts.existingContent.highlights.length > 0) existing.highlights = facts.existingContent.highlights
+  if (Object.keys(existing).length === 0) return null
+  return [
+    'PREVIOUS DRAFT (not a source of facts):',
+    'This is the copy currently on the event. It may be out of date or wrong. Reuse its wording only where FACTS_JSON or VENUE_CONTEXT supports it; where they differ, FACTS_JSON and VENUE_CONTEXT win. Never take a date, time, price, prize, performer or claim from it.',
+    JSON.stringify(existing, null, 2),
+  ].join('\n')
+}
+
 export function buildFactsJson(facts: EventSeoFacts): string {
   // Build a concise object omitting null/empty fields
   const obj: Record<string, unknown> = {}
@@ -121,18 +164,10 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   if (facts.performerName) obj.performer_name = facts.performerName
   if (facts.performerType) obj.performer_type = facts.performerType
   obj.booking_url_present = facts.bookingUrlPresent
-  if (facts.brief) obj.brief = facts.brief
+  const brief = facts.brief ? stripMarkdown(facts.brief) : ''
+  if (brief) obj.brief = brief
   if (facts.kitchenService) obj.kitchen_service = facts.kitchenService
   obj.is_free = facts.isFree
-
-  // Existing content: only non-empty fields
-  const existing: Record<string, unknown> = {}
-  if (facts.existingContent.metaTitle) existing.meta_title = facts.existingContent.metaTitle
-  if (facts.existingContent.metaDescription) existing.meta_description = facts.existingContent.metaDescription
-  if (facts.existingContent.shortDescription) existing.short_description = facts.existingContent.shortDescription
-  if (facts.existingContent.longDescription) existing.long_description = facts.existingContent.longDescription
-  if (facts.existingContent.highlights.length > 0) existing.highlights = facts.existingContent.highlights
-  if (Object.keys(existing).length > 0) obj.existing_content = existing
 
   // Keywords: focus is one phrase ("near me" taken off), supporting and local are lists.
   const kw: Record<string, unknown> = {}
@@ -161,6 +196,11 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   return JSON.stringify(obj, null, 2)
 }
 
+function previousDraftLines(facts: EventSeoFacts): string[] {
+  const block = buildPreviousDraftBlock(facts)
+  return block ? [block, ''] : []
+}
+
 export function buildGenerationMessages(
   facts: EventSeoFacts
 ): Array<{ role: 'system' | 'user'; content: string }> {
@@ -175,6 +215,7 @@ export function buildGenerationMessages(
     '',
     'Return a single JSON object with keys: metaTitle, metaDescription, shortDescription, longDescription, highlights (string[]), slug, imageAltText, faqs ({question, answer}[]), cancellationPolicy, accessibilityNotes. Use "" for missing string values.',
     '',
+    ...previousDraftLines(facts),
     'FACTS_JSON:',
     buildFactsJson(facts),
   ].join('\n')

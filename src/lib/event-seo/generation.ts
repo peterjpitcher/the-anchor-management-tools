@@ -3,6 +3,8 @@
 // quality gates, retry/timeout constants.
 // ──────────────────────────────────────────────────────────────
 
+import { retiredKeywordTierError } from './website-parity'
+
 // ── Venue context ───────────────────────────────────────────
 
 export type VenueContext = {
@@ -378,6 +380,8 @@ export function preflightCheck(facts: EventSeoFacts): PreflightResult {
   if (facts.keywords.primary.length === 0) {
     hardErrors.push('Add a focus phrase: the one search this page should be found for.')
   }
+  const retiredKeywords = retiredKeywordTierError(facts.keywords)
+  if (retiredKeywords) hardErrors.push(retiredKeywords)
 
   const hasDetailSource =
     nonEmpty(facts.brief) !== null ||

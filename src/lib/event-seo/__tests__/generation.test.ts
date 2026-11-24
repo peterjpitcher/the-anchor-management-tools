@@ -23,6 +23,8 @@ import {
   OUTPUT_RUBRIC,
   FIELD_RULES,
   KEYWORD_RULES,
+  buildPreviousDraftBlock,
+  stripMarkdown,
 } from '../prompts'
 import { EVENT_SEO_LIMITS } from '../limits'
 import { readsAsInvitation } from '../website-parity'
@@ -49,7 +51,7 @@ function completeInput(): BuildFactsInput {
     existingShortDescription: 'Short desc',
     existingLongDescription: 'A longer existing description paragraph.',
     existingHighlights: ['Great atmosphere', 'Free parking'],
-    primaryKeywords: ['Live Music'],
+    primaryKeywords: ['acoustic folk night'],
     secondaryKeywords: ['acoustic night', 'pub gig'],
     localSeoKeywords: ['Stanwell Moor', 'near Heathrow'],
   }
@@ -579,5 +581,64 @@ describe('prompt constants', () => {
 
   it('no longer asks the model for keywords', () => {
     expect(FIELD_RULES).not.toMatch(/^keywords:/m)
+  })
+})
+
+describe('the previous draft is not a source of facts (spec 6.2.2)', () => {
+  const facts = buildEventSeoFacts(completeInput())
+
+  it('keeps the copy already on the event out of FACTS_JSON', () => {
+    const json = JSON.parse(buildFactsJson(facts))
+    expect(json.existing_content).toBeUndefined()
+    expect(JSON.stringify(json)).not.toContain('Old description here')
+  })
+
+  it('shows it in its own block, before FACTS_JSON, labelled as a draft', () => {
+    const user = buildGenerationMessages(facts)[1].content
+    const draftIdx = user.indexOf('PREVIOUS DRAFT (not a source of facts):')
+    expect(draftIdx).toBeGreaterThan(-1)
+    expect(draftIdx).toBeLessThan(user.indexOf('FACTS_JSON:'))
+    expect(user.slice(draftIdx, user.indexOf('FACTS_JSON:'))).toContain('Old description here')
+    expect(user).toContain('Never take a date, time, price, prize, performer or claim from it.')
+  })
+
+  it('leaves the block out when the event has no copy yet', () => {
+    const bare = buildEventSeoFacts({
+      ...completeInput(),
+      existingMetaTitle: null,
+      existingMetaDescription: null,
+      existingShortDescription: null,
+      existingLongDescription: null,
+      existingHighlights: [],
+    })
+    expect(buildPreviousDraftBlock(bare)).toBeNull()
+    expect(buildGenerationMessages(bare)[1].content).not.toContain('PREVIOUS DRAFT')
+  })
+})
+
+describe('the brief loses its markdown (spec 6.2.3)', () => {
+  it('strips headings, bold, italics, bullets, links and rules', () => {
+    const brief = '## The night\n\n**Two rounds** of *festive* music bingo.\n\n- Hosted by Nikki\n- £5 [cash](https://example.com)\n\n---\n\n1. Christmas jumpers'
+    expect(stripMarkdown(brief)).toBe(
+      'The night\n\nTwo rounds of festive music bingo.\n\nHosted by Nikki\n£5 cash\n\nChristmas jumpers',
+    )
+  })
+
+  it('leaves plain text, prices and snake_case alone', () => {
+    expect(stripMarkdown('Entry £5 - cash only. Starts 7pm, kitchen_service applies.')).toBe(
+      'Entry £5 - cash only. Starts 7pm, kitchen_service applies.',
+    )
+  })
+
+  it('is what FACTS_JSON carries', () => {
+    const facts = buildEventSeoFacts({ ...completeInput(), brief: '**Bold** brief' })
+    expect(JSON.parse(buildFactsJson(facts)).brief).toBe('Bold brief')
+  })
+})
+
+describe('keyword tiers naming a retired format stop generation (spec 6.2.6)', () => {
+  it('is a hard preflight error', () => {
+    const facts = buildEventSeoFacts({ ...completeInput(), secondaryKeywords: ['live music'] })
+    expect(preflightCheck(facts).hardErrors.join(' ')).toMatch(/Remove "live music"/)
   })
 })

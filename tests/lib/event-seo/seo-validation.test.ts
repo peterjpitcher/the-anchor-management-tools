@@ -237,3 +237,29 @@ describe('deterministic repair', () => {
     expect(capAndDeduplicate(['Music Bingo', 'Drag Bingo'], 5, { lowercase: true })).toEqual(['music bingo', 'drag bingo'])
   })
 })
+
+describe('what the website would take out of search (spec 6.2.6, 6.2.7)', () => {
+  it('blocks "accessible toilet" in the descriptions and highlights however it is phrased', () => {
+    const long = `${validDraft().longDescription}\n\nWe don't have an accessible toilet.`
+    expect(codes(check({ longDescription: long }), 'repairable')).toContain('website_banned_claim')
+    expect(codes(check({ highlights: [...(validDraft().highlights as string[]), 'No accessible toilet'] }), 'repairable')).toContain(
+      'website_banned_claim',
+    )
+  })
+
+  it('blocks baby changing in the short description, even as a denial', () => {
+    const short = 'Two rounds of Christmas music bingo with Nikki at The Anchor, Stanwell Moor, on Friday 11 December 2026. No baby changing.'
+    expect(codes(check({ shortDescription: short }), 'repairable')).toContain('website_banned_claim')
+  })
+
+  it('blocks a retired format anywhere in the copy, but not music bingo', () => {
+    const faqs = [...(validDraft().faqs as Array<{ question: string; answer: string }>)]
+    faqs[1] = { ...faqs[1], answer: `${faqs[1].answer} There is live music afterwards.` }
+    expect(codes(check({ faqs }), 'repairable')).toContain('retired_format')
+    expect(codes(check())).not.toContain('retired_format')
+  })
+
+  it('passes the clean draft', () => {
+    expect(codes(check())).not.toContain('website_banned_claim')
+  })
+})

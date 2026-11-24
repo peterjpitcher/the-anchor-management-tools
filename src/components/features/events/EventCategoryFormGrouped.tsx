@@ -5,6 +5,7 @@ import { EventCategory } from '@/types/event-categories'
 import { KeywordStrategyCard } from './KeywordStrategyCard'
 import { FaqEditor } from './FaqEditor'
 import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
+import { retiredKeywordTierError } from '@/lib/event-seo/website-parity'
 import { Accordion, Button, Checkbox, Fieldset, FormFooter, Icon, Input, Select, SubHeading, Switch, Textarea, toast } from '@/ds'
 import { cn } from '@/lib/utils'
 import { SquareImageUpload } from '@/components/features/shared/SquareImageUpload'
@@ -94,6 +95,16 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
     
     if (!name.trim()) {
       toast.error('Please enter a category name')
+      return
+    }
+
+    const retiredKeywords = retiredKeywordTierError({
+      primary: parseKeywords(primaryKeywords),
+      secondary: parseKeywords(secondaryKeywords),
+      local: parseKeywords(localSeoKeywords),
+    })
+    if (retiredKeywords) {
+      toast.error(retiredKeywords)
       return
     }
 

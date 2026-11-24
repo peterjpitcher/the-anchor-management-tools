@@ -17,7 +17,13 @@ import { EVENT_SEO_LIMITS, HOME_PLACE, NEARBY_PLACES, withinRange, withinToleran
 import type { Range } from '@/lib/event-seo/limits'
 import { copyableKeyword, focusPhrase, keywordTokens, matchesKeyword } from '@/lib/event-seo/keyword-match'
 import { mentionsDayMonth, mentionsWeekdayAndDate } from '@/lib/event-seo/event-dates'
-import { invitationPhrases, readsAsInvitation, titleCarriesDate } from '@/lib/event-seo/website-parity'
+import {
+  findRetiredFormats,
+  findWebsiteBannedClaims,
+  invitationPhrases,
+  readsAsInvitation,
+  titleCarriesDate,
+} from '@/lib/event-seo/website-parity'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -569,6 +575,27 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
       message: `Carries a claim the brand rules ban: ${bannedClaims.map((f) => `"${f.matched}"`).join(', ')}. ${bannedClaims[0].message}`,
     })
   }
+  // --- What the website would take out of search (raw patterns, not denial aware) ---
+  // The website checks the name, descriptions and highlights for these claims whichever way
+  // they are phrased, so "we don't have an accessible toilet" in the long description would
+  // remove the page too. The accessibility notes field says it, and is not checked here.
+  const websiteClaims = findWebsiteBannedClaims([shortDescription, longDescription, ...highlights])
+  if (websiteClaims.length > 0) {
+    issues.push({
+      code: 'website_banned_claim',
+      severity: 'repairable',
+      message: `Mentions ${websiteClaims.map((c) => `"${c}"`).join(', ')}. The website takes an event page out of search when its descriptions or highlights mention this, even to say we do not have it. Leave it out of the descriptions and highlights.`,
+    })
+  }
+  const retired = findRetiredFormats([metaTitle, metaDescription, shortDescription, longDescription, ...highlights, ...faqs.map((f) => `${f.question} ${f.answer}`)])
+  if (retired.length > 0) {
+    issues.push({
+      code: 'retired_format',
+      severity: 'repairable',
+      message: `Names a format we no longer run: ${retired.map((r) => `"${r}"`).join(', ')}. The website takes the page out of search when it does. Leave it out.`,
+    })
+  }
+
   const voiceFindings = houseStyle.filter((finding) => finding.severity === 'warning' && finding.rule !== 'filler')
   if (voiceFindings.length > 0) {
     issues.push({

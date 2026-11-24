@@ -223,6 +223,40 @@ const BANNED_CLAIMS: Rule[] = [
     message:
       "We don't have an accessible toilet. Say so, with the number to call, as in SSOT §16.",
   },
+  // The website takes an event page out of search when its copy makes any of these claims
+  // (OJ-The-Anchor.pub lib/event-seo-strategy.ts). None is true of the pub. Each lets its
+  // denial through, because "we don't have baby changing" is the honest sentence.
+  {
+    rule: 'baby-changing-claim',
+    severity: 'error',
+    pattern: /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\bbaby[\s-]?changing\b/gi,
+    message: "The pub has no baby changing facilities. Leave it out, or say we don't have them.",
+  },
+  {
+    rule: 'air-conditioning-claim',
+    severity: 'error',
+    pattern:
+      /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\b(?:air[\s-]?condition(?:ed|ing)|climate[\s-]?controlled)\b/gi,
+    message: 'The pub is not air conditioned. Leave it out.',
+  },
+  {
+    rule: 'wedding-reception-claim',
+    severity: 'error',
+    pattern: /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\bwedding receptions?\b/gi,
+    message: 'We do not host wedding receptions. Leave it out.',
+  },
+  {
+    rule: 'champions-league-claim',
+    severity: 'error',
+    pattern: /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\bchampions league\b/gi,
+    message: 'We do not show the Champions League. Leave it out.',
+  },
+  {
+    rule: 'sky-tnt-sports-claim',
+    severity: 'error',
+    pattern: /(?<!\b(?:no|not|never|don't|do not|doesn't|does not|without)\b[^.!?]{0,30})\b(?:sky|tnt)\s+sports\b/gi,
+    message: 'We do not have Sky Sports or TNT Sports. Leave it out.',
+  },
   {
     rule: 'menu-released-later',
     severity: 'error',

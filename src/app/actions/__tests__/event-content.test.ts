@@ -58,8 +58,16 @@ vi.mock('@/lib/logger', () => ({
   },
 }))
 
+// Draft calls go to mockFetch; fact check calls go to mockFactCheck, which passes by default.
 const mockFetch = vi.fn()
-global.fetch = mockFetch
+const mockFactCheck = vi.fn()
+function isFactCheck(init?: RequestInit): boolean {
+  return typeof init?.body === 'string' && init.body.includes('event_copy_fact_check')
+}
+const routedFetch = vi.fn((url: string, init?: RequestInit) =>
+  isFactCheck(init) ? mockFactCheck(url, init) : mockFetch(url, init),
+)
+global.fetch = routedFetch as unknown as typeof fetch
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -121,7 +129,8 @@ describe('generateEventSeoContent', () => {
     vi.resetModules()
     stored.event = null
     stored.bookings = 0
-    global.fetch = mockFetch
+    global.fetch = routedFetch as unknown as typeof fetch
+    mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: [] }))
 
     // Re-import after resetting modules so fresh mocks apply
     const mod = await import('@/app/actions/event-content')
@@ -188,6 +197,115 @@ describe('generateEventSeoContent', () => {
     // Should have called OpenAI twice
     expect(mockFetch).toHaveBeenCalledTimes(2)
     expect(result.success).toBe(true)
+  })
+
+  describe('fact check (spec 6.2.9)', () => {
+    it('checks the draft that passed the gate against the facts and the venue', async () => {
+      mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(true)
+      expect(mockFactCheck).toHaveBeenCalledTimes(1)
+      const body = JSON.parse(mockFactCheck.mock.calls[0][1].body)
+      expect(body.model).toBe('gpt-4.1')
+      const sent = JSON.parse(body.messages[1].content)
+      expect(sent.facts.event.date_long).toBe('Friday 11 December 2026')
+      expect(sent.facts.venue).toContain('VENUE CONTEXT')
+      // Code-owned fields are not sent for checking.
+      expect(sent.draft.slug).toBeUndefined()
+      expect(sent.draft.accessibilityNotes).toBeUndefined()
+      expect(sent.draft.metaDescription).toContain('Friday 11 December 2026')
+    })
+
+    it('repairs a draft the fact check rejects, then checks it again', async () => {
+      const wrong = buildValidSeoResponse()
+      wrong.metaDescription = String(wrong.metaDescription).replace('£5', '£10')
+      mockFetch
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(wrong))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: ['Change £10 to £5.'] }))
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: [] }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+      expect(mockFactCheck).toHaveBeenCalledTimes(2)
+      const repairBody = JSON.parse(mockFetch.mock.calls[1][1].body)
+      expect(repairBody.messages[1].content).toContain('Change £10 to £5.')
+      if (result.success) expect(result.data.metaDescription).toContain('£5')
+    })
+
+    it('never returns a draft the fact check still rejects', async () => {
+      mockFetch
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: ['The £25 prize is not in the facts.'] }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(false)
+      if (!result.success) expect(result.error).toContain('£25 prize')
+    })
+
+    it('fails closed when the fact check cannot run', async () => {
+      mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck.mockImplementation(async () => new Response('{"error":"down"}', { status: 429 }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(false)
+      if (!result.success) expect(result.error).toMatch(/could not be checked/)
+    })
+
+    it('fails closed when the fact check answers in the wrong shape', async () => {
+      mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ verdict: 'fine' }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(false)
+    })
+  })
+
+  describe('time budget (spec 6.2.11)', () => {
+    it('cuts the first call so the fact check still fits inside 90 seconds', async () => {
+      const timeouts: number[] = []
+      const realSetTimeout = globalThis.setTimeout
+      const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((fn: () => void, ms?: number) => {
+        if (typeof ms === 'number' && ms >= 1000) timeouts.push(ms)
+        return realSetTimeout(fn, ms)
+      }) as typeof setTimeout)
+      mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+
+      await generateEventSeoContent(VALID_INPUT)
+      spy.mockRestore()
+
+      // First draft at most 45s, fact check at most 20s.
+      expect(timeouts[0]).toBeLessThanOrEqual(45_000)
+      expect(timeouts.at(-1)).toBeLessThanOrEqual(20_000)
+    })
+
+    it('skips the model repair when there is no time left for it and a fact check', async () => {
+      const start = Date.now()
+      const now = vi.spyOn(Date, 'now')
+      const bad = buildValidSeoResponse()
+      bad.longDescription = 'Too short to pass.'
+      mockFetch.mockImplementationOnce(async () => {
+        // The first draft took 60 seconds.
+        now.mockReturnValue(start + 60_000)
+        return makeOpenAIJsonResponse(bad)
+      })
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+      now.mockRestore()
+
+      expect(result.success).toBe(false)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      expect(mockFactCheck).not.toHaveBeenCalled()
+    })
   })
 
   it('returns failure when both initial and repair drafts fail validation', async () => {

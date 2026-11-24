@@ -165,3 +165,20 @@ export function findRetiredFormats(texts: ReadonlyArray<string | null | undefine
     return text.includes(token)
   }).map(({ token }) => token)
 }
+
+/**
+ * Why a set of keyword tiers cannot be saved, or null when it can. The website prints the
+ * tiers as the page's keywords and takes the page out of search when one names a retired
+ * format, so the drawer, the category form and the server actions all refuse it.
+ */
+export function retiredKeywordTierError(tiers: {
+  primary?: ReadonlyArray<string> | null
+  secondary?: ReadonlyArray<string> | null
+  local?: ReadonlyArray<string> | null
+}): string | null {
+  // Each term on its own: joined, "karaoke live" and "music quiz" would read as "live music".
+  const terms = [...(tiers.primary ?? []), ...(tiers.secondary ?? []), ...(tiers.local ?? [])]
+  const found = [...new Set(terms.flatMap((term) => findRetiredFormats([term])))]
+  if (found.length === 0) return null
+  return `Remove ${found.map((f) => `"${f}"`).join(', ')} from the keywords. We no longer run that format, and the website takes the event page out of search when its keywords name it.`
+}

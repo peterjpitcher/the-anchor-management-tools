@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentUser } from '@/lib/supabase/current-user'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { z } from 'zod'
+import { retiredKeywordTierError } from '@/lib/event-seo/website-parity'
 import { revalidatePath } from 'next/cache'
 import { logAuditEvent } from '@/app/actions/audit'
 import type { EventCategory, CategoryFormData, CategoryRegular, CrossCategorySuggestion } from '@/types/event-categories'
@@ -139,6 +140,13 @@ const categorySchema = z.object({
   accessibility_notes: z.string().max(ACCESSIBILITY_NOTES_MAX_LENGTH).nullable().optional(),
   default_promo_sms_enabled: z.boolean().optional(),
   default_bookings_enabled: z.boolean().optional(),
+}).superRefine((value, ctx) => {
+  const retired = retiredKeywordTierError({
+    primary: value.primary_keywords,
+    secondary: value.secondary_keywords,
+    local: value.local_seo_keywords,
+  })
+  if (retired) ctx.addIssue({ code: z.ZodIssueCode.custom, message: retired, path: ['secondary_keywords'] })
 })
 
 const ACTIVE_CATEGORY_FILTER = 'is_active.eq.true,is_active.is.null'
