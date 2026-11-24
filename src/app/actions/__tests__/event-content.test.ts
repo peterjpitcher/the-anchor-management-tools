@@ -216,6 +216,9 @@ describe('generateEventSeoContent', () => {
       expect(sent.draft.slug).toBeUndefined()
       expect(sent.draft.accessibilityNotes).toBeUndefined()
       expect(sent.draft.metaDescription).toContain('Friday 11 December 2026')
+      // Every amount is checked, and a conditional prize must carry its condition everywhere.
+      expect(body.messages[0].content).toContain('Go through every £ amount')
+      expect(body.messages[0].content).toContain('must carry its condition wherever it is mentioned')
     })
 
     it('repairs a draft the fact check rejects, then checks it again', async () => {

@@ -715,6 +715,36 @@ export function capAndDeduplicate(items: string[], max: number, options: { lower
 }
 
 /**
+ * Names that always take capitals in UK English. The focus phrase is stored in lower case
+ * ("christmas music bingo") and the model copied it as it stands mid-sentence. The keyword
+ * matcher ignores case and apostrophes, so the fixed text still carries the phrase.
+ */
+const ALWAYS_CAPITALISED: ReadonlyArray<[RegExp, string]> = [
+  [/\bnew\s+year[\u2019']?s\s+eve\b/gi, "New Year's Eve"],
+  [/\bnew\s+year[\u2019']?s\s+day\b/gi, "New Year's Day"],
+  [/\bchristmas\s+eve\b/gi, 'Christmas Eve'],
+  [/\bchristmas\b/gi, 'Christmas'],
+  [/\bboxing\s+day\b/gi, 'Boxing Day'],
+  [/\bhalloween\b/gi, 'Halloween'],
+  [/\beaster\b/gi, 'Easter'],
+  [/\bbonfire\s+night\b/gi, 'Bonfire Night'],
+  [/\bvalentine[\u2019']?s\s+day\b/gi, "Valentine's Day"],
+  [/\bmother[\u2019']?s\s+day\b/gi, "Mother's Day"],
+  [/\bfather[\u2019']?s\s+day\b/gi, "Father's Day"],
+  [/\bst\.?\s+patrick[\u2019']?s\s+day\b/gi, "St Patrick's Day"],
+  [/\bstanwell\s+moor\b/gi, 'Stanwell Moor'],
+]
+
+export function capitaliseProperNames(text: string): string {
+  // Typographic apostrophes are kept where the model used them.
+  return ALWAYS_CAPITALISED.reduce(
+    (out, [pattern, fixed]) =>
+      out.replace(pattern, (match) => (match.includes('\u2019') ? fixed.replace(/'/g, '\u2019') : fixed)),
+    text,
+  )
+}
+
+/**
  * Repairs that need no model: whitespace, markdown, raw URLs, placeholders and
  * duplicate highlights. Returns a copy. The slug is not touched here: the
  * caller decides it, because a published event's address must not move.
@@ -734,20 +764,20 @@ export function applyDeterministicRepair(
   const proseKeys = ['shortDescription', 'longDescription', 'metaTitle', 'metaDescription', 'imageAltText']
   for (const key of proseKeys) {
     if (typeof patched[key] === 'string') {
-      patched[key] = removeRawUrls(removeMarkdownMarkers(patched[key] as string))
+      patched[key] = capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(patched[key] as string)))
     }
   }
 
   if (Array.isArray(patched.faqs)) {
     patched.faqs = arrFaq(patched.faqs).map((faq) => ({
-      question: trimAndNormalizeWhitespace(faq.question),
-      answer: removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer))),
+      question: capitaliseProperNames(trimAndNormalizeWhitespace(faq.question)),
+      answer: capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer)))),
     }))
   }
 
   if (Array.isArray(patched.highlights)) {
     patched.highlights = capAndDeduplicate(
-      arrStr(patched.highlights).map((h) => removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, '')),
+      arrStr(patched.highlights).map((h) => capitaliseProperNames(removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, ''))),
       EVENT_SEO_LIMITS.highlightsCount.max,
     )
   }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyDeterministicRepair,
+  capitaliseProperNames,
   capAndDeduplicate,
   containsKeyword,
   countKeywordMatches,
@@ -261,5 +262,30 @@ describe('what the website would take out of search (spec 6.2.6, 6.2.7)', () => 
 
   it('passes the clean draft', () => {
     expect(codes(check())).not.toContain('website_banned_claim')
+  })
+})
+
+describe('capitaliseProperNames', () => {
+  it('capitalises seasonal names the model copied from a lower-case focus phrase', () => {
+    expect(capitaliseProperNames('A night of christmas pub quiz in stanwell moor.')).toBe(
+      'A night of Christmas pub quiz in Stanwell Moor.',
+    )
+    expect(capitaliseProperNames('A new years eve party.')).toBe("A New Year's Eve party.")
+    expect(capitaliseProperNames('A new year’s eve party.')).toBe('A New Year’s Eve party.')
+    expect(capitaliseProperNames('halloween party and boxing day')).toBe('Halloween party and Boxing Day')
+  })
+
+  it('still carries the focus phrase for the gate', () => {
+    expect(containsKeyword(capitaliseProperNames('A new years eve party at The Anchor'), ['new years eve party'])).toBe(true)
+  })
+
+  it('is applied by the deterministic repair to every prose field', () => {
+    const draft = validDraft()
+    draft.longDescription = String(draft.longDescription).replace('Christmas music bingo', 'christmas music bingo')
+    draft.highlights = ['Two rounds of christmas songs', 'Hosted by Nikki', 'Dinner from 4pm', 'Entry £5']
+    const fixed = applyDeterministicRepair(draft)
+    expect(fixed.longDescription).toContain('Christmas music bingo')
+    expect(fixed.longDescription).not.toContain('christmas')
+    expect((fixed.highlights as string[])[0]).toBe('Two rounds of Christmas songs')
   })
 })
