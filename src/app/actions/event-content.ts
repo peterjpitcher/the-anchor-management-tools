@@ -26,6 +26,7 @@ import {
   GENERATION_TIMEOUT_MS,
   REPAIR_TIMEOUT_MS,
   OVERALL_BUDGET_MS,
+  eventBookingSentence,
 } from '@/lib/event-seo/generation'
 import type { BuildFactsInput, BuildFactsDbData } from '@/lib/event-seo/generation'
 import {
@@ -241,6 +242,8 @@ type EventSeoContentInput = {
   price?: number | null
   isFree?: boolean
   bookingUrl?: string | null
+  /** The drawer's Accept bookings switch. Off means the website hides its booking form. */
+  bookingsEnabled?: boolean | null
   existingShortDescription?: string | null
   existingLongDescription?: string | null
   existingMetaTitle?: string | null
@@ -342,6 +345,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     price: typeof input.price === 'number' ? `£${input.price.toFixed(2)}` : null,
     isFree: input.isFree,
     bookingUrl: input.bookingUrl,
+    bookingsEnabled: input.bookingsEnabled,
     existingMetaTitle: input.existingMetaTitle,
     existingMetaDescription: input.existingMetaDescription,
     existingShortDescription: input.existingShortDescription,
@@ -372,6 +376,8 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         price,
         is_free,
         booking_url,
+        bookings_enabled,
+        booking_open,
         brief,
         slug,
         event_status
@@ -410,6 +416,8 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         price: typeof data.price === 'number' ? `£${data.price.toFixed(2)}` : null,
         is_free: data.is_free ?? undefined,
         booking_url: data.booking_url ?? null,
+        bookings_enabled: data.bookings_enabled ?? null,
+        booking_open: data.booking_open ?? null,
         brief: data.brief ?? null,
       }
     }
@@ -449,6 +457,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     primaryKeywords: facts.keywords.primary,
     secondaryKeywords: facts.keywords.secondary,
     localSeoKeywords: facts.keywords.local,
+    bookingFormOnPage: facts.bookingFormOnPage,
   }
 
   // Every call runs against one deadline, so generation, a repair and the fact check together
@@ -537,7 +546,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
           event: JSON.parse(buildFactsJson(facts)),
           venue: ANCHOR_VENUE_CONTEXT_PROMPT,
           // Stated as a fact, not only as a rule: the checker has still asked for the web address.
-          booking: 'This draft is the event page on the-anchor.pub, and that page carries the booking form. "Booking is through the form on this page" is the same thing as booking online at the-anchor.pub.',
+          booking: facts.bookingFormOnPage
+            ? 'This draft is the event page on the-anchor.pub, and that page carries the booking form. "Booking is through the form on this page" is the same thing as booking online at the-anchor.pub.'
+            : `This draft is the event page on the-anchor.pub, and that page shows no booking form for this event. "${eventBookingSentence(facts)}" is correct. Any mention of a booking form on this page is wrong.`,
         },
         draft: factCheckableDraft(draft),
         timeoutMs: Math.min(FACT_CHECK_TIMEOUT_MS, remaining()),

@@ -12,10 +12,11 @@ import {
   normalizeSlug,
   validateGeneratedContent,
 } from '@/lib/seo-validation'
+import type { SeoValidationOptions } from '@/lib/seo-validation'
 import { suggestFocusPhrase } from '@/lib/event-seo/keyword-match'
 import { SLEIGH_FACTS, validDraft } from '../../fixtures/event-seo/valid-draft'
 
-function check(overrides: Record<string, unknown> = {}, facts = SLEIGH_FACTS) {
+function check(overrides: Record<string, unknown> = {}, facts: SeoValidationOptions['facts'] = SLEIGH_FACTS) {
   return validateGeneratedContent({ ...validDraft(), ...overrides }, { facts, mode: 'final' })
 }
 
@@ -335,5 +336,29 @@ describe('findLongSentences', () => {
       metaTitle: long,
     })
     expect(found).toEqual([long, long])
+  })
+})
+
+describe('a draft that points at a booking form the website hides', () => {
+  const noForm = { ...SLEIGH_FACTS, bookingFormOnPage: false }
+
+  it('is sent back for repair when Accept bookings is off', () => {
+    const result = check({}, noForm)
+    expect(result.passed).toBe(false)
+    expect(codes(result, 'repairable')).toContain('booking_form_absent')
+  })
+
+  it('passes once the copy says to book by phone', () => {
+    const scrub = (text: string) => text
+      .replace(/Booking is through the form on this page, or by phone on/g, 'Booking is by phone on')
+      .replace(/Through the form on this page, or by phone on/g, 'By phone on')
+    const draft = validDraft()
+    const faqs = (draft.faqs as Array<{ question: string; answer: string }>).map((f) => ({ ...f, answer: scrub(f.answer) }))
+    const result = check({ longDescription: scrub(draft.longDescription as string), faqs }, noForm)
+    expect(codes(result)).not.toContain('booking_form_absent')
+  })
+
+  it('is not raised when the form is on the page', () => {
+    expect(codes(check({}, { ...SLEIGH_FACTS, bookingFormOnPage: true }))).not.toContain('booking_form_absent')
   })
 })

@@ -661,3 +661,42 @@ describe('the invitation repair quotes the sentences to rewrite', () => {
     expect(msgs[1].content).not.toContain('- "Teams of six."')
   })
 })
+
+describe('the booking line follows whether the website shows its form', () => {
+  const sentence = (facts: EventSeoFacts) => JSON.parse(buildFactsJson(facts)).booking as string
+
+  it('points at the form when Accept bookings is on (the default)', () => {
+    const facts = buildEventSeoFacts(completeInput())
+    expect(facts.bookingFormOnPage).toBe(true)
+    expect(sentence(facts)).toBe(`Booking is through the form on this page, or by phone on ${ANCHOR_VENUE_CONTEXT.phone}.`)
+    expect(JSON.parse(buildFactsJson(facts)).booking_form_on_page).toBe(true)
+  })
+
+  it('gives the phone on a paid night with Accept bookings off', () => {
+    const facts = buildEventSeoFacts({ ...completeInput(), isFree: false, price: '£5.00', bookingsEnabled: false })
+    expect(facts.bookingFormOnPage).toBe(false)
+    expect(sentence(facts)).toBe(`Booking is by phone on ${ANCHOR_VENUE_CONTEXT.phone}.`)
+    expect(sentence(facts)).not.toMatch(/form/i)
+  })
+
+  it('says no booking is needed on a free night with Accept bookings off', () => {
+    const facts = buildEventSeoFacts({ ...completeInput(), isFree: true, price: null, bookingsEnabled: false })
+    expect(sentence(facts)).toBe('No booking is needed for this event.')
+  })
+
+  it('takes the stored switch when the drawer sends none, and the drawer when it does', () => {
+    const input = { ...completeInput(), bookingsEnabled: undefined }
+    expect(buildEventSeoFacts(input, { bookings_enabled: false }).bookingFormOnPage).toBe(false)
+    expect(buildEventSeoFacts({ ...input, bookingsEnabled: true }, { bookings_enabled: false }).bookingFormOnPage).toBe(true)
+  })
+
+  it('treats booking closed in the database as no form', () => {
+    expect(buildEventSeoFacts(completeInput(), { booking_open: false }).bookingFormOnPage).toBe(false)
+  })
+
+  it('no longer hard-codes the form sentence in the prompt rules', () => {
+    expect(FIELD_RULES).not.toContain('Booking is through the form on this page')
+    expect(OUTPUT_RUBRIC).not.toContain('Booking is through the form on this page')
+    expect(FIELD_RULES).toContain('FACTS_JSON.booking')
+  })
+})

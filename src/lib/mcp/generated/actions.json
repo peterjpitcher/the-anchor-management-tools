@@ -3223,7 +3223,7 @@
    }
   ],
   "typeRefs": {
-   "EventSeoContentInput": "type EventSeoContentInput = {\n  eventId?: string | null\n  name: string\n  date?: string | null\n  time?: string | null\n  endTime?: string | null\n  categoryName?: string | null\n  capacity?: number | null\n  brief?: string | null\n  performerName?: string | null\n  performerType?: string | null\n  price?: number | null\n  isFree?: boolean\n  bookingUrl?: string | null\n  existingShortDescription?: string | null\n  existingLongDescription?: string | null\n  existingMetaTitle?: string | null\n  existingMetaDescription?: string | null\n  existingHighlights?: string[]\n  primaryKeywords?: string[]\n  secondaryKeywords?: string[]\n  localSeoKeywords?: string[]\n}"
+   "EventSeoContentInput": "type EventSeoContentInput = {\n  eventId?: string | null\n  name: string\n  date?: string | null\n  time?: string | null\n  endTime?: string | null\n  categoryName?: string | null\n  capacity?: number | null\n  brief?: string | null\n  performerName?: string | null\n  performerType?: string | null\n  price?: number | null\n  isFree?: boolean\n  bookingUrl?: string | null\n  /** The drawer's Accept bookings switch. Off means the website hides its booking form. */\n  bookingsEnabled?: boolean | null\n  existingShortDescription?: string | null\n  existingLongDescription?: string | null\n  existingMetaTitle?: string | null\n  existingMetaDescription?: string | null\n  existingHighlights?: string[]\n  primaryKeywords?: string[]\n  secondaryKeywords?: string[]\n  localSeoKeywords?: string[]\n}"
   },
   "doc": "---------------------------------------------------------------------------\ngenerateEventSeoContent\n---------------------------------------------------------------------------",
   "readOnly": false
