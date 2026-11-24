@@ -114,6 +114,14 @@ export function invitationPhrases(text: string): string[] {
   return [...found]
 }
 
+/** The sentences of a text that the website's invitation test would catch, quoted for a repair. */
+export function invitationSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence && readsAsInvitation(sentence))
+}
+
 // ── Taken out of search ─────────────────────────────────────
 
 /**

@@ -11,6 +11,7 @@ import { ANCHOR_VENUE_CONTEXT } from './generation'
 import { EVENT_SEO_LIMITS as L, HOME_PLACE, NEARBY_PLACES } from './limits'
 import { eventDateLabels, eventTime12h } from './event-dates'
 import { copyableKeyword, focusPhrase } from './keyword-match'
+import { invitationSentences } from './website-parity'
 
 // ── Static prompt sections ──────────────────────────────────
 
@@ -267,10 +268,15 @@ export function buildRepairMessages(
       ].join('\n')
     : ''
 
+  const caught = [
+    ...invitationSentences(String(failedDraft.shortDescription ?? '')),
+    ...invitationSentences(String(failedDraft.longDescription ?? '')),
+  ]
   const invitationDirective = issues.some((i) => i.code === 'reads_as_invitation')
     ? [
         '',
-        'AFTER THE NIGHT: the short and long descriptions must read true the morning after the event. Remove every exclamation mark and every invitation ("join", "get ready", "book your", "come along", "don\'t miss", "see you there"). Say what happens and how booking works as plain statements.',
+        'AFTER THE NIGHT: the short and long descriptions must read true the morning after the event. Remove every exclamation mark and every invitation ("join", "get ready", "book your", "come along", "don\'t miss", "see you there"). The word "join" is caught in any sense, so "join another team" must become "go in with another team". Say what happens and how booking works as plain statements.',
+        ...(caught.length > 0 ? ['Rewrite each of these sentences so that none of those words is left:', ...caught.map((sentence) => `- "${sentence}"`)] : []),
       ].join('\n')
     : ''
 

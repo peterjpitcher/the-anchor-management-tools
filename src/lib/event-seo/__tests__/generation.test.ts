@@ -642,3 +642,16 @@ describe('keyword tiers naming a retired format stop generation (spec 6.2.6)', (
     expect(preflightCheck(facts).hardErrors.join(' ')).toMatch(/Remove "live music"/)
   })
 })
+
+describe('the invitation repair quotes the sentences to rewrite', () => {
+  it('lists each caught sentence from the failed draft', () => {
+    const facts = buildEventSeoFacts(completeInput())
+    const msgs = buildRepairMessages(
+      facts,
+      { shortDescription: 'A quiz at The Anchor.', longDescription: 'Teams of six. We can help you join another team.' },
+      [{ code: 'reads_as_invitation', severity: 'repairable', message: 'Long description reads as an invitation (join).' }],
+    )
+    expect(msgs[1].content).toContain('- "We can help you join another team."')
+    expect(msgs[1].content).not.toContain('- "Teams of six."')
+  })
+})

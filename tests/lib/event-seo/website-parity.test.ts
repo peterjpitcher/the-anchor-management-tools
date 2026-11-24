@@ -4,6 +4,7 @@ import {
   findRetiredFormats,
   findWebsiteBannedClaims,
   readsAsInvitation,
+  invitationSentences,
   retiredKeywordTierError,
   titleCarriesDate,
   websiteEventPageTitle,
@@ -78,5 +79,12 @@ describe('keyword tiers that name a retired format (spec 6.2.6)', () => {
         local: ['Stanwell Moor', 'Staines', 'Heathrow', 'Feltham'],
       }),
     ).toBeNull()
+  })
+})
+
+describe('invitationSentences', () => {
+  it('quotes only the sentences the website would catch', () => {
+    const text = 'The quiz starts at 7pm. If you come alone we can help you join another team.\n\nEntry is £3.'
+    expect(invitationSentences(text)).toEqual(['If you come alone we can help you join another team.'])
   })
 })
