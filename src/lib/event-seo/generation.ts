@@ -65,6 +65,12 @@ export type EventSeoFacts = {
   performerName: string | null
   performerType: string | null
   bookingUrlPresent: boolean
+  /**
+   * Whether the website shows its booking form on this event's page. It hides the form when
+   * staff switch Accept bookings off (bookings_enabled) or close booking (booking_open), so
+   * the copy must not point at a form that is not there.
+   */
+  bookingFormOnPage: boolean
   brief: string | null
   kitchenService: string | null
   isFree: boolean
@@ -97,6 +103,8 @@ export type BuildFactsInput = {
   price?: string | null
   isFree?: boolean
   bookingUrl?: string | null
+  /** The drawer's Accept bookings switch, unsaved changes included. Wins over the stored value. */
+  bookingsEnabled?: boolean | null
   existingMetaTitle?: string | null
   existingMetaDescription?: string | null
   existingShortDescription?: string | null
@@ -120,6 +128,8 @@ export type BuildFactsDbData = {
   price?: string | null
   is_free?: boolean
   booking_url?: string | null
+  bookings_enabled?: boolean | null
+  booking_open?: boolean | null
   brief?: string | null
 }
 
@@ -312,6 +322,22 @@ export function describeKitchenServiceForEvent(
   return `${venueOpening}${overlappingServices.map(describeWindow).join(' ')} The event overlaps this service. Mention the full menu, not pizza on its own, and make the kitchen closing time clear if the event continues later.`
 }
 
+// ── Booking line ────────────────────────────────────────────
+
+/**
+ * The one sentence the copy uses for how to book. It matches what the website shows under the
+ * copy: the form when it is there; with the form hidden, the phone on a paid night (the site says
+ * online booking is closed and to call) and "no booking needed" on a free one (the site says to
+ * just turn up). Both read true the morning after.
+ */
+export function eventBookingSentence(facts: Pick<EventSeoFacts, 'bookingFormOnPage' | 'isFree'>): string {
+  if (facts.bookingFormOnPage) {
+    return `Booking is through the form on this page, or by phone on ${ANCHOR_VENUE_CONTEXT.phone}.`
+  }
+  if (facts.isFree) return 'No booking is needed for this event.'
+  return `Booking is by phone on ${ANCHOR_VENUE_CONTEXT.phone}.`
+}
+
 // ── Facts builder ───────────────────────────────────────────
 
 export function buildEventSeoFacts(
@@ -341,6 +367,8 @@ export function buildEventSeoFacts(
     bookingUrlPresent: Boolean(
       nonEmpty(input.bookingUrl) ?? nonEmpty(db?.booking_url)
     ),
+    bookingFormOnPage:
+      (input.bookingsEnabled ?? db?.bookings_enabled ?? true) !== false && db?.booking_open !== false,
     brief: coalesce(input.brief, db?.brief ?? db?.description),
     kitchenService: nonEmpty(input.kitchenService),
     isFree,

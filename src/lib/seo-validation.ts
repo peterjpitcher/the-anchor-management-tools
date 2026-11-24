@@ -48,6 +48,8 @@ export type SeoValidationOptions = {
     secondaryKeywords: string[]
     /** The Local tier. */
     localSeoKeywords: string[]
+    /** False when the website hides the booking form on this event. Omitted means it shows it. */
+    bookingFormOnPage?: boolean
   }
   /** Kept for callers written before 24 November 2026; the gate always checks keywords now. */
   requireKeywords?: boolean
@@ -219,6 +221,25 @@ function lengthIssue(
     field,
     message: `${label} is ${value} ${unit}, should be ${range.min} to ${range.max}`,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Booking form claims
+// ---------------------------------------------------------------------------
+
+const BOOKING_FORM_CLAIM_PATTERN = /\b(?:booking form|form on this page|form below|form on the page|form above)\b/gi
+
+/**
+ * Phrases that send the reader to a booking form on the page. Used when the website hides the
+ * form (Accept bookings off), where any of them would point at something that is not there.
+ * Booking online elsewhere (a table booking the brief names) is left alone: that is still true.
+ */
+export function findBookingFormClaims(texts: string[]): string[] {
+  const found = new Set<string>()
+  for (const text of texts) {
+    for (const match of text.matchAll(BOOKING_FORM_CLAIM_PATTERN)) found.add(match[0].toLowerCase())
+  }
+  return [...found]
 }
 
 // ---------------------------------------------------------------------------
@@ -586,6 +607,18 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
       severity: 'repairable',
       message: `Mentions ${websiteClaims.map((c) => `"${c}"`).join(', ')}. The website takes an event page out of search when its descriptions or highlights mention this, even to say we do not have it. Leave it out of the descriptions and highlights.`,
     })
+  }
+  if (facts?.bookingFormOnPage === false) {
+    const formClaims = findBookingFormClaims([
+      metaDescription, shortDescription, longDescription, ...highlights, ...faqs.map((f) => `${f.question} ${f.answer}`),
+    ])
+    if (formClaims.length > 0) {
+      issues.push({
+        code: 'booking_form_absent',
+        severity: 'repairable',
+        message: `Mentions ${formClaims.map((c) => `"${c}"`).join(', ')}, but the website shows no booking form on this event because Accept bookings is off. Say how to book with FACTS_JSON.booking instead.`,
+      })
+    }
   }
   const retired = findRetiredFormats([metaTitle, metaDescription, shortDescription, longDescription, ...highlights, ...faqs.map((f) => `${f.question} ${f.answer}`)])
   if (retired.length > 0) {

@@ -511,6 +511,50 @@ describe('generateEventSeoContent', () => {
     expect(body.response_format.json_schema.schema.properties.keywords).toBeUndefined()
   })
 
+  it('sends a draft that points at a hidden booking form back for repair when Accept bookings is off', async () => {
+    const phoneOnly = validDraft()
+    phoneOnly.longDescription = (phoneOnly.longDescription as string).replace(
+      'Booking is through the form on this page, or by phone on',
+      'Booking is by phone on',
+    )
+    mockFetch
+      .mockResolvedValueOnce(makeOpenAIJsonResponse(validDraft()))
+      .mockResolvedValueOnce(makeOpenAIJsonResponse(phoneOnly))
+
+    const result = await generateEventSeoContent({ ...VALID_INPUT, bookingsEnabled: false })
+
+    expect(result.success).toBe(true)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    const firstPrompt = JSON.parse(mockFetch.mock.calls[0][1].body).messages.map((m: { content: string }) => m.content).join('\n')
+    expect(firstPrompt).toContain('"booking_form_on_page": false')
+    expect(firstPrompt).toContain('Booking is by phone on 01753 682707.')
+    const repairPrompt = JSON.parse(mockFetch.mock.calls[1][1].body).messages.map((m: { content: string }) => m.content).join('\n')
+    expect(repairPrompt).toContain('booking form')
+    const factCheckBody = mockFactCheck.mock.calls.at(-1)?.[1].body as string
+    expect(factCheckBody).toContain('shows no booking form for this event')
+    expect(result.success && result.data.longDescription).not.toMatch(/form on this page/)
+  })
+
+  it('reads Accept bookings from the stored event when the drawer sends none', async () => {
+    stored.event = { id: 'e1', name: VALID_INPUT.name, date: '2026-12-11', slug: 'old-draft-slug', event_status: 'draft', bookings_enabled: false }
+    mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+
+    await generateEventSeoContent({ ...VALID_INPUT, eventId: 'e1' })
+
+    const firstPrompt = JSON.parse(mockFetch.mock.calls[0][1].body).messages.map((m: { content: string }) => m.content).join('\n')
+    expect(firstPrompt).toContain('"booking_form_on_page": false')
+  })
+
+  it('keeps the form line for an event that takes bookings', async () => {
+    mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+
+    const result = await generateEventSeoContent({ ...VALID_INPUT, bookingsEnabled: true })
+
+    expect(result.success).toBe(true)
+    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockFactCheck.mock.calls.at(-1)?.[1].body as string).toContain('that page carries the booking form')
+  })
+
   it('keeps the address of a published event (rubric row 10)', async () => {
     stored.event = { id: 'e1', name: VALID_INPUT.name, date: '2026-12-11', slug: 'sleigh-my-name-2026-12-11', event_status: 'scheduled' }
     mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))

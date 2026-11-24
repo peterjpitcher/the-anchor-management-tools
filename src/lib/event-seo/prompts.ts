@@ -7,7 +7,7 @@
 // ──────────────────────────────────────────────────────────────
 
 import type { EventSeoFacts } from './generation'
-import { ANCHOR_VENUE_CONTEXT } from './generation'
+import { ANCHOR_VENUE_CONTEXT, eventBookingSentence } from './generation'
 import { EVENT_SEO_LIMITS as L, HOME_PLACE, NEARBY_PLACES } from './limits'
 import { eventDateLabels, eventTime12h } from './event-dates'
 import { copyableKeyword, focusPhrase } from './keyword-match'
@@ -46,7 +46,7 @@ export const OUTPUT_RUBRIC = `HOW TO WRITE, follow strictly:
 - One exclamation mark in the whole piece at most, and usually none.
 - Never open a sentence with a command such as "Indulge in", "Savour", "Delight in", "Treat yourself to", "Experience", "Discover" or "Enjoy".
 - Sound like these: "a proper night out", "big laughs", "bring your mates", "get involved", "sing along", "loads of fun", "a brilliant night at your local".
-- The page stays on the website after the night, so the short and long descriptions must still read true the morning after. No exclamation marks in them. Never write "join" in any sense, even a factual one ("we can put you with another team", not "join another team"), and never "get ready", "book your", "book now", "come along", "come down", "don't miss", "grab your", "get your tickets", "secure your", "coming up", "see you there" or "this Friday". The warmth comes from what happens on the night, not from commands. State booking and arrival as facts ("Booking is through the form on this page").
+- The page stays on the website after the night, so the short and long descriptions must still read true the morning after. No exclamation marks in them. Never write "join" in any sense, even a factual one ("we can put you with another team", not "join another team"), and never "get ready", "book your", "book now", "come along", "come down", "don't miss", "grab your", "get your tickets", "secure your", "coming up", "see you there" or "this Friday". The warmth comes from what happens on the night, not from commands. State booking and arrival as facts, using FACTS_JSON.booking.
 - Never sound posh, corporate or salesy. Banned words and phrases, and anything close to them: "premium experience", "elevated entertainment", "curated evening", "sophisticated event", "unforgettable journey/evening", "exclusive night", "hidden gem", "nestled", "boasts", "great atmosphere", "vibrant atmosphere", "something for everyone", "look no further", "a must-visit", "a night to remember", "set to be", "promises to", "guarantees", "filled with entertainment", "plays a vital role", "high-energy experience". Never use: quintessentially, sophisticated, elegant, effervescent, utterly, iconic, premium, artisan, indulgent, luxurious, elevates, sensation, pinnacle.
 - No empty hype adjectives (thrilling, exhilarating, unmissable, incredible) and no section labels ("Practical information includes", "Food and drink play a part"). Just say it plainly.
 - Write for someone who has never been to a pub night: no in-jokes and no assumed knowledge. Drinking is never the price of entry.
@@ -74,7 +74,7 @@ shortDescription: ${L.shortDescriptionChars.min} to ${L.shortDescriptionChars.ma
 longDescription: ${L.longDescriptionParagraphs.min} to ${L.longDescriptionParagraphs.max} short paragraphs separated by a blank line (\\n\\n), ${L.longDescriptionWords.min} to ${L.longDescriptionWords.max} words in total. Every sentence must still read true after the night.
   Paragraph 1: the factual summary. Event name, the focus phrase word for word, the format, weekday and full date with the year (copy FACTS_JSON.date_long), the start time (copy FACTS_JSON.time_12h), the place (The Anchor, ${HOME_PLACE}) and the price.
   Paragraphs 2 and 3: what happens on the night and who hosts, in the house voice. Name the format's hub in plain words once (for example "our monthly music bingo nights").
-  Then booking and arrival, stated as fact: "Booking is through the form on this page, or by phone on ${ANCHOR_VENUE_CONTEXT.phone}." and how entry is paid. Mention food only when FACTS_JSON.kitchen_service confirms the event overlaps kitchen hours; then say the full menu is available and when service ends. Never present pizza as the only food. Never suggest turning up on spec instead of booking on a paid event.
+  Then booking and arrival, stated as fact: copy FACTS_JSON.booking word for word, and say how entry is paid. When FACTS_JSON.booking_form_on_page is false the website shows no booking form on this event, so never mention a form or a booking form anywhere in the copy or the FAQs. Mention food only when FACTS_JSON.kitchen_service confirms the event overlaps kitchen hours; then say the full menu is available and when service ends. Never present pizza as the only food. Never suggest turning up on spec instead of booking on a paid event.
   Last paragraph: where the pub is. Name ${HOME_PLACE} and one nearby place (${NEARBY_PLACES.join(', ')}), using the local terms from FACTS_JSON.keywords.local where true, plus parking. Mention Heathrow only if it helps.
   No section labels, no posh words, no padding.
 
@@ -169,6 +169,8 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   if (facts.performerName) obj.performer_name = facts.performerName
   if (facts.performerType) obj.performer_type = facts.performerType
   obj.booking_url_present = facts.bookingUrlPresent
+  obj.booking_form_on_page = facts.bookingFormOnPage
+  obj.booking = eventBookingSentence(facts)
   const brief = facts.brief ? stripMarkdown(facts.brief) : ''
   if (brief) obj.brief = brief
   if (facts.kitchenService) obj.kitchen_service = facts.kitchenService

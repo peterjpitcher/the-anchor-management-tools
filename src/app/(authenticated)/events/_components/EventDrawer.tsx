@@ -636,6 +636,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
         price: price ? parseFloat(price) : null,
         isFree,
         bookingUrl: bookingUrl.trim() || null,
+        bookingsEnabled,
         existingShortDescription: shortDescription || null,
         existingLongDescription: longDescription || null,
         existingMetaTitle: metaTitle || null,
