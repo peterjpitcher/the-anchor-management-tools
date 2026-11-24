@@ -34,6 +34,32 @@ const FAILURE_QUERY_MESSAGES: Record<string, ParkingPaymentNotice> = {
     title: 'Payment window expired',
     message: 'This payment window has expired. Please contact the team and quote your booking reference.',
   },
+  amount_changed: {
+    tone: 'warning',
+    title: 'The amount has changed',
+    message: 'That payment link was for an amount that is no longer owed, so nothing was taken. This page shows what is owed now.',
+  },
+}
+
+function formatPounds(amount: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(amount)
+}
+
+/**
+ * The notice for a confirmed booking that still owes extra after its dates grew (spec section 7).
+ * Comes before the plain "Payment received" notice, which would otherwise hide the balance.
+ */
+export function buildParkingBalanceNotice(balanceDue: number, paymentQuery?: string): ParkingPaymentNotice | null {
+  if (!(balanceDue > 0)) return null
+  if (paymentQuery && paymentQuery !== 'success' && FAILURE_QUERY_MESSAGES[paymentQuery]) {
+    const failure = FAILURE_QUERY_MESSAGES[paymentQuery]
+    return { ...failure, message: `${failure.message} There is ${formatPounds(balanceDue)} still to pay.` }
+  }
+  return {
+    tone: 'warning',
+    title: `${formatPounds(balanceDue)} still to pay`,
+    message: `Your parking dates have changed. There is ${formatPounds(balanceDue)} still to pay for your new dates.`,
+  }
 }
 
 export function buildParkingPaymentNotice(

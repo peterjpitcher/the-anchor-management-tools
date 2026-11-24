@@ -51,6 +51,8 @@ interface PublicParkingClientProps {
   paymentNotice: ParkingPaymentNotice | null
   canRetryPayment: boolean
   customerFirstName: string | null
+  /** What a confirmed booking still owes after its dates grew, worked out on the server. */
+  balanceDue?: number
 }
 
 /** Reassurance rows, rendered as one sunk box under the booking card. */
@@ -82,11 +84,12 @@ const NOTICE_TONE: Record<ParkingPaymentNoticeTone, GuestTone> = {
   info: 'notice',
 }
 
-export default function PublicParkingClient({ booking, paymentNotice, canRetryPayment, customerFirstName }: PublicParkingClientProps) {
+export default function PublicParkingClient({ booking, paymentNotice, canRetryPayment, customerFirstName, balanceDue = 0 }: PublicParkingClientProps) {
   const amount = booking.override_price ?? booking.calculated_price ?? 0
   const paymentStatus = booking.payment_status
   const bookingStatus = booking.status
-  const headingStatus = paymentStatus === 'paid' ? 'confirmed' : canRetryPayment ? 'awaiting payment' : 'received'
+  const owesExtra = balanceDue > 0
+  const headingStatus = owesExtra ? 'confirmed, with extra to pay' : paymentStatus === 'paid' ? 'confirmed' : canRetryPayment ? 'awaiting payment' : 'received'
 
   // Same text as before, humanised the same way; only the wrapper is new.
   const bookingStatusLabel = bookingStatus.replace('_', ' ')
@@ -96,7 +99,7 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
     <form action="/api/parking/payment/retry" method="post" className="flex flex-col gap-2.5">
       <input type="hidden" name="booking_id" value={booking.id} />
       <GuestButton type="submit" variant="primary" size="md" fullWidth>
-        {paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
+        {owesExtra ? `Pay ${formatCurrency(balanceDue)} now` : paymentStatus === 'failed' ? 'Try payment again' : 'Pay now'}
       </GuestButton>
       <TrustLine />
     </form>
@@ -126,6 +129,7 @@ export default function PublicParkingClient({ booking, paymentNotice, canRetryPa
       <GuestCard variant="accent">
         <div className="flex flex-col gap-guest-lg">
           <GuestAmount label="Amount" value={formatCurrency(amount)} />
+          {owesExtra && <GuestAmount label="Still to pay" value={formatCurrency(balanceDue)} />}
 
           <DetailGrid
             items={[

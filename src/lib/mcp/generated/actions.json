@@ -7696,10 +7696,15 @@
     "name": "bookingId",
     "type": "string",
     "optional": false
+   },
+   {
+    "name": "input",
+    "type": "{ method?: 'cash' | 'card_terminal' }",
+    "optional": true
    }
   ],
   "typeRefs": {},
-  "doc": "",
+  "doc": "Records money taken at the venue (cash or the card terminal) for what a parking booking owes.\n\n- A booking still waiting for its first payment: records its whole price and confirms it.\n- A confirmed, paid booking with a balance (its dates grew): records the balance as a top-up and\n  leaves the booking's status alone.\n\nIt never rewrites an existing payment row. A pending PayPal link is expired and a separate\n`provider = 'manual'` row is written, so a later refund of it is a cash or bank refund, never a\nPayPal one, and the online income page (PayPal only) does not count it. The booking is claimed\non its updated_at first, so a double press records the money once.",
   "readOnly": false
  },
  {
@@ -12017,7 +12022,7 @@
    }
   ],
   "typeRefs": {},
-  "doc": "",
+  "doc": "Every paid payment on a parking booking, newest first, with what is still refundable on each\n(spec section 7: a booking extended after a date change holds more than one). The top-level\nfields describe the default one: the newest with anything left to refund.",
   "readOnly": true
  },
  {

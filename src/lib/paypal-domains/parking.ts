@@ -2,9 +2,54 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 
 /**
- * Parking payment handlers, moved out of the route verbatim so every PayPal webhook URL can
- * dispatch to the same code. The logic is unchanged.
+ * Parking payment handlers. Every PayPal webhook URL dispatches here.
+ *
+ * A booking can hold more than one payment (a top-up after its dates grew, spec section 7), so an
+ * event is matched to its own row by the PayPal capture or order id, never by "the newest row". An
+ * event that matches no row is logged and acknowledged: throwing would only make PayPal retry it
+ * for days. Database read errors still throw, so a real outage is retried.
  */
+
+/** The PayPal order behind a capture event, from resource.supplementary_data.related_ids. */
+function relatedOrderId(resource: any): string | null {
+  const orderId = resource?.supplementary_data?.related_ids?.order_id
+  return typeof orderId === 'string' && orderId.trim() ? orderId.trim() : null
+}
+
+type PaymentRowRef = { id: string; transaction_id: string | null; status: string; amount: unknown; currency: unknown }
+
+/** The booking's payment row for this event, by capture id first, then by order id. */
+async function findPaymentRowForEvent(
+  supabase: ReturnType<typeof createAdminClient>,
+  bookingId: string,
+  captureId: string | null,
+  orderId: string | null
+): Promise<PaymentRowRef | null> {
+  if (captureId) {
+    const { data, error } = await supabase
+      .from('parking_booking_payments')
+      .select('id, transaction_id, status, amount, currency')
+      .eq('booking_id', bookingId)
+      .eq('transaction_id', captureId)
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(`Failed to load parking payment by capture id: ${error.message}`)
+    if (data) return data as PaymentRowRef
+  }
+  if (orderId) {
+    const { data, error } = await supabase
+      .from('parking_booking_payments')
+      .select('id, transaction_id, status, amount, currency')
+      .eq('booking_id', bookingId)
+      .eq('paypal_order_id', orderId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) throw new Error(`Failed to load parking payment by order id: ${error.message}`)
+    if (data) return data as PaymentRowRef
+  }
+  return null
+}
 
 function parsePayPalMoney(value: unknown): number | null {
   const amount = typeof value === 'number' || typeof value === 'string' ? Number(value) : NaN
@@ -47,19 +92,14 @@ export async function handlePaymentCompleted(supabase: ReturnType<typeof createA
     throw new Error(`Parking booking not found for payment webhook: ${bookingId}`)
   }
 
-  const { data: expectedPayment, error: expectedPaymentLookupError } = await supabase
-    .from('parking_booking_payments')
-    .select('id, transaction_id, status, amount, currency')
-    .eq('booking_id', bookingId)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (expectedPaymentLookupError) {
-    throw new Error(`Failed to load expected parking payment: ${expectedPaymentLookupError.message}`)
-  }
+  const expectedPayment = await findPaymentRowForEvent(supabase, bookingId, captureId ?? null, relatedOrderId(resource))
   if (!expectedPayment) {
-    throw new Error(`No parking payment found for booking ${bookingId}`)
+    // Not ours to place: an event for an order this booking never recorded. Acknowledge it.
+    logger.error('Parking capture webhook matched no payment row; acknowledged without changes', {
+      error: new Error('Unplaced parking capture event'),
+      metadata: { bookingId, captureId, orderId: relatedOrderId(resource), eventId: event.id }
+    })
+    return
   }
 
   const expectedAmount = parsePayPalMoney(expectedPayment.amount)
@@ -173,6 +213,19 @@ export async function handlePaymentCompleted(supabase: ReturnType<typeof createA
       if (!cancelledBookingPaymentRow) {
         throw new Error(`Cancelled parking booking missing during payment webhook update: ${bookingId}`)
       }
+    } else if (booking.status === 'confirmed' || booking.status === 'completed') {
+      // A live or finished booking keeps its status and confirmation time: this is a late event
+      // for its first payment, or a top-up. Only a payment state that is not yet 'paid' is set.
+      if (booking.payment_status !== 'paid') {
+        const { error: paidError } = await supabase
+          .from('parking_bookings')
+          .update({ payment_status: 'paid' })
+          .eq('id', bookingId)
+          .neq('payment_status', 'refunded')
+        if (paidError) {
+          throw new Error(`Failed to update parking booking payment state: ${paidError.message}`)
+        }
+      }
     } else {
       const { data: bookingUpdateRow, error: bookingUpdateError } = await supabase
         .from('parking_bookings')
@@ -227,7 +280,10 @@ export async function handlePaymentDenied(supabase: ReturnType<typeof createAdmi
     throw new Error('Parking payment denied webhook missing booking ID')
   }
 
-  const { data: deniedPayment, error: paymentUpdateError } = await supabase
+  // Scoped to the denied order when the event names it, so a late denial for one order never
+  // fails another order's pending row (a top-up made since).
+  const orderId = relatedOrderId(resource)
+  let denyQuery = supabase
     .from('parking_booking_payments')
     .update({
       status: 'failed',
@@ -238,6 +294,8 @@ export async function handlePaymentDenied(supabase: ReturnType<typeof createAdmi
     })
     .eq('booking_id', bookingId)
     .eq('status', 'pending')
+  if (orderId) denyQuery = denyQuery.eq('paypal_order_id', orderId)
+  const { data: deniedPayment, error: paymentUpdateError } = await denyQuery
     .select('id')
     .maybeSingle()
 
@@ -246,10 +304,12 @@ export async function handlePaymentDenied(supabase: ReturnType<typeof createAdmi
   }
 
   if (!deniedPayment) {
-    const { data: existingPayment, error: existingPaymentLookupError } = await supabase
+    let existingQuery = supabase
       .from('parking_booking_payments')
       .select('id, status')
       .eq('booking_id', bookingId)
+    if (orderId) existingQuery = existingQuery.eq('paypal_order_id', orderId)
+    const { data: existingPayment, error: existingPaymentLookupError } = await existingQuery
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -259,6 +319,13 @@ export async function handlePaymentDenied(supabase: ReturnType<typeof createAdmi
     }
 
     if (!existingPayment) {
+      if (orderId) {
+        logger.error('Parking capture denial matched no payment row; acknowledged without changes', {
+          error: new Error('Unplaced parking denial event'),
+          metadata: { bookingId, orderId, eventId: event.id }
+        })
+        return
+      }
       throw new Error(`No parking payment found for denied webhook booking ${bookingId}`)
     }
 

@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Booking not found', 'NOT_FOUND', 404)
     }
 
-    // Idempotent — if already confirmed (e.g. webhook arrived first), return success.
+    // Idempotent: if already confirmed (e.g. webhook arrived first), return success.
+    // Left as it is for top-ups on purpose (spec section 7): the website only ever pays for a new
+    // booking. A top-up is paid through this app's guest page and its return route.
     if (booking.status === 'confirmed' && booking.payment_status === 'paid') {
       return createApiResponse({
         success: true,

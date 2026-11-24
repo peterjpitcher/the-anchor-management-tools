@@ -19,10 +19,13 @@ vi.mock('@/lib/parking/repository', () => ({
 
 vi.mock('@/lib/parking/payments', () => ({
   captureParkingPayment: vi.fn(),
+  ParkingTopUpAmountChangedError: class ParkingTopUpAmountChangedError extends Error {},
 }))
 
 import { getParkingBooking } from '@/lib/parking/repository'
-import { captureParkingPayment } from '@/lib/parking/payments'
+import { captureParkingPayment, ParkingTopUpAmountChangedError } from '@/lib/parking/payments'
+import { createAdminClient } from '@/lib/supabase/admin'
+import { createFakeDb } from '../../../../../../tests/helpers/fakeSupabaseDb'
 
 const booking = {
   id: 'booking-123',
@@ -78,5 +81,44 @@ describe('GET /api/parking/payment/return', () => {
     expect(captureParkingPayment).toHaveBeenCalledWith(booking, 'ORDER-1', expect.objectContaining({ client: expect.anything() }))
     expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=success')
+  })
+
+  describe('a confirmed booking taking a top-up', () => {
+    const confirmed = { id: 'booking-123', status: 'confirmed', payment_status: 'paid' }
+
+    function withPayments(rows: Record<string, unknown>[]) {
+      const db = createFakeDb({ parking_booking_payments: rows })
+      vi.mocked(createAdminClient).mockReturnValue(db.client as never)
+    }
+
+    it('captures a pending top-up instead of short-circuiting to success', async () => {
+      withPayments([{ id: 'pay-topup', booking_id: 'booking-123', paypal_order_id: 'ORDER-TOPUP', status: 'pending' }])
+      vi.mocked(getParkingBooking).mockResolvedValue(confirmed as never)
+
+      const response = await GET(makeRequest('?booking_id=booking-123&token=ORDER-TOPUP'))
+
+      expect(captureParkingPayment).toHaveBeenCalledTimes(1)
+      expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=success')
+    })
+
+    it('sends the customer to what is owed now when the link was retired', async () => {
+      withPayments([{ id: 'pay-topup', booking_id: 'booking-123', paypal_order_id: 'ORDER-TOPUP', status: 'expired' }])
+      vi.mocked(getParkingBooking).mockResolvedValue(confirmed as never)
+
+      const response = await GET(makeRequest('?booking_id=booking-123&token=ORDER-TOPUP'))
+
+      expect(captureParkingPayment).not.toHaveBeenCalled()
+      expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=amount_changed')
+    })
+
+    it('maps a capture refused for a changed amount to the same notice', async () => {
+      withPayments([{ id: 'pay-topup', booking_id: 'booking-123', paypal_order_id: 'ORDER-TOPUP', status: 'pending' }])
+      vi.mocked(getParkingBooking).mockResolvedValue(confirmed as never)
+      vi.mocked(captureParkingPayment).mockRejectedValue(new ParkingTopUpAmountChangedError())
+
+      const response = await GET(makeRequest('?booking_id=booking-123&token=ORDER-TOPUP'))
+
+      expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=amount_changed')
+    })
   })
 })

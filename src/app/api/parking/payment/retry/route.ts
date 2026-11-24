@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder } from '@/lib/parking/payments'
 import { logger } from '@/lib/logger'
+import { enforcePendingPaymentRule, isTopUpBooking } from '@/lib/parking/payment-due'
 import { parkingGuestUrl, parkingPaymentErrorUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
 
 function redirectToGuest(baseUrl: string, bookingId: string, payment: string): NextResponse {
@@ -33,8 +34,24 @@ export async function POST(request: NextRequest) {
       return redirectToGuest(baseUrl, bookingId, 'not_found')
     }
 
-    if (booking.status === 'confirmed' && booking.payment_status === 'paid') {
-      return redirectToGuest(baseUrl, booking.id, 'success')
+    // A confirmed, paid booking can still owe a balance after its dates grew: Pay now charges
+    // exactly that balance as a top-up, and never touches the booking's status (spec section 7).
+    if (isTopUpBooking(booking)) {
+      const rule = await enforcePendingPaymentRule(supabase, booking)
+      if (!rule.due || rule.due.purpose !== 'top_up') {
+        return redirectToGuest(baseUrl, booking.id, 'success')
+      }
+      const topUpUrl = await createParkingPaymentOrder(booking, {
+        returnUrl: parkingPaymentReturnUrl(baseUrl, booking.id),
+        cancelUrl: parkingGuestUrl(baseUrl, booking.id, 'cancelled'),
+        client: supabase,
+        amount: rule.due.amount,
+        purpose: 'top_up',
+      }).then(result => result.approveUrl)
+      if (!topUpUrl) {
+        return redirectToGuest(baseUrl, booking.id, 'retry_failed')
+      }
+      return NextResponse.redirect(topUpUrl, { status: 303 })
     }
 
     if (booking.status !== 'pending_payment' || (booking.payment_status !== 'pending' && booking.payment_status !== 'failed')) {
