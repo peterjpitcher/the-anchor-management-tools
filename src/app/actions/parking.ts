@@ -999,15 +999,18 @@ export async function markParkingBookingPaid(bookingId: string, input: { method?
       if (!ok) return { error: 'Failed to update payment status' }
     }
 
-    const { error: paymentInsertError } = await adminClient
+    // The claim above stops a press made from a stale screen, but not a second request that reads
+    // the booking just after it. So the row goes in as PENDING first: the unique index allows one
+    // pending row per booking, so only one request can hold that slot at a time. The holder then
+    // re-reads what is owed, with every other payment settled, and only then turns its row paid.
+    const { data: slot, error: paymentInsertError } = await adminClient
       .from('parking_booking_payments')
       .insert({
         booking_id: bookingId,
         provider: 'manual',
-        status: 'paid',
+        status: 'pending',
         amount,
         currency: 'GBP',
-        paid_at: nowIso,
         metadata: {
           manual_settlement: true,
           settled_by: user.id,
@@ -1015,9 +1018,52 @@ export async function markParkingBookingPaid(bookingId: string, input: { method?
           purpose: topUp ? 'top_up' : 'booking',
         },
       })
+      .select('id')
+      .single()
 
-    if (paymentInsertError) {
+    if (paymentInsertError || !slot) {
+      if ((paymentInsertError as { code?: unknown } | null)?.code === '23505') {
+        return { error: 'This booking is being updated by someone else. Refresh it and check what is owed.' }
+      }
       console.error('Failed to create parking payment record:', paymentInsertError)
+      return { error: 'Failed to update payment status' }
+    }
+
+    const releaseSlot = async (reason: string) => {
+      await settleWrite(
+        adminClient
+          .from('parking_booking_payments')
+          .update({ status: 'expired', metadata: { manual_settlement: true, superseded_at: new Date().toISOString(), superseded_reason: reason } })
+          .eq('id', slot.id)
+          .eq('status', 'pending'),
+        { table: 'parking_booking_payments', what: 'Releasing an unused venue payment', ids: { bookingId, paymentId: slot.id } }
+      )
+    }
+
+    const recheck = await loadParkingMoneyRows(adminClient, [booking.id])
+    const stillOwed = topUp
+      ? (() => {
+          const now = computeParkingBalance(booking, recheck.payments, recheck.refunds)
+          return now.state === 'to_pay' ? now.balance : 0
+        })()
+      : recheck.payments.some((payment) => payment.status === 'paid')
+        ? 0
+        : amount
+    if (Math.abs(stillOwed - amount) > 0.005) {
+      await releaseSlot('already_paid')
+      return { error: 'This booking has just been paid. Refresh it and check what is owed.' }
+    }
+
+    const { data: settled, error: settleError } = await adminClient
+      .from('parking_booking_payments')
+      .update({ status: 'paid', paid_at: nowIso })
+      .eq('id', slot.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+    if (settleError || !settled) {
+      console.error('Failed to settle the venue payment row:', settleError)
+      await releaseSlot('settle_failed')
       return { error: 'Failed to update payment status' }
     }
 

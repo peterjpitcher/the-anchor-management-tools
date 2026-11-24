@@ -73,6 +73,32 @@ function extractPayPalOrderCurrency(order: any): string | null {
   return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
 }
 
+/**
+ * The PayPal-Request-Id for a new parking order.
+ *
+ * PayPal replays the original order for a request id it has seen recently, so one fixed id per
+ * booking (`parking-<id>`, the old default) handed a top-up, or a link re-made for a new price,
+ * the earlier order back instead of a new one. The id now changes with each payment row the
+ * booking has (any status) and with the amount, so a fresh attempt gets a fresh order, while a
+ * retry of the same attempt (no row written yet) keeps its id and is still de-duplicated.
+ * A booking's very first order keeps the old id.
+ */
+export async function parkingOrderRequestId(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string,
+  amount: number
+): Promise<string> {
+  const { count, error } = await supabase
+    .from('parking_booking_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('booking_id', bookingId)
+  if (error) {
+    throw new Error(`Could not read the booking's payments: ${error.message}`)
+  }
+  const rows = count ?? 0
+  return rows === 0 ? `parking-${bookingId}` : `parking-${bookingId}-${rows}-${Math.round(amount * 100)}`
+}
+
 export async function createParkingPaymentOrder(
   booking: ParkingBooking,
   options: CreatePaymentOptions
@@ -145,7 +171,8 @@ export async function createParkingPaymentOrder(
     amount,
     returnUrl: options.returnUrl,
     cancelUrl: options.cancelUrl,
-    currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY
+    currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY,
+    requestId: await parkingOrderRequestId(supabase, booking.id, amount)
   })
 
   if (!approveUrl) {

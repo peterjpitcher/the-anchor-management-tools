@@ -101,6 +101,10 @@ describe('generateParkingPaymentLink on a confirmed booking with a balance', () 
 
     expect(result).toMatchObject({ success: true, approveUrl: 'https://paypal.test/approve/new', amount: 30 })
     expect(vi.mocked(createSimplePayPalOrder).mock.calls[0][0]).toMatchObject({ amount: 30 })
+    // A fresh PayPal request id, so PayPal cannot hand back the booking's first order.
+    const requestId = vi.mocked(createSimplePayPalOrder).mock.calls[0][0].requestId
+    expect(requestId).not.toBe(`parking-${BOOKING_ID}`)
+    expect(requestId).toMatch(new RegExp(`^parking-${BOOKING_ID}-\\d+-3000$`))
     const saved = db.rows('parking_bookings')[0]
     expect(saved).toMatchObject({ status: 'confirmed', payment_status: 'paid', payment_due_at: '2026-09-02T10:00:00.000Z' })
     expect(db.writes.filter((write) => write.table === 'parking_bookings')).toEqual([])
@@ -137,6 +141,34 @@ describe('markParkingBookingPaid', () => {
     const second = await markParkingBookingPaid(BOOKING_ID)
     expect(second.error).toMatch(/Nothing is owed/)
     expect(db.rows('parking_booking_payments').filter((row) => row.provider === 'manual')).toHaveLength(1)
+  })
+
+  it('a second request that reads the booking after the first one claimed it records nothing', async () => {
+    seed()
+    // The review's case: the other request's venue payment lands after our claim and before we
+    // check what is still owed.
+    let interleaved = false
+    db.beforeUpdate((table) => {
+      if (table === 'parking_bookings' && !interleaved) {
+        interleaved = true
+        db.rows('parking_booking_payments').push({
+          id: 'pay-other-venue',
+          booking_id: BOOKING_ID,
+          status: 'paid',
+          amount: 30,
+          currency: 'GBP',
+          provider: 'manual',
+          paid_at: '2026-09-02T10:00:00.000Z',
+          created_at: '2026-09-02T10:00:00.000Z',
+          metadata: { manual_settlement: true, purpose: 'top_up' },
+        })
+      }
+    })
+    const result = await markParkingBookingPaid(BOOKING_ID)
+    expect(result.error).toMatch(/just been paid/)
+    const manualPaid = db.rows('parking_booking_payments').filter((row) => row.provider === 'manual' && row.status === 'paid')
+    expect(manualPaid.map((row) => row.id)).toEqual(['pay-other-venue'])
+    expect(db.rows('parking_booking_payments').some((row) => row.provider === 'manual' && row.status === 'pending')).toBe(false)
   })
 
   it('refuses when the booking changed after it was read', async () => {
