@@ -8,7 +8,7 @@ import {
   sendParkingCustomerMessage,
   type ParkingEmailContent,
 } from '@/lib/parking/customer-message'
-import { formatTimeInLondon } from '@/lib/dateUtils'
+import { formatDateInLondon, formatTimeInLondon } from '@/lib/dateUtils'
 import { ensureReplyInstruction } from '@/lib/sms/support'
 import {
   buildPaymentReminderSmsForStage,
@@ -556,14 +556,16 @@ async function processPendingPaymentLifecycle(
     }
 
     if (shouldSendDayBefore) {
-      // Word it for the day the customer reads it. Quiet hours hold a send from 21:00 until
-      // 09:00, which for an offer due after about 20:45 is the day it expires, where "expires
-      // tomorrow" was wrong. If it could only arrive once the offer has gone, it is not sent.
+      // Word the text for the day the customer reads it. Quiet hours hold a text from 21:00
+      // until 09:00, which for an offer due after about 20:45 is the day it expires, where
+      // "expires tomorrow" was wrong. A text that could only arrive once the offer has gone is
+      // not sent. Email is not held, so it carries the absolute deadline and still goes.
       const expiresOn = resolveTextLandingDay(dueAt, now)
-      if (!expiresOn) {
+      if (!expiresOn && firstChoiceChannel(booking) !== 'email') {
         skipped += 1
         continue
       }
+      const deadline = `${formatDateInLondon(dueAt, { weekday: 'long', day: 'numeric', month: 'long' })} at ${formatTimeInLondon(dueAt)}`
 
       const reminderPayload = { stage: 'day_before_expiry' }
       const alreadySent = await hasParkingReminderBeenSent(supabase, {
@@ -593,11 +595,13 @@ async function processPendingPaymentLifecycle(
         booking,
         eventType: 'payment_reminder',
         templateKey: TEMPLATE_PARKING_PAYMENT_REMINDER_DAY,
-        smsBody: buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, {
-          day: expiresOn,
-          at: dueAt,
-        }),
-        email: parkingPaymentReminderEmail(booking, 'day_before_expiry', paymentLink, `${expiresOn} at ${formatTimeInLondon(dueAt)}`),
+        smsBody: expiresOn
+          ? buildPaymentReminderSmsForStage(booking, 'day_before_expiry', paymentLink || undefined, {
+              day: expiresOn,
+              at: dueAt,
+            })
+          : null,
+        email: parkingPaymentReminderEmail(booking, 'day_before_expiry', paymentLink, deadline),
         payload: reminderPayload,
         safety,
       })
@@ -859,7 +863,8 @@ async function sendParkingReminderSms(params: {
   booking: ParkingNotificationBooking
   eventType: 'payment_reminder' | 'session_start' | 'session_end'
   templateKey: string
-  smsBody: string
+  /** Null when only an email may go (see the day-before reminder). */
+  smsBody: string | null
   /** The email version. Parking reminders go by email first, a text only without one. */
   email: ParkingEmailContent
   payload?: Record<string, unknown>
@@ -867,10 +872,12 @@ async function sendParkingReminderSms(params: {
 }): Promise<{ sent: boolean; skipped: boolean }> {
   const { supabase, booking, eventType, templateKey, smsBody, email, payload, safety } = params
 
-  const smsWithReply = ensureReplyInstruction(
-    smsBody,
-    process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
-  )
+  const smsWithReply = smsBody
+    ? ensureReplyInstruction(
+        smsBody,
+        process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+      )
+    : null
 
   const stage = typeof payload?.stage === 'string' ? payload.stage : undefined
   const result = await sendParkingCustomerMessage({

@@ -201,8 +201,11 @@ export async function sendParkingCustomerMessage(input: {
   /** Starts `parking_`, so the routing rule applies. */
   templateKey: string
   email: ParkingEmailContent
-  /** The text, already with any reply line, for a customer with no usable email. */
-  smsBody: string
+  /**
+   * The text, already with any reply line, for a customer with no usable email. Null when a text
+   * must not go (a reminder that could only land once the offer has gone): email or nothing.
+   */
+  smsBody: string | null
   /** Same ids the SMS dedupe uses (payment_id, change_id, subject_at, stage). Never PII. */
   dedupe?: Record<string, string | undefined>
 }): Promise<ParkingMessageResult> {
@@ -230,14 +233,16 @@ export async function sendParkingCustomerMessage(input: {
         idempotencyKey,
         metadata: { template_key: templateKey, event_type: eventType, ...dedupe },
       },
-      sms: {
-        to: booking.customer_mobile ?? null,
-        body: smsBody,
-        options: {
-          customerId: booking.customer_id ?? undefined,
-          metadata: { parking_booking_id: booking.id, event_type: eventType, template_key: templateKey, ...dedupe },
-        },
-      },
+      sms: smsBody
+        ? {
+            to: booking.customer_mobile ?? null,
+            body: smsBody,
+            options: {
+              customerId: booking.customer_id ?? undefined,
+              metadata: { parking_booking_id: booking.id, event_type: eventType, template_key: templateKey, ...dedupe },
+            },
+          }
+        : undefined,
       deliveryMetadata: { parking_booking_id: booking.id, event_type: eventType, ...dedupe },
     })
 
@@ -307,7 +312,7 @@ export async function sendParkingCustomerMessage(input: {
 }
 
 /** The payload fields every parking notification row gets for a customer message. */
-export function customerMessagePayload(result: ParkingMessageResult, email: ParkingEmailContent, smsBody: string): Record<string, unknown> {
+export function customerMessagePayload(result: ParkingMessageResult, email: ParkingEmailContent, smsBody: string | null): Record<string, unknown> {
   return {
     audience: 'customer',
     channel_used: result.channel,
