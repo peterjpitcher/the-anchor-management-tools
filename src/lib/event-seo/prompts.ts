@@ -51,6 +51,8 @@ export const OUTPUT_RUBRIC = `HOW TO WRITE, follow strictly:
 - Write for someone who has never been to a pub night: no in-jokes and no assumed knowledge. Drinking is never the price of entry.
 - Don't over-explain and don't repeat yourself. Don't lead with Heathrow or airport talk: name the location plainly and only mention Heathrow if it genuinely helps.
 - Name a performer by first name only: "Nikki hosts", never the surname.
+- A prize that depends on something (a projected Snowball, a jackpot built from book sales, a prize only some people can win) goes only in the long description, with its condition and who can win it exactly as FACTS_JSON.brief states them. Never put it in the meta description, the short description or the highlights.
+- Prices come only from FACTS_JSON. If the brief gives no price for an extra (a dabber, a drink), do not give one.
 - Every claim must trace to FACTS_JSON or VENUE_CONTEXT. If neither supports it, drop it.
 - UK English throughout. No em dashes: use commas, full stops or brackets. No markdown (no **, *, _, #, [](), or - bullets). No raw URLs in prose.
 

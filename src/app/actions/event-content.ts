@@ -108,6 +108,8 @@ const MIN_ATTEMPT_MS = 5_000
 const FACT_CHECK_TIMEOUT_MS = 20_000
 /** A model repair needs at least this long to be worth starting. */
 const MIN_REPAIR_MS = 15_000
+/** Model repairs per draft, each for the gate or the fact check, while time allows. */
+const MAX_MODEL_REPAIRS = 2
 
 async function callOpenAI(
   baseUrl: string,
@@ -552,46 +554,41 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     let current = finish(first.draft)
     let validation = validateGeneratedContent(current, { facts: validationFacts, mode: 'final' })
     preRepairIssueCodes = validation.issues.map(i => i.code)
-    let repairUsed = false
+    repairType = validation.passed ? 'deterministic' : 'both'
+    let repairsLeft = MAX_MODEL_REPAIRS
 
-    // 6. One model repair at most, for a failed gate or a failed fact check, and only while there
-    // is still time for the repair and a fact check after it.
-    const repair = async (issues: SeoValidationIssue[]): Promise<{ error: string } | null> => {
+    // 6. Up to MAX_MODEL_REPAIRS model repairs, for a failed gate or a failed fact check, each
+    // only while there is still time for the repair and a fact check after it. A draft is
+    // returned only once it has passed the gate and then the fact check.
+    const repair = async (issues: SeoValidationIssue[]): Promise<boolean> => {
       const timeoutMs = Math.min(REPAIR_TIMEOUT_MS, remaining() - FACT_CHECK_TIMEOUT_MS)
-      if (repairUsed || timeoutMs < MIN_REPAIR_MS) return { error: formatTopIssues(issues) }
-      repairUsed = true
-      attemptCount = 2
+      if (repairsLeft === 0 || timeoutMs < MIN_REPAIR_MS) return false
+      repairsLeft -= 1
+      attemptCount += 1
       repairType = 'both'
       const result = await requestDraft(buildRepairMessages(facts, current, issues), 0.2, timeoutMs)
-      if ('error' in result) return { error: formatTopIssues(issues) }
+      if ('error' in result) return false
       current = finish(result.draft)
       validation = validateGeneratedContent(current, { facts: validationFacts, mode: 'final' })
-      return null
+      return true
     }
+    const factError = (issues: string[]) =>
+      `The draft got a fact wrong: ${issues.slice(0, 2).join(' ')} Please check the event details and try again.`
 
-    if (!validation.passed) {
-      const failed = await repair(validation.issues)
-      postRepairIssueCodes = validation.issues.map(i => i.code)
-      if (failed) return { success: false, error: failed.error }
-      if (!validation.passed) return { success: false, error: formatTopIssues(validation.issues) }
-    } else {
-      repairType = 'deterministic'
-    }
-
-    // 7. Fact check the draft that passed the gate.
-    let checked = await factCheck(current)
-    if (!Array.isArray(checked)) return { success: false, error: checked.error }
-    if (checked.length > 0) {
-      const factIssues: SeoValidationIssue[] = checked.map((message) => ({ code: 'fact_check', severity: 'repairable', message }))
-      const failed = await repair(factIssues)
-      postRepairIssueCodes = validation.issues.map(i => i.code)
-      if (failed) return { success: false, error: `The draft got a fact wrong: ${checked.slice(0, 2).join(' ')} Please check the event details and try again.` }
-      if (!validation.passed) return { success: false, error: formatTopIssues(validation.issues) }
-      checked = await factCheck(current)
-      if (!Array.isArray(checked)) return { success: false, error: checked.error }
-      if (checked.length > 0) {
-        return { success: false, error: `The draft got a fact wrong: ${checked.slice(0, 2).join(' ')} Please check the event details and try again.` }
+    for (;;) {
+      if (!validation.passed) {
+        postRepairIssueCodes = validation.issues.map(i => i.code)
+        if (!(await repair(validation.issues))) return { success: false, error: formatTopIssues(validation.issues) }
+        postRepairIssueCodes = validation.issues.map(i => i.code)
+        continue
       }
+      // 7. Fact check the draft that passed the gate.
+      const checked = await factCheck(current)
+      if (!Array.isArray(checked)) return { success: false, error: checked.error }
+      if (checked.length === 0) break
+      const factIssues: SeoValidationIssue[] = checked.map((message) => ({ code: 'fact_check', severity: 'repairable', message }))
+      if (!(await repair(factIssues))) return { success: false, error: factError(checked) }
+      postRepairIssueCodes = validation.issues.map(i => i.code)
     }
 
     // 8. NEVER fall back to an unchecked draft as success

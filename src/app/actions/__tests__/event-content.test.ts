@@ -241,16 +241,34 @@ describe('generateEventSeoContent', () => {
       if (result.success) expect(result.data.metaDescription).toContain('£5')
     })
 
-    it('never returns a draft the fact check still rejects', async () => {
-      mockFetch
-        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
-        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+    it('never returns a draft the fact check still rejects, after two repairs', async () => {
+      mockFetch.mockImplementation(async () => makeOpenAIJsonResponse(buildValidSeoResponse()))
       mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: ['The £25 prize is not in the facts.'] }))
 
       const result = await generateEventSeoContent(VALID_INPUT)
 
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      expect(mockFactCheck).toHaveBeenCalledTimes(3)
       expect(result.success).toBe(false)
       if (!result.success) expect(result.error).toContain('£25 prize')
+    })
+
+    it('can spend one repair on the gate and one on the fact check', async () => {
+      const short = buildValidSeoResponse()
+      short.longDescription = 'Too short to pass.'
+      mockFetch
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(short))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: ['Remove the £1 dabber price.'] }))
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: [] }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      expect(mockFactCheck).toHaveBeenCalledTimes(2)
     })
 
     it('fails closed when the fact check cannot run', async () => {
@@ -317,13 +335,13 @@ describe('generateEventSeoContent', () => {
     badDraft.metaTitle = ''
     badDraft.metaDescription = ''
 
-    // Both calls return invalid content
-    mockFetch
-      .mockResolvedValueOnce(makeOpenAIJsonResponse(badDraft))
-      .mockResolvedValueOnce(makeOpenAIJsonResponse(badDraft))
+    // The first draft and both repairs return invalid content
+    mockFetch.mockImplementation(async () => makeOpenAIJsonResponse(badDraft))
 
     const result = await generateEventSeoContent(VALID_INPUT)
 
+    expect(mockFetch).toHaveBeenCalledTimes(3)
+    expect(mockFactCheck).not.toHaveBeenCalled()
     expect(result.success).toBe(false)
     if (!result.success) {
       expect(result.error).toContain('Content quality check failed')
