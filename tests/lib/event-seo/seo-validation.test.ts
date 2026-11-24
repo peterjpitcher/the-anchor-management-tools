@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   applyDeterministicRepair,
   capitaliseProperNames,
+  replaceEmDashes,
   capAndDeduplicate,
   containsKeyword,
   countKeywordMatches,
@@ -287,5 +288,21 @@ describe('capitaliseProperNames', () => {
     expect(fixed.longDescription).toContain('Christmas music bingo')
     expect(fixed.longDescription).not.toContain('christmas')
     expect((fixed.highlights as string[])[0]).toBe('Two rounds of Christmas songs')
+  })
+})
+
+describe('replaceEmDashes', () => {
+  // Built from its code point: the character itself is banned from files in this workspace.
+  const DASH = String.fromCharCode(0x2014)
+  it('turns an em dash between words into a comma', () => {
+    expect(replaceEmDashes(`Two rounds ${DASH} both festive.`)).toBe('Two rounds, both festive.')
+    expect(replaceEmDashes(`Two rounds${DASH}both festive.`)).toBe('Two rounds, both festive.')
+  })
+
+  it('is applied by the deterministic repair', () => {
+    const draft = validDraft()
+    draft.shortDescription = String(draft.shortDescription).replace(', on Friday', ` ${DASH} on Friday`)
+    const fixed = applyDeterministicRepair(draft)
+    expect(String(fixed.shortDescription)).not.toContain(DASH)
   })
 })

@@ -735,6 +735,11 @@ const ALWAYS_CAPITALISED: ReadonlyArray<[RegExp, string]> = [
   [/\bstanwell\s+moor\b/gi, 'Stanwell Moor'],
 ]
 
+/** House style has no em dashes (SSOT section 1): one between words becomes a comma. */
+export function replaceEmDashes(text: string): string {
+  return text.replace(/\s*\u2014\s*/g, ', ').replace(/,\s*,/g, ',').replace(/^,\s*/, '')
+}
+
 export function capitaliseProperNames(text: string): string {
   // Typographic apostrophes are kept where the model used them.
   return ALWAYS_CAPITALISED.reduce(
@@ -764,20 +769,20 @@ export function applyDeterministicRepair(
   const proseKeys = ['shortDescription', 'longDescription', 'metaTitle', 'metaDescription', 'imageAltText']
   for (const key of proseKeys) {
     if (typeof patched[key] === 'string') {
-      patched[key] = capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(patched[key] as string)))
+      patched[key] = replaceEmDashes(capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(patched[key] as string))))
     }
   }
 
   if (Array.isArray(patched.faqs)) {
     patched.faqs = arrFaq(patched.faqs).map((faq) => ({
-      question: capitaliseProperNames(trimAndNormalizeWhitespace(faq.question)),
-      answer: capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer)))),
+      question: replaceEmDashes(capitaliseProperNames(trimAndNormalizeWhitespace(faq.question))),
+      answer: replaceEmDashes(capitaliseProperNames(removeRawUrls(removeMarkdownMarkers(trimAndNormalizeWhitespace(faq.answer))))),
     }))
   }
 
   if (Array.isArray(patched.highlights)) {
     patched.highlights = capAndDeduplicate(
-      arrStr(patched.highlights).map((h) => capitaliseProperNames(removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, ''))),
+      arrStr(patched.highlights).map((h) => replaceEmDashes(capitaliseProperNames(removeMarkdownMarkers(trimAndNormalizeWhitespace(h)).replace(/[.;]+$/, '')))),
       EVENT_SEO_LIMITS.highlightsCount.max,
     )
   }
