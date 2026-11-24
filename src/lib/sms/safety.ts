@@ -51,7 +51,12 @@ const DEDUPE_CONTEXT_KEYS = [
   'waitlist_entry_id',
   'booking_id',
   'trigger_type',
-  'stage'
+  'stage',
+  // A parking date change: each change is its own message, a retry of the same change is not.
+  'change_id',
+  // The instant a reminder is about (a parking start, end or payment deadline). A reminder for
+  // moved dates is a new message, not a conflicting retry of the one for the old dates.
+  'subject_at'
 ] as const
 
 function parsePositiveIntEnv(name: string, fallback: number): number {

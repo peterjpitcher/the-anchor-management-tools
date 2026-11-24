@@ -12,6 +12,7 @@ const COUNTS: OutstandingCounts = {
   rota: 0,
   checklists: 0,
   feedback: 0,
+  parking: 0,
 }
 
 vi.mock('@/hooks/useUnreadMessageCount', () => ({

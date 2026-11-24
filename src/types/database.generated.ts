@@ -25666,6 +25666,8 @@ export type Database = {
         | "session_end"
         | "payment_overdue"
         | "refund_confirmation"
+        | "booking_changed"
+        | "top_up_received"
       parking_payment_status:
         | "pending"
         | "paid"
@@ -25870,6 +25872,8 @@ export const Constants = {
         "session_end",
         "payment_overdue",
         "refund_confirmation",
+        "booking_changed",
+        "top_up_received",
       ],
       parking_payment_status: [
         "pending",

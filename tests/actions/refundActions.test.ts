@@ -378,3 +378,103 @@ describe('processManualRefund', () => {
     expect(result).toEqual({ error: 'Amount exceeds refundable balance' })
   })
 })
+
+describe('processPayPalRefund: a caller key (the parking date change)', () => {
+  it('replays a completed refund under the same key and never calls PayPal again', async () => {
+    const db = makeDb({ pendingRefund: { id: 'refund-done', status: 'completed' } })
+    mockedAdmin.mockReturnValue(db)
+
+    const result = await processPayPalRefund('private_booking', 'pb-1', 50, 'Dates changed', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+    })
+
+    expect(result).toMatchObject({ success: true, refundId: 'refund-done', replayed: true })
+    expect(mockedRefund).not.toHaveBeenCalled()
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+
+  it('reserves under the caller key and, when asked, leaves telling the customer to the caller', async () => {
+    const updates: any[] = []
+    const db = makeDb({ updates })
+    mockedAdmin.mockReturnValue(db)
+    mockedRefund.mockResolvedValue({ status: 'COMPLETED', refundId: 'pp-refund-1', currency: 'GBP' })
+    const { sendRefundNotification } = await import('@/lib/refund-notifications')
+    const { sendPrivateBookingRefundSentEmail } = await import('@/lib/email/private-booking-emails')
+
+    const result = await processPayPalRefund('private_booking', 'pb-1', 50, 'Dates changed', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+      skipCustomerNotification: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.rpc).toHaveBeenCalledWith(
+      'reserve_refund_balance',
+      expect.objectContaining({ p_paypal_request_id: '22222222-2222-5222-8222-222222222222' })
+    )
+    expect(mockedRefund).toHaveBeenCalledWith('CAPTURE-1', 50, '22222222-2222-5222-8222-222222222222', 'GBP')
+    expect(updates).toContainEqual(expect.objectContaining({ notification_status: 'skipped' }))
+    expect(sendRefundNotification).not.toHaveBeenCalled()
+    expect(sendPrivateBookingRefundSentEmail).not.toHaveBeenCalled()
+  })
+})
+
+describe('processManualRefund: a caller key', () => {
+  it('replays rather than records a second manual refund under the same key', async () => {
+    const db = makeDb({ pendingRefund: { id: 'refund-done', status: 'completed' } })
+    mockedAdmin.mockReturnValue(db)
+
+    const result = await processManualRefund('private_booking', 'pb-1', 50, 'Dates changed', 'cash', {
+      requestKey: '22222222-2222-5222-8222-222222222222',
+    })
+
+    expect(result.success).toBe(true)
+    expect(db.rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('processPayPalRefund: a part refund on a parking payment (the date change path)', () => {
+  it('records the payment as part refunded and leaves the payment and the booking live', async () => {
+    const writes: Array<{ table: string; payload: any }> = []
+    const rpc = vi.fn().mockResolvedValue({ data: [{ refund_id: 'refund-1' }], error: null })
+    const from = vi.fn((table: string) => {
+      let result: any = { data: null, error: null }
+      if (table === 'parking_booking_payments') {
+        result = {
+          data: {
+            id: 'pay-1',
+            transaction_id: 'CAPTURE-P',
+            paid_at: new Date().toISOString(),
+            amount: 10,
+            currency: 'GBP',
+            booking_id: 'parking-1',
+            parking_bookings: { customer_first_name: 'Pat', customer_mobile: '+447700900000', reference: 'PAR-1' },
+          },
+          error: null,
+        }
+      }
+      if (table === 'payment_refunds') result = { data: [{ amount: 5 }], error: null }
+      const c = chain(result)
+      c.update = vi.fn((payload: any) => {
+        writes.push({ table, payload })
+        return c
+      })
+      // The key lookup must find nothing, so the refund is reserved and sent.
+      if (table === 'payment_refunds') c.maybeSingle = vi.fn(() => Promise.resolve({ data: null, error: null }))
+      return c
+    })
+    mockedAdmin.mockReturnValue({ from, rpc })
+    mockedRefund.mockResolvedValue({ status: 'COMPLETED', refundId: 'pp-refund-1', currency: 'GBP' })
+
+    const result = await processPayPalRefund('parking', 'pay-1', 5, 'Dates changed', {
+      requestKey: '33333333-3333-5333-8333-333333333333',
+      skipCustomerNotification: true,
+    })
+
+    expect(result.success).toBe(true)
+    expect(mockedRefund).toHaveBeenCalledWith('CAPTURE-P', 5, '33333333-3333-5333-8333-333333333333', 'GBP')
+    expect(writes).toContainEqual({ table: 'parking_booking_payments', payload: { refund_status: 'partially_refunded' } })
+    // The payment stays 'paid' (the balance counts only paid rows) and the booking is not touched.
+    expect(writes.some((w) => w.table === 'parking_booking_payments' && 'status' in w.payload)).toBe(false)
+    expect(writes.some((w) => w.table === 'parking_bookings')).toBe(false)
+  })
+})

@@ -7585,6 +7585,28 @@
   "readOnly": false
  },
  {
+  "name": "parking.changeParkingBookingDates",
+  "module": "parking",
+  "export": "changeParkingBookingDates",
+  "params": [
+   {
+    "name": "bookingId",
+    "type": "string",
+    "optional": false
+   },
+   {
+    "name": "input",
+    "type": "z.input<typeof ChangeParkingDatesSchema>",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "ChangeParkingDatesSchema": "const ChangeParkingDatesSchema = ChangeDatesWindowSchema.extend({\n  /** A UUID made once per opening of the dialog, so a double click or retry is recognised. */\n  changeId: z.string().uuid('Invalid change id'),\n  /** The booking's updated_at when the dialog loaded: a booking changed since is refused. */\n  expectedUpdatedAt: z.string().min(1),\n  /** The new price the screen showed. If the server works out a different one, nothing happens. */\n  expectedNewPrice: z.number().nonnegative(),\n  notifyCustomer: z.boolean().default(true),\n  /** Unpaid bookings only: text the new payment link. */\n  sendPaymentLink: z.boolean().default(true),\n  /** Paid bookings that now cost less: what to refund (0 up to the difference). */\n  refundAmount: z.number().nonnegative().optional(),\n  refundReason: z.string().trim().max(500).optional(),\n  manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),\n})"
+  },
+  "doc": "Changes a parking booking's dates and settles the money in one save (staff only, D9).\n\nOrder matters: the booking is saved first, which is where the capacity trigger claims (or\nrefuses) the new space, and only then does any money move or any text go. A failure after the\nsave never rolls the dates back: it comes back as `success` with a `warning` saying what did not\nhappen, and the booking keeps showing its balance until someone settles it. Paid bookings that\nwould cost more are refused for now (\"Extending a paid booking is not available yet\").\n\nNeeds parking \"manage\". Sending a refund also needs parking \"refund\"; without it the change\nsaves and the booking shows the refund as still to do. Refunds are keyed on the changeId plus\nthe payment id, so the same dialog submitted twice sends one refund and one text.",
+  "readOnly": false
+ },
+ {
   "name": "parking.createParkingBooking",
   "module": "parking",
   "export": "createParkingBooking",
@@ -7681,6 +7703,26 @@
   "readOnly": false
  },
  {
+  "name": "parking.previewParkingDateChange",
+  "module": "parking",
+  "export": "previewParkingDateChange",
+  "params": [
+   {
+    "name": "bookingId",
+    "type": "string",
+    "optional": false
+   },
+   {
+    "name": "window",
+    "type": "{ start_at: string; end_at: string }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Prices a proposed change of dates on the server (the dialog never prices in the browser) and\nsays how the difference would be settled. Reads only.",
+  "readOnly": true
+ },
+ {
   "name": "parking.saveParkingRateConfig",
   "module": "parking",
   "export": "saveParkingRateConfig",
@@ -7693,6 +7735,28 @@
   ],
   "typeRefs": {},
   "doc": "",
+  "readOnly": false
+ },
+ {
+  "name": "parking.settleParkingRefundDue",
+  "module": "parking",
+  "export": "settleParkingRefundDue",
+  "params": [
+   {
+    "name": "bookingId",
+    "type": "string",
+    "optional": false
+   },
+   {
+    "name": "input",
+    "type": "z.input<typeof SettleRefundDueSchema>",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "SettleRefundDueSchema": "const SettleRefundDueSchema = z.object({\n  operationId: z.string().uuid('Invalid operation id'),\n  /** True: no refund is due after all, so the difference is kept (with a reason). */\n  noRefund: z.boolean().default(false),\n  amount: z.number().nonnegative().optional(),\n  reason: z.string().trim().min(1, 'Give a reason').max(500),\n  manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),\n})"
+  },
+  "doc": "Settles a \"refund to do\" on a confirmed parking booking: sends some or all of it, or records\nthat none is due. Whatever is not sent is recorded as kept (the agreed price becomes what the\nbooking has then paid), so the booking reads settled. Needs parking \"refund\".",
   "readOnly": false
  },
  {
@@ -12010,12 +12074,13 @@
    },
    {
     "name": "options",
-    "type": "RefundPolicyOverride",
+    "type": "RefundCallOptions",
     "optional": true
    }
   ],
   "typeRefs": {
    "SourceType": "type SourceType = 'private_booking' | 'table_booking' | 'parking'",
+   "RefundCallOptions": "type RefundCallOptions = RefundPolicyOverride & {\n  requestKey?: string\n  skipCustomerNotification?: boolean\n}",
    "RefundPolicyOverride": "type RefundPolicyOverride = {\n  overrideRefundPolicy?: boolean\n  overrideReason?: string\n}"
   },
   "doc": "",
@@ -12048,12 +12113,13 @@
    },
    {
     "name": "options",
-    "type": "RefundPolicyOverride",
+    "type": "RefundCallOptions",
     "optional": true
    }
   ],
   "typeRefs": {
    "SourceType": "type SourceType = 'private_booking' | 'table_booking' | 'parking'",
+   "RefundCallOptions": "type RefundCallOptions = RefundPolicyOverride & {\n  requestKey?: string\n  skipCustomerNotification?: boolean\n}",
    "RefundPolicyOverride": "type RefundPolicyOverride = {\n  overrideRefundPolicy?: boolean\n  overrideReason?: string\n}"
   },
   "doc": "",

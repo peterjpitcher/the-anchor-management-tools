@@ -49,8 +49,11 @@ import {
 import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import { RefundDialog } from './RefundDialog'
 import { RefundHistoryTable } from './RefundHistoryTable'
+import { ChangeDatesDialog } from './ChangeDatesDialog'
+import { RefundDueDialog } from './RefundDueDialog'
+import { parkingBalanceLabel } from '@/lib/parking/balance'
 import type {
-  ParkingBooking,
+  ParkingBookingWithBalance as ParkingBooking,
   ParkingBookingStatus,
   ParkingNotificationRecord,
   ParkingPaymentStatus,
@@ -145,6 +148,8 @@ const NOTIFICATION_EVENT_LABEL: Record<ParkingNotificationRecord['event_type'], 
   session_end: 'Session end',
   payment_overdue: 'Payment overdue',
   refund_confirmation: 'Refund confirmation',
+  booking_changed: 'Dates changed',
+  top_up_received: 'Extra payment received',
 }
 
 const initialFormState = {
@@ -219,6 +224,8 @@ export default function ParkingClient({ permissions, initialError, initialBookin
   const [createForm, setCreateForm] = useState(initialFormState)
   const [editForm, setEditForm] = useState(initialFormState)
   const [cancelTarget, setCancelTarget] = useState<ParkingBooking | null>(null)
+  const [showChangeDates, setShowChangeDates] = useState(false)
+  const [showRefundDue, setShowRefundDue] = useState(false)
   const [activeRateRecord, setActiveRateRecord] = useState<ParkingRate | null>(initialRateRecord)
   const [rateForm, setRateForm] = useState(() =>
     initialRateRecord ? rateFormFromRecord(initialRateRecord) : EMPTY_RATE_FORM
@@ -456,10 +463,7 @@ export default function ParkingClient({ permissions, initialError, initialBookin
     event.preventDefault()
     if (!selectedBooking) return
 
-    const start = parseLondonDateTimeLocalToIso(editForm.start_at)
-    const end = parseLondonDateTimeLocalToIso(editForm.end_at)
-    if (!start || !end) { toast.error('Start and end times are required'); return }
-
+    // Dates are not sent: they move only through Change dates, which reprices and settles.
     const formData = new FormData()
     formData.append('customer_first_name', editForm.customer_first_name)
     if (editForm.customer_last_name) formData.append('customer_last_name', editForm.customer_last_name)
@@ -470,8 +474,6 @@ export default function ParkingClient({ permissions, initialError, initialBookin
     if (editForm.vehicle_make) formData.append('vehicle_make', editForm.vehicle_make)
     if (editForm.vehicle_model) formData.append('vehicle_model', editForm.vehicle_model)
     if (editForm.vehicle_colour) formData.append('vehicle_colour', editForm.vehicle_colour)
-    formData.append('start_at', start)
-    formData.append('end_at', end)
     if (editForm.notes) formData.append('notes', editForm.notes)
     if (editForm.override_price) formData.append('override_price', editForm.override_price)
     if (editForm.override_reason) formData.append('override_reason', editForm.override_reason)
@@ -714,7 +716,12 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                         <TableCell>{formatDateTime(booking.start_at)}</TableCell>
                         <TableCell>{formatDateTime(booking.end_at)}</TableCell>
                         <TableCell><Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge></TableCell>
-                        <TableCell><Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge></TableCell>
+                        <TableCell>
+                          <div className="flex flex-wrap items-center gap-1">
+                            <Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge>
+                            <BalanceBadge booking={booking} />
+                          </div>
+                        </TableCell>
                         <TableCell>{formatCurrency(booking.override_price ?? booking.calculated_price ?? 0)}</TableCell>
                         <TableCell>{booking.payment_due_at ? formatDateTime(booking.payment_due_at) : '-'}</TableCell>
                       </TableRow>
@@ -748,6 +755,7 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={PARKING_BOOKING_STATUS_TONE[booking.status]}>{PARKING_BOOKING_STATUS_LABEL[booking.status]}</Badge>
                         <Badge tone={PARKING_PAYMENT_STATUS_TONE[booking.payment_status]}>{PARKING_PAYMENT_STATUS_LABEL[booking.payment_status]}</Badge>
+                        <BalanceBadge booking={booking} />
                       </div>
                       <dl className="space-y-1 text-xs text-text-muted">
                         <div className="flex justify-between gap-2">
@@ -821,9 +829,27 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                         },
                         {
                           key: 'amount',
-                          label: 'Amount',
+                          label: 'Price',
                           value: formatCurrency(selectedBooking.override_price ?? selectedBooking.calculated_price ?? 0),
                         },
+                        ...(selectedBooking.override_price != null && selectedBooking.override_reason
+                          ? [{ key: 'override', label: 'Agreed price note', value: selectedBooking.override_reason }]
+                          : []),
+                        ...(selectedBooking.balance && selectedBooking.balance.state !== 'none'
+                          ? [
+                              { key: 'paid', label: 'Paid', value: formatCurrency(selectedBooking.balance.paid) },
+                              { key: 'refunded', label: 'Refunded', value: formatCurrency(selectedBooking.balance.refunded) },
+                              {
+                                key: 'balance',
+                                label: 'Balance',
+                                value: parkingBalanceLabel(selectedBooking.balance) ? (
+                                  <BalanceBadge booking={selectedBooking} />
+                                ) : (
+                                  'Settled'
+                                ),
+                              },
+                            ]
+                          : []),
                         ...(selectedBooking.notes
                           ? [{
                               key: 'notes',
@@ -840,6 +866,11 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                         <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => openEditBooking(selectedBooking)}>
                           Edit
                         </Button>
+                        {(selectedBooking.status === 'pending_payment' || selectedBooking.status === 'confirmed') && (
+                          <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => setShowChangeDates(true)}>
+                            Change dates
+                          </Button>
+                        )}
                         {selectedBooking.payment_status === 'pending' && (
                           <>
                             <Button
@@ -872,7 +903,16 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                           </Button>
                         )}
                         {permissions.canRefund && selectedBooking.payment_status === 'paid' && (
-                          <Button variant="secondary" size="sm" disabled={isMutating} onClick={() => openRefundForBooking(selectedBooking)}>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={isMutating}
+                            onClick={() =>
+                              selectedBooking.balance?.state === 'refund_due'
+                                ? setShowRefundDue(true)
+                                : openRefundForBooking(selectedBooking)
+                            }
+                          >
                             Refund
                           </Button>
                         )}
@@ -1108,14 +1148,6 @@ export default function ParkingClient({ permissions, initialError, initialBookin
           </fieldset>
 
           <fieldset className="space-y-3">
-            <legend><SubHeading as="h3">Schedule</SubHeading></legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Input label="Start" type="datetime-local" required value={editForm.start_at} onChange={(e) => handleEditInputChange('start_at', e.target.value)} />
-              <Input label="End" type="datetime-local" required value={editForm.end_at} onChange={(e) => handleEditInputChange('end_at', e.target.value)} />
-            </div>
-          </fieldset>
-
-          <fieldset className="space-y-3">
             <legend><SubHeading as="h3">Vehicle</SubHeading></legend>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Registration" required placeholder="AB12CDE" value={editForm.vehicle_registration} onChange={(e) => handleEditInputChange('vehicle_registration', e.target.value.toUpperCase())} />
@@ -1151,6 +1183,33 @@ export default function ParkingClient({ permissions, initialError, initialBookin
         cancelLabel="Keep Booking"
       />
 
+      {selectedBooking && (
+        <ChangeDatesDialog
+          open={showChangeDates}
+          booking={selectedBooking}
+          onClose={() => setShowChangeDates(false)}
+          onChanged={async () => {
+            const bookingId = selectedBooking.id
+            const latest = await fetchBookings()
+            const updated = latest.find((b) => b.id === bookingId)
+            if (updated) { setSelectedBooking(updated); void loadNotifications(updated.id) }
+            if (permissions.canRefund) void loadRefundSummary(bookingId)
+            setRefundHistoryKey((key) => key + 1)
+          }}
+        />
+      )}
+
+      {selectedBooking && selectedBooking.balance?.state === 'refund_due' && (
+        <RefundDueDialog
+          open={showRefundDue}
+          bookingId={selectedBooking.id}
+          reference={selectedBooking.reference}
+          due={Math.abs(selectedBooking.balance.balance)}
+          onClose={() => setShowRefundDue(false)}
+          onSettled={handleRefundProcessed}
+        />
+      )}
+
       {/* Refund Dialog */}
       {permissions.canRefund && refundPaymentId && (
         <RefundDialog
@@ -1168,4 +1227,11 @@ export default function ParkingClient({ permissions, initialError, initialBookin
       )}
     </PageLayout>
   )
+}
+
+/** "£X to pay" or "£X refund to do" beside the payment badge, or nothing when settled. */
+function BalanceBadge({ booking }: { booking: ParkingBooking }) {
+  const label = parkingBalanceLabel(booking.balance)
+  if (!label || !booking.balance) return null
+  return <Badge tone={booking.balance.state === 'to_pay' ? 'warning' : 'info'}>{label}</Badge>
 }

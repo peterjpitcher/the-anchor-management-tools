@@ -21,6 +21,7 @@ function car(overrides: Partial<FohParkingBooking> = {}): FohParkingBooking {
     leaves_at: '2026-07-14T09:00:00.000Z',
     status: 'confirmed',
     paid: true,
+    owes: null,
     ...overrides,
   }
 }
@@ -84,6 +85,14 @@ describe('FohParkingClient', () => {
     const rows = within(list('Arriving today')).getAllByRole('listitem')
     expect(within(rows[0]).queryByText('Not paid')).toBeNull()
     expect(within(rows[1]).getByText('Not paid')).toBeInTheDocument()
+  })
+
+  it('shows what is still to collect on a paid booking whose dates were changed (D5)', async () => {
+    const view: FohParkingView = { ...VIEW, arriving_today: [car({ owes: '£30.00' })], on_site_now: [], leaving_today: [], coming_up: [] }
+    installFetch({ ok: true, body: { success: true, data: view } })
+    render(<FohParkingClient />)
+    await screen.findByText('Asha Patel')
+    expect(screen.getByText('Owes £30.00')).toBeInTheDocument()
   })
 
   it('shows no price, amount or pound sign anywhere', async () => {

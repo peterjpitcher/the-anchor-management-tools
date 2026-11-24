@@ -166,6 +166,7 @@ export function navCount(
     rota: counts.rota,
     checklists: counts.checklists,
     feedback: counts.feedback,
+    parking: counts.parking,
     // Three states, not two. Absent means this user may not see the count at all
     // and it never left the server; null means the read failed, which is shown as
     // unavailable rather than as a zero nobody could act on.

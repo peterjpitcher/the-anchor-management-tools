@@ -16,6 +16,8 @@ import { reportCronFailure } from '@/lib/cron/alerting'
 import { extractSmsSafetyInfo } from '@/lib/sms/safety-info'
 import { resolveTextLandingDay } from '@/lib/sms/landing-day'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { hasParkingReminderBeenSent } from '@/lib/parking/reminder-history'
+import { ensurePendingPaymentLink } from '@/lib/parking/reminder-payment-link'
 
 // Its own time limit rather than the 15-second project default (BK-212).
 export const maxDuration = 60
@@ -93,10 +95,6 @@ function parseBooleanEnv(name: string, fallback: boolean): boolean {
 
 function allowParkingSendGuardSchemaGaps(): boolean {
   return parseBooleanEnv('PARKING_SEND_GUARD_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
-}
-
-function allowParkingDedupeSchemaGaps(): boolean {
-  return parseBooleanEnv('PARKING_DEDUPE_ALLOW_SCHEMA_GAPS', process.env.NODE_ENV !== 'production')
 }
 
 function pad2(value: number): string {
@@ -343,49 +341,6 @@ async function evaluateParkingSendGuard(
   }
 }
 
-async function hasParkingReminderBeenSent(
-  supabase: ReturnType<typeof createAdminClient>,
-  input: {
-    bookingId: string
-    eventType: 'payment_reminder' | 'session_start' | 'session_end'
-    templateKey: string
-    payload?: Record<string, unknown>
-  }
-): Promise<boolean> {
-  let query = supabase.from('parking_booking_notifications')
-    .select('id')
-    .eq('booking_id', input.bookingId)
-    .eq('channel', 'sms')
-    .eq('event_type', input.eventType)
-    .eq('status', 'sent')
-    .limit(1)
-
-  const stage = typeof input.payload?.stage === 'string' ? input.payload.stage : null
-  if (stage) {
-    query = query.contains('payload', { stage })
-  } else if (input.templateKey) {
-    query = query.contains('payload', { template_key: input.templateKey })
-  }
-
-  const { data, error } = await query
-  if (error) {
-    const pgError = error as { code?: string; message?: string }
-    if (pgError?.code === '42703' || pgError?.code === '42P01') {
-      if (allowParkingDedupeSchemaGaps()) {
-        console.warn('Parking reminder dedupe skipped because schema is missing expected columns', pgError.message)
-        return false
-      }
-
-      console.error('Parking reminder dedupe blocked send because schema is unavailable', input.bookingId, pgError.message)
-      return true
-    }
-    console.error('Failed to evaluate parking reminder dedupe state', input.bookingId, error)
-    return true
-  }
-
-  return Array.isArray(data) && data.length > 0
-}
-
 export async function GET(request: Request) {
   let runContext: {
     supabase: ReturnType<typeof createAdminClient>
@@ -584,7 +539,14 @@ async function processPendingPaymentLifecycle(
       continue
     }
 
-    const paymentLink = await lookupPendingPaymentLink(supabase, booking.id)
+    // Every reminder carries a real link. After a repriced change there may be no pending
+    // payment, and the text used to go out saying "We'll text your payment link shortly" with
+    // nothing following. Make one; if that fails, skip the text and count it as an error.
+    const paymentLink = await ensurePendingPaymentLink(supabase, booking)
+    if (!paymentLink) {
+      errors += 1
+      continue
+    }
 
     if (shouldSendDayBefore) {
       // Word it for the day the customer reads it. Quiet hours hold a send from 21:00 until
@@ -866,6 +828,21 @@ async function processPaidSessionReminders(
   return { startSent, endSent, errors, skipped }
 }
 
+function reminderSubjectAt(
+  eventType: 'payment_reminder' | 'session_start' | 'session_end',
+  booking: ParkingNotificationBooking
+): string | undefined {
+  const value =
+    eventType === 'session_start'
+      ? booking.start_at
+      : eventType === 'session_end'
+        ? booking.end_at
+        : (booking as { payment_due_at?: string | null }).payment_due_at
+  if (!value) return undefined
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined
+}
+
 async function sendParkingReminderSms(params: {
   supabase: ReturnType<typeof createAdminClient>
   booking: ParkingNotificationBooking
@@ -913,6 +890,9 @@ async function sendParkingReminderSms(params: {
         event_type: eventType,
         template_key: templateKey,
         ...(payload || {}),
+        // Scopes the SMS dedupe to the dates this reminder is about, so a reminder for moved
+        // dates is not refused as a conflicting retry of the one sent for the old dates.
+        subject_at: reminderSubjectAt(eventType, booking),
       },
       customerFallback: {
         email: booking.customer_email ?? undefined,
@@ -1000,21 +980,3 @@ async function sendParkingReminderSms(params: {
   }
 }
 
-async function lookupPendingPaymentLink(supabase: ReturnType<typeof createAdminClient>, bookingId: string) {
-  const { data, error } = await supabase
-    .from('parking_booking_payments')
-    .select('metadata')
-    .eq('booking_id', bookingId)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  if (error) {
-    console.error('Failed to lookup parking payment metadata', bookingId, error)
-    return null
-  }
-
-  const metadata = data?.metadata as { approve_url?: string } | null
-  return metadata?.approve_url ?? null
-}

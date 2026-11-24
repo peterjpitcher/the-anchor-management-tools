@@ -111,7 +111,7 @@ export interface ParkingNotificationRecord {
   id: string;
   booking_id: string;
   channel: 'sms' | 'email';
-  event_type: 'payment_request' | 'payment_reminder' | 'payment_confirmation' | 'session_start' | 'session_end' | 'payment_overdue' | 'refund_confirmation';
+  event_type: 'payment_request' | 'payment_reminder' | 'payment_confirmation' | 'session_start' | 'session_end' | 'payment_overdue' | 'refund_confirmation' | 'booking_changed' | 'top_up_received';
   status: string;
   sent_at?: string | null;
   message_sid?: string | null;
@@ -131,3 +131,16 @@ export interface ParkingCapacityCheckResult {
   capacity: number;
   active: number;
 }
+
+/** The derived money position of a live booking (src/lib/parking/balance.ts). */
+export interface ParkingBookingBalance {
+  price: number;
+  paid: number;
+  refunded: number;
+  netPaid: number;
+  balance: number;
+  state: 'none' | 'settled' | 'to_pay' | 'refund_due';
+}
+
+/** A booking as the parking list returns it: with its balance, or null if it could not be read. */
+export type ParkingBookingWithBalance = ParkingBooking & { balance?: ParkingBookingBalance | null };

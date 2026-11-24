@@ -174,6 +174,8 @@ describe('no money leaves the route', () => {
         leaves_at: '2026-07-14T09:00:00.000Z',
         status: 'confirmed',
         paid: true,
+        // D5 (24 November 2026): what is still to collect after a date change, or null.
+        owes: null,
       },
     ])
     expect(Object.keys(body.data).sort()).toEqual(['arriving_today', 'coming_up', 'leaving_today', 'on_site_now', 'today'])

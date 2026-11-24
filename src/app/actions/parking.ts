@@ -11,11 +11,24 @@ import { formBooleanWithDefault } from '@/lib/forms/formBoolean'
 import { getActiveParkingRate, getParkingBooking, updateParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder, sendParkingPaymentRequest } from '@/lib/parking/payments'
 import { revalidatePath, revalidateTag } from 'next/cache'
-import type { ParkingBooking, ParkingBookingStatus, ParkingPaymentStatus, ParkingRate } from '@/types/parking'
+import type { ParkingBooking, ParkingBookingStatus, ParkingBookingWithBalance, ParkingPaymentStatus, ParkingRate } from '@/types/parking'
 import { calculateParkingPricing, parkingRateConfigFromRecord } from '@/lib/parking/pricing'
 import type { ParkingRateConfig } from '@/lib/parking/pricing'
 import { createPendingParkingBooking } from '@/services/parking'
 import { parkingGuestUrl, parkingPaymentReturnUrl } from '@/lib/parking/public-links'
+import {
+  bookingPrice,
+  computeParkingBalance,
+  loadParkingBalances,
+  loadParkingMoneyRows,
+  refundablePayments,
+  roundPence,
+  type ParkingBalance,
+} from '@/lib/parking/balance'
+import { planParkingDateChange, reminderFlagResets, sameInstant } from '@/lib/parking/change-dates'
+import { refundParkingBooking, sendParkingChangeText } from '@/lib/parking/change-settlement'
+import { settleWrite } from '@/lib/supabase/settle-write'
+import type { ParkingChangeOutcome } from '@/lib/parking/notifications'
 
 /**
  * The capacity trigger's refusal, worded for staff, or null for any other failure. It refuses
@@ -79,6 +92,11 @@ const CreateParkingBookingSchema = z.object({
 const UpdateParkingBookingSchema = CreateParkingBookingSchema.omit({
   send_payment_link: true,
 }).extend({
+  // Dates move only through Change dates (changeParkingBookingDates), so there is one path that
+  // reprices and settles the money. They are accepted here only so an older caller that still
+  // sends the unchanged dates keeps working; a different date is refused.
+  start_at: z.string().datetime({ offset: true, message: 'Invalid start time' }).optional(),
+  end_at: z.string().datetime({ offset: true, message: 'Invalid end time' }).optional(),
   override_price: z
     .union([z.string(), z.number()])
     .optional()
@@ -317,7 +335,23 @@ export async function listParkingBookings(options?: {
       return { error: 'Failed to load parking bookings' }
     }
 
-    return { success: true, data: (data || []) as ParkingBooking[] }
+    const rows = (data || []) as ParkingBooking[]
+
+    // Each booking's balance (spec section 5), so the list can show "£X to pay" or "£X refund to
+    // do". Read with the admin client: the caller's parking view permission is already checked,
+    // and the payments and refunds tables are not all readable by the signed-in role. If the
+    // money cannot be read the list still loads, with no balance shown, rather than failing.
+    let balances = new Map<string, ParkingBalance>()
+    try {
+      balances = await loadParkingBalances(createAdminClient(), rows)
+    } catch (balanceError) {
+      console.error('Failed to load parking balances for the list', balanceError)
+    }
+
+    return {
+      success: true,
+      data: rows.map((row) => ({ ...row, balance: balances.get(row.id) ?? null })) as ParkingBookingWithBalance[],
+    }
   } catch (error) {
     console.error('Unexpected error listing parking bookings', error)
     return { error: 'An unexpected error occurred' }
@@ -497,42 +531,22 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
     }
 
     const data = parsed.data
-    const start = new Date(data.start_at)
-    const end = new Date(data.end_at)
-    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) {
-      return { error: 'End time must be after start time' }
-    }
-
-    const rateRecord = await getActiveParkingRate(adminClient)
-    if (!rateRecord) {
-      return { error: 'Parking rates have not been configured' }
-    }
-
-    const pricing = calculateParkingPricing(start, end, {
-      hourlyRate: Number(rateRecord.hourly_rate) || 0,
-      dailyRate: Number(rateRecord.daily_rate) || 0,
-      weeklyRate: Number(rateRecord.weekly_rate) || 0,
-      monthlyRate: Number(rateRecord.monthly_rate) || 0,
-    })
 
     // Compare instants, not strings. PostgREST returns "2026-08-11T09:00:00+00:00"
     // while the client sends "2026-08-11T09:00:00.000Z", so a string comparison
     // reported every paid booking as price-affected and refused every edit,
     // including ones that only corrected a customer's name.
-    const sameInstant = (a: string | null | undefined, b: string | null | undefined) => {
-      if (!a || !b) return a === b
-      const left = new Date(a).getTime()
-      const right = new Date(b).getTime()
-      return Number.isNaN(left) || Number.isNaN(right) ? a === b : left === right
+    if (
+      (data.start_at && !sameInstant(existing.start_at, data.start_at)) ||
+      (data.end_at && !sameInstant(existing.end_at, data.end_at))
+    ) {
+      return { error: 'Use Change dates to move a booking\'s dates. It reprices the stay and settles the money.' }
     }
 
-    const priceAffectingChanged =
-      !sameInstant(existing.start_at, data.start_at) ||
-      !sameInstant(existing.end_at, data.end_at) ||
-      Number(existing.override_price ?? 0) !== Number(data.override_price ?? 0)
+    const overrideChanged = Number(existing.override_price ?? 0) !== Number(data.override_price ?? 0)
 
-    if (priceAffectingChanged && ['paid', 'refunded'].includes(existing.payment_status)) {
-      return { error: 'Paid parking bookings cannot have price-affecting fields edited' }
+    if (overrideChanged && ['paid', 'refunded'].includes(existing.payment_status)) {
+      return { error: 'A paid booking\'s price cannot be edited here. Use Change dates to change its dates.' }
     }
 
     const payload = {
@@ -544,11 +558,9 @@ export async function updateParkingBookingDetails(bookingId: string, formData: F
       vehicle_make: data.vehicle_make ?? null,
       vehicle_model: data.vehicle_model ?? null,
       vehicle_colour: data.vehicle_colour ?? null,
-      start_at: data.start_at,
-      end_at: data.end_at,
-      duration_minutes: pricing.durationMinutes,
-      calculated_price: pricing.total,
-      pricing_breakdown: pricing.breakdown,
+      // Dates and the calculated price are deliberately not written here. Recomputing the price on
+      // every edit meant a name correction after a rate change quietly changed what a paid
+      // booking owed; only Change dates reprices a stay.
       notes: data.notes ?? null,
       override_price: data.override_price ?? null,
       override_reason: data.override_reason ?? null,
@@ -986,5 +998,626 @@ export async function markParkingBookingPaid(bookingId: string) {
   } catch (error) {
     console.error('Failed to mark parking booking as paid', error)
     return { error: 'Failed to update payment status' }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Change dates (spec tasks/spec-2026-11-24-parking-change-time-and-settle.md)
+// ---------------------------------------------------------------------------------------------
+
+const ChangeDatesWindowSchema = z.object({
+  start_at: z.string().datetime({ offset: true, message: 'Invalid start time' }),
+  end_at: z.string().datetime({ offset: true, message: 'Invalid end time' }),
+})
+
+const ChangeParkingDatesSchema = ChangeDatesWindowSchema.extend({
+  /** A UUID made once per opening of the dialog, so a double click or retry is recognised. */
+  changeId: z.string().uuid('Invalid change id'),
+  /** The booking's updated_at when the dialog loaded: a booking changed since is refused. */
+  expectedUpdatedAt: z.string().min(1),
+  /** The new price the screen showed. If the server works out a different one, nothing happens. */
+  expectedNewPrice: z.number().nonnegative(),
+  notifyCustomer: z.boolean().default(true),
+  /** Unpaid bookings only: text the new payment link. */
+  sendPaymentLink: z.boolean().default(true),
+  /** Paid bookings that now cost less: what to refund (0 up to the difference). */
+  refundAmount: z.number().nonnegative().optional(),
+  refundReason: z.string().trim().max(500).optional(),
+  manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),
+})
+
+export type ParkingDateChangePreview = {
+  bookingId: string
+  updatedAt: string
+  oldPrice: number
+  newPrice: number
+  netPaid: number
+  balanceAfter: number
+  kind: 'unpaid' | 'none' | 'refund' | 'extra'
+  refundDue: number
+  refundDefault: number
+  extraDue: number
+  insideNoRefundWindow: boolean
+  started: boolean
+  ended: boolean
+  hadOverride: boolean
+  overridePrice: number | null
+  canRefund: boolean
+  paypalRefundPossible: boolean
+  /** Phase 1: a paid booking that would cost more cannot be changed yet. */
+  extendingPaidAvailable: boolean
+}
+
+async function loadChangeContext(bookingId: string, window: { start_at: string; end_at: string }) {
+  const adminClient = createAdminClient()
+  const booking = await getParkingBooking(bookingId, adminClient)
+  if (!booking) return { error: 'Parking booking not found' as const }
+  const rateRecord = await getActiveParkingRate(adminClient)
+  if (!rateRecord) return { error: 'Parking rates have not been configured' as const }
+  const money = await loadParkingMoneyRows(adminClient, [booking.id])
+  const result = planParkingDateChange({
+    booking,
+    payments: money.payments,
+    refunds: money.refunds,
+    newStartAt: window.start_at,
+    newEndAt: window.end_at,
+    rates: parkingRateConfigFromRecord(rateRecord),
+    now: new Date(),
+  })
+  return { adminClient, booking, money, result }
+}
+
+/**
+ * Prices a proposed change of dates on the server (the dialog never prices in the browser) and
+ * says how the difference would be settled. Reads only.
+ */
+export async function previewParkingDateChange(
+  bookingId: string,
+  window: { start_at: string; end_at: string }
+): Promise<{ success: true; data: ParkingDateChangePreview } | { error: string }> {
+  try {
+    const [{ user }, canManage] = await Promise.all([getCurrentUser(), checkUserPermission('parking', 'manage')])
+    if (!user) return { error: 'Authentication required' }
+    if (!canManage) return { error: 'You do not have permission to change parking bookings' }
+
+    const parsed = ChangeDatesWindowSchema.safeParse(window)
+    if (!parsed.success) return { error: parsed.error.errors[0]?.message || 'Invalid dates' }
+
+    const context = await loadChangeContext(bookingId, parsed.data)
+    if ('error' in context) return { error: context.error as string }
+    if (!context.result.ok) return { error: context.result.error }
+
+    const plan = context.result.plan
+    const canRefund = await checkUserPermission('parking', 'refund')
+    return {
+      success: true,
+      data: {
+        bookingId,
+        updatedAt: context.booking.updated_at,
+        oldPrice: plan.oldPrice,
+        newPrice: plan.newPrice,
+        netPaid: plan.netPaid,
+        balanceAfter: plan.balanceAfter,
+        kind: plan.kind,
+        refundDue: plan.refundDue,
+        refundDefault: plan.refundDefault,
+        extraDue: plan.extraDue,
+        insideNoRefundWindow: plan.insideNoRefundWindow,
+        started: plan.started,
+        ended: plan.ended,
+        hadOverride: plan.hadOverride,
+        overridePrice: plan.hadOverride ? Number(context.booking.override_price) : null,
+        canRefund,
+        paypalRefundPossible: plan.paypalRefundPossible,
+        extendingPaidAvailable: false,
+      },
+    }
+  } catch (error) {
+    console.error('Failed to preview a parking date change', error)
+    return { error: 'Could not work out the new price' }
+  }
+}
+
+export type ChangeParkingBookingDatesResult = {
+  success?: boolean
+  error?: string
+  /** Something after the save did not happen (a refund, a link, the text). Never a failed change. */
+  warning?: string
+  /** True when this change had already been saved (a retry of the same dialog). */
+  alreadyApplied?: boolean
+  booking?: ParkingBooking
+  /** A payment link to copy, when one was made. */
+  paymentLink?: string
+  textStatus?: 'sent' | 'held' | 'skipped' | 'failed' | 'not_sent'
+  textNote?: string | null
+  refunded?: number
+}
+
+/**
+ * Changes a parking booking's dates and settles the money in one save (staff only, D9).
+ *
+ * Order matters: the booking is saved first, which is where the capacity trigger claims (or
+ * refuses) the new space, and only then does any money move or any text go. A failure after the
+ * save never rolls the dates back: it comes back as `success` with a `warning` saying what did not
+ * happen, and the booking keeps showing its balance until someone settles it. Paid bookings that
+ * would cost more are refused for now ("Extending a paid booking is not available yet").
+ *
+ * Needs parking "manage". Sending a refund also needs parking "refund"; without it the change
+ * saves and the booking shows the refund as still to do. Refunds are keyed on the changeId plus
+ * the payment id, so the same dialog submitted twice sends one refund and one text.
+ */
+export async function changeParkingBookingDates(
+  bookingId: string,
+  input: z.input<typeof ChangeParkingDatesSchema>
+): Promise<ChangeParkingBookingDatesResult> {
+  try {
+    const [{ user }, canManage] = await Promise.all([getCurrentUser(), checkUserPermission('parking', 'manage')])
+    if (!user) return { error: 'Authentication required' }
+    if (!canManage) return { error: 'You do not have permission to change parking bookings' }
+
+    const parsed = ChangeParkingDatesSchema.safeParse(input)
+    if (!parsed.success) return { error: parsed.error.errors[0]?.message || 'Invalid change' }
+    const data = parsed.data
+
+    const adminClient = createAdminClient()
+
+    // A retry of a change already saved (same dialog, same changeId): say so, move nothing.
+    const { data: earlier, error: earlierError } = await adminClient
+      .from('parking_booking_notifications')
+      .select('id')
+      .eq('booking_id', bookingId)
+      .eq('event_type', 'booking_changed')
+      .contains('payload', { change_id: data.changeId })
+      .limit(1)
+      .maybeSingle()
+    if (earlierError) {
+      console.error('Failed to check for an earlier parking change', earlierError)
+      return { error: 'Could not check whether this change was already saved. Try again.' }
+    }
+    if (earlier) {
+      const current = await getParkingBooking(bookingId, adminClient)
+      return { success: true, alreadyApplied: true, booking: current ?? undefined }
+    }
+
+    const context = await loadChangeContext(bookingId, data)
+    if ('error' in context) return { error: context.error as string }
+    const { booking, money } = context
+    if (!context.result.ok) return { error: context.result.error }
+    const plan = context.result.plan
+
+    if (!sameInstant(booking.updated_at, data.expectedUpdatedAt)) {
+      return { error: 'This booking has changed since you opened Change dates. Close it and open it again.' }
+    }
+
+    if (Math.abs(plan.newPrice - data.expectedNewPrice) > 0.005) {
+      return {
+        error: `The new price is now £${plan.newPrice.toFixed(2)}, not £${data.expectedNewPrice.toFixed(2)}. Check the figures and save again.`,
+      }
+    }
+
+    if (plan.kind === 'extra') {
+      return { error: `This change costs £${plan.extraDue.toFixed(2)} more. Extending a paid booking is not available yet.` }
+    }
+
+    // How a cheaper stay is settled (D1 to D3, D6, and "an amount settled is settled").
+    let refundToSend = 0
+    let overridePrice: number | null = null
+    let overrideReason: string | null = null
+    const canRefund = plan.kind === 'refund' ? await checkUserPermission('parking', 'refund') : false
+    if (plan.kind === 'refund' && canRefund) {
+      const chosen = roundPence(data.refundAmount ?? plan.refundDefault)
+      if (chosen < 0 || chosen > plan.refundDue + 0.005) {
+        return { error: `The refund can be between £0.00 and £${plan.refundDue.toFixed(2)}.` }
+      }
+      if (chosen < plan.refundDue && !data.refundReason) {
+        return { error: 'Give a reason for refunding less than the difference.' }
+      }
+      refundToSend = chosen
+      if (chosen < plan.refundDue) {
+        // The rest is kept, not left as a refund to do: the price becomes what will have been paid.
+        overridePrice = roundPence(plan.netPaid - chosen)
+        overrideReason = `Dates changed; £${roundPence(plan.refundDue - chosen).toFixed(2)} of the difference kept: ${data.refundReason}`
+      }
+    }
+
+    const now = new Date()
+    const resets = reminderFlagResets({
+      startMoved: plan.startMoved,
+      endMoved: plan.endMoved,
+      newStartAt: data.start_at,
+      newEndAt: data.end_at,
+      now,
+    })
+
+    const payload: Record<string, unknown> = {
+      start_at: data.start_at,
+      end_at: data.end_at,
+      duration_minutes: plan.pricing.durationMinutes,
+      calculated_price: plan.newPrice,
+      pricing_breakdown: plan.pricing.breakdown,
+      // A date change clears any old agreed price and starts from the calculated one. While a
+      // refund is on its way the price is held at what has been paid, so the booking reads
+      // settled and nobody can send the same difference again from Refund to do; it is set to
+      // its final figure once the refund has gone (claimRefundThenSettle below).
+      override_price: refundToSend > 0 ? plan.netPaid : overridePrice,
+      override_reason: refundToSend > 0 ? REFUND_IN_PROGRESS_REASON : overrideReason,
+      updated_by: user.id,
+      ...(resets.resetStart ? { paid_start_three_day_sms_sent: false, start_notification_sent: false } : {}),
+      ...(resets.resetEnd ? { paid_end_three_day_sms_sent: false, end_notification_sent: false } : {}),
+    }
+
+    // An unpaid booking whose offer deadline has passed gets a fresh 7-day one, as Payment Link
+    // does; otherwise the deadline is left alone.
+    if (plan.kind === 'unpaid' && (!booking.payment_due_at || new Date(booking.payment_due_at) < now)) {
+      const dueAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+      Object.assign(payload, {
+        payment_due_at: dueAt,
+        expires_at: dueAt,
+        payment_overdue_notified: false,
+        unpaid_week_before_sms_sent: false,
+        unpaid_day_before_sms_sent: false,
+      })
+    }
+
+    // Step 4: save. The capacity trigger runs here. Guarded on updated_at, so two people saving
+    // the same booking at once cannot both settle the same difference.
+    const { data: saved, error: saveError } = await adminClient
+      .from('parking_bookings')
+      .update(payload)
+      .eq('id', booking.id)
+      .eq('updated_at', booking.updated_at)
+      .select('*')
+      .maybeSingle()
+    if (saveError) {
+      console.error('Failed to save parking date change', saveError)
+      return { error: parkingCapacityRefusal(saveError) ?? 'Failed to change the dates' }
+    }
+    if (!saved) {
+      return { error: 'This booking has changed since you opened Change dates. Close it and open it again.' }
+    }
+    let updated = saved as ParkingBooking
+
+    // The change's marker: records the changeId (so a retry is recognised) and tells the reminder
+    // cron a start or end reminder may go again for the new dates.
+    let markerId: string | null = null
+    {
+      const { data: marker, error: markerError } = await adminClient
+        .from('parking_booking_notifications')
+        .insert({
+          booking_id: booking.id,
+          channel: 'sms',
+          event_type: 'booking_changed',
+          status: 'queued',
+          payload: {
+            template_key: 'parking_booking_changed',
+            change_id: data.changeId,
+            old_start_at: booking.start_at,
+            old_end_at: booking.end_at,
+            new_start_at: updated.start_at,
+            new_end_at: updated.end_at,
+            old_price: plan.oldPrice,
+            new_price: bookingPrice(updated),
+            start_moved: plan.startMoved,
+            end_moved: plan.endMoved,
+            reset_start_reminder: resets.resetStart,
+            reset_end_reminder: resets.resetEnd,
+          },
+        })
+        .select('id')
+        .single()
+      if (markerError) {
+        console.error('Failed to record the parking change marker', markerError)
+      } else {
+        markerId = marker.id
+      }
+    }
+
+    const warnings: string[] = []
+    let paymentLink: string | undefined
+    let refunded = 0
+    let textStatus: ChangeParkingBookingDatesResult['textStatus'] = 'not_sent'
+    let textNote: string | null = null
+    let outcome: ParkingChangeOutcome = { kind: 'plain' }
+    let textHandled = false
+
+    // Step 6: settle the money.
+    if (plan.kind === 'unpaid') {
+      const nextAmount = bookingPrice(updated)
+      const pendingRows = money.payments.filter((payment) => payment.status === 'pending')
+      for (const payment of pendingRows) {
+        if (Math.abs(Number(payment.amount) - nextAmount) <= 0.005) continue
+        const { error: expireError } = await adminClient
+          .from('parking_booking_payments')
+          .update({
+            status: 'expired',
+            metadata: {
+              ...((payment.metadata as Record<string, unknown> | null) ?? {}),
+              parking_booking_edited: true,
+              edited_at: now.toISOString(),
+              edited_by: user.id,
+              superseded_reason: 'amount_changed_on_date_change',
+              superseded_amount: payment.amount,
+            },
+          })
+          .eq('id', payment.id)
+          .eq('status', 'pending')
+        if (expireError) console.error('Failed to retire the old parking payment link', expireError)
+      }
+
+      // Always make the new order, so the reminder texts have a real link to carry.
+      try {
+        const appUrl = getAppUrl()
+        const order = await createParkingPaymentOrder(updated, {
+          returnUrl: parkingPaymentReturnUrl(appUrl, updated.id),
+          cancelUrl: parkingGuestUrl(appUrl, updated.id, 'cancelled'),
+          client: adminClient,
+        })
+        paymentLink = order.approveUrl || undefined
+      } catch (orderError) {
+        console.error('Failed to make a parking payment link after a date change', orderError)
+        warnings.push('The dates were changed, but a new payment link could not be made. Press Send payment link on the booking.')
+      }
+
+      if (data.sendPaymentLink && paymentLink) {
+        textHandled = true
+        const sendResult = await sendParkingPaymentRequest(updated, paymentLink, { client: adminClient, changeId: data.changeId })
+        textStatus = sendResult.sent ? 'sent' : sendResult.skipped ? 'skipped' : 'failed'
+        if (!sendResult.sent) {
+          textNote = 'The payment link text did not go, so the customer has not been told. Copy the link below and send it.'
+        }
+        if (markerId) {
+          await settleWrite(
+            adminClient
+              .from('parking_booking_notifications')
+              .update({ status: 'skipped', payload: { ...(await markerPayload(adminClient, markerId)), reason: 'payment_request_sent_instead' } })
+              .eq('id', markerId),
+            { table: 'parking_booking_notifications', what: 'Recording that the payment link text replaced the change text', ids: { markerId } }
+          )
+        }
+      }
+    } else if (plan.kind === 'refund' && refundToSend > 0) {
+      const refundResult = await refundParkingBooking({
+        payments: plan.refundable,
+        amount: refundToSend,
+        reason: data.refundReason || `Parking dates changed (${booking.reference})`,
+        operationId: data.changeId,
+        manualMethod: data.manualRefundMethod,
+        // The change text names the refund. One change, one message.
+        skipCustomerNotification: true,
+        now,
+      })
+      refunded = refundResult.refunded
+      // The final price is what will have been paid once this refund has gone: refunds still
+      // pending count as gone, and any part that did not go through shows as a refund to do.
+      const finalised = await finaliseRefundPrice(adminClient, {
+        bookingId: booking.id,
+        finalPrice: roundPence(plan.netPaid - refundToSend),
+        calculatedPrice: plan.newPrice,
+        reason: overrideReason ?? 'Dates changed; part of the refund did not go through',
+      })
+      if (finalised) updated = { ...updated, ...finalised }
+      else warnings.push('The refund was sent, but the booking price could not be updated. Check the booking before refunding again.')
+      if (refundResult.refunded > 0 && refundResult.viaPayPal) {
+        outcome = { kind: 'refund', amount: refundResult.refunded }
+      }
+      if (!refundResult.complete) {
+        const missing = roundPence(refundToSend - refundResult.refunded)
+        warnings.push(
+          `The dates were changed, but the £${missing.toFixed(2)} refund did not go through. Nothing was sent to the customer about that refund. The booking shows it as a refund to do. ${refundResult.failures.join(' ')}`.trim()
+        )
+      }
+    } else if (plan.kind === 'refund' && !canRefund) {
+      warnings.push(
+        `The dates were changed. A manager will need to send the refund of up to £${plan.refundDue.toFixed(2)}: the booking shows it as a refund to do.`
+      )
+    }
+
+    // Step 7: tell the customer.
+    if (!textHandled) {
+      if (data.notifyCustomer) {
+        const textResult = await sendParkingChangeText({
+          client: adminClient,
+          booking: updated,
+          outcome,
+          changeId: data.changeId,
+          markerId,
+        })
+        textStatus = textResult.status
+        textNote = textResult.note
+      } else if (markerId) {
+        await settleWrite(
+          adminClient
+            .from('parking_booking_notifications')
+            .update({ status: 'skipped', payload: { ...(await markerPayload(adminClient, markerId)), reason: 'Staff chose not to text the customer' } })
+            .eq('id', markerId),
+          { table: 'parking_booking_notifications', what: 'Recording that the change text was not sent', ids: { markerId } }
+        )
+        textStatus = 'skipped'
+        textNote = 'You chose not to text the customer.'
+      }
+    }
+
+    if (textStatus === 'failed' || (textStatus === 'skipped' && data.notifyCustomer && textNote)) {
+      warnings.push(textNote ?? 'The customer was not texted.')
+    }
+
+    // Step 8: audit.
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'update',
+      resource_type: 'parking_booking',
+      resource_id: booking.id,
+      operation_status: 'success',
+      old_values: { start_at: booking.start_at, end_at: booking.end_at, price: plan.oldPrice },
+      new_values: { start_at: updated.start_at, end_at: updated.end_at, price: bookingPrice(updated) },
+      additional_info: {
+        action: 'change_parking_dates',
+        change_id: data.changeId,
+        difference: roundPence(plan.newPrice - plan.oldPrice),
+        settlement: plan.kind,
+        refund_chosen: refundToSend,
+        refunded,
+        kept_by_override: overridePrice !== null,
+        payment_link_made: Boolean(paymentLink),
+        text_status: textStatus,
+        warnings,
+      },
+    })
+
+    revalidatePath('/parking')
+    revalidateTag('dashboard')
+
+    return {
+      success: true,
+      booking: updated,
+      warning: warnings.length > 0 ? warnings.join(' ') : undefined,
+      paymentLink,
+      textStatus,
+      textNote,
+      refunded,
+    }
+  } catch (error) {
+    console.error('Failed to change parking booking dates', error)
+    return { error: parkingCapacityRefusal(error) ?? 'Failed to change the dates' }
+  }
+}
+
+const REFUND_IN_PROGRESS_REASON = 'Refund in progress'
+
+/**
+ * Sets a parking booking's price once a refund has been sent. `finalPrice` is the net paid before
+ * the refund less the amount asked for, so a refund that only partly went through leaves exactly
+ * the unsent part as a refund to do. Equal to the calculated price means no agreed price at all.
+ * Returns the written fields, or null when the write failed.
+ */
+async function finaliseRefundPrice(
+  client: ReturnType<typeof createAdminClient>,
+  input: { bookingId: string; finalPrice: number; calculatedPrice: number; reason: string }
+): Promise<Pick<ParkingBooking, 'override_price' | 'override_reason'> | null> {
+  const same = Math.abs(input.finalPrice - input.calculatedPrice) <= 0.005
+  const fields = { override_price: same ? null : input.finalPrice, override_reason: same ? null : input.reason }
+  const ok = await settleWrite(client.from('parking_bookings').update(fields).eq('id', input.bookingId), {
+    table: 'parking_bookings',
+    what: 'Setting the parking price after a refund',
+    ids: { bookingId: input.bookingId },
+    note: 'the refund itself went through',
+  })
+  return ok ? fields : null
+}
+
+async function markerPayload(client: ReturnType<typeof createAdminClient>, markerId: string): Promise<Record<string, unknown>> {
+  const { data } = await client.from('parking_booking_notifications').select('payload').eq('id', markerId).maybeSingle()
+  return (data?.payload as Record<string, unknown> | null) ?? {}
+}
+
+const SettleRefundDueSchema = z.object({
+  operationId: z.string().uuid('Invalid operation id'),
+  /** True: no refund is due after all, so the difference is kept (with a reason). */
+  noRefund: z.boolean().default(false),
+  amount: z.number().nonnegative().optional(),
+  reason: z.string().trim().min(1, 'Give a reason').max(500),
+  manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),
+})
+
+/**
+ * Settles a "refund to do" on a confirmed parking booking: sends some or all of it, or records
+ * that none is due. Whatever is not sent is recorded as kept (the agreed price becomes what the
+ * booking has then paid), so the booking reads settled. Needs parking "refund".
+ */
+export async function settleParkingRefundDue(
+  bookingId: string,
+  input: z.input<typeof SettleRefundDueSchema>
+): Promise<{ success?: boolean; error?: string; warning?: string; refunded?: number }> {
+  try {
+    const [{ user }, canRefund] = await Promise.all([getCurrentUser(), checkUserPermission('parking', 'refund')])
+    if (!user) return { error: 'Authentication required' }
+    if (!canRefund) return { error: 'You do not have permission to refund parking bookings' }
+
+    const parsed = SettleRefundDueSchema.safeParse(input)
+    if (!parsed.success) return { error: parsed.error.errors[0]?.message || 'Invalid refund' }
+    const data = parsed.data
+
+    const adminClient = createAdminClient()
+    const booking = await getParkingBooking(bookingId, adminClient)
+    if (!booking) return { error: 'Parking booking not found' }
+    const money = await loadParkingMoneyRows(adminClient, [booking.id])
+    const balance = computeParkingBalance(booking, money.payments, money.refunds)
+    if (balance.state !== 'refund_due') return { error: 'There is no refund to do on this booking.' }
+    const due = roundPence(-balance.balance)
+
+    const amount = data.noRefund ? 0 : roundPence(data.amount ?? due)
+    if (amount < 0 || amount > due + 0.005) return { error: `The refund can be between £0.00 and £${due.toFixed(2)}.` }
+
+    const kept = roundPence(due - amount)
+    const finalPrice = roundPence(balance.netPaid - amount)
+    const keptReason = `£${kept.toFixed(2)} of a refund kept: ${data.reason}`
+
+    // Claim the booking before any money moves. Guarded on updated_at (a trigger bumps it on every
+    // write), so of two people settling at once only one gets through. With a refund to send, the
+    // price is held at what has been paid, so the booking reads settled while the refund is on its
+    // way and nobody else can send it too; it is set to its final figure once the refund has gone.
+    const sending = amount > 0
+    const { data: claimed, error: claimError } = await adminClient
+      .from('parking_bookings')
+      .update({
+        override_price: sending ? balance.netPaid : finalPrice,
+        override_reason: sending ? REFUND_IN_PROGRESS_REASON : keptReason,
+        updated_by: user.id,
+      })
+      .eq('id', booking.id)
+      .eq('updated_at', booking.updated_at)
+      .select('id')
+      .maybeSingle()
+    if (claimError) {
+      console.error('Failed to claim a parking refund to do', claimError)
+      return { error: 'Failed to record the decision' }
+    }
+    if (!claimed) {
+      return { error: 'This booking has just changed. Close this and check it again before refunding.' }
+    }
+
+    let refunded = 0
+    let warning: string | undefined
+    if (amount > 0) {
+      const result = await refundParkingBooking({
+        payments: refundablePayments(money.payments, money.refunds),
+        amount,
+        reason: data.reason,
+        operationId: data.operationId,
+        manualMethod: data.manualRefundMethod,
+        skipCustomerNotification: false,
+      })
+      refunded = result.refunded
+      const finalised = await finaliseRefundPrice(adminClient, {
+        bookingId: booking.id,
+        finalPrice,
+        calculatedPrice: Number(booking.calculated_price ?? 0),
+        reason: kept > 0 ? keptReason : 'Part of a refund did not go through',
+      })
+      if (!finalised) {
+        warning = 'The refund was sent, but the booking price could not be updated. Check the booking before refunding again.'
+      }
+      if (!result.complete) {
+        warning = [warning, `£${roundPence(amount - result.refunded).toFixed(2)} of the refund did not go through and still shows as a refund to do. ${result.failures.join(' ')}`.trim()]
+          .filter(Boolean)
+          .join(' ')
+      }
+    }
+
+    await logAuditEvent({
+      user_id: user.id,
+      operation_type: 'refund',
+      resource_type: 'parking_booking',
+      resource_id: booking.id,
+      operation_status: 'success',
+      additional_info: { action: 'settle_parking_refund_due', due, chosen: amount, refunded, no_refund: data.noRefund, reason: data.reason },
+    })
+
+    revalidatePath('/parking')
+    revalidateTag('dashboard')
+    return { success: true, refunded, warning }
+  } catch (error) {
+    console.error('Failed to settle a parking refund to do', error)
+    return { error: 'Failed to settle the refund' }
   }
 }

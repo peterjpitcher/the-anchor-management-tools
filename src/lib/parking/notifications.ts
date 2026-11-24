@@ -87,3 +87,37 @@ export function buildSessionThreeDayReminderSms(booking: ParkingNotificationBook
 
   return `The Anchor: ${booking.customer_first_name}! Heads up, your parking wraps up on ${formatDateTime(booking.end_at)}. Need to extend? Give us a shout on ${CONTACT_NUMBER}.`
 }
+
+/**
+ * Texts for a change of dates (spec section 8.1, wording approved by the owner on 24 November
+ * 2026). Amounts always come from the server's figures. Plain apostrophes only, so each stays in
+ * the GSM-7 alphabet.
+ */
+export type ParkingChangeOutcome =
+  | { kind: 'plain' }
+  | { kind: 'refund'; amount: number }
+  | { kind: 'pay_link'; amount: number; link: string }
+  | { kind: 'paid_at_venue'; amount: number }
+
+function stayLine(booking: ParkingNotificationBooking): string {
+  return `your parking is now ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.`
+}
+
+export function buildBookingChangedSms(booking: ParkingNotificationBooking, outcome: ParkingChangeOutcome): string {
+  const opening = `The Anchor: Hi ${booking.customer_first_name}, ${stayLine(booking)}`
+  const questions = ` Any questions, call ${CONTACT_NUMBER}.`
+  switch (outcome.kind) {
+    case 'refund':
+      return `${opening} We are refunding £${outcome.amount.toFixed(2)} to the way you paid.${questions}`
+    case 'pay_link':
+      return `${opening} There is £${outcome.amount.toFixed(2)} extra to pay: ${outcome.link}.${questions}`
+    case 'paid_at_venue':
+      return `${opening} Thanks for the £${outcome.amount.toFixed(2)} you paid today.`
+    default:
+      return `${opening}${questions}`
+  }
+}
+
+export function buildTopUpReceivedSms(booking: ParkingNotificationBooking, amount: number): string {
+  return `The Anchor: Hi ${booking.customer_first_name}, thanks, we have your £${amount.toFixed(2)}. Your parking is ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}.`
+}
