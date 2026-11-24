@@ -3680,12 +3680,18 @@ export default function PrivateBookingDetailClient({
                   className="w-full"
                   onClick={handleSendContract}
                   disabled={!booking.contact_email}
+                  aria-describedby={!booking.contact_email ? 'contract-email-hint' : undefined}
                   loading={sendingContract}
                   icon={<Icon name="mail" size={16} />}
                   iconRight={<Icon name="chevronRight" size={16} />}
                 >
                   <span className="flex-1 text-left">Email Contract</span>
                 </Button>
+                {!booking.contact_email && (
+                  <p id="contract-email-hint" className="text-xs text-text-muted px-1">
+                    Add an email address to this booking to send the contract.
+                  </p>
+                )}
                 {booking.contract_sent_at ? (
                   <p className="text-xs text-text-muted px-1">
                     Contract sent {formatDateFull(booking.contract_sent_at)}
