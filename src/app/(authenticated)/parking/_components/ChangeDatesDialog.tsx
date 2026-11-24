@@ -228,7 +228,7 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
       {linkToCopy ? (
         <div className="space-y-3">
           <Alert tone="warning" title="The customer has not been told">
-            The dates were changed, but the payment link was not texted. Copy it and send it to the customer.
+            The dates were changed, but the payment link did not reach the customer. Copy it and send it to them.
           </Alert>
           <Input label="Payment link" readOnly value={linkToCopy} onFocus={(e) => e.currentTarget.select()} />
           <Button variant="secondary" size="sm" onClick={copyLink}>Copy link</Button>
@@ -298,7 +298,7 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
                   <Radio
                     name="extra-choice"
                     value="link"
-                    label="Text a payment link"
+                    label="Send a payment link"
                     checked={extraChoice === 'link'}
                     onChange={() => setExtraChoice('link')}
                   />
@@ -382,12 +382,13 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
               )}
 
               {!(preview.kind === 'unpaid' && sendPaymentLink) && (
-                <Switch label="Tell the customer by text" checked={notifyCustomer} onChange={setNotifyCustomer} />
+                <Switch label="Tell the customer" checked={notifyCustomer} onChange={setNotifyCustomer} />
               )}
 
               {textPreview && (notifyCustomer || (preview.kind === 'unpaid' && sendPaymentLink)) && (
                 <div className="space-y-1">
-                  <p className="text-sm font-medium text-text">The text the customer gets</p>
+                  <p className="text-sm font-medium text-text">What the customer is told</p>
+                  <p className="text-xs text-text-muted">By email when we have their address, otherwise by text. This is the text version.</p>
                   <p className="rounded-lg border border-border bg-surface-2 p-3 text-sm text-text">{textPreview}</p>
                 </div>
               )}

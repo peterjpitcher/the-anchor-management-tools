@@ -69,7 +69,7 @@ async function openAndExtend() {
 describe('ChangeDatesDialog, a paid stay that now costs more', () => {
   it('offers the three choices, with a payment link chosen and its text previewed', async () => {
     await openAndExtend()
-    expect(screen.getByLabelText('Text a payment link')).toBeChecked()
+    expect(screen.getByLabelText('Send a payment link')).toBeChecked()
     expect(screen.getByLabelText('Paid at the venue')).not.toBeChecked()
     expect(screen.getByLabelText('No extra charge')).not.toBeChecked()
     expect(screen.getByText(/There is £30.00 extra to pay: \[payment link\]/)).toBeInTheDocument()

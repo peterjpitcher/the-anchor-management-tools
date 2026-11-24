@@ -17,6 +17,29 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
 
+// Parking messages go email first through notifyCustomer. These tests are about what happens
+// around a TEXT (a booking with no email), so the stand-in sends by text through the sendSMS mock,
+// unless a test says no channel is available.
+const { noChannel } = vi.hoisted(() => ({ noChannel: { value: false } }))
+vi.mock('@/lib/notifications/notify', () => ({
+  notifyCustomer: vi.fn(async (input: { sms: { to: string; body: string; options: unknown } }) => {
+    if (noChannel.value) {
+      return { selectedChannels: [], attempts: [], finalStatus: 'no_channel', sentChannel: null, fallbackUsed: false }
+    }
+    const { sendSMS: send } = await import('@/lib/twilio')
+    const r = (await (send as unknown as Mock)(input.sms.to, input.sms.body, input.sms.options)) as Record<string, unknown>
+    const attempt = {
+      channel: 'sms',
+      success: r.success === true,
+      code: typeof r.code === 'string' ? r.code : null,
+      logFailure: r.logFailure === true,
+      messageId: typeof r.sid === 'string' ? r.sid : null,
+      error: typeof r.error === 'string' ? r.error : null,
+    }
+    return { selectedChannels: ['sms'], attempts: [attempt], finalStatus: attempt.success ? 'sent' : 'failed', sentChannel: attempt.success ? 'sms' : null, fallbackUsed: false }
+  }),
+}))
+
 vi.mock('@/lib/sms/support', () => ({
   ensureReplyInstruction: vi.fn((value: string) => value),
 }))
@@ -47,6 +70,7 @@ import { captureParkingPayment, sendParkingPaymentRequest } from '@/lib/parking/
 describe('parking payment persistence guards', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    noChannel.value = false
   })
 
   it('persists sms_code and sms_log_failure markers when sendSMS returns logging_failed', async () => {
@@ -85,7 +109,7 @@ describe('parking payment persistence guards', () => {
     )
 
     expect(error).toHaveBeenCalledWith(
-      'Parking payment request SMS sent but outbound message logging failed',
+      'Parking customer message sent but its outbound log row was not written',
       expect.any(Object)
     )
     expect(logParkingNotification).toHaveBeenCalledWith(
@@ -163,7 +187,7 @@ describe('parking payment persistence guards', () => {
     )
 
     expect(error).toHaveBeenCalledWith(
-      'Parking payment confirmation SMS sent but outbound message logging failed',
+      'Parking customer message sent but its outbound log row was not written',
       expect.any(Object)
     )
     expect(logParkingNotification).toHaveBeenCalledWith(
@@ -222,7 +246,7 @@ describe('parking payment persistence guards', () => {
     })
     expect(updateEq).toHaveBeenCalledWith('id', 'booking-1')
     expect(error).toHaveBeenCalledWith(
-      'Parking payment request SMS sent but failed to persist booking reminder flags',
+      'Parking payment request sent but failed to persist booking reminder flags',
       expect.any(Object)
     )
   })
@@ -267,7 +291,7 @@ describe('parking payment persistence guards', () => {
       logFailure: true,
     })
     expect(error).toHaveBeenCalledWith(
-      'Parking payment request SMS sent but failed to persist booking reminder flags',
+      'Parking payment request sent but failed to persist booking reminder flags',
       expect.any(Object)
     )
   })
@@ -356,81 +380,29 @@ describe('parking payment persistence guards', () => {
     )
   })
 
-  it('fails closed and skips SMS when customer opt-in lookup errors', async () => {
-    const customerMaybeSingle = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'customer lookup unavailable' },
-    })
-    const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
-    const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
+  it('skips, and says so, when the customer has no usable email and cannot be texted', async () => {
+    // The opt-out and lookup checks now live in notifyCustomer (its own tests cover them).
+    noChannel.value = true
+    const supabase = {} as any
 
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === 'customers') {
-          return { select: customerSelect }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
-    }
-
-    await sendParkingPaymentRequest(
+    const result = await sendParkingPaymentRequest(
       {
         id: 'booking-2',
         customer_id: 'customer-1',
         customer_mobile: '+447700900123',
       } as any,
       'https://example.com/pay',
-      { client: supabase as any }
+      { client: supabase }
     )
 
+    expect(result).toEqual({ sent: false, skipped: true, code: null, logFailure: false })
     expect(sendSMS).not.toHaveBeenCalled()
     expect(logParkingNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         booking_id: 'booking-2',
-        channel: 'sms',
         event_type: 'payment_request',
         status: 'skipped',
-        payload: expect.objectContaining({ reason: 'Customer SMS eligibility lookup failed' })
-      }),
-      supabase
-    )
-  })
-
-  it('fails closed and skips SMS when customer opt-in lookup affects no rows', async () => {
-    const customerMaybeSingle = vi.fn().mockResolvedValue({
-      data: null,
-      error: null,
-    })
-    const customerEq = vi.fn().mockReturnValue({ maybeSingle: customerMaybeSingle })
-    const customerSelect = vi.fn().mockReturnValue({ eq: customerEq })
-
-    const supabase = {
-      from: vi.fn((table: string) => {
-        if (table === 'customers') {
-          return { select: customerSelect }
-        }
-        throw new Error(`Unexpected table: ${table}`)
-      }),
-    }
-
-    await sendParkingPaymentRequest(
-      {
-        id: 'booking-3',
-        customer_id: 'customer-2',
-        customer_mobile: '+447700900123',
-      } as any,
-      'https://example.com/pay',
-      { client: supabase as any }
-    )
-
-    expect(sendSMS).not.toHaveBeenCalled()
-    expect(logParkingNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        booking_id: 'booking-3',
-        channel: 'sms',
-        event_type: 'payment_request',
-        status: 'skipped',
-        payload: expect.objectContaining({ reason: 'Customer SMS eligibility lookup failed' })
+        payload: expect.objectContaining({ reason: 'No usable email address, and the customer cannot be texted' })
       }),
       supabase
     )

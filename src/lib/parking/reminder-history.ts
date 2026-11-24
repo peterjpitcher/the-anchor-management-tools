@@ -31,7 +31,7 @@ export async function hasParkingReminderBeenSent(
   let query = supabase.from('parking_booking_notifications')
     .select('id')
     .eq('booking_id', input.bookingId)
-    .eq('channel', 'sms')
+    // Either channel: reminders go by email first and by text only without one.
     .eq('event_type', input.eventType)
     .eq('status', 'sent')
     .limit(1)

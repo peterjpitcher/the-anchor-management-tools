@@ -16,6 +16,22 @@ vi.mock('@/lib/parking/sms-safety', () => ({ resolveParkingSmsEligibility: vi.fn
 vi.mock('@/lib/email/emailService', () => ({ sendEmail: vi.fn() }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: vi.fn() }))
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
+// notifyCustomer as it behaves for a customer with a usable address: email first, a text only
+// without one (its own tests cover suppression, opt-outs and fallback).
+vi.mock('@/lib/notifications/notify', () => ({
+  notifyCustomer: vi.fn(async (input: { email?: Record<string, unknown> & { to?: string | null }; sms?: { to: string; body: string; options: unknown } }) => {
+    const { sendEmail: email } = await import('@/lib/email/emailService')
+    const { sendSMS: text } = await import('@/lib/twilio')
+    if (input.email?.to) {
+      const r = (await (email as unknown as (o: unknown) => Promise<{ success: boolean; messageId?: string }>)(input.email)) ?? { success: false }
+      const attempt = { channel: 'email', success: r.success, code: null, logFailure: false, messageId: r.messageId ?? null, error: null }
+      return { selectedChannels: ['email', 'sms'], attempts: [attempt], finalStatus: r.success ? 'sent' : 'failed', sentChannel: r.success ? 'email' : null, fallbackUsed: false }
+    }
+    const r = (await (text as unknown as (...a: unknown[]) => Promise<{ success: boolean; sid?: string }>)(input.sms?.to, input.sms?.body, input.sms?.options)) ?? { success: false }
+    const attempt = { channel: 'sms', success: r.success, code: null, logFailure: false, messageId: r.sid ?? null, error: null }
+    return { selectedChannels: ['sms'], attempts: [attempt], finalStatus: r.success ? 'sent' : 'failed', sentChannel: r.success ? 'sms' : null, fallbackUsed: false }
+  }),
+}))
 
 import { capturePayPalPayment, createSimplePayPalOrder, getPayPalOrder } from '@/lib/paypal'
 import { sendSMS } from '@/lib/twilio'
@@ -222,15 +238,18 @@ describe('captureParkingPayment on a top-up', () => {
     expect(paymentsOf(db).find((row) => row.id === 'pay-topup')).toMatchObject({ status: 'paid', transaction_id: 'CAPTURE-TOPUP' })
     // Status, confirmation time and reminder flags: nothing written to the booking.
     expect(db.writes.filter((write) => write.table === 'parking_bookings')).toEqual([])
-    expect(sendSMS).toHaveBeenCalledTimes(1)
-    const [, body, options] = vi.mocked(sendSMS).mock.calls[0]
-    expect(body).toContain('thanks, we have your £30.00')
-    expect(body).not.toContain('now confirmed')
-    expect((options as { metadata: Record<string, unknown> }).metadata).toMatchObject({ event_type: 'top_up_received', payment_id: 'pay-topup' })
-    expect(sendEmail).not.toHaveBeenCalled()
+    // The customer has an email address, so the receipt goes by email and no text is sent.
+    expect(sendSMS).not.toHaveBeenCalled()
+    expect(sendEmail).toHaveBeenCalledTimes(1)
+    const sent = vi.mocked(sendEmail).mock.calls[0][0] as unknown as Record<string, unknown>
+    expect(sent).toMatchObject({ to: 'sam@example.com', subject: 'Thanks for your payment, PAR-20261201-0001', parkingBookingId: BOOKING_ID })
+    expect(String(sent.text)).toContain('thanks, we have your payment of £30.00')
+    expect(String(sent.text)).not.toContain('confirmed')
+    expect(sent.metadata).toMatchObject({ event_type: 'top_up_received', payment_id: 'pay-topup' })
+    expect(String(sent.idempotencyKey)).toContain('payment_id=pay-topup')
     const logged = db.rows('parking_booking_notifications')
     expect(logged).toHaveLength(1)
-    expect(logged[0]).toMatchObject({ event_type: 'top_up_received', status: 'sent' })
+    expect(logged[0]).toMatchObject({ event_type: 'top_up_received', status: 'sent', channel: 'email' })
   })
 
   it('refuses, taking no money, when the link no longer matches what is owed', async () => {
@@ -272,7 +291,20 @@ describe('captureParkingPayment on a top-up', () => {
     const result = await captureParkingPayment(unpaid, 'ORDER-FIRST', { client: db.client as never })
 
     expect(result).toMatchObject({ status: 'confirmed', payment_status: 'paid' })
-    expect(vi.mocked(sendSMS).mock.calls[0][1]).toContain('now confirmed')
+    const subjects = vi.mocked(sendEmail).mock.calls.map((call) => (call[0] as unknown as { subject: string }).subject)
+    expect(subjects).toContain('Your parking is confirmed, PAR-20261201-0001')
+    expect(sendSMS).not.toHaveBeenCalled()
+  })
+
+  it('texts the receipt to a customer with no email address', async () => {
+    const noEmail = booking({ customer_email: null })
+    const db = seed({ booking: noEmail })
+    await captureParkingPayment(noEmail, 'ORDER-TOPUP', { client: db.client as never })
+    expect(sendEmail).not.toHaveBeenCalled()
+    const [, body, options] = vi.mocked(sendSMS).mock.calls[0]
+    expect(body).toContain('thanks, we have your £30.00')
+    expect((options as { metadata: Record<string, unknown> }).metadata).toMatchObject({ event_type: 'top_up_received', payment_id: 'pay-topup' })
+    expect(db.rows('parking_booking_notifications')[0]).toMatchObject({ channel: 'sms', status: 'sent' })
   })
 })
 
@@ -294,7 +326,7 @@ describe('reconcileCapturedParkingPayment on a top-up', () => {
     expect(result?.status).toBe('confirmed')
     expect(paymentsOf(db).find((row) => row.id === 'pay-topup')).toMatchObject({ status: 'paid', transaction_id: 'CAPTURE-TOPUP' })
     expect(db.writes.filter((write) => write.table === 'parking_bookings')).toEqual([])
-    expect(vi.mocked(sendSMS).mock.calls[0][1]).toContain('thanks, we have your £30.00')
+    expect(String((vi.mocked(sendEmail).mock.calls[0][0] as unknown as { text: string }).text)).toContain('£30.00')
   })
 })
 

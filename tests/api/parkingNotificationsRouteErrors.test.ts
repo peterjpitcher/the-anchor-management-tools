@@ -17,6 +17,24 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn(),
 }))
 
+// These are about the SMS safety signals, so the stand-in for notifyCustomer sends by text
+// through the sendSMS mock, as it does for a customer with no usable email.
+vi.mock('@/lib/notifications/notify', () => ({
+  notifyCustomer: vi.fn(async (input: { sms: { to: string; body: string; options: unknown } }) => {
+    const { sendSMS: send } = await import('@/lib/twilio')
+    const r = (await (send as unknown as (...a: unknown[]) => Promise<Record<string, unknown>>)(input.sms.to, input.sms.body, input.sms.options)) ?? {}
+    const attempt = {
+      channel: 'sms',
+      success: r.success === true,
+      code: typeof r.code === 'string' ? r.code : null,
+      logFailure: r.logFailure === true,
+      messageId: typeof r.sid === 'string' ? r.sid : null,
+      error: null,
+    }
+    return { selectedChannels: ['sms'], attempts: [attempt], finalStatus: attempt.success ? 'sent' : 'failed', sentChannel: attempt.success ? 'sms' : null, fallbackUsed: false }
+  }),
+}))
+
 vi.mock('@/lib/parking/repository', () => ({
   logParkingNotification: vi.fn().mockResolvedValue(undefined),
 }))
@@ -287,14 +305,13 @@ describe('parking notifications route error payloads', () => {
 
           if (table === 'parking_booking_notifications') {
             return {
+              // booking, event type, status (either channel now), then the stage.
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   eq: vi.fn(() => ({
                     eq: vi.fn(() => ({
-                      eq: vi.fn(() => ({
-                        limit: vi.fn(() => ({
-                          contains: vi.fn().mockResolvedValue({ data: [], error: null }),
-                        })),
+                      limit: vi.fn(() => ({
+                        contains: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
                   })),
@@ -448,14 +465,13 @@ describe('parking notifications route error payloads', () => {
 
           if (table === 'parking_booking_notifications') {
             return {
+              // booking, event type, status (either channel now), then the stage.
               select: vi.fn(() => ({
                 eq: vi.fn(() => ({
                   eq: vi.fn(() => ({
                     eq: vi.fn(() => ({
-                      eq: vi.fn(() => ({
-                        limit: vi.fn(() => ({
-                          contains: vi.fn().mockResolvedValue({ data: [], error: null }),
-                        })),
+                      limit: vi.fn(() => ({
+                        contains: vi.fn().mockResolvedValue({ data: [], error: null }),
                       })),
                     })),
                   })),

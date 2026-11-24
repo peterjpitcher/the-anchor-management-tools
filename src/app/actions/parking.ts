@@ -1497,7 +1497,7 @@ export async function changeParkingBookingDates(
         const sendResult = await sendParkingPaymentRequest(updated, paymentLink, { client: adminClient, changeId: data.changeId })
         textStatus = sendResult.sent ? 'sent' : sendResult.skipped ? 'skipped' : 'failed'
         if (!sendResult.sent) {
-          textNote = 'The payment link text did not go, so the customer has not been told. Copy the link below and send it.'
+          textNote = 'The payment link did not reach the customer, so they have not been told. Copy the link below and send it.'
         }
         if (markerId) {
           await settleWrite(
@@ -1623,17 +1623,17 @@ export async function changeParkingBookingDates(
         await settleWrite(
           adminClient
             .from('parking_booking_notifications')
-            .update({ status: 'skipped', payload: { ...(await markerPayload(adminClient, markerId)), reason: 'Staff chose not to text the customer' } })
+            .update({ status: 'skipped', payload: { ...(await markerPayload(adminClient, markerId)), reason: 'Staff chose not to tell the customer' } })
             .eq('id', markerId),
           { table: 'parking_booking_notifications', what: 'Recording that the change text was not sent', ids: { markerId } }
         )
         textStatus = 'skipped'
-        textNote = 'You chose not to text the customer.'
+        textNote = 'You chose not to tell the customer.'
       }
     }
 
     if (textStatus === 'failed' || (textStatus === 'skipped' && data.notifyCustomer && textNote)) {
-      warnings.push(textNote ?? 'The customer was not texted.')
+      warnings.push(textNote ?? 'The customer was not told.')
     }
 
     // Step 8: audit.
