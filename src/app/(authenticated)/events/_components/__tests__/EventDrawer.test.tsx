@@ -64,7 +64,7 @@ function checkPreflightRequirements(input: PreflightInput): PreflightIssue[] {
 
   const pk = parseKeywords(input.primaryKeywords)
   if (pk.length === 0) {
-    issues.push({ type: 'error', message: 'At least one primary keyword is required' })
+    issues.push({ type: 'error', message: 'Add a focus phrase: the one search this page should be found for.' })
   }
 
   const hasDetail = !!(
@@ -126,7 +126,7 @@ describe('EventDrawer preflight checks', () => {
 
   it('requires at least one primary keyword', () => {
     const issues = checkPreflightRequirements(makeValidInput({ primaryKeywords: '' }))
-    expect(issues.some(i => i.type === 'error' && i.message.includes('primary keyword'))).toBe(true)
+    expect(issues.some(i => i.type === 'error' && i.message.includes('focus phrase'))).toBe(true)
   })
 
   it('accepts comma-separated primary keywords', () => {

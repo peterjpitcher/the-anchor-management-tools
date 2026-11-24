@@ -67,3 +67,23 @@ export function focusPhrase(primaryKeywords: string[]): string | null {
   }
   return null
 }
+
+/**
+ * A focus phrase to offer staff from the event name, for them to confirm or replace: the part
+ * after a colon when there is one ("Sleigh My Name: Festive Music Bingo" gives "festive music
+ * bingo"), otherwise the whole name without "at The Anchor". Null when nothing usable is left.
+ */
+export function suggestFocusPhrase(eventName: string | null | undefined): string | null {
+  const name = (eventName ?? '').trim()
+  if (!name) return null
+  const afterColon = name.includes(':') ? name.slice(name.lastIndexOf(':') + 1) : name
+  const phrase = afterColon
+    .replace(/\bat\s+the\s+anchor\b/gi, ' ')
+    .replace(/\bthe\s+anchor\b/gi, ' ')
+    .replace(/[‘’ʼ]/g, "'")
+    .replace(/[^\p{L}\p{N}'&£ ]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+  return keywordTokens(phrase).length > 0 ? phrase : null
+}

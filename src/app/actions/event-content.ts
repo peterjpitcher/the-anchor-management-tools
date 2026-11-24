@@ -10,11 +10,13 @@ import { retry, RetryConfigs } from '@/lib/retry'
 import type { RetryOptions } from '@/lib/retry'
 import {
   validateGeneratedContent,
+  findLongSentences,
   applyDeterministicRepair,
   normalizeSlug,
   focusPhrase,
 } from '@/lib/seo-validation'
 import type { SeoValidationIssue } from '@/lib/seo-validation'
+import { EVENT_SEO_LIMITS } from '@/lib/event-seo/limits'
 import {
   buildEventSeoFacts,
   describeKitchenServiceForEvent,
@@ -198,9 +200,11 @@ async function runEventFactCheck(args: {
   }
   const raw = payload?.choices?.[0]?.message?.content
   if (typeof raw !== 'string') throw new Error('The copy could not be checked. Please try again.')
-  const verdict = z.object({ issues: z.array(z.string().trim().min(1).max(500)).max(10) }).strict().safeParse(JSON.parse(raw))
+  // A long or numerous list is still a list of problems: shorten it rather than throw it away.
+  // An empty issue string still fails the parse, so a malformed reply never reads as a pass.
+  const verdict = z.object({ issues: z.array(z.string().trim().min(1)) }).strict().safeParse(JSON.parse(raw))
   if (!verdict.success) throw new Error('The factual check could not be completed. Please try again.')
-  return verdict.data.issues
+  return verdict.data.issues.slice(0, 10).map((issue) => (issue.length > 500 ? `${issue.slice(0, 497)}...` : issue))
 }
 
 const SEO_FACT_CHECK_INSTRUCTION = ' This draft is the copy for the event page on the website. The facts are the event record (FACTS_JSON) and the verified venue context; both are the only sources. Check the date, weekday, start and end times, price and how it is paid, performer, capacity, food and kitchen hours (kitchen_service), and every prize or amount, in every field including the FAQs and highlights. Go through every £ amount, number, time and date in the draft one at a time, and report each one that neither source states, such as a price for an extra (a dabber, a drink, a book) when the facts give none. A prize, amount, age rule, facility or menu claim that neither source states is unsupported: report it. A prize that depends on something (a Snowball that is only projected, a jackpot that depends on earlier nights or on sales) must carry its condition wherever it is mentioned, highlights included; report any mention that states it as certain. The closing instruction: only the meta description may end with a booking action; elsewhere booking is stated as fact. The event page on the website carries its own booking form, so "Booking is through the form on this page" is always true, whatever the brief says about booking at the-anchor.pub: never report it, and never ask for a web address instead.'
@@ -529,7 +533,12 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
         baseUrl: config.baseUrl,
         apiKey,
         instruction: SEO_FACT_CHECK_INSTRUCTION,
-        facts: { event: JSON.parse(buildFactsJson(facts)), venue: ANCHOR_VENUE_CONTEXT_PROMPT },
+        facts: {
+          event: JSON.parse(buildFactsJson(facts)),
+          venue: ANCHOR_VENUE_CONTEXT_PROMPT,
+          // Stated as a fact, not only as a rule: the checker has still asked for the web address.
+          booking: 'This draft is the event page on the-anchor.pub, and that page carries the booking form. "Booking is through the form on this page" is the same thing as booking online at the-anchor.pub.',
+        },
         draft: factCheckableDraft(draft),
         timeoutMs: Math.min(FACT_CHECK_TIMEOUT_MS, remaining()),
         maxTokens: 800,
@@ -593,7 +602,54 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
       postRepairIssueCodes = validation.issues.map(i => i.code)
     }
 
-    // 8. NEVER fall back to an unchecked draft as success
+    // 8. Best effort on voice and length: ask once for any sentence over the house style's
+    // length to be split, and for a meta description over its limit to be cut. The rewrite is
+    // kept only if it passes the gate and the fact check again and has fewer of these
+    // problems; otherwise the draft already checked above stands.
+    const polishIssues = (draft: Record<string, unknown>): SeoValidationIssue[] => {
+      const issues: SeoValidationIssue[] = []
+      const longSentences = findLongSentences(draft)
+      if (longSentences.length > 0) {
+        issues.push({
+          code: 'long_sentence',
+          severity: 'repairable',
+          message: `Split each of these sentences into two shorter ones, changing nothing else: ${longSentences.map((sentence) => `"${sentence}"`).join(' ')}`,
+        })
+      }
+      const meta = typeof draft.metaDescription === 'string' ? draft.metaDescription : ''
+      if (meta.length > EVENT_SEO_LIMITS.metaDescriptionChars.max) {
+        issues.push({
+          code: 'meta_desc_length',
+          severity: 'repairable',
+          field: 'metaDescription',
+          message: `Meta description is ${meta.length} characters. Cut it to ${EVENT_SEO_LIMITS.metaDescriptionChars.max} or fewer, keeping the focus phrase, weekday and date, time, place and price.`,
+        })
+      }
+      return issues
+    }
+    const polishCount = (draft: Record<string, unknown>) =>
+      findLongSentences(draft).length +
+      ((typeof draft.metaDescription === 'string' ? draft.metaDescription.length : 0) > EVENT_SEO_LIMITS.metaDescriptionChars.max ? 1 : 0)
+    const toPolish = polishIssues(current)
+    if (toPolish.length > 0) {
+      const checkedDraft = current
+      const checkedValidation = validation
+      const before = polishCount(current)
+      const restore = () => {
+        current = checkedDraft
+        validation = checkedValidation
+        factCheckIssues = []
+      }
+      const rewritten = await repair(toPolish)
+      if (rewritten && validation.passed && polishCount(current) < before) {
+        const rechecked = await factCheck(current)
+        if (!Array.isArray(rechecked) || rechecked.length > 0) restore()
+      } else if (rewritten) {
+        restore()
+      }
+    }
+
+    // 9. NEVER fall back to an unchecked draft as success
     succeeded = true
     return buildSuccessResult(current, slugLocked)
   } finally {

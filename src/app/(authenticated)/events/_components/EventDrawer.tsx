@@ -16,6 +16,7 @@ import { generateEventSeoContent } from '@/app/actions/event-content'
 import { parseKeywords, keywordsToDisplay, buildKeywordsUnion } from '@/lib/keywords'
 import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
 import { retiredKeywordTierError } from '@/lib/event-seo/website-parity'
+import { suggestFocusPhrase } from '@/lib/event-seo/keyword-match'
 import { FaqEditor } from '@/components/features/events/FaqEditor'
 import { SeoHealthIndicator } from '@/components/features/events/SeoHealthIndicator'
 import { EventImagePanel, type EventImagePanelHandle } from './EventImagePanel'
@@ -562,7 +563,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
 
     const pk = parseKeywords(primaryKeywords)
     if (pk.length === 0) {
-      issues.push({ type: 'error', message: 'At least one primary keyword is required' })
+      issues.push({ type: 'error', message: 'Add a focus phrase: the one search this page should be found for.' })
     }
     const retiredKeywords = retiredKeywordTierError({
       primary: pk,
@@ -969,6 +970,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
           primaryKeywords={primaryKeywords}
           secondaryKeywords={secondaryKeywords}
           localSeoKeywords={localSeoKeywords}
+          focusSuggestion={suggestFocusPhrase(name)}
           onPrimaryChange={setPrimaryKeywords}
           onSecondaryChange={setSecondaryKeywords}
           onLocalChange={setLocalSeoKeywords}

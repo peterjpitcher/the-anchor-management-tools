@@ -217,6 +217,7 @@ describe('generateEventSeoContent', () => {
       const sent = JSON.parse(body.messages[1].content)
       expect(sent.facts.event.date_long).toBe('Friday 11 December 2026')
       expect(sent.facts.venue).toContain('VENUE CONTEXT')
+      expect(sent.facts.booking).toContain('the same thing as booking online at the-anchor.pub')
       // Code-owned fields are not sent for checking.
       expect(sent.draft.slug).toBeUndefined()
       expect(sent.draft.accessibilityNotes).toBeUndefined()
@@ -224,6 +225,72 @@ describe('generateEventSeoContent', () => {
       // Every amount is checked, and a conditional prize must carry its condition everywhere.
       expect(body.messages[0].content).toContain('Go through every £ amount')
       expect(body.messages[0].content).toContain('must carry its condition wherever it is mentioned')
+    })
+
+    describe('long sentences (rubric row 7)', () => {
+      const LONG = 'Booking is through the form on this page and tables near the stage tend to go first so it is worth booking early if you would like to sit close to Nikki.'
+      const SPLIT = 'Booking is through the form on this page. Tables near the stage tend to go first.'
+      const withAnswer = (answer: string) => {
+        const draft = buildValidSeoResponse()
+        const faqs = (draft.faqs as Array<Record<string, unknown>>).map((faq, index) => (index === 0 ? { ...faq, answer } : faq))
+        return { ...draft, faqs }
+      }
+
+      it('asks once for a split and keeps the rewrite when it passes again', async () => {
+        mockFetch
+          .mockResolvedValueOnce(makeOpenAIJsonResponse(withAnswer(LONG)))
+          .mockResolvedValueOnce(makeOpenAIJsonResponse(withAnswer(SPLIT)))
+
+        const result = await generateEventSeoContent(VALID_INPUT)
+
+        expect(result.success).toBe(true)
+        expect(mockFetch).toHaveBeenCalledTimes(2)
+        expect(mockFetch.mock.calls[1][1].body).toContain('Split each of these sentences')
+        expect(mockFactCheck).toHaveBeenCalledTimes(2)
+        if (result.success) expect(result.data.faqs[0].answer).toBe(SPLIT)
+      })
+
+      it('keeps the checked draft when the rewrite fails the fact check', async () => {
+        mockFetch
+          .mockResolvedValueOnce(makeOpenAIJsonResponse(withAnswer(LONG)))
+          .mockResolvedValueOnce(makeOpenAIJsonResponse(withAnswer(SPLIT)))
+        mockFactCheck
+          .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: [] }))
+          .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: ['Nikki is not named in the facts.'] }))
+
+        const result = await generateEventSeoContent(VALID_INPUT)
+
+        expect(result.success).toBe(true)
+        if (result.success) expect(result.data.faqs[0].answer).toBe(LONG)
+      })
+
+      it('keeps the checked draft when the rewrite request fails', async () => {
+        mockFetch
+          .mockResolvedValueOnce(makeOpenAIJsonResponse(withAnswer(LONG)))
+          .mockResolvedValueOnce(new Response('busy', { status: 500 }))
+
+        const result = await generateEventSeoContent(VALID_INPUT)
+
+        expect(result.success).toBe(true)
+        expect(mockFactCheck).toHaveBeenCalledTimes(1)
+        if (result.success) expect(result.data.faqs[0].answer).toBe(LONG)
+      })
+    })
+
+    it('asks once to cut a meta description over 155 characters, and keeps the shorter one', async () => {
+      const valid = buildValidSeoResponse()
+      const meta = String(valid.metaDescription)
+      const longMeta = (meta + ' Seats go fast at this one.').slice(0, 160)
+      mockFetch
+        .mockResolvedValueOnce(makeOpenAIJsonResponse({ ...valid, metaDescription: longMeta }))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(valid))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(longMeta.length).toBe(160)
+      expect(result.success).toBe(true)
+      expect(mockFetch.mock.calls[1][1].body).toContain('Cut it to 155 or fewer')
+      if (result.success) expect(result.data.metaDescription).toBe(meta)
     })
 
     it('repairs a draft the fact check rejects, then checks it again', async () => {
@@ -289,6 +356,31 @@ describe('generateEventSeoContent', () => {
     it('fails closed when the fact check answers in the wrong shape', async () => {
       mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
       mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ verdict: 'fine' }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(result.success).toBe(false)
+    })
+
+    it('treats a long issue as an issue to repair, not as a check that failed', async () => {
+      const longIssue = `The Snowball is stated without its condition. ${'Add the condition. '.repeat(40)}`
+      mockFetch
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+        .mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: [longIssue] }))
+        .mockImplementationOnce(async () => makeOpenAIJsonResponse({ issues: [] }))
+
+      const result = await generateEventSeoContent(VALID_INPUT)
+
+      expect(longIssue.length).toBeGreaterThan(500)
+      expect(result.success).toBe(true)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    })
+
+    it('fails closed when the fact check lists an empty issue', async () => {
+      mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+      mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: ['  '] }))
 
       const result = await generateEventSeoContent(VALID_INPUT)
 

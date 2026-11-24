@@ -12,6 +12,7 @@ import {
   normalizeSlug,
   validateGeneratedContent,
 } from '@/lib/seo-validation'
+import { suggestFocusPhrase } from '@/lib/event-seo/keyword-match'
 import { SLEIGH_FACTS, validDraft } from '../../fixtures/event-seo/valid-draft'
 
 function check(overrides: Record<string, unknown> = {}, facts = SLEIGH_FACTS) {
@@ -291,6 +292,22 @@ describe('capitaliseProperNames', () => {
   })
 })
 
+describe('suggestFocusPhrase (spec 6.3.2)', () => {
+  it('takes the part after the colon', () => {
+    expect(suggestFocusPhrase('Sleigh My Name: Festive Music Bingo')).toBe('festive music bingo')
+  })
+
+  it('drops "at The Anchor" and keeps the rest of the name', () => {
+    expect(suggestFocusPhrase("New Year's Eve Party at The Anchor")).toBe("new year's eve party")
+    expect(suggestFocusPhrase('Big Sing Friday: Karaoke Night')).toBe('karaoke night')
+  })
+
+  it('returns null for an empty name', () => {
+    expect(suggestFocusPhrase('')).toBeNull()
+    expect(suggestFocusPhrase(null)).toBeNull()
+  })
+})
+
 describe('replaceEmDashes', () => {
   // Built from its code point: the character itself is banned from files in this workspace.
   const DASH = String.fromCharCode(0x2014)
@@ -304,5 +321,19 @@ describe('replaceEmDashes', () => {
     draft.shortDescription = String(draft.shortDescription).replace(', on Friday', ` ${DASH} on Friday`)
     const fixed = applyDeterministicRepair(draft)
     expect(String(fixed.shortDescription)).not.toContain(DASH)
+  })
+})
+
+describe('findLongSentences', () => {
+  it('returns each sentence over 25 words in full, across the reader-facing fields', async () => {
+    const { findLongSentences } = await import('@/lib/seo-validation')
+    const long = 'One two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twentyone twentytwo twentythree twentyfour twentyfive twentysix.'
+    const found = findLongSentences({
+      metaDescription: 'Short and fine.',
+      longDescription: `A short one.\n\n${long} Another short one.`,
+      faqs: [{ question: 'Q?', answer: long }],
+      metaTitle: long,
+    })
+    expect(found).toEqual([long, long])
   })
 })
