@@ -12,6 +12,7 @@ import {
   normalizeSlug,
   validateGeneratedContent,
 } from '@/lib/seo-validation'
+import { suggestFocusPhrase } from '@/lib/event-seo/keyword-match'
 import { SLEIGH_FACTS, validDraft } from '../../fixtures/event-seo/valid-draft'
 
 function check(overrides: Record<string, unknown> = {}, facts = SLEIGH_FACTS) {
@@ -288,6 +289,19 @@ describe('capitaliseProperNames', () => {
     expect(fixed.longDescription).toContain('Christmas music bingo')
     expect(fixed.longDescription).not.toContain('christmas')
     expect((fixed.highlights as string[])[0]).toBe('Two rounds of Christmas songs')
+describe('suggestFocusPhrase (spec 6.3.2)', () => {
+  it('takes the part after the colon', () => {
+    expect(suggestFocusPhrase('Sleigh My Name: Festive Music Bingo')).toBe('festive music bingo')
+  })
+
+  it('drops "at The Anchor" and keeps the rest of the name', () => {
+    expect(suggestFocusPhrase("New Year's Eve Party at The Anchor")).toBe("new year's eve party")
+    expect(suggestFocusPhrase('Big Sing Friday: Karaoke Night')).toBe('karaoke night')
+  })
+
+  it('returns null for an empty name', () => {
+    expect(suggestFocusPhrase('')).toBeNull()
+    expect(suggestFocusPhrase(null)).toBeNull()
   })
 })
 

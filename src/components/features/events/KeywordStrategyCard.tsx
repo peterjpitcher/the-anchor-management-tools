@@ -1,7 +1,8 @@
 'use client'
 
-import { Card, CardBody, CardHeader, Textarea } from '@/ds'
+import { Button, Card, CardBody, CardHeader, Textarea } from '@/ds'
 import { parseKeywords } from '@/lib/keywords'
+import { EVENT_SEO_LIMITS as L } from '@/lib/event-seo/limits'
 
 interface KeywordStrategyCardProps {
   primaryKeywords: string
@@ -10,6 +11,10 @@ interface KeywordStrategyCardProps {
   onPrimaryChange: (value: string) => void
   onSecondaryChange: (value: string) => void
   onLocalChange: (value: string) => void
+  /** A focus phrase worked out from the event name, offered while the Focus field is empty. */
+  focusSuggestion?: string | null
+  /** On a category the tiers are defaults for new events, and Focus is left for each event. */
+  forCategory?: boolean
 }
 
 interface KeywordFieldProps {
@@ -58,43 +63,60 @@ export function KeywordStrategyCard({
   onPrimaryChange,
   onSecondaryChange,
   onLocalChange,
+  focusSuggestion,
+  forCategory = false,
 }: KeywordStrategyCardProps) {
+  const offerSuggestion = Boolean(focusSuggestion) && parseKeywords(primaryKeywords).length === 0
+
   return (
     <Card>
       <CardHeader title="Keyword Strategy" />
       <CardBody className="space-y-4">
       <p className="text-sm text-text-muted">
-        Paste your researched keywords here: these drive all AI-generated content. Accepts
-        comma-separated or one per line.
+        Keywords from the keyword research. One per line, or separated by commas. An event page is
+        found for its own night, so its Focus phrase is the theme or season plus the format; the
+        format on its own belongs to the main page for that format.
       </p>
 
       <KeywordField
         id="primary-keywords"
-        label="Primary Keywords"
-        helpText="High-intent terms that appear in titles, headings, and meta descriptions."
+        label="Focus"
+        helpText={
+          forCategory
+            ? 'Usually left empty here. Each event sets its own focus phrase, the theme or season plus the format, and the event drawer suggests one from the event name.'
+            : `The one search this page should be found for: theme or season plus format, such as "christmas music bingo" or "halloween party". It goes word for word into the meta description, the first paragraph and one FAQ. One phrase, plus up to ${L.focusKeywords.max - 1} variants.`
+        }
         value={primaryKeywords}
         rows={2}
-        placeholder={'pub quiz Heathrow\nquiz night near airport'}
+        placeholder={'christmas music bingo'}
         onChange={onPrimaryChange}
       />
+      {offerSuggestion && focusSuggestion ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
+          <span>From the event name: &ldquo;{focusSuggestion}&rdquo;</span>
+          <Button type="button" variant="secondary" size="sm" onClick={() => onPrimaryChange(focusSuggestion)}>
+            Use this
+          </Button>
+        </div>
+      ) : null}
 
       <KeywordField
         id="secondary-keywords"
-        label="Secondary Keywords"
-        helpText="Supporting terms woven into body copy, event descriptions, and social posts."
+        label="Supporting"
+        helpText={`Format and audience terms from the keyword research, such as "drag bingo", "snowball bingo" or "family friendly pub quiz". Used in the description where true and natural. Up to ${L.supportingKeywords.max}.`}
         value={secondaryKeywords}
         rows={3}
-        placeholder={'Wednesday quiz night\nteam quiz evening\npub trivia prizes'}
+        placeholder={'music bingo\ndrag bingo\nmusical bingo'}
         onChange={onSecondaryChange}
       />
 
       <KeywordField
         id="local-seo-keywords"
-        label="Local SEO Keywords"
-        helpText="Location-specific phrases for Google Maps, local landing pages, and nearby searches."
+        label="Local"
+        helpText={`Place names only: Stanwell Moor, then nearby places such as Staines, Heathrow, Ashford or Feltham. Used where the description says where the pub is, and in one FAQ. Up to ${L.localKeywords.max}.`}
         value={localSeoKeywords}
-        rows={3}
-        placeholder={'things to do Sipson\nWest Drayton evening out\nnear Heathrow pubs'}
+        rows={2}
+        placeholder={'Stanwell Moor\nStaines\nHeathrow'}
         onChange={onLocalChange}
       />
       </CardBody>

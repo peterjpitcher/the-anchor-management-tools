@@ -621,6 +621,7 @@ export function EventCategoryFormGrouped({ category, onSubmit, onCancel }: Event
           {/* Keyword Strategy */}
           <div className="col-span-full">
             <KeywordStrategyCard
+              forCategory
               primaryKeywords={primaryKeywords}
               secondaryKeywords={secondaryKeywords}
               localSeoKeywords={localSeoKeywords}
