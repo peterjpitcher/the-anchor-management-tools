@@ -379,11 +379,13 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
     // record, never from the form, so a drawer edit cannot unlock it.
     if (data) {
       storedSlug = typeof data.slug === 'string' && data.slug.trim() ? data.slug.trim() : null
-      const { count: bookingCount } = await supabase
+      const { count: bookingCount, error: bookingCountError } = await supabase
         .from('bookings')
         .select('id', { count: 'exact', head: true })
         .eq('event_id', input.eventId)
-      slugLocked = Boolean(storedSlug) && (data.event_status !== 'draft' || (bookingCount ?? 0) > 0)
+      // If the bookings cannot be counted, keep the address: unlocking it could break live links.
+      const hasBookings = Boolean(bookingCountError) || (bookingCount ?? 0) > 0
+      slugLocked = Boolean(storedSlug) && (data.event_status !== 'draft' || hasBookings)
     }
 
     if (data) {

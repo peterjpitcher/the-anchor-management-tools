@@ -10,7 +10,11 @@ vi.mock('@/app/actions/rbac', () => ({
 }))
 
 // The stored event the action reads when an eventId is passed, and its booking count.
-const stored: { event: Record<string, unknown> | null; bookings: number } = { event: null, bookings: 0 }
+const stored: { event: Record<string, unknown> | null; bookings: number; bookingsError: { message: string } | null } = {
+  event: null,
+  bookings: 0,
+  bookingsError: null,
+}
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(async () => ({
@@ -18,7 +22,7 @@ vi.mock('@/lib/supabase/server', () => ({
       select: vi.fn(() => ({
         eq: vi.fn(() =>
           table === 'bookings'
-            ? Promise.resolve({ count: stored.bookings, error: null })
+            ? Promise.resolve({ count: stored.bookingsError ? null : stored.bookings, error: stored.bookingsError })
             : { maybeSingle: vi.fn().mockResolvedValue({ data: stored.event, error: null }) },
         ),
       })),
@@ -129,6 +133,7 @@ describe('generateEventSeoContent', () => {
     vi.resetModules()
     stored.event = null
     stored.bookings = 0
+    stored.bookingsError = null
     global.fetch = routedFetch as unknown as typeof fetch
     mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: [] }))
 
@@ -435,6 +440,17 @@ describe('generateEventSeoContent', () => {
     const result = await generateEventSeoContent({ ...VALID_INPUT, eventId: 'e1' })
 
     expect(result.success && result.data.slug).toBe('sleigh-my-name-2026-12-11')
+  })
+
+  it('keeps the address of a draft when its bookings cannot be counted', async () => {
+    stored.event = { id: 'e1', name: VALID_INPUT.name, date: '2026-12-11', slug: 'sleigh-my-name-2026-12-11', event_status: 'draft' }
+    stored.bookingsError = { message: 'timeout' }
+    mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(buildValidSeoResponse()))
+
+    const result = await generateEventSeoContent({ ...VALID_INPUT, eventId: 'e1' })
+
+    expect(result.success && result.data.slug).toBe('sleigh-my-name-2026-12-11')
+    expect(result.success && result.data.slugLocked).toBe(true)
   })
 
   it('may change the address of a draft with no bookings', async () => {
