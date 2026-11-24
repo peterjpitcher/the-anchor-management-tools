@@ -139,6 +139,11 @@ export interface ParkingRefundOutcome {
   refunded: number
   /** True when at least part went back through PayPal (so "refunding to the way you paid" holds). */
   viaPayPal: boolean
+  /**
+   * The part that went back through PayPal. Only this may be named in the text as "refunding to the
+   * way you paid": a part refunded by cash or bank transfer is handed over by staff, not sent back.
+   */
+  refundedViaPayPal: number
   /** True when every penny asked for was refunded. */
   complete: boolean
   /** Plain words for staff about anything that did not go through. */
@@ -164,6 +169,7 @@ export async function refundParkingBooking(input: {
   const { allocations, unallocated } = allocateRefund(input.amount, input.payments)
   const failures: string[] = []
   let refunded = 0
+  let refundedViaPayPal = 0
   let viaPayPal = false
 
   if (unallocated > 0) {
@@ -182,7 +188,10 @@ export async function refundParkingBooking(input: {
         : await processManualRefund('parking', allocation.payment.id, allocation.amount, input.reason, input.manualMethod, options)
       if (result.success) {
         refunded = roundPence(refunded + allocation.amount)
-        if (paypal) viaPayPal = true
+        if (paypal) {
+          viaPayPal = true
+          refundedViaPayPal = roundPence(refundedViaPayPal + allocation.amount)
+        }
       } else {
         failures.push(`The £${allocation.amount.toFixed(2)} refund did not go through: ${result.error ?? 'unknown error'}.`)
       }
@@ -193,5 +202,5 @@ export async function refundParkingBooking(input: {
     }
   }
 
-  return { refunded, viaPayPal, complete: failures.length === 0 && refunded >= roundPence(input.amount), failures }
+  return { refunded, viaPayPal, refundedViaPayPal, complete: failures.length === 0 && refunded >= roundPence(input.amount), failures }
 }

@@ -18,6 +18,8 @@ import { resolveSeasonalDepositRefund } from '@/lib/table-bookings/deposit-refun
 import { readBookingPaymentLedger } from '@/lib/private-bookings/payment-ledger'
 import { revalidatePath } from 'next/cache'
 import { randomUUID } from 'crypto'
+import { loadParkingMoneyRows, refundablePayments } from '@/lib/parking/balance'
+import { keepParkingBalanceAfterRefund } from '@/lib/parking/payment-due'
 
 type SourceType = 'private_booking' | 'table_booking' | 'parking'
 type RefundMethod = 'paypal' | 'cash' | 'bank_transfer' | 'other'
@@ -595,13 +597,36 @@ async function sendPrivateBookingRefundEmailSideEffect(
   }
 }
 
+type PayPalRefundResult = { success?: boolean; refundId?: string; pending?: boolean; replayed?: boolean; message?: string; warning?: string; error?: string }
+
+/**
+ * A parking refund on a live booking must not turn into a debt: see keepParkingBalanceAfterRefund.
+ * Runs once per refund that went through (not for a replay of one already made).
+ */
+async function afterParkingRefund(sourceType: SourceType, sourceId: string, amount: number, result: { success?: boolean; replayed?: boolean }) {
+  if (sourceType !== 'parking' || !result.success || result.replayed) return
+  await keepParkingBalanceAfterRefund(createAdminClient(), { paymentId: sourceId, refundAmount: amount })
+}
+
 export async function processPayPalRefund(
   sourceType: SourceType,
   sourceId: string,
   amount: number,
   reason: string,
   options?: RefundCallOptions
-): Promise<{ success?: boolean; refundId?: string; pending?: boolean; replayed?: boolean; message?: string; warning?: string; error?: string }> {
+): Promise<PayPalRefundResult> {
+  const result = await processPayPalRefundInner(sourceType, sourceId, amount, reason, options)
+  await afterParkingRefund(sourceType, sourceId, amount, result)
+  return result
+}
+
+async function processPayPalRefundInner(
+  sourceType: SourceType,
+  sourceId: string,
+  amount: number,
+  reason: string,
+  options?: RefundCallOptions
+): Promise<PayPalRefundResult> {
   // 1. Auth
   const auth = await getAuthenticatedUser()
   if ('error' in auth) return { error: auth.error }
@@ -982,6 +1007,8 @@ export async function processPayPalRefund(
   }
 }
 
+type ManualRefundResult = { success?: boolean; refundId?: string; replayed?: boolean; warning?: string; error?: string }
+
 export async function processManualRefund(
   sourceType: SourceType,
   sourceId: string,
@@ -989,7 +1016,20 @@ export async function processManualRefund(
   reason: string,
   refundMethod: 'cash' | 'bank_transfer' | 'other',
   options?: RefundCallOptions
-): Promise<{ success?: boolean; refundId?: string; replayed?: boolean; warning?: string; error?: string }> {
+): Promise<ManualRefundResult> {
+  const result = await processManualRefundInner(sourceType, sourceId, amount, reason, refundMethod, options)
+  await afterParkingRefund(sourceType, sourceId, amount, result)
+  return result
+}
+
+async function processManualRefundInner(
+  sourceType: SourceType,
+  sourceId: string,
+  amount: number,
+  reason: string,
+  refundMethod: 'cash' | 'bank_transfer' | 'other',
+  options?: RefundCallOptions
+): Promise<ManualRefundResult> {
   // 0. Validate method — PayPal refunds must use processPayPalRefund (runtime guard against API misuse)
   if ((refundMethod as string) === 'paypal') return { error: 'Use PayPal refund for PayPal payments' }
 
@@ -1119,9 +1159,29 @@ export async function getRefundHistory(
   return { data: data || [] }
 }
 
+export interface ParkingRefundablePayment {
+  paymentId: string
+  amount: number
+  refunded: number
+  refundable: number
+  provider: string
+  hasCapture: boolean
+  captureDate: string | null
+  /** 'top_up' for extra taken after the dates grew; 'booking' for the first payment. */
+  purpose: 'booking' | 'top_up'
+}
+
+/**
+ * Every paid payment on a parking booking, newest first, with what is still refundable on each
+ * (spec section 7: a booking extended after a date change holds more than one). The top-level
+ * fields describe the default one: the newest with anything left to refund.
+ */
 export async function getParkingPaymentForRefund(
   bookingId: string
-): Promise<{ data?: { paymentId: string; amount: number; hasCapture: boolean; captureDate: string | null }; error?: string }> {
+): Promise<{
+  data?: { paymentId: string; amount: number; hasCapture: boolean; captureDate: string | null; payments: ParkingRefundablePayment[] }
+  error?: string
+}> {
   const auth = await getAuthenticatedUser()
   if ('error' in auth) return { error: auth.error }
 
@@ -1129,24 +1189,37 @@ export async function getParkingPaymentForRefund(
   if (!hasPermission) return { error: 'Insufficient permission' }
 
   const db = createAdminClient()
-  const { data: payment, error } = await db
-    .from('parking_booking_payments')
-    .select('id, amount, transaction_id, paid_at')
-    .eq('booking_id', bookingId)
-    .eq('status', 'paid')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  let rows: Awaited<ReturnType<typeof loadParkingMoneyRows>>
+  try {
+    rows = await loadParkingMoneyRows(db, [bookingId])
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : 'Could not load the payments' }
+  }
 
-  if (error) return { error: error.message }
-  if (!payment) return { error: 'No paid payment record found for this booking.' }
+  const payments: ParkingRefundablePayment[] = refundablePayments(rows.payments, rows.refunds).map((payment) => {
+    const raw = rows.payments.find((row) => row.id === payment.id)
+    const purpose = (raw?.metadata as { purpose?: unknown } | null)?.purpose === 'top_up' ? 'top_up' : 'booking'
+    return {
+      paymentId: payment.id,
+      amount: payment.amount,
+      refunded: payment.refunded,
+      refundable: payment.refundable,
+      provider: payment.provider,
+      hasCapture: payment.provider === 'paypal' && Boolean(payment.transactionId),
+      captureDate: payment.paidAt,
+      purpose,
+    }
+  })
+  if (payments.length === 0) return { error: 'No paid payment record found for this booking.' }
 
+  const chosen = payments.find((payment) => payment.refundable > 0) ?? payments[0]
   return {
     data: {
-      paymentId: payment.id,
-      amount: Number(payment.amount) || 0,
-      hasCapture: !!payment.transaction_id,
-      captureDate: payment.paid_at,
+      paymentId: chosen.paymentId,
+      amount: chosen.amount,
+      hasCapture: chosen.hasCapture,
+      captureDate: chosen.captureDate,
+      payments,
     },
   }
 }

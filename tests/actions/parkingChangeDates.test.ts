@@ -158,7 +158,7 @@ beforeEach(() => {
     ],
     refunds: [],
   })
-  mockedRefund.mockResolvedValue({ refunded: 45, viaPayPal: true, complete: true, failures: [] })
+  mockedRefund.mockResolvedValue({ refunded: 45, viaPayPal: true, refundedViaPayPal: 45, complete: true, failures: [] })
   mockedText.mockResolvedValue({ status: 'sent', note: null, body: 'text' })
   db = {
     earlierMarker: null,
@@ -244,7 +244,7 @@ describe('changeParkingBookingDates', () => {
   })
 
   it('a refund that fails keeps the change, warns, and sends the plain text with no refund promised', async () => {
-    mockedRefund.mockResolvedValue({ refunded: 0, viaPayPal: false, complete: false, failures: ['PayPal said no.'] })
+    mockedRefund.mockResolvedValue({ refunded: 0, viaPayPal: false, refundedViaPayPal: 0, complete: false, failures: ['PayPal said no.'] })
 
     const result = await changeParkingBookingDates('booking-1', input())
 
@@ -256,7 +256,7 @@ describe('changeParkingBookingDates', () => {
   })
 
   it('a manual refund (no PayPal) is not described to the customer as going back to the way they paid', async () => {
-    mockedRefund.mockResolvedValue({ refunded: 45, viaPayPal: false, complete: true, failures: [] })
+    mockedRefund.mockResolvedValue({ refunded: 45, viaPayPal: false, refundedViaPayPal: 0, complete: true, failures: [] })
 
     await changeParkingBookingDates('booking-1', input())
 
@@ -288,7 +288,7 @@ describe('changeParkingBookingDates', () => {
     const refused = await changeParkingBookingDates('booking-1', input({ refundAmount: 20 }))
     expect(refused.error).toBe('Give a reason for refunding less than the difference.')
 
-    mockedRefund.mockResolvedValue({ refunded: 20, viaPayPal: true, complete: true, failures: [] })
+    mockedRefund.mockResolvedValue({ refunded: 20, viaPayPal: true, refundedViaPayPal: 20, complete: true, failures: [] })
     const result = await changeParkingBookingDates('booking-1', input({ refundAmount: 20, refundReason: 'Late notice' }))
 
     expect(result.success).toBe(true)
@@ -308,11 +308,89 @@ describe('changeParkingBookingDates', () => {
     expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'plain' })
   })
 
-  it('a paid booking that would cost more is refused for now', async () => {
-    const result = await changeParkingBookingDates('booking-1', input({ end_at: at(14), expectedNewPrice: 150 }))
+  describe('a paid booking that now costs more (D4)', () => {
+    const longer = (overrides: Record<string, unknown> = {}) =>
+      input({ end_at: at(14), expectedNewPrice: 150, refundAmount: undefined, expectedExtra: 45, ...overrides })
 
-    expect(result.error).toMatch(/This change costs £45.00 more. Extending a paid booking is not available yet./)
-    expect(db.updates).toHaveLength(0)
+    beforeEach(() => {
+      db.saveResult = { data: paidBooking({ end_at: at(14), calculated_price: 150 }), error: null }
+    })
+
+    it('needs a choice, and nothing is saved without one', async () => {
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: undefined }))
+      expect(result.error).toMatch(/costs £45.00 more. Choose how the extra is settled/)
+      expect(db.updates).toHaveLength(0)
+    })
+
+    it('refuses when the extra has changed since the dialog loaded', async () => {
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'link', expectedExtra: 30 }))
+      expect(result.error).toMatch(/The extra to pay is now £45.00, not £30.00/)
+      expect(db.updates).toHaveLength(0)
+    })
+
+    it('text a payment link: an order for the extra only, named in the one change text', async () => {
+      mockedOrder.mockResolvedValue({ approveUrl: 'https://paypal.example/topup' })
+
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'link' }))
+
+      expect(result).toMatchObject({ success: true, paymentLink: 'https://paypal.example/topup' })
+      expect(result.warning).toBeUndefined()
+      expect(mockedOrder.mock.calls[0][1]).toMatchObject({ amount: 45, purpose: 'top_up' })
+      expect(mockedText).toHaveBeenCalledTimes(1)
+      expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'pay_link', amount: 45, link: 'https://paypal.example/topup' })
+      // Saved at the calculated price: the extra shows as to pay until the link is paid.
+      const save = db.updates.find((update) => update.table === 'parking_bookings')
+      expect(save?.values).toMatchObject({ calculated_price: 150, override_price: null })
+      expect(save?.values).not.toHaveProperty('status')
+      expect(save?.values).not.toHaveProperty('payment_status')
+    })
+
+    it('a link that cannot be made leaves the change saved, with a warning and a plain text', async () => {
+      mockedOrder.mockRejectedValue(new Error('PayPal is down'))
+
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'link' }))
+
+      expect(result.success).toBe(true)
+      expect(result.warning).toMatch(/a payment link for the £45.00 extra could not be made/)
+      expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'plain' })
+    })
+
+    it('paid at the venue: a manual payment row for the extra and the thank-you text', async () => {
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'venue', venueMethod: 'card_terminal' }))
+
+      expect(result.success).toBe(true)
+      expect(mockedOrder).not.toHaveBeenCalled()
+      const row = db.inserts.find((insert) => insert.table === 'parking_booking_payments')
+      expect(row?.values).toMatchObject({ provider: 'manual', status: 'paid', amount: 45 })
+      expect(row?.values.metadata).toMatchObject({ method: 'card_terminal', purpose: 'top_up', change_id: CHANGE_ID })
+      expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'paid_at_venue', amount: 45 })
+    })
+
+    it('no extra charge needs a reason', async () => {
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'waive' }))
+      expect(result.error).toMatch(/Give a reason/)
+      expect(db.updates).toHaveLength(0)
+    })
+
+    it('no extra charge: the price becomes what has been paid, and no money moves', async () => {
+      const result = await changeParkingBookingDates('booking-1', longer({ extraChoice: 'waive', waiveReason: 'Flight delayed' }))
+
+      expect(result.success).toBe(true)
+      const save = db.updates.find((update) => update.table === 'parking_bookings')
+      expect(save?.values).toMatchObject({ override_price: 105 })
+      expect(String(save?.values.override_reason)).toContain('Flight delayed')
+      expect(mockedOrder).not.toHaveBeenCalled()
+      expect(db.inserts.filter((insert) => insert.table === 'parking_booking_payments')).toHaveLength(0)
+      expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'plain' })
+    })
+  })
+
+  it('a refund split between PayPal and cash names only the PayPal part in the text', async () => {
+    mockedRefund.mockResolvedValue({ refunded: 45, viaPayPal: true, refundedViaPayPal: 30, complete: true, failures: [] })
+
+    await changeParkingBookingDates('booking-1', input())
+
+    expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'refund', amount: 30 })
   })
 
   it('an unpaid booking gets a new payment link and the payment text instead of the change text', async () => {

@@ -21,6 +21,12 @@ vi.mock('@/lib/parking/payments', () => ({
   createParkingPaymentOrder: vi.fn(),
 }))
 
+vi.mock('@/lib/parking/payment-due', () => ({
+  isTopUpBooking: (booking: { status: string; payment_status: string }) =>
+    booking.status === 'confirmed' && booking.payment_status === 'paid',
+  enforcePendingPaymentRule: vi.fn(),
+}))
+
 vi.mock('@/lib/logger', () => ({
   logger: {
     error: vi.fn(),
@@ -29,6 +35,7 @@ vi.mock('@/lib/logger', () => ({
 
 import { getParkingBooking } from '@/lib/parking/repository'
 import { createParkingPaymentOrder } from '@/lib/parking/payments'
+import { enforcePendingPaymentRule } from '@/lib/parking/payment-due'
 
 const futureDue = new Date(Date.now() + 60 * 60 * 1000).toISOString()
 const pastDue = new Date(Date.now() - 60 * 60 * 1000).toISOString()
@@ -83,12 +90,26 @@ describe('POST /api/parking/payment/retry', () => {
       status: 'confirmed',
       payment_status: 'paid',
     } as any)
+    vi.mocked(enforcePendingPaymentRule).mockResolvedValue({ due: null } as any)
 
     const response = await POST(makeRequest())
 
     expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe('https://management.orangejelly.co.uk/parking/guest/booking-123?payment=success')
     expect(createParkingPaymentOrder).not.toHaveBeenCalled()
+  })
+
+  it('charges a confirmed booking its balance as a top-up, leaving the booking alone', async () => {
+    const confirmed = { ...pendingBooking, status: 'confirmed', payment_status: 'paid', payment_due_at: pastDue }
+    vi.mocked(getParkingBooking).mockResolvedValue(confirmed as any)
+    vi.mocked(enforcePendingPaymentRule).mockResolvedValue({ due: { amount: 30, purpose: 'top_up' } } as any)
+    vi.mocked(createParkingPaymentOrder).mockResolvedValue({ approveUrl: 'https://paypal.test/approve/topup' } as any)
+
+    const response = await POST(makeRequest())
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('https://paypal.test/approve/topup')
+    expect(vi.mocked(createParkingPaymentOrder).mock.calls[0][1]).toMatchObject({ amount: 30, purpose: 'top_up' })
   })
 
   it('refuses expired payment windows', async () => {

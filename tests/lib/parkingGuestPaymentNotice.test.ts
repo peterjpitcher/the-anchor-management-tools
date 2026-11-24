@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildParkingPaymentNotice, canRetryParkingPayment } from '@/app/parking/guest/[id]/paymentNotice'
+import { buildParkingBalanceNotice, buildParkingPaymentNotice, canRetryParkingPayment } from '@/app/parking/guest/[id]/paymentNotice'
 import type { ParkingBooking } from '@/types/parking'
 
 const booking = {
@@ -38,5 +38,24 @@ describe('parking guest payment notice', () => {
     expect(canRetryParkingPayment({ ...booking, payment_status: 'failed' }, now)).toBe(true)
     expect(canRetryParkingPayment({ ...booking, status: 'confirmed' }, now)).toBe(false)
     expect(canRetryParkingPayment({ ...booking, payment_due_at: '2026-06-29T12:00:00.000Z' }, now)).toBe(false)
+  })
+})
+
+describe('buildParkingBalanceNotice (a confirmed booking owing extra)', () => {
+  it('shows what is still to pay, ahead of the plain "Payment received"', () => {
+    const notice = buildParkingBalanceNotice(30)
+    expect(notice).toMatchObject({ tone: 'warning', title: '£30.00 still to pay' })
+    expect(notice?.message).toContain('£30.00')
+  })
+
+  it('shows nothing when nothing is owed', () => {
+    expect(buildParkingBalanceNotice(0)).toBeNull()
+    expect(buildParkingBalanceNotice(-5)).toBeNull()
+  })
+
+  it('explains a retired link and still names what is owed now', () => {
+    const notice = buildParkingBalanceNotice(15, 'amount_changed')
+    expect(notice?.title).toBe('The amount has changed')
+    expect(notice?.message).toContain('£15.00 still to pay')
   })
 })

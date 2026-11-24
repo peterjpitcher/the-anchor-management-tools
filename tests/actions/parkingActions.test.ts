@@ -160,48 +160,8 @@ describe('Parking action payment mutation guards', () => {
     expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
   })
 
-  it('fails markParkingBookingPaid when existing payment update affects no rows', async () => {
-    mockedGetParkingBooking.mockResolvedValue({
-      id: 'booking-1',
-      override_price: 45,
-      calculated_price: 45,
-      payment_status: 'pending',
-    })
-
-    const paymentLookupMaybeSingle = vi.fn().mockResolvedValue({
-      data: {
-        id: 'pay-1',
-        metadata: {},
-      },
-      error: null,
-    })
-    const paymentLookupLimit = vi.fn().mockReturnValue({ maybeSingle: paymentLookupMaybeSingle })
-    const paymentLookupOrder = vi.fn().mockReturnValue({ limit: paymentLookupLimit })
-    const paymentLookupEq = vi.fn().mockReturnValue({ order: paymentLookupOrder })
-
-    const paymentUpdateMaybeSingle = vi.fn().mockResolvedValue({ data: null, error: null })
-    const paymentUpdateSelect = vi.fn().mockReturnValue({ maybeSingle: paymentUpdateMaybeSingle })
-    const paymentUpdateEq = vi.fn().mockReturnValue({ select: paymentUpdateSelect })
-
-    mockedCreateAdminClient.mockReturnValue({
-      from: vi.fn((table: string) => {
-        if (table !== 'parking_booking_payments') {
-          throw new Error(`Unexpected table: ${table}`)
-        }
-
-        return {
-          select: vi.fn().mockReturnValue({ eq: paymentLookupEq }),
-          update: vi.fn().mockReturnValue({ eq: paymentUpdateEq }),
-          insert: vi.fn(),
-        }
-      }),
-    })
-
-    const result = await markParkingBookingPaid('booking-1')
-
-    expect(result).toEqual({ error: 'Payment record not found' })
-    expect(mockedUpdateParkingBooking).not.toHaveBeenCalled()
-  })
+  // Mark Paid no longer rewrites an existing payment row (spec section 7): it expires a pending
+  // link and inserts a manual row. Covered in tests/actions/parkingTopUpActions.test.ts.
 
   // The capacity trigger lets a lapsed booking back onto full dates only because it has been
   // paid for, so a status-only confirm (or any status but cancelled and completed) is refused

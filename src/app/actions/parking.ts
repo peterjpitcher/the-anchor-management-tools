@@ -28,6 +28,7 @@ import {
 import { planParkingDateChange, reminderFlagResets, sameInstant } from '@/lib/parking/change-dates'
 import { refundParkingBooking, sendParkingChangeText } from '@/lib/parking/change-settlement'
 import { settleWrite } from '@/lib/supabase/settle-write'
+import { enforcePendingPaymentRule, isTopUpBooking } from '@/lib/parking/payment-due'
 import type { ParkingChangeOutcome } from '@/lib/parking/notifications'
 
 /**
@@ -816,6 +817,43 @@ export async function generateParkingPaymentLink(bookingId: string) {
       return { error: 'Parking booking not found' }
     }
 
+    // A confirmed, paid booking with a balance (its dates grew): the link charges the balance only,
+    // as a top-up, and the booking's status, payment status and deadline are never touched. Its
+    // offer deadline is long past, and resetting it here would un-confirm a live booking and let
+    // the lifecycle cron expire it (spec section 7).
+    if (isTopUpBooking(booking)) {
+      const rule = await enforcePendingPaymentRule(adminClient, booking)
+      if (!rule.due || rule.due.purpose !== 'top_up') {
+        return { error: 'Nothing is owed on this booking, so there is no payment link to send' }
+      }
+      const appUrl = getAppUrl()
+      const { approveUrl } = await createParkingPaymentOrder(booking as ParkingBooking, {
+        returnUrl: parkingPaymentReturnUrl(appUrl, booking.id),
+        cancelUrl: parkingGuestUrl(appUrl, booking.id, 'cancelled'),
+        client: adminClient,
+        amount: rule.due.amount,
+        purpose: 'top_up',
+      })
+      if (!approveUrl) {
+        return { error: 'PayPal did not return an approval link' }
+      }
+      await logAuditEvent({
+        user_id: user.id,
+        operation_type: 'update',
+        resource_type: 'parking_booking',
+        resource_id: bookingId,
+        operation_status: 'success',
+        additional_info: { action: 'generate_payment_link', purpose: 'top_up', amount: rule.due.amount },
+      })
+      revalidatePath('/parking')
+      revalidateTag('dashboard')
+      return { success: true, approveUrl, amount: rule.due.amount }
+    }
+
+    if (booking.status === 'cancelled' || booking.status === 'completed') {
+      return { error: `This booking is ${booking.status}, so there is no payment link to send` }
+    }
+
     let dueAt = booking.payment_due_at ? new Date(booking.payment_due_at) : null
     if (!dueAt || dueAt < new Date()) {
       dueAt = new Date()
@@ -875,7 +913,19 @@ export async function generateParkingPaymentLink(bookingId: string) {
   }
 }
 
-export async function markParkingBookingPaid(bookingId: string) {
+/**
+ * Records money taken at the venue (cash or the card terminal) for what a parking booking owes.
+ *
+ * - A booking still waiting for its first payment: records its whole price and confirms it.
+ * - A confirmed, paid booking with a balance (its dates grew): records the balance as a top-up and
+ *   leaves the booking's status alone.
+ *
+ * It never rewrites an existing payment row. A pending PayPal link is expired and a separate
+ * `provider = 'manual'` row is written, so a later refund of it is a cash or bank refund, never a
+ * PayPal one, and the online income page (PayPal only) does not count it. The booking is claimed
+ * on its updated_at first, so a double press records the money once.
+ */
+export async function markParkingBookingPaid(bookingId: string, input: { method?: 'cash' | 'card_terminal' } = {}) {
   try {
     const [{ user }, hasPermission] = await Promise.all([
       getCurrentUser(),
@@ -895,89 +945,141 @@ export async function markParkingBookingPaid(bookingId: string) {
       return { error: 'Parking booking not found' }
     }
 
-    // Mark Paid settles a booking still waiting for its money. Confirming a cancelled or
-    // completed one claims a space again, which the capacity trigger can refuse, and the
-    // payment row below is written before the booking, so a refusal would leave the money
-    // recorded against a booking that stayed cancelled. The button shows only while payment
-    // is pending; this holds a direct call to the action to the same rule.
+    // Confirming a cancelled or completed one claims a space again, which the capacity trigger can
+    // refuse, after the money had already been recorded. Hold a direct call to the same rule.
     if (booking.status === 'cancelled' || booking.status === 'completed') {
       return { error: `This booking is ${booking.status}, so it cannot be marked as paid` }
     }
 
-    const amount = booking.override_price ?? booking.calculated_price ?? 0
+    const topUp = isTopUpBooking(booking)
+    const money = await loadParkingMoneyRows(adminClient, [booking.id])
+    const owed = topUp
+      ? computeParkingBalance(booking, money.payments, money.refunds)
+      : null
+    const amount = topUp ? (owed && owed.state === 'to_pay' ? owed.balance : 0) : bookingPrice(booking)
+    if (!amount || amount <= 0) {
+      return { error: topUp ? 'Nothing is owed on this booking' : 'This booking has no price to record' }
+    }
+
+    // Claim the booking first: a second press, or another member of staff at the same moment,
+    // finds it changed and records nothing.
     const nowIso = new Date().toISOString()
-
-    const { data: paymentRecord, error: paymentRecordError } = await adminClient
-      .from('parking_booking_payments')
-      .select('*')
-      .eq('booking_id', bookingId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const { data: claimed, error: claimError } = await adminClient
+      .from('parking_bookings')
+      .update({ updated_by: user.id })
+      .eq('id', booking.id)
+      .eq('updated_at', booking.updated_at)
+      .select('id')
       .maybeSingle()
+    if (claimError) {
+      console.error('Failed to claim parking booking for Mark Paid:', claimError)
+      return { error: 'Failed to update payment status' }
+    }
+    if (!claimed) {
+      return { error: 'This booking has just changed. Refresh it and check what is owed before marking it paid.' }
+    }
 
-    if (paymentRecordError) {
-      console.error('Failed to load parking payment record:', paymentRecordError)
+    // Retire any pending PayPal link: what it was for is now paid.
+    for (const pending of money.payments.filter((payment) => payment.status === 'pending')) {
+      const ok = await settleWrite(
+        adminClient
+          .from('parking_booking_payments')
+          .update({
+            status: 'expired',
+            metadata: {
+              ...((pending.metadata as Record<string, unknown> | null) ?? {}),
+              superseded_at: nowIso,
+              superseded_reason: 'paid_at_venue',
+            },
+          })
+          .eq('id', pending.id)
+          .eq('status', 'pending'),
+        { table: 'parking_booking_payments', what: 'Retiring the payment link before recording a venue payment', ids: { bookingId, paymentId: pending.id } }
+      )
+      if (!ok) return { error: 'Failed to update payment status' }
+    }
+
+    // The claim above stops a press made from a stale screen, but not a second request that reads
+    // the booking just after it. So the row goes in as PENDING first: the unique index allows one
+    // pending row per booking, so only one request can hold that slot at a time. The holder then
+    // re-reads what is owed, with every other payment settled, and only then turns its row paid.
+    const { data: slot, error: paymentInsertError } = await adminClient
+      .from('parking_booking_payments')
+      .insert({
+        booking_id: bookingId,
+        provider: 'manual',
+        status: 'pending',
+        amount,
+        currency: 'GBP',
+        metadata: {
+          manual_settlement: true,
+          settled_by: user.id,
+          method: input.method ?? 'cash',
+          purpose: topUp ? 'top_up' : 'booking',
+        },
+      })
+      .select('id')
+      .single()
+
+    if (paymentInsertError || !slot) {
+      if ((paymentInsertError as { code?: unknown } | null)?.code === '23505') {
+        return { error: 'This booking is being updated by someone else. Refresh it and check what is owed.' }
+      }
+      console.error('Failed to create parking payment record:', paymentInsertError)
       return { error: 'Failed to update payment status' }
     }
 
-    if (paymentRecord) {
-      const { data: updatedPayment, error: paymentUpdateError } = await adminClient
-        .from('parking_booking_payments')
-        .update({
-          status: 'paid',
-          amount,
-          paid_at: nowIso,
-          metadata: {
-            ...(paymentRecord.metadata || {}),
-            manual_settlement: true,
-            settled_by: user.id
-          }
-        })
-        .eq('id', paymentRecord.id)
-        .select('id')
-        .maybeSingle()
-
-      if (paymentUpdateError) {
-        console.error('Failed to update parking payment record:', paymentUpdateError)
-        return { error: 'Failed to update payment status' }
-      }
-
-      if (!updatedPayment) {
-        return { error: 'Payment record not found' }
-      }
-    } else {
-      const { error: paymentInsertError } = await adminClient
-        .from('parking_booking_payments')
-        .insert({
-          booking_id: bookingId,
-          provider: 'manual',
-          status: 'paid',
-          amount,
-          currency: 'GBP',
-          paid_at: nowIso,
-          metadata: {
-            manual_settlement: true,
-            settled_by: user.id
-          }
-        })
-
-      if (paymentInsertError) {
-        console.error('Failed to create parking payment record:', paymentInsertError)
-        return { error: 'Failed to update payment status' }
-      }
+    const releaseSlot = async (reason: string) => {
+      await settleWrite(
+        adminClient
+          .from('parking_booking_payments')
+          .update({ status: 'expired', metadata: { manual_settlement: true, superseded_at: new Date().toISOString(), superseded_reason: reason } })
+          .eq('id', slot.id)
+          .eq('status', 'pending'),
+        { table: 'parking_booking_payments', what: 'Releasing an unused venue payment', ids: { bookingId, paymentId: slot.id } }
+      )
     }
 
-    const updated = await updateParkingBooking(
-      bookingId,
-      {
-        status: 'confirmed',
-        payment_status: 'paid',
-        confirmed_at: nowIso,
-        paid_start_three_day_sms_sent: false,
-        paid_end_three_day_sms_sent: false
-      },
-      adminClient
-    )
+    const recheck = await loadParkingMoneyRows(adminClient, [booking.id])
+    const stillOwed = topUp
+      ? (() => {
+          const now = computeParkingBalance(booking, recheck.payments, recheck.refunds)
+          return now.state === 'to_pay' ? now.balance : 0
+        })()
+      : recheck.payments.some((payment) => payment.status === 'paid')
+        ? 0
+        : amount
+    if (Math.abs(stillOwed - amount) > 0.005) {
+      await releaseSlot('already_paid')
+      return { error: 'This booking has just been paid. Refresh it and check what is owed.' }
+    }
+
+    const { data: settled, error: settleError } = await adminClient
+      .from('parking_booking_payments')
+      .update({ status: 'paid', paid_at: nowIso })
+      .eq('id', slot.id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle()
+    if (settleError || !settled) {
+      console.error('Failed to settle the venue payment row:', settleError)
+      await releaseSlot('settle_failed')
+      return { error: 'Failed to update payment status' }
+    }
+
+    const updated = topUp
+      ? ((await getParkingBooking(bookingId, adminClient)) ?? booking)
+      : await updateParkingBooking(
+          bookingId,
+          {
+            status: 'confirmed',
+            payment_status: 'paid',
+            confirmed_at: nowIso,
+            paid_start_three_day_sms_sent: false,
+            paid_end_three_day_sms_sent: false
+          },
+          adminClient
+        )
 
     await logAuditEvent({
       user_id: user.id,
@@ -987,17 +1089,19 @@ export async function markParkingBookingPaid(bookingId: string) {
       operation_status: 'success',
       additional_info: {
         action: 'mark_paid',
-        amount
+        amount,
+        method: input.method ?? 'cash',
+        purpose: topUp ? 'top_up' : 'booking',
       }
     })
 
     revalidatePath('/parking')
     revalidateTag('dashboard')
 
-    return { success: true, booking: updated }
+    return { success: true, booking: updated, amount }
   } catch (error) {
     console.error('Failed to mark parking booking as paid', error)
-    return { error: 'Failed to update payment status' }
+    return { error: parkingCapacityRefusal(error) ?? 'Failed to update payment status' }
   }
 }
 
@@ -1024,6 +1128,15 @@ const ChangeParkingDatesSchema = ChangeDatesWindowSchema.extend({
   refundAmount: z.number().nonnegative().optional(),
   refundReason: z.string().trim().max(500).optional(),
   manualRefundMethod: z.enum(['cash', 'bank_transfer']).default('cash'),
+  /**
+   * Paid bookings that now cost more (D4): text a payment link for the extra, record it as paid
+   * at the venue, or charge nothing extra (reason required).
+   */
+  extraChoice: z.enum(['link', 'venue', 'waive']).optional(),
+  /** The extra the screen showed. If the server works out a different one, nothing happens. */
+  expectedExtra: z.number().nonnegative().optional(),
+  venueMethod: z.enum(['cash', 'card_terminal']).default('cash'),
+  waiveReason: z.string().trim().max(500).optional(),
 })
 
 export type ParkingDateChangePreview = {
@@ -1044,7 +1157,7 @@ export type ParkingDateChangePreview = {
   overridePrice: number | null
   canRefund: boolean
   paypalRefundPossible: boolean
-  /** Phase 1: a paid booking that would cost more cannot be changed yet. */
+  /** True: a paid booking that would cost more can be changed, with one of the three choices. */
   extendingPaidAvailable: boolean
 }
 
@@ -1109,7 +1222,7 @@ export async function previewParkingDateChange(
         overridePrice: plan.hadOverride ? Number(context.booking.override_price) : null,
         canRefund,
         paypalRefundPossible: plan.paypalRefundPossible,
-        extendingPaidAvailable: false,
+        extendingPaidAvailable: true,
       },
     }
   } catch (error) {
@@ -1140,7 +1253,8 @@ export type ChangeParkingBookingDatesResult = {
  * refuses) the new space, and only then does any money move or any text go. A failure after the
  * save never rolls the dates back: it comes back as `success` with a `warning` saying what did not
  * happen, and the booking keeps showing its balance until someone settles it. Paid bookings that
- * would cost more are refused for now ("Extending a paid booking is not available yet").
+ * would cost more take one of three choices (D4): a payment link for the extra, paid at the venue,
+ * or no extra charge with a reason.
  *
  * Needs parking "manage". Sending a refund also needs parking "refund"; without it the change
  * saves and the booking shows the refund as still to do. Refunds are keyed on the changeId plus
@@ -1195,8 +1309,20 @@ export async function changeParkingBookingDates(
       }
     }
 
+    // How a dearer stay is settled (D4). The extra is re-checked against the screen, because a
+    // top-up captured since the dialog opened changes what is owed without touching updated_at.
     if (plan.kind === 'extra') {
-      return { error: `This change costs £${plan.extraDue.toFixed(2)} more. Extending a paid booking is not available yet.` }
+      if (!data.extraChoice) {
+        return { error: `This change costs £${plan.extraDue.toFixed(2)} more. Choose how the extra is settled.` }
+      }
+      if (data.expectedExtra !== undefined && Math.abs(plan.extraDue - data.expectedExtra) > 0.005) {
+        return {
+          error: `The extra to pay is now £${plan.extraDue.toFixed(2)}, not £${data.expectedExtra.toFixed(2)}. Check the figures and save again.`,
+        }
+      }
+      if (data.extraChoice === 'waive' && !data.waiveReason) {
+        return { error: 'Give a reason for not charging the extra.' }
+      }
     }
 
     // How a cheaper stay is settled (D1 to D3, D6, and "an amount settled is settled").
@@ -1218,6 +1344,12 @@ export async function changeParkingBookingDates(
         overridePrice = roundPence(plan.netPaid - chosen)
         overrideReason = `Dates changed; £${roundPence(plan.refundDue - chosen).toFixed(2)} of the difference kept: ${data.refundReason}`
       }
+    }
+
+    if (plan.kind === 'extra' && data.extraChoice === 'waive') {
+      // No extra charge: the price becomes what has been paid, so the balance is zero.
+      overridePrice = plan.netPaid
+      overrideReason = `Dates changed; £${plan.extraDue.toFixed(2)} extra not charged: ${data.waiveReason}`
     }
 
     const now = new Date()
@@ -1296,7 +1428,9 @@ export async function changeParkingBookingDates(
             new_start_at: updated.start_at,
             new_end_at: updated.end_at,
             old_price: plan.oldPrice,
-            new_price: bookingPrice(updated),
+            // The price for the new dates. bookingPrice(updated) read the held price while a refund
+            // was on its way, and logged the old figure (seen on the live test, 24 November 2026).
+            new_price: plan.newPrice,
             start_moved: plan.startMoved,
             end_moved: plan.endMoved,
             reset_start_reminder: resets.resetStart,
@@ -1397,8 +1531,10 @@ export async function changeParkingBookingDates(
       })
       if (finalised) updated = { ...updated, ...finalised }
       else warnings.push('The refund was sent, but the booking price could not be updated. Check the booking before refunding again.')
-      if (refundResult.refunded > 0 && refundResult.viaPayPal) {
-        outcome = { kind: 'refund', amount: refundResult.refunded }
+      // Only the part PayPal is sending back is "refunded to the way you paid". A part refunded by
+      // cash or bank transfer is handed over by staff and is not named in the text.
+      if (refundResult.refundedViaPayPal > 0) {
+        outcome = { kind: 'refund', amount: refundResult.refundedViaPayPal }
       }
       if (!refundResult.complete) {
         const missing = roundPence(refundToSend - refundResult.refunded)
@@ -1406,10 +1542,69 @@ export async function changeParkingBookingDates(
           `The dates were changed, but the £${missing.toFixed(2)} refund did not go through. Nothing was sent to the customer about that refund. The booking shows it as a refund to do. ${refundResult.failures.join(' ')}`.trim()
         )
       }
+    } else if (plan.kind === 'extra' && data.extraChoice === 'link') {
+      // A PayPal order for the extra only, texted in the change message.
+      try {
+        const appUrl = getAppUrl()
+        const order = await createParkingPaymentOrder(updated, {
+          returnUrl: parkingPaymentReturnUrl(appUrl, updated.id),
+          cancelUrl: parkingGuestUrl(appUrl, updated.id, 'cancelled'),
+          client: adminClient,
+          amount: plan.extraDue,
+          purpose: 'top_up',
+        })
+        paymentLink = order.approveUrl || undefined
+      } catch (orderError) {
+        console.error('Failed to make a parking top-up link after a date change', orderError)
+      }
+      if (paymentLink) {
+        outcome = { kind: 'pay_link', amount: plan.extraDue, link: paymentLink }
+      } else {
+        warnings.push(
+          `The dates were changed, but a payment link for the £${plan.extraDue.toFixed(2)} extra could not be made. The booking shows it as to pay: press Payment link on the booking.`
+        )
+      }
+    } else if (plan.kind === 'extra' && data.extraChoice === 'venue') {
+      // Paid at the venue: a manual payment row for the extra. No PayPal call.
+      const recorded = await settleWrite(
+        adminClient.from('parking_booking_payments').insert({
+          booking_id: booking.id,
+          provider: 'manual',
+          status: 'paid',
+          amount: plan.extraDue,
+          currency: 'GBP',
+          paid_at: now.toISOString(),
+          metadata: {
+            manual_settlement: true,
+            settled_by: user.id,
+            method: data.venueMethod,
+            purpose: 'top_up',
+            change_id: data.changeId,
+          },
+        }),
+        { table: 'parking_booking_payments', what: 'Recording the extra paid at the venue', ids: { bookingId: booking.id, changeId: data.changeId } }
+      )
+      if (recorded) {
+        outcome = { kind: 'paid_at_venue', amount: plan.extraDue }
+      } else {
+        warnings.push(
+          `The dates were changed, but the £${plan.extraDue.toFixed(2)} paid at the venue could not be recorded. The booking shows it as to pay: press Mark paid on the booking.`
+        )
+      }
     } else if (plan.kind === 'refund' && !canRefund) {
       warnings.push(
         `The dates were changed. A manager will need to send the refund of up to £${plan.refundDue.toFixed(2)}: the booking shows it as a refund to do.`
       )
+    }
+
+    // The pending-payment rule (spec section 5): on a paid booking, a pending top-up link for an
+    // amount no longer owed stops working now, not when the customer tries to pay it.
+    if (plan.kind !== 'unpaid') {
+      try {
+        await enforcePendingPaymentRule(adminClient, updated, { reason: 'dates_changed' })
+      } catch (ruleError) {
+        console.error('Failed to retire an old parking payment link after a date change', ruleError)
+      }
     }
 
     // Step 7: tell the customer.
@@ -1458,6 +1653,8 @@ export async function changeParkingBookingDates(
         refund_chosen: refundToSend,
         refunded,
         kept_by_override: overridePrice !== null,
+        extra_choice: plan.kind === 'extra' ? data.extraChoice : null,
+        extra_due: plan.extraDue,
         payment_link_made: Boolean(paymentLink),
         text_status: textStatus,
         warnings,

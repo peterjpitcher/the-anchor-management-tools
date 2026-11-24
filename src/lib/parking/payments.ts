@@ -12,7 +12,9 @@ import {
   buildPaymentConfirmationSms,
   buildPaymentConfirmationManagerEmail,
   buildPaymentRequestSms,
+  buildTopUpReceivedSms,
 } from '@/lib/parking/notifications'
+import { enforcePendingPaymentRule, isTopUpBooking } from '@/lib/parking/payment-due'
 import { resolveParkingSmsEligibility } from '@/lib/parking/sms-safety'
 
 interface CreatePaymentOptions {
@@ -21,6 +23,13 @@ interface CreatePaymentOptions {
   description?: string
   currency?: string
   client?: SupabaseClient<any, 'public', any>
+  /**
+   * What to charge. Omitted: the booking's whole price, for a booking still waiting for its first
+   * payment. A top-up on a confirmed booking passes its balance (spec section 7).
+   */
+  amount?: number
+  /** 'top_up' marks the row as extra on a confirmed booking: no offer deadline, expires at end_at. */
+  purpose?: 'booking' | 'top_up'
 }
 
 function normalizeThrownSmsSafety(error: unknown): { code: string; logFailure: boolean } {
@@ -64,30 +73,84 @@ function extractPayPalOrderCurrency(order: any): string | null {
   return typeof raw === 'string' && raw.trim() ? raw.trim().toUpperCase() : null
 }
 
+/**
+ * The PayPal-Request-Id for a new parking order.
+ *
+ * PayPal replays the original order for a request id it has seen recently, so one fixed id per
+ * booking (`parking-<id>`, the old default) handed a top-up, or a link re-made for a new price,
+ * the earlier order back instead of a new one. The id now changes with each payment row the
+ * booking has (any status) and with the amount, so a fresh attempt gets a fresh order, while a
+ * retry of the same attempt (no row written yet) keeps its id and is still de-duplicated.
+ * A booking's very first order keeps the old id.
+ */
+export async function parkingOrderRequestId(
+  supabase: SupabaseClient<any, 'public', any>,
+  bookingId: string,
+  amount: number
+): Promise<string> {
+  const { count, error } = await supabase
+    .from('parking_booking_payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('booking_id', bookingId)
+  if (error) {
+    throw new Error(`Could not read the booking's payments: ${error.message}`)
+  }
+  const rows = count ?? 0
+  return rows === 0 ? `parking-${bookingId}` : `parking-${bookingId}-${rows}-${Math.round(amount * 100)}`
+}
+
 export async function createParkingPaymentOrder(
   booking: ParkingBooking,
   options: CreatePaymentOptions
 ): Promise<{ payment: ParkingPaymentRecord; orderId: string; approveUrl: string }> {
-  const amount = booking.override_price ?? booking.calculated_price
+  const purpose = options.purpose ?? 'booking'
+  const amount = Number((options.amount ?? booking.override_price ?? booking.calculated_price ?? 0).toFixed(2))
   if (!amount || amount <= 0) {
     throw new Error('Parking booking amount must be greater than zero to create a payment')
   }
 
-  if (!booking.payment_due_at) {
+  // A top-up has no offer deadline: the booking is already confirmed, and the debt is the balance,
+  // not the row. Its row lapses at the end of the stay. Nothing reads a payment row's expires_at
+  // to expire or cancel a booking (checked 24 November 2026: the lifecycle cron reads the
+  // booking's own payment_due_at and only for pending_payment bookings).
+  const rowExpiresAt = purpose === 'top_up' ? booking.end_at : booking.payment_due_at
+  if (!rowExpiresAt) {
     throw new Error('Parking booking is missing payment_due_at')
   }
 
   const supabase = options.client ?? createAdminClient()
 
+  // Reuse a pending order only when it is for exactly this amount. One for an old amount is
+  // expired first: the unique index allows one pending row per booking, and a link texted for an
+  // old amount must stop working (the pending-payment rule, spec section 5).
   const existingPending = await getPendingParkingPayment(booking.id, supabase)
   if (existingPending) {
-    logger.info('Reusing existing pending parking payment', {
-      metadata: { bookingId: booking.id, paymentId: existingPending.id }
-    })
-    return {
-      payment: existingPending,
-      orderId: existingPending.paypal_order_id || '',
-      approveUrl: (existingPending.metadata as any)?.approve_url || ''
+    if (payPalMoneyMatches(Number(existingPending.amount), amount)) {
+      logger.info('Reusing existing pending parking payment', {
+        metadata: { bookingId: booking.id, paymentId: existingPending.id }
+      })
+      return {
+        payment: existingPending,
+        orderId: existingPending.paypal_order_id || '',
+        approveUrl: (existingPending.metadata as any)?.approve_url || ''
+      }
+    }
+    const { error: expireError } = await supabase
+      .from('parking_booking_payments')
+      .update({
+        status: 'expired',
+        metadata: {
+          ...((existingPending.metadata as Record<string, unknown> | null) ?? {}),
+          superseded_at: new Date().toISOString(),
+          superseded_reason: 'amount_changed',
+          superseded_amount: existingPending.amount,
+          amount_due_now: amount
+        }
+      })
+      .eq('id', existingPending.id)
+      .eq('status', 'pending')
+    if (expireError) {
+      throw new Error(`Could not retire the old payment link: ${expireError.message}`)
     }
   }
 
@@ -97,7 +160,9 @@ export async function createParkingPaymentOrder(
   // out for the whole of British Summer Time.
   const description =
     options.description ||
-    `Parking booking ${booking.reference} from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}`
+    (purpose === 'top_up'
+      ? `Extra for parking booking ${booking.reference}, now ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}`
+      : `Parking booking ${booking.reference} from ${formatDateTime(booking.start_at)} to ${formatDateTime(booking.end_at)}`)
 
   const { orderId, approveUrl } = await createSimplePayPalOrder({
     customId: booking.id,
@@ -106,29 +171,48 @@ export async function createParkingPaymentOrder(
     amount,
     returnUrl: options.returnUrl,
     cancelUrl: options.cancelUrl,
-    currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY
+    currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY,
+    requestId: await parkingOrderRequestId(supabase, booking.id, amount)
   })
 
   if (!approveUrl) {
     throw new Error('PayPal did not return an approval URL')
   }
 
-  const payment = await insertParkingPayment(
-    {
-      booking_id: booking.id,
-      amount,
-      currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY,
-      status: 'pending',
-      paypal_order_id: orderId,
-      expires_at: booking.payment_due_at,
-      metadata: {
-        approve_url: approveUrl,
+  let payment: ParkingPaymentRecord
+  try {
+    payment = await insertParkingPayment(
+      {
+        booking_id: booking.id,
         amount,
-        description
+        currency: options.currency ?? PAYPAL_DEFAULT_CURRENCY,
+        status: 'pending',
+        paypal_order_id: orderId,
+        expires_at: rowExpiresAt,
+        metadata: {
+          approve_url: approveUrl,
+          amount,
+          description,
+          purpose
+        }
+      },
+      supabase
+    )
+  } catch (insertError) {
+    // Two requests raced: the other one's pending row won the unique index. Use it when it is for
+    // the same amount; otherwise give up rather than leave two links for different amounts.
+    if ((insertError as { code?: unknown })?.code === '23505') {
+      const winner = await getPendingParkingPayment(booking.id, supabase)
+      if (winner && payPalMoneyMatches(Number(winner.amount), amount)) {
+        return {
+          payment: winner,
+          orderId: winner.paypal_order_id || '',
+          approveUrl: (winner.metadata as any)?.approve_url || ''
+        }
       }
-    },
-    supabase
-  )
+    }
+    throw insertError
+  }
 
   return { payment, orderId, approveUrl }
 }
@@ -341,6 +425,18 @@ export class ParkingBookingNotCapturableError extends Error {
   }
 }
 
+/**
+ * Thrown when a top-up link no longer matches what the booking owes (the amount changed, or the
+ * debt was paid at the venue or waived). Nothing is captured, so no money moves; the customer is
+ * sent to the guest page, which shows what is owed now.
+ */
+export class ParkingTopUpAmountChangedError extends Error {
+  constructor(message = 'This payment link is for an amount that is no longer owed') {
+    super(message)
+    this.name = 'ParkingTopUpAmountChangedError'
+  }
+}
+
 export async function captureParkingPayment(
   booking: ParkingBooking,
   paypalOrderId: string,
@@ -379,6 +475,17 @@ export async function captureParkingPayment(
   }
 
   if (paymentRecord.status === 'paid' && booking.payment_status === 'paid' && booking.status === 'confirmed') {
+    return booking
+  }
+
+  // A confirmed, paid booking taking more money: a top-up after its dates grew (spec section 7).
+  // Its status, confirmation and reminder flags are left alone, and the customer gets the top-up
+  // receipt, not a second "your parking is now confirmed".
+  if (isTopUpBooking(booking)) {
+    if (paymentRecord.status !== 'pending') {
+      throw new Error('Payment is not pending')
+    }
+    await captureParkingTopUp(booking, paypalOrderId, paymentRecord, supabase)
     return booking
   }
 
@@ -470,6 +577,200 @@ export async function captureParkingPayment(
 }
 
 /**
+ * Captures a top-up on a confirmed booking. Re-checks the row against what is owed at this moment
+ * first (the pending-payment rule): a link texted for £30 cannot be paid once the debt was paid at
+ * the venue, waived or changed, and refusing before capture takes no money.
+ */
+async function captureParkingTopUp(
+  booking: ParkingBooking,
+  paypalOrderId: string,
+  paymentRecord: { id: string; amount: number | string | null; currency: string | null },
+  supabase: SupabaseClient<any, 'public', any>
+): Promise<void> {
+  const rule = await enforcePendingPaymentRule(supabase, booking, { reason: 'amount_changed_before_capture' })
+  if (!rule.pending || rule.pending.id !== paymentRecord.id) {
+    throw new ParkingTopUpAmountChangedError()
+  }
+
+  const orderDetails = await getPayPalOrder(paypalOrderId)
+  const orderCustomId = orderDetails?.purchase_units?.[0]?.custom_id
+  if (typeof orderCustomId !== 'string' || orderCustomId !== booking.id) {
+    throw new Error('PayPal order does not belong to this booking')
+  }
+  const expectedCurrency = (paymentRecord.currency || PAYPAL_DEFAULT_CURRENCY).toUpperCase()
+  const expectedAmount = Number(paymentRecord.amount || 0)
+  const orderAmount = parsePayPalMoney(orderDetails?.purchase_units?.[0]?.amount?.value)
+  if (
+    orderAmount === null ||
+    !payPalMoneyMatches(orderAmount, expectedAmount) ||
+    extractPayPalOrderCurrency(orderDetails) !== expectedCurrency
+  ) {
+    throw new Error('PayPal order amount or currency does not match this booking')
+  }
+
+  const captureResult = await capturePayPalPayment(paypalOrderId, expectedCurrency)
+  const capturedAmount = parsePayPalMoney(captureResult.amount)
+  if (capturedAmount === null || !payPalMoneyMatches(capturedAmount, expectedAmount)) {
+    throw new Error('Captured PayPal amount does not match this booking')
+  }
+
+  await recordCapturedTopUp(booking, {
+    paymentId: paymentRecord.id,
+    paypalOrderId,
+    captureId: captureResult.transactionId,
+    amount: capturedAmount,
+    metadata: { ...(captureResult as any), paypal_order_id: paypalOrderId, purpose: 'top_up' },
+    supabase,
+  })
+}
+
+/**
+ * Marks a captured top-up paid and sends the receipt text. The money has already been taken, so
+ * this never refuses: a row that was expired while the customer was at PayPal is still recorded
+ * as paid (any overpayment then shows as a refund to do). The receipt goes only from the path that
+ * wins the guarded pending-to-paid update, so a webhook or the reconciliation cron landing at the
+ * same moment does not text the customer twice.
+ */
+async function recordCapturedTopUp(
+  booking: ParkingBooking,
+  input: {
+    paymentId: string
+    paypalOrderId: string
+    captureId: string | null
+    amount: number
+    metadata: Record<string, unknown>
+    supabase: SupabaseClient<any, 'public', any>
+  }
+): Promise<{ recorded: boolean }> {
+  const { supabase } = input
+  const paidAt = new Date().toISOString()
+  const { data: won, error } = await supabase
+    .from('parking_booking_payments')
+    .update({ status: 'paid', paid_at: paidAt, transaction_id: input.captureId, metadata: input.metadata })
+    .eq('id', input.paymentId)
+    .eq('status', 'pending')
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    logger.error('PayPal took a parking top-up but the payment row could not be updated', {
+      error,
+      metadata: { bookingId: booking.id, paypalOrderId: input.paypalOrderId, action: 'record this payment by hand' }
+    })
+    throw new Error('Failed to update payment status')
+  }
+
+  if (!won) {
+    const { data: current, error: currentError } = await supabase
+      .from('parking_booking_payments')
+      .select('id, status, transaction_id')
+      .eq('id', input.paymentId)
+      .maybeSingle()
+    if (currentError) throw new Error(currentError.message)
+    if (current?.status === 'paid' && (!input.captureId || !current.transaction_id || current.transaction_id === input.captureId)) {
+      // The webhook recorded this very capture first. It never texts, so send the receipt unless
+      // one has already been logged for this payment.
+      const { data: receipt, error: receiptError } = await supabase
+        .from('parking_booking_notifications')
+        .select('id')
+        .eq('booking_id', booking.id)
+        .eq('event_type', 'top_up_received')
+        .contains('payload', { payment_id: input.paymentId })
+        .limit(1)
+        .maybeSingle()
+      if (!receiptError && !receipt) {
+        await sendTopUpReceipt(booking, input.amount, input.paymentId, supabase)
+      }
+      return { recorded: false }
+    }
+    // The row was expired while the customer was at PayPal, and the money has still been taken.
+    // Record it: it must show, and the balance then reads as a refund to do.
+    const { error: recordError } = await supabase
+      .from('parking_booking_payments')
+      .update({
+        status: 'paid',
+        paid_at: paidAt,
+        transaction_id: input.captureId,
+        metadata: { ...input.metadata, recorded_after_expiry: true }
+      })
+      .eq('id', input.paymentId)
+      .neq('status', 'paid')
+    if (recordError) throw new Error(recordError.message)
+    logger.error('A parking top-up was paid after its link had been retired; check whether a refund is due', {
+      error: new Error('Top-up captured against an expired payment row'),
+      metadata: { bookingId: booking.id, paymentId: input.paymentId, captureId: input.captureId, amount: input.amount }
+    })
+  }
+
+  await sendTopUpReceipt(booking, input.amount, input.paymentId, supabase)
+  return { recorded: true }
+}
+
+async function sendTopUpReceipt(
+  booking: ParkingBooking,
+  amount: number,
+  paymentId: string,
+  supabase: SupabaseClient<any, 'public', any>
+): Promise<void> {
+  const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
+  const smsBody = ensureReplyInstruction(buildTopUpReceivedSms(booking, amount), replyNumber)
+  const log = async (status: 'sent' | 'failed' | 'skipped', payload: Record<string, unknown>, extra: { sent_at?: string | null; message_sid?: string | null } = {}) => {
+    try {
+      await logParkingNotification({
+        booking_id: booking.id,
+        channel: 'sms',
+        event_type: 'top_up_received',
+        status,
+        ...extra,
+        payload: { template_key: 'parking_top_up_received', payment_id: paymentId, amount, ...payload }
+      }, supabase)
+    } catch (logError) {
+      logger.error('Failed to log the parking top-up receipt text', {
+        error: logError instanceof Error ? logError : new Error(String(logError)),
+        metadata: { bookingId: booking.id, paymentId }
+      })
+    }
+  }
+
+  if (!booking.customer_mobile) {
+    await log('skipped', { reason: 'No customer mobile number on booking' })
+    return
+  }
+  if (booking.customer_id) {
+    const eligibility = await resolveParkingSmsEligibility(supabase, booking.customer_id)
+    if (!eligibility.allowed) {
+      await log('skipped', {
+        reason: eligibility.reason === 'customer_opted_out' ? 'Customer has opted out of SMS' : 'Customer SMS eligibility lookup failed'
+      })
+      return
+    }
+  }
+
+  try {
+    const result = await sendSMS(booking.customer_mobile, smsBody, {
+      customerId: booking.customer_id ?? undefined,
+      metadata: {
+        parking_booking_id: booking.id,
+        event_type: 'top_up_received',
+        template_key: 'parking_top_up_received',
+        // Each top-up is its own receipt: a second top-up of the same amount must not be
+        // refused as a duplicate of the first.
+        payment_id: paymentId
+      },
+      customerFallback: { email: (booking as any)?.customer_email ?? null }
+    })
+    await log(result.success ? 'sent' : 'failed', { sms: smsBody, sms_code: typeof result.code === 'string' ? result.code : null }, {
+      sent_at: result.success ? new Date().toISOString() : null,
+      message_sid: result.success && result.sid ? result.sid : null
+    })
+  } catch (error) {
+    const err = error instanceof Error ? error : new Error(String(error))
+    logger.error('Unexpected error sending the parking top-up receipt', { error: err, metadata: { bookingId: booking.id, paymentId } })
+    await log('failed', { error: err.message })
+  }
+}
+
+/**
  * Records a PayPal capture that already happened but never reached the database.
  *
  * The window this closes: `captureParkingPayment` takes the money, then the
@@ -532,6 +833,20 @@ export async function reconcileCapturedParkingPayment(
     throw new Error('Captured PayPal amount or currency does not match this booking')
   }
 
+  // A top-up on a live, paid booking: record the money and send the top-up receipt. The booking's
+  // status, confirmation and reminder flags are left alone (spec section 7).
+  if (isTopUpBooking(booking)) {
+    const { recorded } = await recordCapturedTopUp(booking, {
+      paymentId: paymentRecord.id,
+      paypalOrderId,
+      captureId,
+      amount: capturedAmount,
+      metadata: { ...(capture as any), paypal_order_id: paypalOrderId, reconciled: true, purpose: 'top_up' },
+      supabase,
+    })
+    return recorded ? booking : null
+  }
+
   const { data: paymentUpdate, error: updateError } = await supabase
     .from('parking_booking_payments')
     .update({
@@ -559,6 +874,15 @@ export async function reconcileCapturedParkingPayment(
   // taken and must be visible rather than vanishing. What it must not do is
   // quietly resurrect the booking. This needs a person, to refund or to
   // re-accommodate, so it is logged as an error rather than handled silently.
+  // A completed stay keeps its status: the money is recorded above and shows on the booking.
+  if (booking.status === 'completed') {
+    logger.error('Parking payment captured against a stay that has already finished', {
+      error: new Error('Payment recorded on a completed parking booking'),
+      metadata: { bookingId: booking.id, paypalOrderId, captureId, amount: capturedAmount, action: 'check whether a refund is due' }
+    })
+    return null
+  }
+
   if (booking.status === 'expired' || booking.status === 'cancelled') {
     logger.error('Parking payment captured against a booking that had already lapsed', {
       error: new ParkingBookingNotCapturableError(booking.status),

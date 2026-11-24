@@ -131,6 +131,16 @@ class FakeQuery implements PromiseLike<QueryResult> {
     return this
   }
 
+  /** jsonb containment, one level deep: every key given must equal the row's value for it. */
+  contains(column: string, value: Row) {
+    this.filters.push((row) => {
+      const target = row[column]
+      if (!target || typeof target !== 'object') return false
+      return Object.entries(value).every(([key, expected]) => (target as Row)[key] === expected)
+    })
+    return this
+  }
+
   gt(column: string, value: string | number) {
     this.filters.push((row) => (row[column] as string | number) > value)
     return this
@@ -229,6 +239,7 @@ class FakeQuery implements PromiseLike<QueryResult> {
     if (this.operation === 'insert') {
       const incoming = (Array.isArray(this.payload) ? this.payload : [this.payload ?? {}]).map((row) => ({
         id: `fake-${this.table}-${table.length + 1}-${Math.random().toString(16).slice(2, 8)}`,
+        created_at: nextTimestamp(),
         ...row,
       }))
       table.push(...incoming)

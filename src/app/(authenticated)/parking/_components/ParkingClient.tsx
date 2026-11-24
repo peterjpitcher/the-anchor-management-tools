@@ -48,6 +48,7 @@ import {
 } from '../_shared/status-ui'
 import { messageDeliveryStatusLabel, messageDeliveryStatusTone } from '@/lib/messages/status-ui'
 import { RefundDialog } from './RefundDialog'
+import type { ParkingRefundablePayment } from '@/app/actions/refundActions'
 import { RefundHistoryTable } from './RefundHistoryTable'
 import { ChangeDatesDialog } from './ChangeDatesDialog'
 import { RefundDueDialog } from './RefundDueDialog'
@@ -242,6 +243,8 @@ export default function ParkingClient({ permissions, initialError, initialBookin
   const [refundPaymentAmount, setRefundPaymentAmount] = useState(0)
   const [refundTotals, setRefundTotals] = useState({ totalRefunded: 0, totalPending: 0 })
   const [refundHasCapture, setRefundHasCapture] = useState(false)
+  // Every paid payment on the booking (a top-up adds a second): staff pick which one to refund.
+  const [refundPayments, setRefundPayments] = useState<ParkingRefundablePayment[]>([])
   // Bumped after a refund to remount RefundHistoryTable, which otherwise only
   // refetches when the payment it is showing changes.
   const [refundHistoryKey, setRefundHistoryKey] = useState(0)
@@ -368,31 +371,56 @@ export default function ParkingClient({ permissions, initialError, initialBookin
   // refunded against it. Shared by row selection, the Refund button and the
   // post-refund refresh so all three agree on the refundable balance.
   // Returns an error message, or null on success.
-  const loadRefundSummary = async (bookingId: string): Promise<string | null> => {
+  const loadRefundTotals = async (paymentId: string) => {
+    const { getRefundHistory } = await import('@/app/actions/refundActions')
+    const history = await getRefundHistory('parking', paymentId)
+    const rows = (history.data ?? []) as Record<string, unknown>[]
+    const completed = rows.filter((r) => r.status === 'completed').reduce((sum, r) => sum + Number(r.amount), 0)
+    const pending = rows.filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount), 0)
+    setRefundTotals({ totalRefunded: completed, totalPending: pending })
+  }
+
+  const loadRefundSummary = async (bookingId: string, preferredPaymentId?: string | null): Promise<string | null> => {
     try {
-      const { getParkingPaymentForRefund, getRefundHistory } = await import('@/app/actions/refundActions')
+      const { getParkingPaymentForRefund } = await import('@/app/actions/refundActions')
       const paymentResult = await getParkingPaymentForRefund(bookingId)
       if (paymentResult.error || !paymentResult.data) {
         setRefundPaymentId(null)
+        setRefundPayments([])
         return paymentResult.error || 'No paid payment record found.'
       }
-      setRefundPaymentId(paymentResult.data.paymentId)
-      setRefundPaymentAmount(paymentResult.data.amount)
-      setRefundHasCapture(paymentResult.data.hasCapture)
-
-      const history = await getRefundHistory('parking', paymentResult.data.paymentId)
-      const rows = (history.data ?? []) as Record<string, unknown>[]
-      const completed = rows.filter((r) => r.status === 'completed').reduce((sum, r) => sum + Number(r.amount), 0)
-      const pending = rows.filter((r) => r.status === 'pending').reduce((sum, r) => sum + Number(r.amount), 0)
-      setRefundTotals({ totalRefunded: completed, totalPending: pending })
+      const payments = paymentResult.data.payments ?? []
+      setRefundPayments(payments)
+      const chosen =
+        payments.find((payment) => payment.paymentId === preferredPaymentId) ??
+        payments.find((payment) => payment.paymentId === paymentResult.data?.paymentId)
+      setRefundPaymentId(chosen?.paymentId ?? paymentResult.data.paymentId)
+      setRefundPaymentAmount(chosen?.amount ?? paymentResult.data.amount)
+      setRefundHasCapture(chosen?.hasCapture ?? paymentResult.data.hasCapture)
+      await loadRefundTotals(chosen?.paymentId ?? paymentResult.data.paymentId)
       return null
     } catch {
       return 'Failed to load payment details for refund.'
     }
   }
 
+  const selectRefundPayment = async (paymentId: string) => {
+    const chosen = refundPayments.find((payment) => payment.paymentId === paymentId)
+    if (!chosen) return
+    setRefundPaymentId(chosen.paymentId)
+    setRefundPaymentAmount(chosen.amount)
+    setRefundHasCapture(chosen.hasCapture)
+    try {
+      await loadRefundTotals(chosen.paymentId)
+    } catch {
+      toast.error('Failed to load the refunds on that payment.')
+    }
+    setRefundHistoryKey((key) => key + 1)
+  }
+
   const openRefundForBooking = async (booking: ParkingBooking) => {
-    const error = await loadRefundSummary(booking.id)
+    // Keeps the payment chosen in Refund History, so the dialog refunds that one.
+    const error = await loadRefundSummary(booking.id, refundPaymentId)
     if (error) { toast.error(error); return }
     setShowRefundDialog(true)
   }
@@ -407,7 +435,7 @@ export default function ParkingClient({ permissions, initialError, initialBookin
     // The refunded booking may no longer match the active filters, in which case
     // it has genuinely left the list and the detail panel closes with it.
     setSelectedBooking(latest.find((b) => b.id === bookingId) ?? null)
-    await loadRefundSummary(bookingId)
+    await loadRefundSummary(bookingId, refundPaymentId)
     setRefundHistoryKey((key) => key + 1)
   }
 
@@ -871,7 +899,7 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                             Change dates
                           </Button>
                         )}
-                        {selectedBooking.payment_status === 'pending' && (
+                        {(selectedBooking.payment_status === 'pending' || selectedBooking.balance?.state === 'to_pay') && (
                           <>
                             <Button
                               size="sm"
@@ -879,7 +907,9 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                               loading={isMutating && mutatingAction === 'payment-link'}
                               onClick={() => { setMutatingAction('payment-link'); handleGeneratePaymentLink(selectedBooking.id) }}
                             >
-                              Payment Link
+                              {selectedBooking.balance?.state === 'to_pay'
+                                ? `Payment link for ${formatCurrency(selectedBooking.balance.balance)}`
+                                : 'Payment Link'}
                             </Button>
                             <Button
                               variant="secondary"
@@ -888,7 +918,9 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                               loading={isMutating && mutatingAction === 'mark-paid'}
                               onClick={() => { setMutatingAction('mark-paid'); handleMarkPaid(selectedBooking.id) }}
                             >
-                              Mark Paid
+                              {selectedBooking.balance?.state === 'to_pay'
+                                ? `Mark ${formatCurrency(selectedBooking.balance.balance)} paid`
+                                : 'Mark Paid'}
                             </Button>
                           </>
                         )}
@@ -924,6 +956,22 @@ export default function ParkingClient({ permissions, initialError, initialBookin
                 {['paid', 'refunded'].includes(selectedBooking.payment_status) && refundPaymentId && (
                   <Card>
                     <CardHeader title="Refund History" />
+                    {refundPayments.length > 1 && (
+                      <div className="px-4 pt-3">
+                        <Select
+                          label="Payment"
+                          value={refundPaymentId}
+                          onChange={(event) => void selectRefundPayment(event.target.value)}
+                          options={refundPayments.map((payment) => ({
+                            value: payment.paymentId,
+                            label: `${payment.purpose === 'top_up' ? 'Extra payment' : 'First payment'}: ${formatCurrency(payment.amount)}${
+                              payment.provider === 'manual' ? ' at the venue' : ' by PayPal'
+                            }, ${formatCurrency(payment.refundable)} refundable`,
+                          }))}
+                        />
+                        <p className="mt-1 text-xs text-text-muted">The Refund button refunds the payment chosen here.</p>
+                      </div>
+                    )}
                     <RefundHistoryTable key={refundHistoryKey} sourceType="parking" sourceId={refundPaymentId} />
                   </Card>
                 )}

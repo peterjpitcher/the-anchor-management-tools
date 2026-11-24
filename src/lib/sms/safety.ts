@@ -56,7 +56,9 @@ const DEDUPE_CONTEXT_KEYS = [
   'change_id',
   // The instant a reminder is about (a parking start, end or payment deadline). A reminder for
   // moved dates is a new message, not a conflicting retry of the one for the old dates.
-  'subject_at'
+  'subject_at',
+  // A parking top-up receipt: each payment is its own receipt, even two of the same amount.
+  'payment_id'
 ] as const
 
 function parsePositiveIntEnv(name: string, fallback: number): number {

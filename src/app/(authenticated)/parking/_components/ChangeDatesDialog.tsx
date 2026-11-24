@@ -48,6 +48,9 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
   const [refundAmount, setRefundAmount] = useState('')
   const [refundReason, setRefundReason] = useState('')
   const [manualMethod, setManualMethod] = useState<'cash' | 'bank_transfer'>('cash')
+  const [extraChoice, setExtraChoice] = useState<'link' | 'venue' | 'waive'>('link')
+  const [venueMethod, setVenueMethod] = useState<'cash' | 'card_terminal'>('cash')
+  const [waiveReason, setWaiveReason] = useState('')
   const [sendPaymentLink, setSendPaymentLink] = useState(true)
   const [notifyCustomer, setNotifyCustomer] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -67,6 +70,9 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
     setRefundAmount('')
     setRefundReason('')
     setManualMethod('cash')
+    setExtraChoice('link')
+    setVenueMethod('cash')
+    setWaiveReason('')
     setSendPaymentLink(true)
     setNotifyCustomer(true)
     setError(null)
@@ -123,8 +129,10 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
   const refundBelowDue = Boolean(preview?.kind === 'refund' && preview.canRefund && refundValid && parsedRefund < preview.refundDue)
   const reasonMissing = refundBelowDue && refundReason.trim().length === 0
   const blockedExtra = preview?.kind === 'extra' && !preview.extendingPaidAvailable
+  const waiveReasonMissing = preview?.kind === 'extra' && extraChoice === 'waive' && waiveReason.trim().length === 0
 
-  const canSave = Boolean(preview) && !previewing && refundValid && !reasonMissing && !blockedExtra && !saving && !linkToCopy
+  const canSave =
+    Boolean(preview) && !previewing && refundValid && !reasonMissing && !waiveReasonMissing && !blockedExtra && !saving && !linkToCopy
 
   const textPreview = useMemo(() => {
     if (!preview || !startIso || !endIso) return null
@@ -135,8 +143,14 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
     if (preview.kind === 'refund' && preview.canRefund && Number.isFinite(parsedRefund) && parsedRefund > 0 && preview.paypalRefundPossible) {
       return buildBookingChangedSms(shown, { kind: 'refund', amount: parsedRefund })
     }
+    if (preview.kind === 'extra' && extraChoice === 'link') {
+      return buildBookingChangedSms(shown, { kind: 'pay_link', amount: preview.extraDue, link: '[payment link]' })
+    }
+    if (preview.kind === 'extra' && extraChoice === 'venue') {
+      return buildBookingChangedSms(shown, { kind: 'paid_at_venue', amount: preview.extraDue })
+    }
     return buildBookingChangedSms(shown, { kind: 'plain' })
-  }, [preview, startIso, endIso, booking, sendPaymentLink, parsedRefund])
+  }, [preview, startIso, endIso, booking, sendPaymentLink, parsedRefund, extraChoice])
 
   const handleSave = async () => {
     if (!preview || !startIso || !endIso || !canSave) return
@@ -154,6 +168,10 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
         refundAmount: preview.kind === 'refund' && preview.canRefund ? parsedRefund : undefined,
         refundReason: refundReason.trim() || undefined,
         manualRefundMethod: manualMethod,
+        extraChoice: preview.kind === 'extra' ? extraChoice : undefined,
+        expectedExtra: preview.kind === 'extra' ? preview.extraDue : undefined,
+        venueMethod,
+        waiveReason: waiveReason.trim() || undefined,
       })
       if (result.error) {
         setError(result.error)
@@ -269,10 +287,56 @@ export function ChangeDatesDialog({ open, booking, onClose, onChanged }: ChangeD
 
               {preview.kind === 'none' && <Alert tone="info">No money to settle.</Alert>}
 
-              {preview.kind === 'extra' && (
+              {preview.kind === 'extra' && !preview.extendingPaidAvailable && (
                 <Alert tone="warning">
                   This change costs {money(preview.extraDue)} more. Extending a paid booking is not available yet.
                 </Alert>
+              )}
+
+              {preview.kind === 'extra' && preview.extendingPaidAvailable && (
+                <Fieldset legend={`${money(preview.extraDue)} extra to pay`}>
+                  <Radio
+                    name="extra-choice"
+                    value="link"
+                    label="Text a payment link"
+                    checked={extraChoice === 'link'}
+                    onChange={() => setExtraChoice('link')}
+                  />
+                  <Radio
+                    name="extra-choice"
+                    value="venue"
+                    label="Paid at the venue"
+                    checked={extraChoice === 'venue'}
+                    onChange={() => setExtraChoice('venue')}
+                  />
+                  {extraChoice === 'venue' && (
+                    <div className="ml-6 space-y-1">
+                      <Radio name="venue-method" value="cash" label="Cash" checked={venueMethod === 'cash'} onChange={() => setVenueMethod('cash')} />
+                      <Radio
+                        name="venue-method"
+                        value="card_terminal"
+                        label="Card terminal"
+                        checked={venueMethod === 'card_terminal'}
+                        onChange={() => setVenueMethod('card_terminal')}
+                      />
+                    </div>
+                  )}
+                  <Radio
+                    name="extra-choice"
+                    value="waive"
+                    label="No extra charge"
+                    checked={extraChoice === 'waive'}
+                    onChange={() => setExtraChoice('waive')}
+                  />
+                  {extraChoice === 'waive' && (
+                    <Textarea
+                      label="Reason (required)"
+                      required
+                      value={waiveReason}
+                      onChange={(e) => setWaiveReason(e.target.value)}
+                    />
+                  )}
+                </Fieldset>
               )}
 
               {preview.kind === 'unpaid' && (

@@ -2,7 +2,9 @@ import { notFound } from 'next/navigation'
 import { createAdminClient } from '@/lib/supabase/admin'
 import PublicParkingClient from './_components/PublicParkingClient'
 import type { ParkingBooking } from '@/types/parking'
-import { buildParkingPaymentNotice, canRetryParkingPayment } from './paymentNotice'
+import { buildParkingBalanceNotice, buildParkingPaymentNotice, canRetryParkingPayment } from './paymentNotice'
+import { loadParkingBalances } from '@/lib/parking/balance'
+import { logger } from '@/lib/logger'
 
 interface GuestBookingPageProps {
   params: Promise<{ id: string }>
@@ -41,8 +43,22 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
   const paymentStatus = booking.payment_status
   const customerFirstName = booking.customer_first_name || null
   const typedBooking = booking as unknown as ParkingBooking
-  const paymentNotice = buildParkingPaymentNotice(paymentStatus, paymentParam)
-  const canRetryPayment = canRetryParkingPayment(typedBooking)
+  // What a confirmed booking still owes, worked out on the server. Only this one figure is added
+  // to what the public page sees; the payment and refund rows themselves never reach it.
+  let balanceDue = 0
+  try {
+    const balances = await loadParkingBalances(supabase, [typedBooking])
+    const balance = balances.get(typedBooking.id)
+    if (balance?.state === 'to_pay') balanceDue = balance.balance
+  } catch (balanceError) {
+    logger.error('Could not work out the parking balance for the guest page', {
+      error: balanceError instanceof Error ? balanceError : new Error(String(balanceError)),
+      metadata: { bookingId: typedBooking.id },
+    })
+  }
+
+  const paymentNotice = buildParkingBalanceNotice(balanceDue, paymentParam) ?? buildParkingPaymentNotice(paymentStatus, paymentParam)
+  const canRetryPayment = balanceDue > 0 || canRetryParkingPayment(typedBooking)
 
   return (
     <PublicParkingClient
@@ -50,6 +66,7 @@ export default async function ParkingGuestBookingPage({ params, searchParams }: 
       paymentNotice={paymentNotice}
       canRetryPayment={canRetryPayment}
       customerFirstName={customerFirstName}
+      balanceDue={balanceDue}
     />
   )
 }
