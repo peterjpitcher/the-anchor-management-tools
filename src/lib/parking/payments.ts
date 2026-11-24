@@ -136,7 +136,11 @@ export async function createParkingPaymentOrder(
 export async function sendParkingPaymentRequest(
   booking: ParkingBooking,
   paymentLink: string,
-  options: { client?: SupabaseClient<any, 'public', any> } = {}
+  options: {
+    client?: SupabaseClient<any, 'public', any>
+    /** A date change re-sending the link: scopes the SMS dedupe to that change (spec 6.2). */
+    changeId?: string
+  } = {}
 ): Promise<{ sent: boolean; skipped: boolean; code: string | null; logFailure: boolean }> {
   const supabase = options.client ?? createAdminClient()
   const replyNumber = process.env.NEXT_PUBLIC_CONTACT_PHONE_NUMBER || process.env.TWILIO_PHONE_NUMBER || undefined
@@ -204,7 +208,8 @@ export async function sendParkingPaymentRequest(
       metadata: {
         parking_booking_id: booking.id,
         event_type: 'payment_request',
-        template_key: 'parking_payment_request'
+        template_key: 'parking_payment_request',
+        ...(options.changeId ? { change_id: options.changeId } : {})
       },
       customerFallback: {
         email: (booking as any)?.customer_email ?? null

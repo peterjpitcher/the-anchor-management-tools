@@ -828,6 +828,21 @@ async function processPaidSessionReminders(
   return { startSent, endSent, errors, skipped }
 }
 
+function reminderSubjectAt(
+  eventType: 'payment_reminder' | 'session_start' | 'session_end',
+  booking: ParkingNotificationBooking
+): string | undefined {
+  const value =
+    eventType === 'session_start'
+      ? booking.start_at
+      : eventType === 'session_end'
+        ? booking.end_at
+        : (booking as { payment_due_at?: string | null }).payment_due_at
+  if (!value) return undefined
+  const ms = Date.parse(value)
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : undefined
+}
+
 async function sendParkingReminderSms(params: {
   supabase: ReturnType<typeof createAdminClient>
   booking: ParkingNotificationBooking
@@ -875,6 +890,9 @@ async function sendParkingReminderSms(params: {
         event_type: eventType,
         template_key: templateKey,
         ...(payload || {}),
+        // Scopes the SMS dedupe to the dates this reminder is about, so a reminder for moved
+        // dates is not refused as a conflicting retry of the one sent for the old dates.
+        subject_at: reminderSubjectAt(eventType, booking),
       },
       customerFallback: {
         email: booking.customer_email ?? undefined,

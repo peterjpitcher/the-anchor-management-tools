@@ -1235,9 +1235,12 @@ export async function changeParkingBookingDates(
       duration_minutes: plan.pricing.durationMinutes,
       calculated_price: plan.newPrice,
       pricing_breakdown: plan.pricing.breakdown,
-      // A date change clears any old agreed price and starts from the calculated one.
-      override_price: overridePrice,
-      override_reason: overrideReason,
+      // A date change clears any old agreed price and starts from the calculated one. While a
+      // refund is on its way the price is held at what has been paid, so the booking reads
+      // settled and nobody can send the same difference again from Refund to do; it is set to
+      // its final figure once the refund has gone (claimRefundThenSettle below).
+      override_price: refundToSend > 0 ? plan.netPaid : overridePrice,
+      override_reason: refundToSend > 0 ? REFUND_IN_PROGRESS_REASON : overrideReason,
       updated_by: user.id,
       ...(resets.resetStart ? { paid_start_three_day_sms_sent: false, start_notification_sent: false } : {}),
       ...(resets.resetEnd ? { paid_end_three_day_sms_sent: false, end_notification_sent: false } : {}),
@@ -1272,7 +1275,7 @@ export async function changeParkingBookingDates(
     if (!saved) {
       return { error: 'This booking has changed since you opened Change dates. Close it and open it again.' }
     }
-    const updated = saved as ParkingBooking
+    let updated = saved as ParkingBooking
 
     // The change's marker: records the changeId (so a retry is recognised) and tells the reminder
     // cron a start or end reminder may go again for the new dates.
@@ -1357,7 +1360,7 @@ export async function changeParkingBookingDates(
 
       if (data.sendPaymentLink && paymentLink) {
         textHandled = true
-        const sendResult = await sendParkingPaymentRequest(updated, paymentLink, { client: adminClient })
+        const sendResult = await sendParkingPaymentRequest(updated, paymentLink, { client: adminClient, changeId: data.changeId })
         textStatus = sendResult.sent ? 'sent' : sendResult.skipped ? 'skipped' : 'failed'
         if (!sendResult.sent) {
           textNote = 'The payment link text did not go, so the customer has not been told. Copy the link below and send it.'
@@ -1384,6 +1387,16 @@ export async function changeParkingBookingDates(
         now,
       })
       refunded = refundResult.refunded
+      // The final price is what will have been paid once this refund has gone: refunds still
+      // pending count as gone, and any part that did not go through shows as a refund to do.
+      const finalised = await finaliseRefundPrice(adminClient, {
+        bookingId: booking.id,
+        finalPrice: roundPence(plan.netPaid - refundToSend),
+        calculatedPrice: plan.newPrice,
+        reason: overrideReason ?? 'Dates changed; part of the refund did not go through',
+      })
+      if (finalised) updated = { ...updated, ...finalised }
+      else warnings.push('The refund was sent, but the booking price could not be updated. Check the booking before refunding again.')
       if (refundResult.refunded > 0 && refundResult.viaPayPal) {
         outcome = { kind: 'refund', amount: refundResult.refunded }
       }
@@ -1469,6 +1482,29 @@ export async function changeParkingBookingDates(
   }
 }
 
+const REFUND_IN_PROGRESS_REASON = 'Refund in progress'
+
+/**
+ * Sets a parking booking's price once a refund has been sent. `finalPrice` is the net paid before
+ * the refund less the amount asked for, so a refund that only partly went through leaves exactly
+ * the unsent part as a refund to do. Equal to the calculated price means no agreed price at all.
+ * Returns the written fields, or null when the write failed.
+ */
+async function finaliseRefundPrice(
+  client: ReturnType<typeof createAdminClient>,
+  input: { bookingId: string; finalPrice: number; calculatedPrice: number; reason: string }
+): Promise<Pick<ParkingBooking, 'override_price' | 'override_reason'> | null> {
+  const same = Math.abs(input.finalPrice - input.calculatedPrice) <= 0.005
+  const fields = { override_price: same ? null : input.finalPrice, override_reason: same ? null : input.reason }
+  const ok = await settleWrite(client.from('parking_bookings').update(fields).eq('id', input.bookingId), {
+    table: 'parking_bookings',
+    what: 'Setting the parking price after a refund',
+    ids: { bookingId: input.bookingId },
+    note: 'the refund itself went through',
+  })
+  return ok ? fields : null
+}
+
 async function markerPayload(client: ReturnType<typeof createAdminClient>, markerId: string): Promise<Record<string, unknown>> {
   const { data } = await client.from('parking_booking_notifications').select('payload').eq('id', markerId).maybeSingle()
   return (data?.payload as Record<string, unknown> | null) ?? {}
@@ -1512,22 +1548,32 @@ export async function settleParkingRefundDue(
     const amount = data.noRefund ? 0 : roundPence(data.amount ?? due)
     if (amount < 0 || amount > due + 0.005) return { error: `The refund can be between £0.00 and £${due.toFixed(2)}.` }
 
-    // Record what is kept before any money moves: if the refund then fails, the booking shows
-    // exactly the unsent amount as still to do.
-    if (amount < due) {
-      const kept = roundPence(due - amount)
-      const { error: overrideError } = await adminClient
-        .from('parking_bookings')
-        .update({
-          override_price: roundPence(balance.netPaid - amount),
-          override_reason: `£${kept.toFixed(2)} of a refund kept: ${data.reason}`,
-          updated_by: user.id,
-        })
-        .eq('id', booking.id)
-      if (overrideError) {
-        console.error('Failed to record a kept parking refund', overrideError)
-        return { error: 'Failed to record the decision' }
-      }
+    const kept = roundPence(due - amount)
+    const finalPrice = roundPence(balance.netPaid - amount)
+    const keptReason = `£${kept.toFixed(2)} of a refund kept: ${data.reason}`
+
+    // Claim the booking before any money moves. Guarded on updated_at (a trigger bumps it on every
+    // write), so of two people settling at once only one gets through. With a refund to send, the
+    // price is held at what has been paid, so the booking reads settled while the refund is on its
+    // way and nobody else can send it too; it is set to its final figure once the refund has gone.
+    const sending = amount > 0
+    const { data: claimed, error: claimError } = await adminClient
+      .from('parking_bookings')
+      .update({
+        override_price: sending ? balance.netPaid : finalPrice,
+        override_reason: sending ? REFUND_IN_PROGRESS_REASON : keptReason,
+        updated_by: user.id,
+      })
+      .eq('id', booking.id)
+      .eq('updated_at', booking.updated_at)
+      .select('id')
+      .maybeSingle()
+    if (claimError) {
+      console.error('Failed to claim a parking refund to do', claimError)
+      return { error: 'Failed to record the decision' }
+    }
+    if (!claimed) {
+      return { error: 'This booking has just changed. Close this and check it again before refunding.' }
     }
 
     let refunded = 0
@@ -1542,8 +1588,19 @@ export async function settleParkingRefundDue(
         skipCustomerNotification: false,
       })
       refunded = result.refunded
+      const finalised = await finaliseRefundPrice(adminClient, {
+        bookingId: booking.id,
+        finalPrice,
+        calculatedPrice: Number(booking.calculated_price ?? 0),
+        reason: kept > 0 ? keptReason : 'Part of a refund did not go through',
+      })
+      if (!finalised) {
+        warning = 'The refund was sent, but the booking price could not be updated. Check the booking before refunding again.'
+      }
       if (!result.complete) {
-        warning = `£${roundPence(amount - result.refunded).toFixed(2)} of the refund did not go through and still shows as a refund to do. ${result.failures.join(' ')}`.trim()
+        warning = [warning, `£${roundPence(amount - result.refunded).toFixed(2)} of the refund did not go through and still shows as a refund to do. ${result.failures.join(' ')}`.trim()]
+          .filter(Boolean)
+          .join(' ')
       }
     }
 

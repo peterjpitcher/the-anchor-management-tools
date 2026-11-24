@@ -176,8 +176,11 @@ describe('changeParkingBookingDates', () => {
     expect(result).toMatchObject({ success: true, refunded: 45, textStatus: 'sent' })
     expect(result.warning).toBeUndefined()
 
-    const save = db.updates.find((u) => u.table === 'parking_bookings')
-    expect(save?.values).toMatchObject({ end_at: at(4), calculated_price: 60, override_price: null })
+    const [save, finalPrice] = db.updates.filter((u) => u.table === 'parking_bookings')
+    // Held at what was paid while the refund goes, so nobody can send the same difference again...
+    expect(save?.values).toMatchObject({ end_at: at(4), calculated_price: 60, override_price: 105, override_reason: 'Refund in progress' })
+    // ...then the calculated price once it has gone.
+    expect(finalPrice?.values).toEqual({ override_price: null, override_reason: null })
     expect(db.inserts[0]).toMatchObject({
       table: 'parking_booking_notifications',
       values: { event_type: 'booking_changed', payload: expect.objectContaining({ change_id: CHANGE_ID }) },
@@ -247,6 +250,8 @@ describe('changeParkingBookingDates', () => {
 
     expect(result.success).toBe(true)
     expect(result.warning).toMatch(/the £45.00 refund did not go through/)
+    // The price ends at £60 against £105 still paid, so the booking shows £45 as a refund to do.
+    expect(db.updates.filter((u) => u.table === 'parking_bookings').at(-1)?.values).toEqual({ override_price: null, override_reason: null })
     expect(mockedText.mock.calls[0][0].outcome).toEqual({ kind: 'plain' })
   })
 
@@ -287,9 +292,9 @@ describe('changeParkingBookingDates', () => {
     const result = await changeParkingBookingDates('booking-1', input({ refundAmount: 20, refundReason: 'Late notice' }))
 
     expect(result.success).toBe(true)
-    const save = db.updates.find((u) => u.table === 'parking_bookings')
-    expect(save?.values).toMatchObject({ override_price: 85 })
-    expect(String(save?.values.override_reason)).toContain('£25.00 of the difference kept: Late notice')
+    const finalPrice = db.updates.filter((u) => u.table === 'parking_bookings').at(-1)
+    expect(finalPrice?.values.override_price).toBe(85)
+    expect(String(finalPrice?.values.override_reason)).toContain('£25.00 of the difference kept: Late notice')
   })
 
   it('without refund permission the change saves, no money moves, and it says a manager must refund', async () => {
@@ -349,5 +354,46 @@ describe('changeParkingBookingDates', () => {
 
     expect(result.error).toBe('You do not have permission to change parking bookings')
     expect(db.updates).toHaveLength(0)
+  })
+})
+
+describe('settleParkingRefundDue', () => {
+  // £105 paid for a stay now priced £60: £45 to refund.
+  beforeEach(() => {
+    mockedBooking.mockResolvedValue(paidBooking({ end_at: at(4), calculated_price: 60 }))
+  })
+
+  it('claims the booking (price held at what was paid) before any money moves, then sets the final price', async () => {
+    db.saveResult = { data: { id: 'booking-1' }, error: null }
+    const { settleParkingRefundDue } = await import('@/app/actions/parking')
+
+    const result = await settleParkingRefundDue('booking-1', { operationId: CHANGE_ID, amount: 45, reason: 'Shortened' })
+
+    expect(result).toMatchObject({ success: true, refunded: 45 })
+    const [claim, finalPrice] = db.updates.filter((u) => u.table === 'parking_bookings')
+    expect(claim.values).toMatchObject({ override_price: 105, override_reason: 'Refund in progress' })
+    expect(finalPrice.values).toEqual({ override_price: null, override_reason: null })
+    expect(mockedRefund).toHaveBeenCalledWith(expect.objectContaining({ amount: 45, operationId: CHANGE_ID }))
+  })
+
+  it('sends nothing when someone else settled it first (the claim matches no row)', async () => {
+    db.saveResult = { data: null, error: null }
+    const { settleParkingRefundDue } = await import('@/app/actions/parking')
+
+    const result = await settleParkingRefundDue('booking-1', { operationId: CHANGE_ID, amount: 45, reason: 'Shortened' })
+
+    expect(result.error).toMatch(/has just changed/)
+    expect(mockedRefund).not.toHaveBeenCalled()
+  })
+
+  it('records no refund due as a kept price, with no money moved', async () => {
+    db.saveResult = { data: { id: 'booking-1' }, error: null }
+    const { settleParkingRefundDue } = await import('@/app/actions/parking')
+
+    const result = await settleParkingRefundDue('booking-1', { operationId: CHANGE_ID, noRefund: true, reason: 'Arrived late' })
+
+    expect(result.success).toBe(true)
+    expect(mockedRefund).not.toHaveBeenCalled()
+    expect(db.updates.find((u) => u.table === 'parking_bookings')?.values).toMatchObject({ override_price: 105 })
   })
 })
