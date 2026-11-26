@@ -65,6 +65,7 @@ export type DepositRejectionCode =
   | 'period_menu_not_ready'
   | 'period_party_too_small'
   | 'period_party_too_large'
+  | 'invalid_diner_count'
 
 export type ResolveDepositInput = {
   partySize: number
@@ -95,6 +96,13 @@ export type ResolveDepositInput = {
   collectPeriodDeposits?: boolean
   /** Overridable only so tests can prove the comparison, not so it can drift in production. */
   groupRule?: GroupDepositRule
+  /**
+   * How many of the seats are having the seasonal menu (a Christmas booking of 12 seats with 9
+   * Christmas dinners). The seasonal per-head deposit and the period's minimum count these guests;
+   * the group rule, the period's maximum and the comparison stay on seats, exactly as
+   * `resolve_table_booking_deposit_v02` does. Left out or null, every seat is.
+   */
+  seasonalDiners?: number | null
 }
 
 export type ResolvedDeposit = {
@@ -125,6 +133,7 @@ const REJECTION_MESSAGES: Record<DepositRejectionCode, string> = {
   period_menu_not_ready: 'That booking period needs a pre-order and its menu has not been published yet.',
   period_party_too_small: 'That booking period has a larger minimum party size.',
   period_party_too_large: 'That booking period has a smaller maximum party size.',
+  invalid_diner_count: 'The number having the seasonal menu must be between one and the party size.',
 }
 
 function reject(code: DepositRejectionCode): DepositResolution {
@@ -188,6 +197,12 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
   if (!Number.isFinite(partySize) || partySize < 1) {
     return reject('invalid_party_size')
   }
+  // More diners than seats, or none at all, is a broken request, never a smaller deposit.
+  const seasonalDiners = input.seasonalDiners ?? null
+  if (seasonalDiners !== null && (!Number.isInteger(seasonalDiners) || seasonalDiners < 1 || seasonalDiners > partySize)) {
+    return reject('invalid_diner_count')
+  }
+  const diners = seasonalDiners ?? partySize
 
   // 1. A manager waiver wins outright, before anything else is even looked at.
   if (depositWaived) {
@@ -234,7 +249,9 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
     }
 
     if (periodAccepted) {
-      if (period.minPartySize !== null && partySize < period.minPartySize) {
+      // The minimum is for the seasonal offer, so it counts the guests having it; the maximum is
+      // about the tables, so it counts seats.
+      if (period.minPartySize !== null && diners < period.minPartySize) {
         return reject('period_party_too_small')
       }
       if (period.maxPartySize !== null && partySize > period.maxPartySize) {
@@ -244,7 +261,7 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
         return reject('period_menu_not_ready')
       }
       if (collectPeriodDeposits) {
-        periodAmount = periodDepositAmount(period, partySize)
+        periodAmount = periodDepositAmount(period, diners)
       }
     }
   }
@@ -262,9 +279,11 @@ export function resolveTableBookingDeposit(input: ResolveDepositInput): DepositR
   // 4. Larger wins, never stacks. A tie goes to the period.
   if (acceptedPeriod && periodAmount > 0 && periodAmount >= groupAmount) {
     const rateWording =
-      acceptedPeriod.depositBasis === 'per_head'
-        ? `${formatGbp(acceptedPeriod.depositAmount)} per guest`
-        : `${formatGbp(acceptedPeriod.depositAmount)} for the booking`
+      acceptedPeriod.depositBasis === 'per_head' && diners < partySize
+        ? `${formatGbp(acceptedPeriod.depositAmount)} per guest on the seasonal menu (${diners} of ${partySize} guests)`
+        : acceptedPeriod.depositBasis === 'per_head'
+          ? `${formatGbp(acceptedPeriod.depositAmount)} per guest`
+          : `${formatGbp(acceptedPeriod.depositAmount)} for the booking`
     const tieNote =
       periodAmount === groupAmount && groupAmount > 0
         ? ' It matches the large-group deposit rather than adding to it.'

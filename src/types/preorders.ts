@@ -270,7 +270,13 @@ export type PreorderOrder = {
   bookingReference: string
   bookingDate: string
   bookingTime: string
+  /**
+   * The guests choosing food, one pre-order seat each. Every seat at the table, except on a
+   * Christmas booking with more seats than Christmas dinners, where it is the diners.
+   */
   partySize: number
+  /** Every seat at the table. Differs from partySize only on a Christmas booking with fewer diners. */
+  tableSeats?: number
   /** The booking's own snapshot: this guest accepted a seasonal offer that requires a pre-order. */
   requiresPreorder: boolean
   /**

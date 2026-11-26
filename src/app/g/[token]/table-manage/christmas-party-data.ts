@@ -28,13 +28,18 @@ export type GuestChristmasParty = {
 export async function loadGuestChristmasParty(supabase: Db, tableBookingId: string): Promise<GuestChristmasParty | null> {
   const { data: booking, error } = await supabase
     .from('table_bookings')
-    .select('booking_type, booking_date, christmas_course_counts')
+    .select('booking_type, booking_date, christmas_course_counts, christmas_diner_count')
     .eq('id', tableBookingId)
     .maybeSingle()
   if (error) throw error
   if (!booking || !isChristmasBookingType(booking.booking_type ?? null)) return null
 
-  const courseCounts: number[] | null = Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null
+  // A booking with more seats than Christmas dinners shows the "please call us" message instead of
+  // the party editor: a manager changes its numbers.
+  const courseCounts: number[] | null =
+    booking.christmas_diner_count == null && Array.isArray(booking.christmas_course_counts)
+      ? booking.christmas_course_counts
+      : null
 
   let seatNames: Array<string | null> = []
   if (courseCounts) {

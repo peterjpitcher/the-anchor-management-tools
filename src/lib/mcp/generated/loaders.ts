@@ -153,6 +153,7 @@ export const ROUTE_MODULES: Record<string, () => Promise<unknown>> = {
   'api/app-version/route': () => import('@/app/api/app-version/route'),
   'api/boh/table-bookings/route': () => import('@/app/api/boh/table-bookings/route'),
   'api/boh/table-bookings/[id]/route': () => import('@/app/api/boh/table-bookings/[id]/route'),
+  'api/boh/table-bookings/[id]/convert-to-christmas/route': () => import('@/app/api/boh/table-bookings/[id]/convert-to-christmas/route'),
   'api/boh/table-bookings/[id]/deposit/route': () => import('@/app/api/boh/table-bookings/[id]/deposit/route'),
   'api/boh/table-bookings/[id]/deposit-link/route': () => import('@/app/api/boh/table-bookings/[id]/deposit-link/route'),
   'api/boh/table-bookings/[id]/deposit-review/route': () => import('@/app/api/boh/table-bookings/[id]/deposit-review/route'),

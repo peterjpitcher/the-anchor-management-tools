@@ -146,3 +146,13 @@ describe('the Christmas dinner minimum is 4 guests, everywhere', () => {
     )
   })
 })
+
+describe('formatChristmasSeatsAndDiners', () => {
+  it('says "12 seats, 9 Christmas dinners" for the staff page and the kitchen sheet', async () => {
+    const { formatChristmasSeatsAndDiners } = await import('./christmas')
+    expect(formatChristmasSeatsAndDiners(12, 9)).toBe('12 seats, 9 Christmas dinners')
+    expect(formatChristmasSeatsAndDiners(5, 1)).toBe('5 seats, 1 Christmas dinner')
+    expect(formatChristmasSeatsAndDiners(null, 9)).toBe('')
+    expect(formatChristmasSeatsAndDiners(12, null)).toBe('')
+  })
+})

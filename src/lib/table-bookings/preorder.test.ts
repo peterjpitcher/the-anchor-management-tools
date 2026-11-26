@@ -882,3 +882,43 @@ describe('loadPreorderOrder seats for guest details', () => {
       .toMatchObject({ hasGuestSeats: false })
   })
 })
+
+// Owner requirement, 26 November 2026: 12 seats, 9 Christmas dinners. The food page, the chase
+// and the kitchen sheet count the 9 diners, never the 12 seats, as preorder_sync_covers does.
+describe('a Christmas booking with more seats than Christmas dinners', () => {
+  async function mixedOrder() {
+    const { loadPreorderOrder } = await import('./preorder')
+    const db = createFakeSupabase({
+      table_bookings: [{
+        id: 'booking-1', booking_reference: 'TB-1', booking_date: '2026-12-12', booking_time: '13:00:00',
+        party_size: 12, christmas_diner_count: 9, allergies: null, booking_period_id: null, booking_period_name: null,
+        booking_period_answer: true, booking_period_requires_preorder: true,
+        christmas_course_counts: [1, 1, 1, 1, 1, 1, 1, 1, 1],
+      }],
+      booking_preorder_covers: [],
+    })
+    return loadPreorderOrder(db as never, 'booking-1')
+  }
+
+  it('gives the order one food seat per diner and remembers the table seats', async () => {
+    const order = await mixedOrder()
+    expect(order).toMatchObject({ partySize: 9, tableSeats: 12, hasGuestSeats: true })
+  })
+
+  it('is complete once the 9 diners have chosen, with nothing owed for the other 3 seats', async () => {
+    const order = await mixedOrder()
+    const covers = Array.from({ length: 9 }, (_, index) =>
+      ({ ...cover(index + 1, [selection('main', 'Roast turkey')]), guestName: `Guest ${index + 1}`, hasAllergies: false }))
+    const completeness = getPreorderCompleteness({ ...order!, covers })
+    expect(completeness.seatsIncomplete).toEqual([])
+    expect(completeness.complete).toBe(true)
+    expect(completeness.partySize).toBe(9)
+  })
+
+  it('still chases a diner who has not chosen', async () => {
+    const order = await mixedOrder()
+    const completeness = getPreorderCompleteness({ ...order!, covers: [] })
+    expect(completeness.complete).toBe(false)
+    expect(completeness.seatsIncomplete.map((gap) => gap.ordinal)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
+  })
+})

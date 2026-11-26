@@ -124,6 +124,15 @@ describe('changeChristmasPartyByRawToken', () => {
     expect(mocks.update).not.toHaveBeenCalled()
   })
 
+  // Owner requirement, 26 November 2026: a booking with more seats than Christmas dinners (staff
+  // converted it) is changed by a manager, so the guest is asked to ring.
+  it('asks the guest to ring when only some seats are having Christmas dinner', async () => {
+    expect(
+      await change({ removedSeats: [2] }, { ...BOOKING, party_size: 8, christmas_diner_count: 6 }),
+    ).toMatchObject({ state: 'blocked', reason: 'christmas_call_us' })
+    expect(mocks.update).not.toHaveBeenCalled()
+  })
+
   // Owner decision of 10 November 2026: a guest may grow their Christmas party to the online
   // ceiling (26), and no further.
   it('keeps to 4 guests at least and lets the guest grow the party to 26, not 27', async () => {

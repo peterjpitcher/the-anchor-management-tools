@@ -231,7 +231,12 @@ async function flagDepositForReview(
  * Returns what reached the guest so staff can be told, instead of the old unconditional
  * "sent by SMS".
  */
-async function sendPartySizeDepositRequestEmailFirst(
+/**
+ * Sends the one deposit request, email first with the text as the fallback. Also used by the
+ * Christmas conversion (christmas-conversion.ts), which passes `christmasDiners`, its own trigger
+ * and the per-head rate the database charged by.
+ */
+export async function sendPartySizeDepositRequestEmailFirst(
   supabase: SupabaseClient<any, 'public', any>,
   input: {
     booking: PartySizeDepositTransitionBooking
@@ -244,10 +249,17 @@ async function sendPartySizeDepositRequestEmailFirst(
     wording: PartySizeDepositWording
     /** The booking stays confirmed while the deposit is owed (D20). */
     stillBooked: boolean
+    /** Christmas conversion only: how many of the seats are having Christmas dinner. */
+    christmasDiners?: number | null
+    /** What caused the request; it names the idempotency key and the audit trail. */
+    trigger?: 'party_size_threshold_crossed' | 'converted_to_christmas'
+    /** The per-head rate the deposit was charged at, when the caller knows it. */
+    perPersonGbp?: number | null
   }
 ): Promise<GuestNotificationOutcome> {
   const templateKey = 'table_booking_pending_payment'
   const tableBookingId = input.booking.id
+  const trigger = input.trigger ?? 'party_size_threshold_crossed'
 
   try {
     const [{ data: customerRow, error: customerError }, { data: bookingRow, error: bookingError }] = await Promise.all([
@@ -312,8 +324,9 @@ async function sendPartySizeDepositRequestEmailFirst(
       // What the deposit is, and what comes back if the booking is cancelled. The request used to
       // state an amount and nothing else, so it never said the money came off the bill.
       isChristmas: isChristmasBookingType(input.booking.booking_type),
-      perPersonGbp: depositPerPerson(input.depositAmount, input.newPartySize),
+      perPersonGbp: input.perPersonGbp ?? depositPerPerson(input.depositAmount, input.newPartySize),
       refundCutoffDays: bookingRow?.deposit_refund_cutoff_days ?? null,
+      christmasDiners: input.christmasDiners ?? null,
     })
 
     return await notifyTableBookingGuestEmailFirst({
@@ -330,12 +343,15 @@ async function sendPartySizeDepositRequestEmailFirst(
           paymentUrl: payment.url,
           stillBooked: input.stillBooked,
         }),
-        metadata: { trigger: 'party_size_threshold_crossed' },
+        metadata: { trigger },
       },
       // Stable for this request: a later growth past the threshold is a new hold, or a new amount,
-      // and a new key.
-      idempotencyKey: `${templateKey}:party_size:${tableBookingId}:${input.holdExpiresAt}:${Math.round(input.depositAmount * 100)}`,
-      auditContext: { trigger: 'party_size_threshold_crossed', short_link_fallback: !payment.shortened, still_booked: input.stillBooked },
+      // and a new key. A booking is converted to Christmas once, so its key is the booking and amount.
+      idempotencyKey:
+        trigger === 'converted_to_christmas'
+          ? `${templateKey}:christmas_conversion:${tableBookingId}:${Math.round(input.depositAmount * 100)}`
+          : `${templateKey}:party_size:${tableBookingId}:${input.holdExpiresAt}:${Math.round(input.depositAmount * 100)}`,
+      auditContext: { trigger, short_link_fallback: !payment.shortened, still_booked: input.stillBooked },
       fallback: {
         message: 'party_size_deposit_request',
         // The booking was set to owe this amount, with this payment window, just before this call.

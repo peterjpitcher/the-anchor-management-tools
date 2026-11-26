@@ -23,6 +23,7 @@ import {
   type TableBookingSheetPreorderAddonTotal,
   type TableBookingSheetPreorderCover,
 } from '@/lib/table-booking-sheet-template'
+import { formatChristmasSeatsAndDiners } from '@/lib/table-bookings/christmas'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadDayLoads, type DayLoadHire } from '@/services/day-load'
 import { privateHireSheet, privateHireSortTime, privateHiresNotLoadedSheet } from '@/lib/table-bookings/private-hire-sheets'
@@ -95,6 +96,8 @@ type BookingRow = {
   booking_type: string | null
   /** Christmas only: 0 to 3 courses per guest, seat 1 first (0 is not chosen yet). The tier source, not the cover rows. */
   christmas_course_counts: number[] | null
+  /** Christmas only: how many seats are having Christmas dinner, when fewer than all of them. */
+  christmas_diner_count?: number | null
   /** The guest accepted the seasonal offer. With the next column, whether every guest has a seat to choose for. */
   booking_period_answer: boolean | null
   booking_period_requires_preorder: boolean | null
@@ -184,10 +187,21 @@ function toSheetData(
     generatedAt,
     ...(preorder ? { preorder } : {}),
     ...(row.booking_type === 'christmas'
-      ? { christmasCourses: describeChristmasTiers(row.christmas_course_counts) || 'Not recorded' }
+      ? { christmasCourses: christmasCoursesField(row) }
       : {}),
     ...(guestNotesField(row, preorder?.guestAllergies) ? { guestNotes: guestNotesField(row, preorder?.guestAllergies) } : {}),
   }
+}
+
+/**
+ * The Christmas line on the kitchen sheet. A booking with more seats than Christmas dinners leads
+ * with both numbers ("12 seats, 9 Christmas dinners") so the kitchen does not cook for the seats.
+ */
+function christmasCoursesField(row: { party_size: number | null; christmas_course_counts: number[] | null; christmas_diner_count?: number | null }): string {
+  const tiers = describeChristmasTiers(row.christmas_course_counts)
+  if (row.christmas_diner_count == null) return tiers || 'Not recorded'
+  const split = formatChristmasSeatsAndDiners(row.party_size, row.christmas_diner_count)
+  return [split, tiers || 'courses not chosen yet'].filter(Boolean).join(': ')
 }
 
 /** The template wants money as text; the summary carries it as numbers. One place to bridge them. */
@@ -447,6 +461,7 @@ export async function GET(request: NextRequest) {
         deposit_waived, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked,
         booking_type,
         christmas_course_counts,
+        christmas_diner_count,
         booking_period_id,
         booking_period_answer,
         booking_period_requires_preorder,
@@ -519,7 +534,9 @@ export async function GET(request: NextRequest) {
             bookingDate: row.booking_date,
             courseCounts: row.christmas_course_counts ?? null,
             periodId: row.booking_period_id ?? null,
-            partySize: Math.max(0, Math.trunc(Number(row.party_size) || 0)),
+            // One food seat per guest having the seasonal menu: the Christmas diners when only some
+            // seats are having Christmas dinner, otherwise the party.
+            partySize: Math.max(0, Math.trunc(Number(row.christmas_diner_count ?? row.party_size) || 0)),
             hasGuestSeats: bookingHasGuestSeats(row),
           },
         ])

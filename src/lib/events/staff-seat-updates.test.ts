@@ -47,7 +47,8 @@ const bookingRow = {
   duration_minutes: 120,
   christmas_course_counts: undefined as number[] | undefined,
   booking_type: 'regular' as string,
-  booking_period_answer: null as boolean | null
+  booking_period_answer: null as boolean | null,
+  christmas_diner_count: null as number | null
 }
 
 type UpdateResult = { data: Record<string, unknown> | null; error: { message: string; code?: string } | null }
@@ -146,6 +147,7 @@ beforeEach(() => {
   bookingRow.booking_type = 'regular'
   bookingRow.booking_period_answer = null
   bookingRow.party_size = 6
+  bookingRow.christmas_diner_count = null
   mockedGetAvailability.mockResolvedValue(availability)
   mockedMoveToTables.mockResolvedValue({ ok: true })
 })
@@ -296,6 +298,34 @@ describe('Christmas amendment preflight', () => {
       canMakeLateChristmasChange: async () => true
     })).rejects.toThrow('deadline has passed')
     expect(mockedMoveToTables).not.toHaveBeenCalled()
+  })
+})
+
+// Owner requirement, 26 November 2026: a Christmas booking with more seats than Christmas dinners
+// (12 seats, 9 dinners) keeps its numbers. A manager rebooks it; nothing is moved or written.
+describe('Christmas booking with more seats than Christmas dinners', () => {
+  function mixedBooking() {
+    bookingRow.booking_type = 'christmas'
+    bookingRow.booking_period_answer = true
+    bookingRow.party_size = 12
+    bookingRow.christmas_diner_count = 9
+    bookingRow.christmas_course_counts = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+  }
+
+  it.each([
+    ['grow the seats', { partySize: 13 }],
+    ['shrink the seats', { partySize: 11 }],
+    ['change the courses', { partySize: 12, christmasCourseCounts: [3, 3, 3, 3, 3, 3, 3, 3, 3] }],
+    ['remove a diner', { partySize: 12, christmasRemovedSeats: [2] }],
+  ])('refuses to %s, before any table move or write', async (_label, change) => {
+    mixedBooking()
+    const { client, rpc, updateMock } = createSupabaseStub({ data: null, error: null })
+    await expect(updateTableBookingPartySizeWithLinkedEventSeats(client, {
+      tableBookingId: 'tb-1', autoMoveTable: true, christmasMaxPartySize: 60, ...change
+    })).rejects.toThrow('more seats than Christmas dinners')
+    expect(mockedMoveToTables).not.toHaveBeenCalled()
+    expect(updateMock).not.toHaveBeenCalled()
+    expect(christmasWrites(rpc)).toEqual([])
   })
 })
 

@@ -73,6 +73,8 @@ type FallbackTableBooking = {
   is_outside_seating: boolean | null
   high_chair_count: number | null
   christmas_course_counts?: number[] | null
+  /** A Christmas booking with more seats than Christmas dinners: how many are having it. */
+  christmas_diner_count?: number | null
   deposit_amount: number | string | null
   hold_expires_at: string | null
   guest_confirmed_at: string | null
@@ -223,6 +225,8 @@ const MESSAGE_SPECS: Record<TableBookingFallbackMessage, MessageSpec> = {
         depositAmount,
         isChristmas: isChristmasBookingType(booking.booking_type),
         bookingType: booking.booking_type,
+        // A booking staff converted to Christmas: the text says so, as the email did.
+        christmasDiners: booking.christmas_diner_count ?? null,
       })
       return buildPartySizeDepositText({
         firstName: getSmartFirstName(customer.first_name),

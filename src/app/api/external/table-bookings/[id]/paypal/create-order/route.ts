@@ -32,7 +32,7 @@ export async function POST(
       // amounts and waivers. Spec §7.3, §8.3.
       const { data: booking, error: fetchError } = await supabase
         .from('table_bookings')
-        .select('id, customer_id, contact_email, party_size, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type')
+        .select('id, customer_id, contact_email, party_size, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, deposit_amount, deposit_amount_locked, deposit_waived, booking_type, christmas_diner_count')
         .eq('id', bookingId)
         .single();
 
@@ -89,6 +89,8 @@ export async function POST(
           // must produce £60 here. Without this the order amount would be zero
           // and PayPal would refuse it.
           booking_type: booking.booking_type ?? null,
+          // Only the people having Christmas dinner owe the Christmas deposit.
+          christmas_diner_count: booking.christmas_diner_count ?? null,
         },
         booking.party_size,
       );

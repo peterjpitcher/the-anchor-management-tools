@@ -41,6 +41,8 @@ type DepositCase = {
   accepted: boolean
   waived: boolean
   collect: boolean
+  /** Diner cases only: how many of the seats are having Christmas dinner. */
+  christmas_diners?: number | null
   expect:
     | { ok: true; required: boolean; amount: number; rule: string; basis: string | null; rate: number | null }
     | { ok: false; code: string }
@@ -48,7 +50,7 @@ type DepositCase = {
 
 const fixture = JSON.parse(
   readFileSync(join(process.cwd(), 'scripts/testing/fixtures/table-booking-deposit-cases.json'), 'utf8')
-) as { periods: Record<string, CasePeriod>; cases: DepositCase[] }
+) as { periods: Record<string, CasePeriod>; cases: DepositCase[]; diner_cases: DepositCase[] }
 
 function toBookingPeriod(row: CasePeriod): BookingPeriod {
   return {
@@ -83,35 +85,49 @@ describe('the TypeScript deposit resolver matches the database cases', () => {
   })
 
   it.each(fixture.cases.map((c) => [c.name, c] as const))('%s', (_name, testCase) => {
-    const period = testCase.period ? toBookingPeriod(fixture.periods[testCase.period]) : null
-    const result = resolveTableBookingDeposit({
-      partySize: testCase.party_size,
-      bookingDate: testCase.booking_date,
-      period,
-      periodAccepted: testCase.accepted,
-      depositWaived: testCase.waived,
-      collectPeriodDeposits: testCase.collect,
-    })
+    expectCase(testCase)
+  })
 
-    if (!testCase.expect.ok) {
-      expect(result).toMatchObject({ ok: false, code: testCase.expect.code })
-      return
-    }
+  it('has the Christmas diner cases scripts/testing/christmas-diner-count-postgres.py runs', () => {
+    expect(fixture.diner_cases.length).toBeGreaterThanOrEqual(10)
+    expect(fixture.diner_cases.every((c) => c.christmas_diners !== undefined)).toBe(true)
+  })
 
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    expect({
-      required: result.deposit.required,
-      amount: result.deposit.amount,
-      rule: result.deposit.rule,
-      basis: result.deposit.basis,
-      rate: result.deposit.rate,
-    }).toEqual({
-      required: testCase.expect.required,
-      amount: testCase.expect.amount,
-      rule: testCase.expect.rule,
-      basis: testCase.expect.basis,
-      rate: testCase.expect.rate,
-    })
+  it.each(fixture.diner_cases.map((c) => [c.name, c] as const))('diners: %s', (_name, testCase) => {
+    expectCase(testCase)
   })
 })
+
+function expectCase(testCase: DepositCase): void {
+  const period = testCase.period ? toBookingPeriod(fixture.periods[testCase.period]) : null
+  const result = resolveTableBookingDeposit({
+    partySize: testCase.party_size,
+    bookingDate: testCase.booking_date,
+    period,
+    periodAccepted: testCase.accepted,
+    depositWaived: testCase.waived,
+    collectPeriodDeposits: testCase.collect,
+    seasonalDiners: testCase.christmas_diners ?? null,
+  })
+
+  if (!testCase.expect.ok) {
+    expect(result).toMatchObject({ ok: false, code: testCase.expect.code })
+    return
+  }
+
+  expect(result.ok).toBe(true)
+  if (!result.ok) return
+  expect({
+    required: result.deposit.required,
+    amount: result.deposit.amount,
+    rule: result.deposit.rule,
+    basis: result.deposit.basis,
+    rate: result.deposit.rate,
+  }).toEqual({
+    required: testCase.expect.required,
+    amount: testCase.expect.amount,
+    rule: testCase.expect.rule,
+    basis: testCase.expect.basis,
+    rate: testCase.expect.rate,
+  })
+}

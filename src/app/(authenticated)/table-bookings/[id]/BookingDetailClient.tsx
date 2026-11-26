@@ -45,7 +45,11 @@ import CustomerSearchInput from '@/components/features/customers/CustomerSearchI
 import { RefundDialog } from '@/components/features/invoices/RefundDialog'
 import { RefundHistoryTable } from '@/components/features/invoices/RefundHistoryTable'
 import { getCanonicalDeposit } from '@/lib/table-bookings/deposit'
-import { DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT, formatChristmasCourseTally } from '@/lib/table-bookings/christmas'
+import {
+  DEFAULT_CHRISTMAS_STAFF_PARTY_LIMIT,
+  formatChristmasCourseTally,
+  formatChristmasSeatsAndDiners,
+} from '@/lib/table-bookings/christmas'
 import {
   formatGbp,
   getTableBookingDepositBadgeClasses,
@@ -300,6 +304,8 @@ export interface Booking {
   booking_type: string | null
   /** Christmas only: the 1, 2 or 3 courses each guest is on, seat 1 first. Null when not recorded. */
   christmas_course_counts?: number[] | null
+  /** Christmas only: how many of the seats are having Christmas dinner, when fewer than all of them. */
+  christmas_diner_count?: number | null
   booking_purpose: string | null
   status: string
   source: string | null
@@ -1243,8 +1249,21 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
                             // none recorded is told where to set them.
                             value:
                               formatChristmasCourseTally(booking.christmas_course_counts) ||
-                              'Not recorded. Set them with Change party size.',
+                              // A converted booking's diners pick their courses on the food link;
+                              // its numbers cannot be changed with Change party size.
+                              (booking.christmas_diner_count != null
+                                ? 'Not chosen yet. The diners choose them on the food link.'
+                                : 'Not recorded. Set them with Change party size.'),
                           },
+                          ...(booking.christmas_diner_count != null
+                            ? [
+                                {
+                                  key: 'christmas-diners',
+                                  label: 'Christmas dinners',
+                                  value: formatChristmasSeatsAndDiners(booking.party_size, booking.christmas_diner_count),
+                                },
+                              ]
+                            : []),
                         ]
                       : []),
                     { key: 'purpose', label: 'Purpose', value: formatLabel(booking.booking_purpose) },

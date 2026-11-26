@@ -19073,6 +19073,7 @@ export type Database = {
           card_capture_completed_at: string | null
           celebration_type: string | null
           christmas_course_counts: number[] | null
+          christmas_diner_count: number | null
           committed_party_size: number
           completed_at: string | null
           confirmed_at: string | null
@@ -19158,6 +19159,7 @@ export type Database = {
           card_capture_completed_at?: string | null
           celebration_type?: string | null
           christmas_course_counts?: number[] | null
+          christmas_diner_count?: number | null
           committed_party_size: number
           completed_at?: string | null
           confirmed_at?: string | null
@@ -19243,6 +19245,7 @@ export type Database = {
           card_capture_completed_at?: string | null
           celebration_type?: string | null
           christmas_course_counts?: number[] | null
+          christmas_diner_count?: number | null
           committed_party_size?: number
           completed_at?: string | null
           confirmed_at?: string | null
@@ -22833,6 +22836,14 @@ export type Database = {
         Args: { p_due_date: string; p_invoice_date: string; p_quote_id: string }
         Returns: Json
       }
+      convert_table_booking_to_christmas_v01: {
+        Args: {
+          p_booking_id: string
+          p_christmas_diners: number
+          p_internal_note?: string
+        }
+        Returns: Json
+      }
       count_high_chairs_in_window: {
         Args: { p_end: string; p_exclude: string; p_start: string }
         Returns: number
@@ -25071,6 +25082,17 @@ export type Database = {
           p_party_size: number
           p_period_answer?: boolean
           p_period_id?: string
+        }
+        Returns: Json
+      }
+      resolve_table_booking_deposit_v02: {
+        Args: {
+          p_booking_date: string
+          p_deposit_waived?: boolean
+          p_party_size: number
+          p_period_answer?: boolean
+          p_period_id?: string
+          p_seasonal_diners?: number
         }
         Returns: Json
       }

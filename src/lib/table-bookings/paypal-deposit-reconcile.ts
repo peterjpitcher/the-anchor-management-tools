@@ -46,11 +46,13 @@ export type TableDepositOrderBooking = {
   deposit_amount_locked: number | null
   deposit_waived: boolean | null
   booking_type: string | null
+  /** Christmas bookings: how many of the seats are having Christmas dinner. Null means every seat. */
+  christmas_diner_count?: number | null
 }
 
 /** The columns reconcileTableDepositOrder reads, for callers that select a booking for it. */
 export const TABLE_DEPOSIT_ORDER_BOOKING_COLUMNS =
-  'id, booking_reference, customer_id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type'
+  'id, booking_reference, customer_id, status, payment_status, paypal_deposit_order_id, paypal_deposit_capture_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type, christmas_diner_count'
 
 export type TableDepositOrderOutcome =
   /** No completed capture on the order, or an order PayPal has never heard of: nothing was paid. */
@@ -235,6 +237,7 @@ export async function reconcileTableDepositOrder(
       deposit_waived: booking.deposit_waived ?? null,
       // Christmas bookings owe a deposit at any party size.
       booking_type: booking.booking_type ?? null,
+      christmas_diner_count: booking.christmas_diner_count ?? null,
     }).toFixed(2),
   )
 

@@ -110,3 +110,68 @@ describe('the amended notice for a confirmed booking that owes a deposit', () =>
     expect(email.text).not.toContain('not confirmed')
   })
 })
+
+// Owner requirement, 26 November 2026: 12 seats, 9 Christmas dinners, GBP 90.
+describe('the deposit request after staff convert a booking to Christmas dinner for some seats', () => {
+  it.each(CASES)('$label: names the seats and the diners, GBP 90, and no party-size change', ({ bookingDate, bookingTime }) => {
+    const wording = describePartySizeDeposit({
+      newPartySize: 12,
+      depositAmount: 90,
+      isChristmas: true,
+      bookingType: 'christmas',
+      christmasDiners: 9,
+    })
+    const email = buildTableBookingDepositRequestEmail({
+      firstName: 'Sam',
+      bookingReference: 'TB-XMAS9',
+      bookingDate,
+      bookingTime,
+      partySize: 12,
+      depositKindLabel: wording.depositKindLabel,
+      depositLabel: wording.depositLabel,
+      breakdownNote: wording.breakdownNote,
+      paymentLink: 'https://l.the-anchor.pub/pay9',
+      payByIso: null,
+      stillBooked: true,
+      isChristmas: true,
+      perPersonGbp: 10,
+      refundCutoffDays: 7,
+      depositRule: 'period',
+      christmasDiners: 9,
+    })
+
+    assertCleanRender(email)
+    expect(email.subject).toBe('Your Christmas dinner at The Anchor: a deposit to pay')
+    expect(email.text).toContain('with 9 of you having it')
+    expect(email.text).toContain("There's now a Christmas deposit of £90.00 (9 x GBP 10) to pay.")
+    expect(email.text).toContain("There's a £10 deposit for each Christmas dinner, which comes off your bill.")
+    expect(email.text).toContain('Your table stays booked.')
+    for (const part of [email.subject, email.html, email.text]) {
+      expect(part).not.toMatch(/undefined|NaN|Invalid Date|£7\.50|party size has been updated|£120/)
+    }
+  })
+
+  it('names the seats when the group rule on 20 seats asks for more than 9 dinners', () => {
+    const wording = describePartySizeDeposit({
+      newPartySize: 20,
+      depositAmount: 200,
+      isChristmas: true,
+      bookingType: 'christmas',
+      christmasDiners: 9,
+    })
+    expect(wording.breakdownNote).toBe(' (20 x GBP 10)')
+    expect(wording.christmasDiners).toBe(9)
+  })
+
+  it('reads as the ordinary request when every seat is having Christmas dinner', () => {
+    const wording = describePartySizeDeposit({
+      newPartySize: 12,
+      depositAmount: 120,
+      isChristmas: true,
+      bookingType: 'christmas',
+      christmasDiners: 12,
+    })
+    expect(wording.christmasDiners).toBeUndefined()
+    expect(wording.breakdownNote).toBe(' (12 x GBP 10)')
+  })
+})

@@ -236,6 +236,8 @@ export type DepositTermsFacts = {
    * that grew to 15 or more. There is no hold to run out, so no deadline is stated.
    */
   stillBooked?: boolean | null
+  /** A Christmas table with more seats than Christmas dinners: the deposit is per dinner. */
+  perChristmasDinner?: boolean | null
 }
 
 function depositTerms(facts: DepositTermsFacts): string[] {
@@ -246,6 +248,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
     payByLabel: facts.payByIso ? formatBookingMomentForEmail(null, null, facts.payByIso) : null,
     depositRule: facts.depositRule ?? null,
     stillBooked: facts.stillBooked === true,
+    perChristmasDinner: facts.perChristmasDinner === true,
   })
 }
 
@@ -618,10 +621,35 @@ export function buildTableBookingDepositRequestEmail(
       /** " (16 x GBP 10)" or "", exactly as in the text. */
       breakdownNote: string
       paymentLink: string
+      /**
+       * Set only when staff turned a confirmed booking into a Christmas booking with more seats
+       * than Christmas dinners (12 seats, 9 dinners). The seats have not changed, so the email
+       * must not say the party size was updated.
+       */
+      christmasDiners?: number | null
     }
 ): TableBookingEmail {
   const partySize = Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1)
   const seatWord = partySize === 1 ? 'person' : 'people'
+  const christmasDiners = Number(input.christmasDiners)
+
+  if (Number.isInteger(christmasDiners) && christmasDiners >= 1 && christmasDiners < partySize) {
+    const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+    return renderDepositRequestEmail({
+      ...input,
+      partySize,
+      stillBooked: true,
+      payByIso: null,
+      perChristmasDinner: true,
+      subject: 'Your Christmas dinner at The Anchor: a deposit to pay',
+      heading: 'Your Christmas deposit',
+      lead:
+        `Hi ${input.firstName}, your table for ${partySize} ${seatWord}${moment ? ` on ${moment}` : ''} ` +
+        `is now booked for Christmas dinner, with ${christmasDiners} of you having it. ` +
+        `Your table is still booked. There's now a ${input.depositKindLabel} of ${input.depositLabel}` +
+        `${input.breakdownNote} to pay.`,
+    })
+  }
 
   // A confirmed booking that grew to owe a deposit stays booked (D20, BK-044). It is never told the
   // deposit "secures" a table it already has, or that a hold is running out.

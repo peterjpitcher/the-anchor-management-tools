@@ -55,7 +55,15 @@ function latestDefinitionOf(declaration: string): string {
 const createPathSql = latestDefinitionOf(
   'CREATE OR REPLACE FUNCTION public.create_table_booking_core_v06('
 )
+/**
+ * Since 20261126120000_christmas_diner_count the rule lives in resolve_table_booking_deposit_v02
+ * (which also takes the Christmas diners), and the old entry point delegates to it with none. The
+ * rule's assertions below read v02; the delegation is pinned on its own.
+ */
 const resolverSql = latestDefinitionOf(
+  'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit_v02('
+)
+const entryPointSql = latestDefinitionOf(
   'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit('
 )
 
@@ -83,7 +91,27 @@ function functionBody(sql: string, declaration: string): string {
 }
 
 const core = functionBody(createPathSql, 'CREATE OR REPLACE FUNCTION public.create_table_booking_core_v06(')
-const resolver = functionBody(resolverSql, 'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit(')
+const resolver = functionBody(resolverSql, 'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit_v02(')
+const entryPoint = functionBody(entryPointSql, 'CREATE OR REPLACE FUNCTION public.resolve_table_booking_deposit(')
+
+describe('the old resolver entry point is the v02 rule with every seat a diner', () => {
+  it('delegates to resolve_table_booking_deposit_v02 with no diners, and computes nothing itself', () => {
+    expect(entryPoint).toMatch(
+      /RETURN public\.resolve_table_booking_deposit_v02\(\s*p_party_size, p_booking_date, p_period_id, p_period_answer, p_deposit_waived, NULL::integer\);/
+    )
+    expect(entryPoint).not.toContain('c_group_threshold')
+    expect(entryPoint).toContain('SECURITY DEFINER')
+    expect(entryPoint).toContain("SET search_path TO 'public'")
+  })
+
+  it('prices the seasonal deposit on the diners and the group rule on the seats', () => {
+    expect(resolver).toContain('v_diners := COALESCE(p_seasonal_diners, p_party_size);')
+    expect(resolver).toContain("WHEN 'per_head'    THEN v_diners::numeric * v_period.deposit_amount")
+    expect(resolver).toContain('IF v_period.min_party_size IS NOT NULL AND v_diners < v_period.min_party_size THEN')
+    expect(resolver).toContain('IF v_period.max_party_size IS NOT NULL AND p_party_size > v_period.max_party_size THEN')
+    expect(resolver).toContain('v_group_amount := ROUND(p_party_size::numeric * c_group_per_head, 2);')
+  })
+})
 
 describe('the create path resolves the deposit rather than inventing one', () => {
   it('calls resolve_table_booking_deposit', () => {

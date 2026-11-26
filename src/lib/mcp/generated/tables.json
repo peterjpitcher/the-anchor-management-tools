@@ -18476,6 +18476,10 @@
     "type": "number[] | null"
    },
    {
+    "name": "christmas_diner_count",
+    "type": "number | null"
+   },
+   {
     "name": "committed_party_size",
     "type": "number"
    },
