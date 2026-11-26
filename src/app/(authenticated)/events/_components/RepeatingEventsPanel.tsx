@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert, Badge, Button, Card, Checkbox, ConfirmDialog, DateTimePicker, Drawer, Empty, Field,
-  FormFooter, Input, Modal, PageLoading, Select, Textarea, toast,
+  FormFooter, Input, Modal, PageLoading, Select, SubHeading, Textarea, toast,
 } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { formatDateInLondon, shiftIsoDate } from '@/lib/dateUtils'
@@ -142,7 +142,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold text-text-strong">{item.name}</h3>
+                        <SubHeading as="h3">{item.name}</SubHeading>
                         <Badge tone={badge.tone} size="sm">{badge.label}</Badge>
                       </div>
                       <p className="text-sm text-text">{describeSeriesSchedule(item)}</p>
@@ -187,7 +187,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
                         {isOpen ? 'Hide dates' : 'Show the next 12 dates'}
                       </Button>
                       {isOpen && (
-                        <ul className="mt-2 divide-y divide-border rounded-md border border-border">
+                        <ul className="mt-2 divide-y divide-border rounded-default border border-border">
                           {dates.map(({ date, skip }) => (
                             <li key={date} className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 text-sm">
                               <span className={skip ? 'text-text-muted line-through' : 'text-text'}>
@@ -440,7 +440,7 @@ function SeriesDrawer({
           onChange={(v) => set('skipWhenClosed', v)}
         />
 
-        <div className="rounded-md border border-border p-3">
+        <div className="rounded-default border border-border p-3">
           <p className="text-sm font-medium text-text-strong">
             {describeSeriesSchedule({ weekday: Number(form.weekday), startTime: form.startTime || '00:00', endTime: form.endTime || '00:00' })}
           </p>
