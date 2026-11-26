@@ -7,6 +7,8 @@ import { eachIsoDateInRange, isValidIsoDate } from '@/lib/dateUtils';
 import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours';
 import { logger } from '@/lib/logger';
 import { loadDayLoads, type DayLoad } from '@/services/day-load';
+import { loadSeriesOccurrencesInRange, type SeriesOccurrenceWithSeries } from '@/lib/events/series-data';
+import { describeOccurrenceLine } from '@/lib/events/series';
 
 export type RotaDayInfo = {
   date: string;
@@ -38,7 +40,7 @@ export async function getRotaWeekDayInfo(
 
   const supabase = createAdminClient();
 
-  const [eventsRes, dayLoads, notesRes] = await Promise.all([
+  const [eventsRes, dayLoads, notesRes, seriesOccurrences] = await Promise.all([
     supabase
       .from('events')
       .select('date, name, time')
@@ -69,6 +71,16 @@ export async function getRotaWeekDayInfo(
       .lte('note_date', weekEnd)
       .or(`end_date.gte.${weekStart},and(end_date.is.null,note_date.gte.${weekStart})`)
       .order('note_date', { ascending: true }),
+
+    // Repeating events (Ladies Darts Night and the like) have no events row: a line per night so
+    // staff know the room is in use. A failure leaves the line out rather than the whole strip.
+    loadSeriesOccurrencesInRange(weekStart, weekEnd, supabase).catch((error: unknown) => {
+      logger.error('Could not load repeating events for the rota', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { weekStart, weekEnd },
+      });
+      return [] as SeriesOccurrenceWithSeries[];
+    }),
   ]);
 
   const result: Record<string, RotaDayInfo> = {};
@@ -85,6 +97,13 @@ export async function getRotaWeekDayInfo(
     if (result[iso]) {
       result[iso].events.push({ name: e.name as string, time: e.time as string | null });
     }
+  }
+
+  for (const occurrence of seriesOccurrences) {
+    const day = result[occurrence.date];
+    if (!day) continue;
+    day.events.push({ name: describeOccurrenceLine(occurrence.name, occurrence), time: occurrence.startTime });
+    day.events.sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
   }
 
   for (const load of dayLoads.values()) {

@@ -159,7 +159,7 @@ export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, 
                                             data-entry-kind={entry.kind}
                                             className={cn(
                                                 'flex items-start gap-3 rounded-sm border px-3 py-2 transition-[filter,opacity] hover:brightness-95',
-                                                isPastEntry && 'opacity-70'
+                                                (isPastEntry || entry.muted) && 'opacity-70'
                                             )}
                                             style={{
                                                 borderColor: isCancelled ? CALENDAR_BLACK : entry.color,

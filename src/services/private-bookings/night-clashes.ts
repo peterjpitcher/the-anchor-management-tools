@@ -2,6 +2,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { privateBookingOccupiesSpace } from '@/lib/private-bookings/occupies-space'
 import { loadDayHours } from '@/lib/business-hours/day-hours'
+import { loadSeriesOccurrencesInRange } from '@/lib/events/series-data'
+import { describeOccurrenceLine } from '@/lib/events/series'
 
 /**
  * What else is happening in a private hire's rooms that night (review BK-070 and BK-071, owner
@@ -62,6 +64,11 @@ export interface HireNightView {
   holdsRoom: boolean
   dinerClashes: HireDinerClash[]
   events: HireNightEvent[]
+  /**
+   * Repeating events that night ("Ladies Darts Night, 7pm to 10pm"), listed for information as
+   * events are. They never block a hire. Optional so older fixtures keep compiling.
+   */
+  repeatingEvents?: string[]
   /** Whether the pub or kitchen is shut that day (BK-076); null when the hours could not be read. */
   hours: { closed: boolean; kitchenClosed: boolean } | null
   /** The hire has catering lines booked. */
@@ -269,7 +276,7 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
   if (cateringError) throw new Error(`Could not read the catering: ${cateringError.message}`)
 
   const holdsRoom = privateBookingOccupiesSpace(row)
-  const [dinerClashes, events, hours] = await Promise.all([
+  const [dinerClashes, events, hours, repeatingEvents] = await Promise.all([
     loadHireDinerClashes(bookingId, db),
     loadEventsOnDate(row.event_date, { db, hireId: bookingId, hireHoldsRoom: holdsRoom }),
     loadDayHours(row.event_date, row.event_date, db)
@@ -284,6 +291,15 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
         })
         return null
       }),
+    loadSeriesOccurrencesInRange(row.event_date, row.event_date, db)
+      .then((occurrences) => occurrences.map((o) => describeOccurrenceLine(o.name, o)))
+      .catch((error: unknown) => {
+        logger.error('Could not read repeating events for a private hire night', {
+          error: error instanceof Error ? error : new Error(String(error)),
+          metadata: { bookingId },
+        })
+        return [] as string[]
+      }),
   ])
 
   return {
@@ -292,6 +308,7 @@ export async function loadHireNightView(bookingId: string, db: DbClient = create
     holdsRoom,
     dinerClashes,
     events,
+    repeatingEvents,
     hours,
     hasCatering: (cateringCount ?? 0) > 0,
   }

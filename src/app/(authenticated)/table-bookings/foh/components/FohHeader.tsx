@@ -38,6 +38,8 @@ type FohHeaderProps = {
   onTimelineZoomChange?: (zoom: FohTimelineZoom) => void
   /** "Open 12pm to 10pm", or "Closed all day". */
   openHoursLabel?: string | null
+  /** Repeating events that night, one line each: the room is in use but no tables are held. */
+  repeatingEventLines?: string[]
   /** settings manage: Table Setup is offered in the More menu. */
   canManageSettings?: boolean
   onSendFoodOrderAlert: () => void
@@ -91,6 +93,7 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
     timelineZoom = 'day',
     onTimelineZoomChange,
     openHoursLabel,
+    repeatingEventLines = [],
     canManageSettings = false,
     onSendFoodOrderAlert,
     onOpenCreateModal,
@@ -324,6 +327,9 @@ export const FohHeader = React.memo(function FohHeader(props: FohHeaderProps) {
             : ''}
         </span>
         {openHoursLabel ? <span className={factClass}>{openHoursLabel}</span> : null}
+        {repeatingEventLines.map((line) => (
+          <span key={line} className={factClass}>{line}</span>
+        ))}
         <span className="min-w-0 flex-1 truncate" role="status" aria-label="Next event reminder">
           {!upcomingEventsLoaded
             ? 'Loading next event...'

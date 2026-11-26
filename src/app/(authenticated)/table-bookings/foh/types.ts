@@ -103,6 +103,9 @@ export type FohScheduleResponse = {
     // Who is in that day, counted as every other screen counts it (BK-075); null when it could
     // not be read. Optional so existing fixtures keep compiling.
     day_load?: DayLoad | null
+    // Repeating events that night, one line each ("Ladies Darts Night, 7pm to 10pm"). They hold
+    // no tables. Optional so existing fixtures keep compiling.
+    repeating_events?: string[]
   }
   error?: string
 }

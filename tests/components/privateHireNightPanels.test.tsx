@@ -81,6 +81,13 @@ describe('the clashes on this night panel (private booking page)', () => {
   })
 })
 
+describe('repeating events on the hire night', () => {
+  it('lists a repeating event for information, never as a blocker', () => {
+    render(<HireNightPanel view={night({ repeatingEvents: ['Ladies Darts Night, 7pm to 10pm'] })} />)
+    expect(screen.getByText(/Ladies Darts Night, 7pm to 10pm, every week\. It holds no tables and does not stop this hire\./)).toBeInTheDocument()
+  })
+})
+
 describe('the private hire notice on the event form and page', () => {
   it('lists the hires on the date without the customer name, and says when sales have stopped', async () => {
     vi.mocked(getEventNightNotice).mockResolvedValue({

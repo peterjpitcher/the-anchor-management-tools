@@ -51,7 +51,8 @@ export function HireNightPanel({ view, loadFailed }: HireNightPanelProps): React
   if (!view) return null
 
   const hasClashes = view.dinerClashes.length > 0
-  const hasEvents = view.events.length > 0
+  const repeatingEvents = view.repeatingEvents ?? []
+  const hasEvents = view.events.length > 0 || repeatingEvents.length > 0
   // BK-076, D24: the pub or the kitchen shut on the hire's date is said, not refused.
   const closedDay = view.hours?.closed === true
   const kitchenClosedForCatering = !closedDay && view.hours?.kitchenClosed === true && view.hasCatering
@@ -123,6 +124,9 @@ export function HireNightPanel({ view, loadFailed }: HireNightPanelProps): React
                   ' Ticket sales will stop once this whole-pub hire is confirmed or its deposit is paid.'}
                 {event.salesStopped && !event.closedByThisHire && ' Ticket sales have stopped because another whole-pub hire takes the night.'}
               </li>
+            ))}
+            {repeatingEvents.map((line) => (
+              <li key={line}>{line}, every week. It holds no tables and does not stop this hire.</li>
             ))}
           </ul>
         </Alert>

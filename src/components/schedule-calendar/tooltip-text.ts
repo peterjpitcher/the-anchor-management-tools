@@ -19,6 +19,10 @@ export function entryTooltipText(entry: CalendarEntry): string {
 
     switch (td.kind) {
         case 'event':
+            if (td.repeating) {
+                lines.push(`Repeating event: ${td.name}`, when, 'Repeats weekly, no bookings')
+                break
+            }
             lines.push(`Event: ${td.name}`, when, `${td.bookedSeats} booked`)
             if (td.category) lines.push(`Category: ${td.category}`)
             break

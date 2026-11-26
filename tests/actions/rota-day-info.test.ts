@@ -25,6 +25,9 @@ vi.mock('@/services/day-load', async (importOriginal) => ({
 
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }))
 
+// Repeating events are resolved by their own tested module; here only their placement matters.
+vi.mock('@/lib/events/series-data', () => ({ loadSeriesOccurrencesInRange: vi.fn() }))
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -34,6 +37,7 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getRotaWeekDayInfo } from '@/app/actions/rota-day-info'
 import { buildDayLoads, loadDayLoads } from '@/services/day-load'
+import { loadSeriesOccurrencesInRange } from '@/lib/events/series-data'
 
 const mockedPermission = checkUserPermission as unknown as Mock
 const mockedCreateClient = createClient as unknown as Mock
@@ -187,6 +191,7 @@ beforeEach(() => {
   })
   mockedPermission.mockResolvedValue(true)
   vi.mocked(loadDayLoads).mockResolvedValue(new Map())
+  vi.mocked(loadSeriesOccurrencesInRange).mockResolvedValue([])
 })
 
 describe('getRotaWeekDayInfo calendar notes', () => {
@@ -321,5 +326,29 @@ describe('getRotaWeekDayInfo days', () => {
     expect(await getRotaWeekDayInfo('2026-10-19,note_date.gte.1900-01-01', WEEK_END)).toEqual({})
     expect(await getRotaWeekDayInfo(WEEK_START, '2026-02-30')).toEqual({})
     expect(mockedCreateAdminClient).not.toHaveBeenCalled()
+  })
+})
+
+describe('getRotaWeekDayInfo repeating events', () => {
+  it('adds a line for each night of a repeating event, in time order with the day\'s events', async () => {
+    useDatabase({ events: [{ date: '2026-10-22', name: 'Quiz Night', time: '20:00', event_status: 'scheduled' }] })
+    vi.mocked(loadSeriesOccurrencesInRange).mockResolvedValue([
+      {
+        seriesId: 'series-1', name: 'Ladies Darts Night', categoryId: null, date: '2026-10-22',
+        startTime: '19:00', endTime: '22:00', startsAt: '2026-10-22T18:00:00.000Z', endsAt: '2026-10-22T21:00:00.000Z',
+      },
+    ])
+    const result = await getRotaWeekDayInfo(WEEK_START, WEEK_END)
+    expect(result['2026-10-22'].events).toEqual([
+      { name: 'Ladies Darts Night, 7pm to 10pm', time: '19:00' },
+      { name: 'Quiz Night', time: '20:00' },
+    ])
+  })
+
+  it('still shows the rest of the strip when repeating events cannot be read', async () => {
+    useDatabase({ events: [{ date: '2026-10-22', name: 'Quiz Night', time: '20:00', event_status: 'scheduled' }] })
+    vi.mocked(loadSeriesOccurrencesInRange).mockRejectedValue(new Error('down'))
+    const result = await getRotaWeekDayInfo(WEEK_START, WEEK_END)
+    expect(result['2026-10-22'].events).toEqual([{ name: 'Quiz Night', time: '20:00' }])
   })
 })
