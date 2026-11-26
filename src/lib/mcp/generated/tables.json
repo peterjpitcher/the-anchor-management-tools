@@ -5578,6 +5578,122 @@
   ]
  },
  {
+  "name": "event_series",
+  "kind": "table",
+  "columns": [
+   {
+    "name": "audience_note",
+    "type": "string | null"
+   },
+   {
+    "name": "category_id",
+    "type": "string | null"
+   },
+   {
+    "name": "created_at",
+    "type": "string"
+   },
+   {
+    "name": "created_by",
+    "type": "string | null"
+   },
+   {
+    "name": "end_time",
+    "type": "string"
+   },
+   {
+    "name": "ends_on",
+    "type": "string | null"
+   },
+   {
+    "name": "google_calendar_event_id",
+    "type": "string | null"
+   },
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "is_free",
+    "type": "boolean"
+   },
+   {
+    "name": "name",
+    "type": "string"
+   },
+   {
+    "name": "page_path",
+    "type": "string | null"
+   },
+   {
+    "name": "short_description",
+    "type": "string"
+   },
+   {
+    "name": "skip_when_closed",
+    "type": "boolean"
+   },
+   {
+    "name": "slug",
+    "type": "string"
+   },
+   {
+    "name": "start_time",
+    "type": "string"
+   },
+   {
+    "name": "starts_on",
+    "type": "string"
+   },
+   {
+    "name": "status",
+    "type": "string"
+   },
+   {
+    "name": "updated_at",
+    "type": "string"
+   },
+   {
+    "name": "weekday",
+    "type": "number"
+   }
+  ]
+ },
+ {
+  "name": "event_series_skips",
+  "kind": "table",
+  "columns": [
+   {
+    "name": "created_at",
+    "type": "string"
+   },
+   {
+    "name": "created_by",
+    "type": "string | null"
+   },
+   {
+    "name": "id",
+    "type": "string"
+   },
+   {
+    "name": "reason",
+    "type": "string | null"
+   },
+   {
+    "name": "replaced_by_event_id",
+    "type": "string | null"
+   },
+   {
+    "name": "series_id",
+    "type": "string"
+   },
+   {
+    "name": "skip_date",
+    "type": "string"
+   }
+  ]
+ },
+ {
   "name": "event_slug_history",
   "kind": "table",
   "columns": [

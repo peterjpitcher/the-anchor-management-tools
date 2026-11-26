@@ -5702,6 +5702,139 @@ export type Database = {
           },
         ]
       }
+      event_series: {
+        Row: {
+          audience_note: string | null
+          category_id: string | null
+          created_at: string
+          created_by: string | null
+          end_time: string
+          ends_on: string | null
+          google_calendar_event_id: string | null
+          id: string
+          is_free: boolean
+          name: string
+          page_path: string | null
+          short_description: string
+          skip_when_closed: boolean
+          slug: string
+          start_time: string
+          starts_on: string
+          status: string
+          updated_at: string
+          weekday: number
+        }
+        Insert: {
+          audience_note?: string | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          end_time: string
+          ends_on?: string | null
+          google_calendar_event_id?: string | null
+          id?: string
+          is_free?: boolean
+          name: string
+          page_path?: string | null
+          short_description: string
+          skip_when_closed?: boolean
+          slug: string
+          start_time: string
+          starts_on: string
+          status?: string
+          updated_at?: string
+          weekday: number
+        }
+        Update: {
+          audience_note?: string | null
+          category_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          end_time?: string
+          ends_on?: string | null
+          google_calendar_event_id?: string | null
+          id?: string
+          is_free?: boolean
+          name?: string
+          page_path?: string | null
+          short_description?: string
+          skip_when_closed?: boolean
+          slug?: string
+          start_time?: string
+          starts_on?: string
+          status?: string
+          updated_at?: string
+          weekday?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_series_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "event_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_series_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      event_series_skips: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          reason: string | null
+          replaced_by_event_id: string | null
+          series_id: string
+          skip_date: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          replaced_by_event_id?: string | null
+          series_id: string
+          skip_date: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          reason?: string | null
+          replaced_by_event_id?: string | null
+          series_id?: string
+          skip_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_series_skips_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "admin_users_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_series_skips_replaced_by_event_id_fkey"
+            columns: ["replaced_by_event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_series_skips_series_id_fkey"
+            columns: ["series_id"]
+            isOneToOne: false
+            referencedRelation: "event_series"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_slug_history: {
         Row: {
           event_id: string | null
