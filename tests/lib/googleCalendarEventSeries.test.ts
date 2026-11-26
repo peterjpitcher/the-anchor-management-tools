@@ -1,12 +1,33 @@
 import { describe, expect, it, vi } from 'vitest'
 
+const seriesData = vi.hoisted(() => ({
+  loadEventSeries: vi.fn(),
+  loadSeriesClosedDays: vi.fn(),
+}))
+
 vi.mock('server-only', () => ({}))
-vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({}) }))
-vi.mock('@/lib/google-calendar', () => ({ getOAuth2Client: vi.fn() }))
+vi.mock('@/lib/supabase/admin', () => ({
+  createAdminClient: () => ({
+    from: () => ({
+      update: () => ({ eq: () => ({ lt: () => ({ select: async () => ({ data: [], error: null }) }) }) }),
+    }),
+  }),
+}))
+vi.mock('@/lib/google-calendar', () => ({ getOAuth2Client: vi.fn(async () => ({})) }))
+vi.mock('@/lib/events/series-data', () => seriesData)
+// No test reaches Google: every calendar call fails at once.
+vi.mock('googleapis', () => ({
+  google: {
+    calendar: () => ({
+      events: new Proxy({}, { get: () => async () => { throw new Error('no network in tests') } }),
+    }),
+  },
+}))
 
 import {
   buildEventSeriesCalendarBody,
   generateEventSeriesCalendarEventId,
+  syncAllEventSeriesCalendarEntries,
 } from '@/lib/google-calendar-event-series'
 import type { EventSeriesWithSkips } from '@/lib/events/series-data'
 
@@ -62,5 +83,33 @@ describe('buildEventSeriesCalendarBody', () => {
   it('removes the entry while paused or ended', () => {
     expect(buildEventSeriesCalendarBody({ ...darts, status: 'paused' }, [], '2026-11-26')).toBeNull()
     expect(buildEventSeriesCalendarBody({ ...darts, status: 'ended' }, [], '2026-11-26')).toBeNull()
+  })
+
+  it('keeps a closure exclusion once its date has passed', () => {
+    // Sync on 1 February 2027: the 7 January closure is in the past but still in the recurrence.
+    const body = buildEventSeriesCalendarBody(
+      { ...darts, skips: [] },
+      [{ date: '2027-01-07', isClosed: true }],
+      '2027-02-01'
+    )
+    expect(body?.recurrence).toContain('EXDATE;TZID=Europe/London:20270107T190000')
+  })
+})
+
+describe('syncAllEventSeriesCalendarEntries', () => {
+  it('reads closures from the first run date, not from today', async () => {
+    vi.stubEnv('GOOGLE_SERVICE_ACCOUNT_KEY', '{}')
+    // A run that began before today (the test pins no clock, so pick a date long past).
+    seriesData.loadEventSeries.mockResolvedValue([{ ...darts, startsOn: '2025-11-06' }])
+    seriesData.loadSeriesClosedDays.mockResolvedValue([])
+    try {
+      await syncAllEventSeriesCalendarEntries()
+    } catch {
+      // The calendar client fails by design; only the closure range matters here.
+    } finally {
+      vi.unstubAllEnvs()
+    }
+    expect(seriesData.loadSeriesClosedDays).toHaveBeenCalledTimes(1)
+    expect(seriesData.loadSeriesClosedDays.mock.calls[0][1]).toBe('2025-11-06')
   })
 })

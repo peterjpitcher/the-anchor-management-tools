@@ -176,4 +176,12 @@ describe('markEventSeriesDateReplaced', () => {
     expect(result.success).toBe(true)
     expect(db.tables.event_series_skips[0]).toMatchObject({ skip_date: '2027-01-14', replaced_by_event_id: EVENT })
   })
+
+  it('leaves the night in the run when the new event was saved on another date', async () => {
+    const db = seed()
+    db.tables.events[0].date = '2027-01-21'
+    const result = await markEventSeriesDateReplaced({ seriesId: SERIES, date: '2027-01-14', eventId: EVENT })
+    expect(result.error).toContain('unchanged')
+    expect(db.tables.event_series_skips).toHaveLength(0)
+  })
 })

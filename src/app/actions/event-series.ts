@@ -389,6 +389,13 @@ export async function markEventSeriesDateReplaced(input: {
     .eq('id', parsed.data.eventId)
     .maybeSingle()
   if (eventError || !event) return { error: 'The new event could not be found' }
+  // The drawer lets staff change the date before saving. Only a full event on this very date
+  // replaces the night; otherwise the date would vanish from the run with nothing in its place.
+  if (event.date !== parsed.data.date) {
+    return {
+      error: `The new event is on ${event.date}, not ${parsed.data.date}, so the repeating night on ${parsed.data.date} is unchanged. Skip it by hand if it is not running.`,
+    }
+  }
 
   const { error } = await db.from('event_series_skips').upsert(
     {

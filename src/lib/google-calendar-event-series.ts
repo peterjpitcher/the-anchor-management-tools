@@ -228,6 +228,16 @@ async function syncOne(
   return result
 }
 
+/**
+ * The first date whose closures the calendar entry needs. The recurrence starts at each run's
+ * first date and its EXDATEs are rebuilt from scratch on every sync, so closures are read from
+ * there, not from today: otherwise a closure-driven exclusion would drop off once its date passed
+ * and the calendar would show a night that never happened.
+ */
+function closuresFrom(series: readonly Pick<EventSeriesWithSkips, 'startsOn'>[], today: string): string {
+  return series.reduce((earliest, s) => (s.startsOn < earliest ? s.startsOn : earliest), today)
+}
+
 /** Syncs one series' calendar entry (after a staff change). Never throws. */
 export async function syncEventSeriesCalendarEntry(seriesId: string): Promise<EventSeriesCalendarSyncResult> {
   const googleEventId = generateEventSeriesCalendarEventId(seriesId)
@@ -238,7 +248,11 @@ export async function syncEventSeriesCalendarEntry(seriesId: string): Promise<Ev
     const [series] = await loadEventSeries(db, { id: seriesId })
     const auth = (await getOAuth2Client()) as unknown as Auth
     if (!series) return await removeEntry(auth, seriesId)
-    const closedDays = await loadSeriesClosedDays(db, today, shiftIsoDate(today, CLOSURE_HORIZON_DAYS) ?? today)
+    const closedDays = await loadSeriesClosedDays(
+      db,
+      closuresFrom([series], today),
+      shiftIsoDate(today, CLOSURE_HORIZON_DAYS) ?? today
+    )
     return await syncOne(auth, series, closedDays, today)
   } catch (error) {
     logger.warn('Repeating event calendar sync failed', { metadata: { seriesId, error: errorMessage(error) } })
@@ -274,7 +288,11 @@ export async function syncAllEventSeriesCalendarEntries(): Promise<{
   const relevant = series.filter((s) => s.status === 'active' || s.googleCalendarEventId)
   if (relevant.length === 0) return { ended: endedRows?.length ?? 0, results: [] }
 
-  const closedDays = await loadSeriesClosedDays(db, today, shiftIsoDate(today, CLOSURE_HORIZON_DAYS) ?? today)
+  const closedDays = await loadSeriesClosedDays(
+    db,
+    closuresFrom(relevant, today),
+    shiftIsoDate(today, CLOSURE_HORIZON_DAYS) ?? today
+  )
   const auth = (await getOAuth2Client()) as unknown as Auth
   const results: EventSeriesCalendarSyncResult[] = []
   for (const s of relevant) results.push(await syncOne(auth, s, closedDays, today))
