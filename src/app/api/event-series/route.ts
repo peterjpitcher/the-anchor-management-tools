@@ -30,7 +30,9 @@ export async function GET(request: NextRequest) {
 
       const [series, closedDays] = await Promise.all([
         loadEventSeries(db, { statuses: ['active'] }),
-        loadSeriesClosedDays(db, today, horizon),
+        // From yesterday: nextSeriesOccurrence starts there so a night past midnight is still
+        // current, and a closure on that night must reach it too.
+        loadSeriesClosedDays(db, shiftIsoDate(today, -1) ?? today, horizon),
       ])
 
       const payload = []

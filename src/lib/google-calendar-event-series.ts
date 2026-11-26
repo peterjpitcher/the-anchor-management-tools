@@ -18,7 +18,7 @@ import { getOAuth2Client } from '@/lib/google-calendar'
 import { PUB_OPS_EVENT_BOOKINGS_CALENDAR_ID } from '@/lib/google-calendar-targets'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
-import { getTodayIsoDate, getIsoWeekday, shiftIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate, getIsoWeekday, shiftIsoDate, whenLondonClockReaches } from '@/lib/dateUtils'
 import { resolveSeriesOccurrences, seriesCrossesMidnight, describeSeriesSchedule } from '@/lib/events/series'
 import { loadEventSeries, loadSeriesClosedDays, type EventSeriesWithSkips } from '@/lib/events/series-data'
 import type { SeriesSpecialHoursDay } from '@/lib/events/series'
@@ -261,6 +261,59 @@ export async function syncEventSeriesCalendarEntry(seriesId: string): Promise<Ev
 }
 
 /**
+ * Whether a run whose last date is before today has finished. A night that runs past midnight is
+ * still going on the morning after its last date, so it ends only once its closing time on that
+ * next day has passed; otherwise the website and calendar would drop it mid-night.
+ */
+export function isRunFinished(
+  run: { endsOn: string; startTime: string; endTime: string },
+  today: string,
+  now: Date
+): boolean {
+  if (run.endsOn >= today) return false
+  if (!seriesCrossesMidnight(run)) return true
+  const lastNightEnds = whenLondonClockReaches(shiftIsoDate(run.endsOn, 1) ?? today, run.endTime)
+  return !lastNightEnds || now.getTime() >= lastNightEnds.getTime()
+}
+
+/** Sets status 'ended' on every active run that has finished. Returns the ended ids. */
+async function endFinishedRuns(
+  db: ReturnType<typeof createAdminClient>,
+  today: string,
+  now: Date
+): Promise<{ id: string }[]> {
+  const { data: candidates, error } = await db
+    .from('event_series')
+    .select('id, ends_on, start_time, end_time')
+    .eq('status', 'active')
+    .lt('ends_on', today)
+  if (error) {
+    logger.warn('Failed to read finished repeating events', { metadata: { error: error.message } })
+    return []
+  }
+  const finishedIds = (candidates ?? [])
+    .filter((row) =>
+      row.ends_on
+        ? isRunFinished({ endsOn: row.ends_on, startTime: row.start_time, endTime: row.end_time }, today, now)
+        : false
+    )
+    .map((row) => row.id)
+  if (finishedIds.length === 0) return []
+
+  const { data: ended, error: endError } = await db
+    .from('event_series')
+    .update({ status: 'ended' })
+    .in('id', finishedIds)
+    .eq('status', 'active')
+    .select('id')
+  if (endError) {
+    logger.warn('Failed to end finished repeating events', { metadata: { error: endError.message } })
+    return []
+  }
+  return ended ?? []
+}
+
+/**
  * For the 15-minute calendar cron: ends any run whose last date has passed, then re-syncs every
  * series, so a closure added in special hours becomes an excluded date. Unchanged entries are
  * skipped by their content hash.
@@ -271,14 +324,7 @@ export async function syncAllEventSeriesCalendarEntries(): Promise<{
 }> {
   const db = createAdminClient()
   const today = getTodayIsoDate()
-
-  const { data: endedRows, error: endError } = await db
-    .from('event_series')
-    .update({ status: 'ended' })
-    .eq('status', 'active')
-    .lt('ends_on', today)
-    .select('id')
-  if (endError) logger.warn('Failed to end finished repeating events', { metadata: { error: endError.message } })
+  const endedRows = await endFinishedRuns(db, today, new Date())
 
   if (!hasCalendarAuthConfig()) return { ended: endedRows?.length ?? 0, results: [] }
 

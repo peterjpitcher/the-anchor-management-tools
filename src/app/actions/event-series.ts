@@ -151,7 +151,11 @@ export async function listEventSeries(): ActionResult<EventSeriesListData> {
     const db = createAdminClient()
     const today = getTodayIsoDate()
     const horizon = shiftIsoDate(today, STAFF_WINDOW_DAYS) ?? today
-    const [series, closedDays] = await Promise.all([loadEventSeries(db), loadSeriesClosedDays(db, today, horizon)])
+    // Closures from yesterday, where nextSeriesOccurrence starts (a night past midnight).
+    const [series, closedDays] = await Promise.all([
+      loadEventSeries(db),
+      loadSeriesClosedDays(db, shiftIsoDate(today, -1) ?? today, horizon),
+    ])
 
     const items = series.map((s) => {
       // A paused or ended series resolves to nothing; show staff what it would run on if resumed.

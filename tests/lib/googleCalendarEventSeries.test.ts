@@ -9,7 +9,8 @@ vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/admin', () => ({
   createAdminClient: () => ({
     from: () => ({
-      update: () => ({ eq: () => ({ lt: () => ({ select: async () => ({ data: [], error: null }) }) }) }),
+      // endFinishedRuns: no run has passed its last date in these tests.
+      select: () => ({ eq: () => ({ lt: async () => ({ data: [], error: null }) }) }),
     }),
   }),
 }))
@@ -27,6 +28,7 @@ vi.mock('googleapis', () => ({
 import {
   buildEventSeriesCalendarBody,
   generateEventSeriesCalendarEventId,
+  isRunFinished,
   syncAllEventSeriesCalendarEntries,
 } from '@/lib/google-calendar-event-series'
 import type { EventSeriesWithSkips } from '@/lib/events/series-data'
@@ -93,6 +95,29 @@ describe('buildEventSeriesCalendarBody', () => {
       '2027-02-01'
     )
     expect(body?.recurrence).toContain('EXDATE;TZID=Europe/London:20270107T190000')
+  })
+})
+
+describe('isRunFinished', () => {
+  const evening = { endsOn: '2027-03-25', startTime: '19:00', endTime: '22:00' }
+  const overnight = { endsOn: '2027-03-25', startTime: '21:00', endTime: '01:00' }
+
+  it('ends an evening run the day after its last date', () => {
+    expect(isRunFinished(evening, '2027-03-25', new Date('2027-03-25T23:00:00Z'))).toBe(false)
+    expect(isRunFinished(evening, '2027-03-26', new Date('2027-03-26T00:05:00Z'))).toBe(true)
+  })
+
+  it('keeps an overnight run going until its last night closes', () => {
+    // 00:30 GMT on Friday 26 March: Thursday's 9pm to 1am night is still on.
+    expect(isRunFinished(overnight, '2027-03-26', new Date('2027-03-26T00:30:00Z'))).toBe(false)
+    expect(isRunFinished(overnight, '2027-03-26', new Date('2027-03-26T01:00:00Z'))).toBe(true)
+  })
+
+  it('reads the closing time in London across the clock change', () => {
+    // Last night Thursday 1 April 2027 (BST): 1am London on Friday is 00:00 UTC.
+    const bst = { ...overnight, endsOn: '2027-04-01' }
+    expect(isRunFinished(bst, '2027-04-02', new Date('2027-04-01T23:59:00Z'))).toBe(false)
+    expect(isRunFinished(bst, '2027-04-02', new Date('2027-04-02T00:00:00Z'))).toBe(true)
   })
 })
 
