@@ -7,6 +7,8 @@ import { logger } from '@/lib/logger'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { loadSeatAllergyBookingIds } from '@/lib/table-bookings/seat-allergies'
 import { loadDayLoads, type DayLoad } from '@/services/day-load'
+import { loadSeriesOccurrencesInRange } from '@/lib/events/series-data'
+import { describeOccurrenceLine } from '@/lib/events/series'
 
 function isIsoDate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -443,6 +445,22 @@ export async function GET(request: NextRequest) {
   // Guests whose own seat records an allergy raise the booking's Allergy marker (spec section 3.5).
   // Never rejects: a failed read is logged and only loses that marker.
   const seatAllergyIdsPromise = loadSeatAllergyBookingIds(bookingIds)
+
+  // Repeating events that night ("Ladies Darts Night, 7pm to 10pm"), so staff know the room is in
+  // use. They hold no tables. A failed read is logged and leaves the line out.
+  // Read with the service client: the FOH login has no events permission, and the route has
+  // already checked FOH access.
+  const repeatingEventsPromise = (async () => {
+    const occurrences = await loadSeriesOccurrencesInRange(date, date, createAdminClient())
+    return occurrences.map((o) => describeOccurrenceLine(o.name, o))
+  })()
+    .catch((error: unknown) => {
+      logger.error('FOH schedule could not load repeating events', {
+        error: error instanceof Error ? error : new Error(String(error)),
+        metadata: { date },
+      })
+      return [] as string[]
+    })
 
   // Run follow-up queries in parallel (they only depend on the initial results, not each other)
   const [eventsResult, assignmentsResult, privateBookingsResult, communalAllocationsResult, standingBookingsResult, guestChangesResult, dayLoadResult] = await Promise.all([
@@ -970,7 +988,8 @@ export async function GET(request: NextRequest) {
       no_show_bookings: noShowBookings,
       private_hires_unavailable: privateHiresUnavailable,
       load_warnings: loadWarnings,
-      day_load: dayLoadResult
+      day_load: dayLoadResult,
+      repeating_events: await repeatingEventsPromise,
     }
   })
 }

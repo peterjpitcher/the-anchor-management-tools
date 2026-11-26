@@ -3733,6 +3733,21 @@
   "readOnly": true
  },
  {
+  "name": "event-series.listEventSeriesNights",
+  "module": "event-series",
+  "export": "listEventSeriesNights",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ from: string; to: string }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Every night of every running repeating event between two dates, for the Events calendar view.\nNeeds events:view. At most 400 days at a time.",
+  "readOnly": true
+ },
+ {
   "name": "event-series.markEventSeriesDateReplaced",
   "module": "event-series",
   "export": "markEventSeriesDateReplaced",

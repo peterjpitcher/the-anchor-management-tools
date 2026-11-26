@@ -19,6 +19,8 @@ import {
   calendarNoteToEntry,
   parkingToEntry,
   marketingSendToEntry,
+  repeatingEventToEntry,
+  type RepeatingEventNight,
 } from './adapters'
 import type {
   CalendarEntry,
@@ -149,6 +151,8 @@ export interface VenueCalendarProps {
   parkingBookings: VenueCalendarParking[]
   /** Marketing email sends. Permission-gated at source, so an empty array is normal. */
   marketingSends?: VenueCalendarMarketingSend[]
+  /** Nights of repeating events: drawn lighter and not clickable (they have no page or bookings). */
+  repeatingEvents?: RepeatingEventNight[]
   /** Create, edit and delete calendar notes from the calendar itself. */
   canManageCalendarNotes?: boolean
   onEmptyDayClick?: (date: Date) => void
@@ -188,6 +192,8 @@ interface NoteEditorState {
   original: VenueCalendarNote | null
 }
 
+const NO_REPEATING_EVENTS: RepeatingEventNight[] = []
+
 type PrivateBookingAdapterInput = Parameters<typeof privateBookingToEntry>[0]
 
 function buildEntries(
@@ -199,8 +205,11 @@ function buildEntries(
   calendarNotes: VenueCalendarNote[],
   parkingBookings: VenueCalendarParking[],
   marketingSends: VenueCalendarMarketingSend[],
+  repeatingEvents: RepeatingEventNight[] = [],
 ): { entries: CalendarEntry[]; skipped: number } {
   const out: CalendarEntry[] = []
+
+  for (const night of repeatingEvents) out.push(repeatingEventToEntry(night))
 
   for (const event of events) {
     if (!event.date) continue
@@ -302,7 +311,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
           {td.time ? ` · ${td.time}` : ''}
         </div>
         <div>
-          <span className="font-medium">Booked:</span> {td.bookedSeats}
+          {td.repeating ? 'Repeats weekly, no bookings' : <><span className="font-medium">Booked:</span> {td.bookedSeats}</>}
         </div>
         {td.category && (
           <div>
@@ -483,6 +492,7 @@ export function VenueCalendar({
   calendarNotes,
   parkingBookings,
   marketingSends = [],
+  repeatingEvents = NO_REPEATING_EVENTS,
   canManageCalendarNotes,
   showFilters = false,
   onEmptyDayClick,
@@ -651,8 +661,8 @@ export function VenueCalendar({
   }, [calendarNotes])
 
   const built = useMemo(
-    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends),
-    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends],
+    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents),
+    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents],
   )
   const entries = built.entries
   const skippedCount = built.skipped

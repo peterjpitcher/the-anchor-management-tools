@@ -60,6 +60,8 @@ export interface CalendarEntry {
     content?: CalendarEntryContent
     tooltipData: TooltipData
     onClickHref: string | null
+    /** Drawn lighter: a repeating event's night, which holds no bookings and opens nothing. */
+    muted?: boolean
 }
 
 type TooltipData =
@@ -70,6 +72,8 @@ type TooltipData =
           bookedSeats: number
           category: string | null
           status: CalendarEntryStatus
+          /** A night of a repeating event: no bookings, no page of its own. */
+          repeating?: boolean
       }
     | {
           kind: 'private_booking'

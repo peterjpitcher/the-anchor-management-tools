@@ -383,6 +383,11 @@ describe('the header', () => {
     expect(screen.getByRole('status', { name: 'Next event reminder' })).toHaveTextContent('Next event: Quiz Night · 4 Days Left to Book')
   })
 
+  it('names a repeating event that night so staff know the room is in use', () => {
+    renderHeader({ repeatingEventLines: ['Ladies Darts Night, 7pm to 10pm'] })
+    expect(screen.getByText('Ladies Darts Night, 7pm to 10pm')).toBeInTheDocument()
+  })
+
   it('switches the timeline between Day and Now', async () => {
     const onTimelineZoomChange = vi.fn()
     renderHeader({ timelineZoom: 'day', onTimelineZoomChange })

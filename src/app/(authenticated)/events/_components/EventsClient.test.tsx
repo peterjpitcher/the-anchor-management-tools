@@ -23,6 +23,10 @@ vi.mock('@/app/actions/calendar-notes', () => ({
 vi.mock('@/app/actions/parking', () => ({
   listParkingBookings: vi.fn(async () => ({ data: [] })),
 }))
+vi.mock('@/app/actions/event-series', () => ({
+  listEventSeriesNights: vi.fn(async () => ({ success: true, data: [] })),
+  markEventSeriesDateReplaced: vi.fn(async () => ({ success: true })),
+}))
 
 // The calendar itself is covered by its own tests; here only what it is handed matters.
 vi.mock('@/components/schedule-calendar', () => ({

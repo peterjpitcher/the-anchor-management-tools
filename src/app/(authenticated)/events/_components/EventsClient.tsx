@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useTransition, useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { getTodayIsoDate } from '@/lib/dateUtils'
+import { addMonthsToIsoDate, getTodayIsoDate } from '@/lib/dateUtils'
 import { Alert, PageLayout, PageLoading, Segmented, Button } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { cn } from '@/lib/utils'
@@ -10,7 +10,7 @@ import { EventListView } from './EventListView'
 import { EventBoardView } from './EventBoardView'
 import { EventDrawer, type EventDrawerPrefill } from './EventDrawer'
 import { RepeatingEventsPanel, type MakeFullEventRequest } from './RepeatingEventsPanel'
-import { markEventSeriesDateReplaced } from '@/app/actions/event-series'
+import { listEventSeriesNights, markEventSeriesDateReplaced, type EventSeriesNight } from '@/app/actions/event-series'
 import { EventFilterPanel, type EventFilters } from './EventFilterPanel'
 import { VenueCalendar } from '@/components/schedule-calendar'
 import type {
@@ -190,6 +190,25 @@ export default function EventsClient({
   // date leaves the repeating run once the event is saved.
   const [seriesConversion, setSeriesConversion] = useState<{ seriesId: string; prefill: EventDrawerPrefill } | null>(null)
   const [repeatingRefreshKey, setRepeatingRefreshKey] = useState(0)
+  // Nights of repeating events for the calendar view: last month to a year ahead. A failed read
+  // leaves them off with a warning under the calendar, never the whole calendar.
+  const [repeatingNights, setRepeatingNights] = useState<EventSeriesNight[]>([])
+  const [repeatingNightsError, setRepeatingNightsError] = useState<string | null>(null)
+  // Bumped by the Repeating tab after each saved change, so the calendar's nights reload without
+  // making the tab reload its own list a second time.
+  const [repeatingNightsKey, setRepeatingNightsKey] = useState(0)
+  useEffect(() => {
+    let cancelled = false
+    const today = getTodayIsoDate()
+    void listEventSeriesNights({ from: addMonthsToIsoDate(today, -1), to: addMonthsToIsoDate(today, 12) }).then((result) => {
+      if (cancelled) return
+      setRepeatingNights(result.data ?? [])
+      setRepeatingNightsError(result.error ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [repeatingRefreshKey, repeatingNightsKey])
   const [isExporting, setIsExporting] = useState(false)
   const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -611,12 +630,14 @@ export default function EventsClient({
                 employeeBirthdays={layers.birthdays}
                 balanceDueDates={layers.balanceDues}
                 marketingSends={layers.marketingSends}
+                repeatingEvents={repeatingNights}
                 dailyOps={layers.dailyOps ?? undefined}
                 canManageCalendarNotes={canManageCalendarNotes}
                 showFilters
                 onNotesChanged={fetchCalendarData}
                 datasetWarnings={[
                   ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
+                  ...(repeatingNightsError ? [`Repeating events could not be loaded: ${repeatingNightsError}`] : []),
                   ...layers.warnings,
                 ]}
               />
@@ -646,6 +667,7 @@ export default function EventsClient({
                 canManage={canManageEvents}
                 onMakeFullEvent={handleMakeFullEvent}
                 refreshKey={repeatingRefreshKey}
+                onSeriesChanged={() => setRepeatingNightsKey((key) => key + 1)}
               />
             )}
 

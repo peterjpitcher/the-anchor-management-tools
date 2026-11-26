@@ -19,6 +19,7 @@ import {
   EVENT_SERIES_COLUMNS,
   loadEventSeries,
   loadSeriesClosedDays,
+  loadSeriesOccurrencesInRange,
   mapEventSeriesRow,
   type EventSeries,
   type EventSeriesRow,
@@ -420,4 +421,35 @@ export async function markEventSeriesDateReplaced(input: {
   })
   const warning = await afterSeriesChange(series.id)
   return { success: true, data: { warning } }
+}
+
+export interface EventSeriesNight {
+  seriesId: string
+  name: string
+  date: string
+  startTime: string
+  endTime: string
+}
+
+/**
+ * Every night of every running repeating event between two dates, for the Events calendar view.
+ * Needs events:view. At most 400 days at a time.
+ */
+export async function listEventSeriesNights(input: { from: string; to: string }): ActionResult<EventSeriesNight[]> {
+  const actor = await requirePermission('view')
+  if ('error' in actor) return { error: actor.error }
+  if (!isValidIsoDate(input.from) || !isValidIsoDate(input.to) || input.to < input.from) return { error: 'Check the dates' }
+  const limit = shiftIsoDate(input.from, STAFF_WINDOW_DAYS)
+  if (limit && input.to > limit) return { error: 'Ask for 400 days or fewer' }
+
+  try {
+    const occurrences = await loadSeriesOccurrencesInRange(input.from, input.to, createAdminClient())
+    return {
+      success: true,
+      data: occurrences.map((o) => ({ seriesId: o.seriesId, name: o.name, date: o.date, startTime: o.startTime, endTime: o.endTime })),
+    }
+  } catch (error) {
+    console.error('[event-series] nights failed', { message: getErrorMessage(error) })
+    return { error: 'Repeating events could not be loaded' }
+  }
 }

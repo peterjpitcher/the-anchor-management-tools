@@ -526,6 +526,7 @@ export function FohScheduleClient({
         timelineZoom={timelineZoom}
         onTimelineZoomChange={chooseTimelineZoom}
         openHoursLabel={openHoursLabel}
+        repeatingEventLines={schedule?.repeating_events ?? []}
         canManageSettings={canManageSettings}
         search={
           <FohBookingSearch

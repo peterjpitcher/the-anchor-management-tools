@@ -376,7 +376,8 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
 
     const sharedClass = cn(
         'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-hidden focus-visible:shadow-ring',
-        isCancelled && 'line-through'
+        isCancelled && 'line-through',
+        entry.muted && 'opacity-60'
     )
     const sharedStyle = {
         borderColor: isCancelled ? CALENDAR_BLACK : entry.color,

@@ -167,6 +167,51 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
     }
 }
 
+// --- Repeating event night ---
+
+/** One night of a repeating event, as the Events calendar draws it: lighter, and not clickable. */
+export interface RepeatingEventNight {
+    seriesId: string
+    name: string
+    date: string
+    /** HH:MM, London. */
+    startTime: string
+    /** HH:MM, London. */
+    endTime: string
+}
+
+export function repeatingEventToEntry(night: RepeatingEventNight): CalendarEntry {
+    const start = parseLocalDate(night.date, night.startTime)
+    let end = parseLocalDate(night.date, night.endTime)
+    const endsNextDay = end <= start
+    if (endsNextDay) end = addHours(end, 24)
+    return {
+        id: `series:${night.seriesId}:${night.date}`,
+        kind: 'event',
+        title: night.name,
+        start,
+        end,
+        allDay: false,
+        spansMultipleDays: false,
+        endsNextDay,
+        color: kindColor('event'),
+        subtitle: 'Repeats weekly',
+        status: 'scheduled',
+        statusLabel: null,
+        tooltipData: {
+            kind: 'event',
+            name: night.name,
+            time: night.startTime,
+            bookedSeats: 0,
+            category: null,
+            status: 'scheduled',
+            repeating: true,
+        },
+        onClickHref: null,
+        muted: true,
+    }
+}
+
 // --- Private booking ---
 
 export function privateBookingToEntry(booking: PrivateBookingCalendarOverview): CalendarEntry {

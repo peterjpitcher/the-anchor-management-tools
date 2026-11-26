@@ -53,6 +53,8 @@ interface RepeatingEventsPanelProps {
   onMakeFullEvent: (request: MakeFullEventRequest) => void
   /** Bumped by the parent after a full event is made, so the list reloads. */
   refreshKey?: number
+  /** Called after every saved change (create, edit, skip, undo, pause, end), so the calendar reloads its nights. */
+  onSeriesChanged?: () => void
 }
 
 function showResult(result: { error?: string; data?: { warning?: string } }, success: string): boolean {
@@ -65,7 +67,7 @@ function showResult(result: { error?: string; data?: { warning?: string } }, suc
   return true
 }
 
-export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, refreshKey = 0 }: RepeatingEventsPanelProps) {
+export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, refreshKey = 0, onSeriesChanged }: RepeatingEventsPanelProps) {
   const [series, setSeries] = useState<EventSeriesListItem[] | null>(null)
   const [closedDays, setClosedDays] = useState<SeriesSpecialHoursDay[]>([])
   const [today, setToday] = useState('')
@@ -92,9 +94,14 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
     void load()
   }, [load, refreshKey])
 
+  async function reloadAfterChange() {
+    onSeriesChanged?.()
+    await load()
+  }
+
   async function undoSkip(item: EventSeriesListItem, date: string) {
     const result = await unskipEventSeriesDate({ seriesId: item.id, date })
-    if (showResult(result, `${formatSeriesDate(date)} is back on`)) await load()
+    if (showResult(result, `${formatSeriesDate(date)} is back on`)) await reloadAfterChange()
   }
 
   if (loadError) {
@@ -230,7 +237,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
         onClose={() => setEditing(null)}
         onSaved={async () => {
           setEditing(null)
-          await load()
+          await reloadAfterChange()
         }}
       />
 
@@ -239,7 +246,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
         onClose={() => setSkipping(null)}
         onSaved={async () => {
           setSkipping(null)
-          await load()
+          await reloadAfterChange()
         }}
       />
 
@@ -248,7 +255,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
         onClose={() => setEnding(null)}
         onSaved={async () => {
           setEnding(null)
-          await load()
+          await reloadAfterChange()
         }}
       />
 
@@ -267,7 +274,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
           const result = await setEventSeriesPaused({ seriesId: pausing.id, paused: pausing.status !== 'paused' })
           if (showResult(result, pausing.status === 'paused' ? 'Resumed' : 'Paused')) {
             setPausing(null)
-            await load()
+            await reloadAfterChange()
           }
         }}
       />
