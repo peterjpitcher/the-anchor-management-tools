@@ -121,6 +121,7 @@ export default async function EventsPage() {
       calendarNotesError={notesResult.error ?? null}
       initialCalendarParking={'data' in parkingResult && parkingResult.data ? parkingResult.data as VenueCalendarParking[] : []}
       canManageCalendarNotes={canManageCalendarNotesResolved}
+      canManageEvents={canManageEvents}
       calendarLayers={calendarLayers}
       todosPanel={
         <Suspense fallback={<EventTodosPanelFallback />}>

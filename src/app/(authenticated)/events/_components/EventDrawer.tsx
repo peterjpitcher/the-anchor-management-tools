@@ -53,6 +53,24 @@ interface EventDrawerProps {
   onSave: () => void
   /** Seats already booked, shown beside the ticket limit (BK-036). */
   seatsSold?: number
+  /**
+   * Starting values for a new event, used by "Make this date a full event" on a repeating event.
+   * Ignored when `event` is set.
+   */
+  prefill?: EventDrawerPrefill | null
+  /** Called once a new event has been created, with its id, before the drawer closes. */
+  onCreated?: (eventId: string) => void | Promise<void>
+}
+
+export interface EventDrawerPrefill {
+  name: string
+  categoryId: string | null
+  date: string
+  /** HH:MM, London. */
+  time: string
+  /** HH:MM, London. */
+  endTime: string
+  shortDescription?: string | null
 }
 
 const STATUS_OPTIONS = [
@@ -89,7 +107,7 @@ const PERFORMER_TYPE_OPTIONS = [
   { value: 'Organization', label: 'Organisation' },
 ]
 
-export function EventDrawer({ open, onClose, event, categories, onSave, seatsSold }: EventDrawerProps) {
+export function EventDrawer({ open, onClose, event, categories, onSave, seatsSold, prefill = null, onCreated }: EventDrawerProps) {
   const router = useRouter()
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [validationAttempt, setValidationAttempt] = useState(0)
@@ -282,8 +300,16 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       setLocalSeoKeywords('')
       setFaqs([])
       setFaqsModified(false)
+      if (prefill) {
+        setName(prefill.name)
+        setDate(prefill.date)
+        setTime(prefill.time)
+        setEndTime(prefill.endTime)
+        setCategoryId(prefill.categoryId ?? '')
+        setShortDescription(prefill.shortDescription ?? '')
+      }
     }
-  }, [event])
+  }, [event, prefill])
 
   // A fresh open must not inherit the id of the event created last time round.
   useEffect(() => {
@@ -517,6 +543,7 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
       // report into, rather than being discarded when it unmounts.
       if (newEventId) {
         setCreatedEventId(newEventId)
+        if (onCreated) await onCreated(newEventId)
         if (imagePanelRef.current?.hasQueuedFiles()) {
           const failures = await imagePanelRef.current.flushQueue(newEventId)
           if (failures > 0) {
