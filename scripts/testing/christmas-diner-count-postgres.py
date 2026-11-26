@@ -45,7 +45,10 @@ PRODUCTION_MD5 = {
     'get_setting_bool(text,boolean)': 'cc24148be692a4b9b1092d3a3bed300f',
     'booking_period_menu_ready(uuid)': '4ce10ac837d14f11fd981c529b36690d',
     'get_booking_period_for_date(date)': 'f35538092df5e742ea737fd739a1509f',
+    # Not replaced: loaded to prove a diner can still pick their courses after a conversion.
+    'set_christmas_seat_course_v01(uuid,integer,integer,boolean)': '8ca1e23271721f52ac872aed72dad564',
 }
+FOOD_LINK = ROOT / 'supabase/migrations/20261106210000_christmas_food_link.sql'
 REPLACED = [
     'resolve_table_booking_deposit(integer,date,uuid,boolean,boolean)',
     'assert_christmas_course_snapshot_v01()',
@@ -211,6 +214,13 @@ def production_functions():
     return text[:text.index('DROP FUNCTION public.convert_table_booking_to_christmas_v01')] + 'COMMIT;'
 
 
+def seat_course_function():
+    """Production's set_christmas_seat_course_v01, as 20261106210000 created it (md5-checked)."""
+    text = FOOD_LINK.read_text()
+    start = text.index('CREATE FUNCTION public.set_christmas_seat_course_v01(')
+    return text[start:text.index('$$;', start) + 3]
+
+
 def main():
     with tempfile.TemporaryDirectory(prefix='xmas-diners-pg-') as folder:
         work = Path(folder); socket = work / 'socket'; socket.mkdir(); cluster = work / 'db'
@@ -241,6 +251,7 @@ def main():
         try:
             sql(SETUP)
             sql(production_functions())
+            sql(seat_course_function())
             sql("CREATE TRIGGER table_bookings_christmas_course_snapshot BEFORE INSERT OR UPDATE ON public.table_bookings "
                 "FOR EACH ROW EXECUTE FUNCTION public.assert_christmas_course_snapshot_v01();")
             for signature, expected in PRODUCTION_MD5.items():
@@ -353,6 +364,13 @@ def main():
             check(f"NOT EXISTS (SELECT 1 FROM booking_holds WHERE table_booking_id = '{diana}')",
                   'no payment hold is made, so nothing can time the booking out')
             check(f"(SELECT count(*) FROM booking_preorder_covers WHERE table_booking_id = '{diana}') = 9", 'exactly 9 pre-order seats exist')
+            # A diner then picks their courses on the food link, through production's own function.
+            sql(f"SELECT public.set_christmas_seat_course_v01('{diana}', 1, 2);")
+            check(f"(SELECT christmas_course_counts = ARRAY[2,0,0,0,0,0,0,0,0] AND party_size = 12 AND christmas_diner_count = 9"
+                  f" FROM table_bookings WHERE id = '{diana}')",
+                  'a diner on the converted booking can choose 2 courses, and the seats and diners stay as they were')
+            check(f"{attempt(f'SELECT public.set_christmas_seat_course_v01({quote(diana)}, 10, 2)')} = 'That seat is not on this booking.'",
+                  'seat 10, one of the 3 on the normal menu, has no Christmas courses to choose')
             check(f"{convert(diana, 9)} = 'Only an ordinary food booking can be changed to Christmas dinner.'",
                   'converting it a second time is refused')
 
@@ -375,6 +393,8 @@ def main():
                 ('a waived deposit', regular(12, deposit_waived='true'), 9, 'A manager waived the deposit on this booking, so it cannot be changed to Christmas dinner here.'),
                 ('a deposit already owed', regular(16, payment_status="'pending'", deposit_amount='160'), 9, 'This booking already has a deposit taken or asked for, so it cannot be changed to Christmas dinner here.'),
                 ('a deposit already paid', regular(16, deposit_amount_locked='160', paypal_deposit_capture_id="'CAP-1'"), 9, 'This booking already has a deposit taken or asked for, so it cannot be changed to Christmas dinner here.'),
+                ('a date whose food choices have closed', regular(12, booking_date='current_date + 5', start_datetime="now() + interval '5 days'"), 9,
+                 'The Christmas food choices for this date have closed, so this booking cannot be changed to Christmas dinner here. A manager needs to rebook it.'),
                 ('a date outside the Christmas period', regular(12, booking_date='current_date + 90', start_datetime="now() + interval '90 days'"), 9, None),
             ]
             for label, booking_id, diners, message in refusals:

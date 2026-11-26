@@ -617,6 +617,13 @@ BEGIN
   IF v_period.id IS NULL OR v_period.period_kind <> 'christmas' THEN
     RAISE EXCEPTION 'Christmas dinner is not on offer for %.', to_char(v_booking.booking_date, 'DD Mon YYYY') USING ERRCODE = '22023';
   END IF;
+  -- The diners choose their food on the food link, which closes at noon preorder_cutoff_days before
+  -- the date (christmas_course_policy_v01, getPreorderCutoff). Converted after that, the guest would
+  -- get a read-only food page and the chase would escalate at once, so a manager rebooks it instead.
+  IF v_period.requires_preorder AND v_period.preorder_cutoff_days IS NOT NULL
+     AND now() >= (((v_booking.booking_date - v_period.preorder_cutoff_days) + time '12:00') AT TIME ZONE 'Europe/London') THEN
+    RAISE EXCEPTION 'The Christmas food choices for this date have closed, so this booking cannot be changed to Christmas dinner here. A manager needs to rebook it.' USING ERRCODE = '22023';
+  END IF;
 
   -- The Christmas minimum (CHRISTMAS_MIN_PARTY_SIZE, 4) counts the people having Christmas dinner.
   IF p_christmas_diners IS NULL OR p_christmas_diners < 4 THEN

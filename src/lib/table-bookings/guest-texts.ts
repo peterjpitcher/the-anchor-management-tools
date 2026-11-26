@@ -17,6 +17,7 @@ import {
   CHRISTMAS_FOOD_DEADLINE_PASSED_LINE,
   isChristmasBookingType,
   isChristmasFoodDeadlinePassed,
+  christmasDinersSentence,
 } from '@/lib/table-bookings/christmas'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
@@ -230,7 +231,10 @@ export type DepositConfirmedTextBooking = {
   christmas_course_counts?: number[] | null
   /** 'christmas' switches to the food-link wording (D3). */
   booking_type?: string | null
+  /** Christmas only: how many of the seats are having Christmas dinner, when fewer than all. */
+  christmas_diner_count?: number | null
 }
+
 
 /**
  * The deposit-confirmed text, word for word as it has always read, ready to send. `manageLink` is
@@ -292,7 +296,8 @@ function buildChristmasDepositConfirmedText(input: {
     : `Call us on ${GUEST_CONTACT.phoneDisplay} for your link to choose everyone's food${deadline ? ` by ${deadline}` : ''}.`
   const body =
     `The Anchor: ${input.firstName}, thanks for booking Christmas with us and for your deposit. ` +
-    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed. ${food}` +
+    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.` +
+    `${christmasDinersSentence(partySize, input.booking.christmas_diner_count)} ${food}` +
     (deadlinePassed ? '' : " We'll remind you if anyone's choices are missing.")
   return ensureReplyInstruction(body, supportPhone())
 }

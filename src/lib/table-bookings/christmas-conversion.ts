@@ -63,6 +63,9 @@ type ConvertRpcRow = {
 function mapRpcError(error: { code?: string | null; message?: string | null }): { status: 404 | 409 | 500; error: string } {
   if (error.code === 'P0002') return { status: 404, error: 'Booking not found.' }
   if (error.code === '22023' && error.message) return { status: 409, error: error.message }
+  // A plain RAISE EXCEPTION from a booking trigger (the service window, the seasonal date guard)
+  // is a sentence written for staff too, so it is shown rather than hidden behind a generic error.
+  if (error.code === 'P0001' && error.message) return { status: 409, error: error.message }
   return { status: 500, error: 'The booking could not be changed to Christmas dinner. Please try again.' }
 }
 

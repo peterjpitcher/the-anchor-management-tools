@@ -537,6 +537,8 @@ export default function BookingDetailClient({ booking, canEdit, canManage, canRe
       deposit_waived: booking.deposit_waived,
       // Christmas bookings owe a deposit at any party size.
       booking_type: booking.booking_type,
+      // ...per Christmas dinner, when only some seats are having it.
+      christmas_diner_count: booking.christmas_diner_count ?? null,
     },
     booking.party_size ?? 0,
   )

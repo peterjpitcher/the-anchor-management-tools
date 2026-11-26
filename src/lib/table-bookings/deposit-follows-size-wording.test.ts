@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildTableBookingDepositRequestEmail, buildTableBookingRescheduledEmail } from './guest-emails'
-import { buildPartySizeDepositText, describePartySizeDeposit } from './guest-texts'
+import {
+  buildTableBookingDepositConfirmedEmail,
+  buildTableBookingDepositRequestEmail,
+  buildTableBookingRescheduledEmail,
+} from './guest-emails'
+import { buildDepositConfirmedText, buildPartySizeDepositText, describePartySizeDeposit } from './guest-texts'
 import { assertCleanRender, expectedLongDate } from '../../../tests/mocks/emailRenderChecks'
 
 /**
@@ -173,5 +177,56 @@ describe('the deposit request after staff convert a booking to Christmas dinner 
     })
     expect(wording.christmasDiners).toBeUndefined()
     expect(wording.breakdownNote).toBe(' (12 x GBP 10)')
+  })
+})
+
+// Later: once the GBP 90 is paid, the deposit-received email and text for the converted booking.
+describe('the deposit-received message for 12 seats with 9 Christmas dinners', () => {
+  const now = new Date('2026-11-27T10:00:00.000Z')
+
+  it('says 9 are having Christmas dinner, GBP 10 per dinner, and never GBP 7.50', () => {
+    const email = buildTableBookingDepositConfirmedEmail({
+      firstName: 'Sam',
+      bookingReference: 'TB-XMAS9',
+      bookingDate: '2026-12-12',
+      bookingTime: '13:00:00',
+      partySize: 12,
+      highChairCount: 1,
+      depositPaid: 90,
+      manageLink: 'https://l.the-anchor.pub/manage9',
+      christmas: {
+        foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+        preorderCutoffDays: 7,
+        perPersonGbp: 10,
+        refundCutoffDays: 7,
+        now,
+        christmasDiners: 9,
+      },
+    })
+    assertCleanRender(email)
+    expect(email.text).toContain('is confirmed. 9 of you are having Christmas dinner.')
+    expect(email.text).toContain("There's a £10 deposit for each Christmas dinner, which comes off your bill.")
+    for (const part of [email.subject, email.html, email.text]) {
+      expect(part).not.toMatch(/undefined|NaN|Invalid Date|£7\.50/)
+    }
+
+    const text = buildDepositConfirmedText({
+      booking: {
+        start_datetime: '2026-12-12T13:00:00.000Z',
+        party_size: 12,
+        is_outside_seating: false,
+        high_chair_count: 1,
+        christmas_course_counts: [0, 0, 0, 0, 0, 0, 0, 0, 0],
+        booking_type: 'christmas',
+        christmas_diner_count: 9,
+      },
+      firstName: 'Sam',
+      manageLink: 'https://l.the-anchor.pub/manage9',
+      foodDeadlineIso: '2026-12-05T12:00:00.000Z',
+      now,
+    })
+    expect(text).toContain('Your table for 12 people on')
+    expect(text).toContain('is confirmed. 9 of you are having Christmas dinner. Choose everyone')
+    expect(text).not.toMatch(/undefined|NaN|Invalid Date|£7\.50/)
   })
 })

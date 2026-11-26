@@ -112,6 +112,13 @@ export function formatChristmasSeatsAndDiners(
   return `${seatCount} seat${seatCount === 1 ? '' : 's'}, ${dinerCount} Christmas dinner${dinerCount === 1 ? '' : 's'}`
 }
 
+/** " 9 of you are having Christmas dinner." for a table with more seats than Christmas dinners, else "". */
+export function christmasDinersSentence(partySize: number, diners: number | null | undefined): string {
+  const count = Number(diners)
+  if (!Number.isInteger(count) || count < 1 || count >= partySize) return ''
+  return ` ${count} of you ${count === 1 ? 'is' : 'are'} having Christmas dinner.`
+}
+
 /**
  * True when a create-booking request purpose asks for a Christmas booking.
  * The public and FOH APIs both accept `'christmas'` as a booking purpose.

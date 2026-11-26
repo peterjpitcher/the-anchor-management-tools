@@ -20,7 +20,11 @@ import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDat
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { depositPurposeLine, depositRefundLine, depositTermsLines } from '@/lib/table-bookings/deposit-terms'
-import { CHRISTMAS_FOOD_DEADLINE_PASSED_LINE, isChristmasFoodDeadlinePassed } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_FOOD_DEADLINE_PASSED_LINE,
+  christmasDinersSentence,
+  isChristmasFoodDeadlinePassed,
+} from '@/lib/table-bookings/christmas'
 
 export type TableBookingEmail = {
   subject: string
@@ -442,6 +446,8 @@ export type ChristmasDepositFacts = {
   refundCutoffDays: number | null
   /** When the email is sent. Defaults to now; a deadline at or before it has passed. */
   now?: Date | null
+  /** How many of the seats are having Christmas dinner, when fewer than all of them. */
+  christmasDiners?: number | null
 }
 
 /**
@@ -473,7 +479,12 @@ function buildChristmasDepositConfirmedEmail(
   const refund = depositRefundLine({ isChristmas: true, refundCutoffDays: input.christmas.refundCutoffDays })
   const thanks =
     `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
-    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`
+    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.` +
+    christmasDinersSentence(Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1), input.christmas.christmasDiners)
+  const perChristmasDinner = christmasDinersSentence(
+    Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1),
+    input.christmas.christmasDiners
+  ) !== ''
 
   // The deposit can land after the food form has locked (a booking taken with the minimum notice
   // has its cutoff inside the 24 hour deposit hold). Then the food block would promise a form the
@@ -491,7 +502,7 @@ function buildChristmasDepositConfirmedEmail(
       ],
       cta: manageLink ? { label: 'Manage your booking', url: manageLink } : undefined,
       afterCta: [
-        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp, perChristmasDinner }),
         ...(refund ? [refund] : []),
       ],
       beforeContact: ['If you need to change anything, let us know.'],
@@ -520,7 +531,7 @@ function buildChristmasDepositConfirmedEmail(
         ? []
         : [`We couldn't add your food link to this email. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll send it.`]),
       "We'll remind you if anyone's choices are still missing as the deadline gets close.",
-      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp, perChristmasDinner }),
       ...(refund ? [refund] : []),
     ],
     beforeContact: ['If you need to change anything, let us know.'],
