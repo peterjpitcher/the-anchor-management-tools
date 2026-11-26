@@ -99,6 +99,27 @@ export function formatChristmasCourseTally(counts?: readonly number[] | null): s
 }
 
 /**
+ * "12 seats, 9 Christmas dinners": a Christmas booking where some seats are on the normal menu.
+ * Empty when either number is missing.
+ */
+export function formatChristmasSeatsAndDiners(
+  seats: number | null | undefined,
+  diners: number | null | undefined
+): string {
+  const seatCount = Math.trunc(Number(seats))
+  const dinerCount = Math.trunc(Number(diners))
+  if (!Number.isFinite(seatCount) || seatCount < 1 || !Number.isFinite(dinerCount) || dinerCount < 1) return ''
+  return `${seatCount} seat${seatCount === 1 ? '' : 's'}, ${dinerCount} Christmas dinner${dinerCount === 1 ? '' : 's'}`
+}
+
+/** " 9 of you are having Christmas dinner." for a table with more seats than Christmas dinners, else "". */
+export function christmasDinersSentence(partySize: number, diners: number | null | undefined): string {
+  const count = Number(diners)
+  if (!Number.isInteger(count) || count < 1 || count >= partySize) return ''
+  return ` ${count} of you ${count === 1 ? 'is' : 'are'} having Christmas dinner.`
+}
+
+/**
  * True when a create-booking request purpose asks for a Christmas booking.
  * The public and FOH APIs both accept `'christmas'` as a booking purpose.
  */

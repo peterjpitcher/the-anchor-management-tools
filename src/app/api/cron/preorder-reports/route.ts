@@ -59,6 +59,7 @@ type SeasonalBooking = {
   booking_date: string
   booking_time: string | null
   party_size: number | null
+  christmas_diner_count?: number | null
   booking_period_name: string | null
 }
 
@@ -140,7 +141,7 @@ async function findSeatDrift(
 ): Promise<SeatDrift[]> {
   const { data: bookingRows, error: bookingError } = await supabase
     .from('table_bookings')
-    .select('id, booking_reference, booking_date, booking_time, party_size, booking_period_name')
+    .select('id, booking_reference, booking_date, booking_time, party_size, christmas_diner_count, booking_period_name')
     .gte('booking_date', fromDate)
     // Both halves matter, exactly as in the chase cron: the period may require a pre-order, but a
     // guest who answered "no, this is not a Christmas dinner" owes nobody a seat row.
@@ -175,7 +176,9 @@ async function findSeatDrift(
     const coverCount = coverCounts.get(booking.id) ?? 0
     if (coverCount === 0) continue
 
-    const partySize = booking.party_size ?? 0
+    // One seat row per guest choosing food: the Christmas diners when only some seats are having
+    // Christmas dinner (12 seats, 9 dinners), otherwise the party size. preorder_sync_covers sizes it.
+    const partySize = booking.christmas_diner_count ?? booking.party_size ?? 0
     if (coverCount === partySize) continue
 
     drift.push({

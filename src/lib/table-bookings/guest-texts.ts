@@ -17,6 +17,7 @@ import {
   CHRISTMAS_FOOD_DEADLINE_PASSED_LINE,
   isChristmasBookingType,
   isChristmasFoodDeadlinePassed,
+  christmasDinersSentence,
 } from '@/lib/table-bookings/christmas'
 import { buildConfirmReminderMessage } from '@/lib/table-bookings/confirm-reminder'
 import { LARGE_GROUP_DEPOSIT_PER_PERSON_GBP } from '@/lib/table-bookings/deposit'
@@ -230,7 +231,10 @@ export type DepositConfirmedTextBooking = {
   christmas_course_counts?: number[] | null
   /** 'christmas' switches to the food-link wording (D3). */
   booking_type?: string | null
+  /** Christmas only: how many of the seats are having Christmas dinner, when fewer than all. */
+  christmas_diner_count?: number | null
 }
+
 
 /**
  * The deposit-confirmed text, word for word as it has always read, ready to send. `manageLink` is
@@ -292,7 +296,8 @@ function buildChristmasDepositConfirmedText(input: {
     : `Call us on ${GUEST_CONTACT.phoneDisplay} for your link to choose everyone's food${deadline ? ` by ${deadline}` : ''}.`
   const body =
     `The Anchor: ${input.firstName}, thanks for booking Christmas with us and for your deposit. ` +
-    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed. ${food}` +
+    `Your table for ${partySize} ${seatWord} on ${bookingMoment} is confirmed.` +
+    `${christmasDinersSentence(partySize, input.booking.christmas_diner_count)} ${food}` +
     (deadlinePassed ? '' : " We'll remind you if anyone's choices are missing.")
   return ensureReplyInstruction(body, supportPhone())
 }
@@ -307,6 +312,12 @@ export type PartySizeDepositWording = {
   depositKindLabel: string
   depositLabel: string
   breakdownNote: string
+  /**
+   * Set only on a Christmas booking with more seats than Christmas dinners (staff converted a
+   * regular booking): how many of the party are having Christmas dinner. The wording then says the
+   * table is now booked for Christmas dinner rather than that the party size changed.
+   */
+  christmasDiners?: number | null
 }
 
 /** The parts of the deposit request both the text and the email say, worded as the text has always said them. */
@@ -315,9 +326,23 @@ export function describePartySizeDeposit(input: {
   depositAmount: number
   isChristmas: boolean
   bookingType: string | null
+  /** Christmas bookings with more seats than Christmas dinners only. */
+  christmasDiners?: number | null
 }): PartySizeDepositWording {
+  const diners = Number(input.christmasDiners)
+  const christmasDiners =
+    input.isChristmas && Number.isInteger(diners) && diners >= 1 && diners < input.newPartySize ? diners : null
   const expectedSimpleTotal = input.newPartySize * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
+  // A mixed Christmas table is priced on its diners (9 x GBP 10 on 12 seats), unless the group
+  // rule on the seats asks for more; the note names whichever count the amount was worked out on.
+  const breakdownCount =
+    christmasDiners !== null && input.depositAmount === christmasDiners * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP
+      ? christmasDiners
+      : input.depositAmount === expectedSimpleTotal
+        ? input.newPartySize
+        : null
   return {
+    ...(christmasDiners !== null ? { christmasDiners } : {}),
     newPartySize: input.newPartySize,
     seatWord: input.newPartySize === 1 ? 'person' : 'people',
     depositKindLabel: input.isChristmas
@@ -326,8 +351,8 @@ export function describePartySizeDeposit(input: {
         ? 'Sunday lunch deposit'
         : 'table deposit',
     depositLabel: new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(input.depositAmount),
-    breakdownNote: input.depositAmount === expectedSimpleTotal
-      ? ` (${input.newPartySize} x GBP ${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP})`
+    breakdownNote: breakdownCount !== null
+      ? ` (${breakdownCount} x GBP ${LARGE_GROUP_DEPOSIT_PER_PERSON_GBP})`
       : '',
   }
 }
@@ -342,6 +367,12 @@ export function buildPartySizeDepositText(input: {
   stillBooked?: boolean
 }): string {
   const { wording } = input
+  if (wording.christmasDiners) {
+    return ensureReplyInstruction(
+      `The Anchor: Hi ${input.firstName}, your table for ${wording.newPartySize} ${wording.seatWord} is now booked for Christmas dinner, with ${wording.christmasDiners} of you having it. Your table is still booked. There's now a ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} to pay before your visit. Pay here: ${input.paymentUrl}`,
+      supportPhone()
+    )
+  }
   const body = input.stillBooked
     ? `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. Your table is still booked. There's now a ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} to pay before your visit. Pay here: ${input.paymentUrl}`
     : `The Anchor: Hi ${input.firstName}, your party size has been updated to ${wording.newPartySize} ${wording.seatWord}. A ${wording.depositKindLabel} of ${wording.depositLabel}${wording.breakdownNote} is now required to secure your booking. Pay now: ${input.paymentUrl}`

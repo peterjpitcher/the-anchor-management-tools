@@ -174,6 +174,10 @@ async function getAssignedTableCapacity(
   }, 0)
 }
 
+/** Said when staff try to change the numbers on a Christmas booking with more seats than Christmas dinners. */
+export const CHRISTMAS_MIXED_PARTY_MESSAGE =
+  'This Christmas booking has more seats than Christmas dinners, so its numbers cannot be changed here. A manager needs to rebook it.'
+
 export function mapSeatUpdateBlockedReason(reason: string | null | undefined): string {
   switch (reason) {
     case 'invalid_seats':
@@ -309,6 +313,13 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
   const removedSeats = Array.from(new Set(input.christmasRemovedSeats ?? [])).sort((a, b) => a - b)
   const coursesChanged = JSON.stringify(recordedCourses) !== JSON.stringify(nextCourses)
   const christmasChanged = isChristmasBooking && (oldPartySize !== newPartySize || coursesChanged || removedSeats.length > 0)
+  // A Christmas booking with more seats than Christmas dinners (staff converted it: 12 seats, 9
+  // dinners) keeps its numbers. The course list is sized to the diners, not the seats, so a change
+  // here would have to say which kind of guest was joining or leaving; a manager rebooks it instead.
+  // The database trigger refuses the same write.
+  if (christmasChanged && tableBooking.christmas_diner_count != null) {
+    throw new ChristmasCourseValidationError(CHRISTMAS_MIXED_PARTY_MESSAGE)
+  }
   let lateChristmasChange = false
   if (isChristmasBooking && christmasChanged) {
     // Before looking for or moving tables. Every Christmas amendment, with or without recorded
@@ -325,7 +336,10 @@ export async function updateTableBookingPartySizeWithLinkedEventSeats(
     if (recordedCourses && !input.christmasCourseCounts && newPartySize < recordedCourses.length) {
       throw new ChristmasCourseValidationError('Tick the guests who are not coming before making a Christmas party smaller.')
     }
-    if (nextCourses?.length !== newPartySize
+    // The course list covers the Christmas diners, which is every seat unless staff converted a
+    // booking with some seats on the normal menu.
+    const coursesExpected = tableBooking.christmas_diner_count ?? newPartySize
+    if (nextCourses?.length !== coursesExpected
         || nextCourses.some(course => !Number.isInteger(course) || course < 0 || course > 3)) {
       throw new ChristmasCourseValidationError('Choose one, two or three courses for every Christmas guest before changing the party size.')
     }

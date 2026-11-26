@@ -55,14 +55,23 @@ export function depositPerPerson(depositAmount: number | null | undefined, party
  * request and the hold reminder both use this, so the reminder never contradicts the request.
  */
 export function depositPerPersonForBooking(
-  booking: { deposit_basis?: string | null; deposit_rate?: number | string | null },
+  booking: {
+    deposit_basis?: string | null
+    deposit_rate?: number | string | null
+    /** A Christmas booking with more seats than Christmas dinners pays per diner, not per seat. */
+    christmas_diner_count?: number | null
+  },
   depositAmount: number,
   partySize: number
 ): number | null {
   if (booking.deposit_basis === 'per_booking') return null
   const rate = Number(booking.deposit_rate)
   if (Number.isFinite(rate) && rate > 0) return rate
-  return depositPerPerson(depositAmount, partySize)
+  // Divide by the people paying, never by the seats: 9 diners at GBP 10 on 12 seats is GBP 10 a
+  // head, not GBP 7.50.
+  const diners = Number(booking.christmas_diner_count)
+  const payers = Number.isInteger(diners) && diners >= 1 ? diners : partySize
+  return depositPerPerson(depositAmount, payers)
 }
 
 /**
@@ -76,8 +85,16 @@ export function depositPurposeLine(input: {
   isChristmas: boolean
   perPersonGbp: number | null
   depositRule?: string | null
+  /** A Christmas table with more seats than Christmas dinners: the deposit is per dinner, not per seat. */
+  perChristmasDinner?: boolean
 }): string {
   const rate = formatWholePounds(input.perPersonGbp)
+
+  if (input.isChristmas && input.perChristmasDinner && input.depositRule !== 'group') {
+    return rate
+      ? `There's a ${rate} deposit for each Christmas dinner, which comes off your bill.`
+      : 'The deposit comes off your bill.'
+  }
 
   if (input.isChristmas || input.depositRule === 'period') {
     return rate
@@ -149,6 +166,8 @@ export function depositTermsLines(input: {
   depositRule?: string | null
   /** The booking stays confirmed while the deposit is owed (D20), so there is no hold deadline. */
   stillBooked?: boolean
+  /** A Christmas table with more seats than Christmas dinners. */
+  perChristmasDinner?: boolean
 }): string[] {
   const refund = depositRefundLine(input)
   return [

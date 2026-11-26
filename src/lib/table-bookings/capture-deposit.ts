@@ -88,7 +88,7 @@ export type CaptureTableDepositInput = {
 }
 
 const BOOKING_COLUMNS =
-  'id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type'
+  'id, status, payment_status, hold_expires_at, paypal_deposit_order_id, paypal_deposit_capture_id, customer_id, party_size, deposit_amount, deposit_amount_locked, deposit_waived, booking_type, christmas_diner_count'
 
 function auditFailure(bookingId: string, operationType: string, info: Record<string, unknown>): void {
   void logAuditEvent({
@@ -152,6 +152,7 @@ export async function captureTableDeposit(
         deposit_waived: booking.deposit_waived ?? null,
         // Christmas bookings owe a deposit at any party size; the amount must match the order.
         booking_type: booking.booking_type ?? null,
+        christmas_diner_count: booking.christmas_diner_count ?? null,
       }).toFixed(2),
     )
 

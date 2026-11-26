@@ -1,5 +1,5 @@
 {
-  "_comment": "Shared by scripts/testing/table-booking-deposit-postgres.py (the SQL resolve_table_booking_deposit) and src/lib/table-bookings/deposit-parity.test.ts (the TypeScript resolveTableBookingDeposit). Both must give these answers for the same inputs, so the two rules cannot drift apart without one of them failing. Amounts are pounds.",
+  "_comment": "Shared by scripts/testing/table-booking-deposit-postgres.py (the SQL resolve_table_booking_deposit) and src/lib/table-bookings/deposit-parity.test.ts (the TypeScript resolveTableBookingDeposit). Both must give these answers for the same inputs, so the two rules cannot drift apart without one of them failing. Amounts are pounds. diner_cases add christmas_diners (how many of the seats are having Christmas dinner); they run against resolve_table_booking_deposit_v02 in scripts/testing/christmas-diner-count-postgres.py, which also runs every case above through both entry points.",
   "periods": {
     "christmas": {
       "id": "71000000-0000-4000-8000-000000000001",
@@ -134,5 +134,33 @@
       "expect": { "ok": false, "code": "period_date_mismatch" } },
     { "name": "no guests is refused", "party_size": 0, "booking_date": "2026-10-30", "period": null, "accepted": false, "waived": false, "collect": true,
       "expect": { "ok": false, "code": "invalid_party_size" } }
+  ],
+  "diner_cases": [
+    { "name": "12 seats with 9 Christmas dinners owe 90, not 120", "party_size": 12, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 90, "rule": "period", "basis": "per_head", "rate": 10 } },
+    { "name": "12 seats with 12 Christmas dinners owe 120, as with no count", "party_size": 12, "christmas_diners": 12, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 120, "rule": "period", "basis": "per_head", "rate": 10 } },
+    { "name": "20 seats with 9 Christmas dinners owe the group 200, which beats 90", "party_size": 20, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 200, "rule": "group", "basis": "per_head", "rate": 10 } },
+    { "name": "16 seats with 15 Christmas dinners owe the group 160, which beats 150", "party_size": 16, "christmas_diners": 15, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 160, "rule": "group", "basis": "per_head", "rate": 10 } },
+    { "name": "15 seats with 15 Christmas dinners owe 150, the tie going to Christmas", "party_size": 15, "christmas_diners": 15, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 150, "rule": "period", "basis": "per_head", "rate": 10 } },
+    { "name": "12 seats with 4 Christmas dinners owe 40", "party_size": 12, "christmas_diners": 4, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": true, "amount": 40, "rule": "period", "basis": "per_head", "rate": 10 } },
+    { "name": "12 seats with 3 Christmas dinners are below the Christmas minimum", "party_size": 12, "christmas_diners": 3, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": false, "code": "period_party_too_small" } },
+    { "name": "21 seats are above the period maximum however few are having Christmas dinner", "party_size": 21, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": false, "code": "period_party_too_large" } },
+    { "name": "more Christmas dinners than seats is refused", "party_size": 12, "christmas_diners": 13, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": false, "code": "invalid_diner_count" } },
+    { "name": "no Christmas dinners at all is refused", "party_size": 12, "christmas_diners": 0, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": true,
+      "expect": { "ok": false, "code": "invalid_diner_count" } },
+    { "name": "9 Christmas dinners with seasonal collection switched off owe nothing", "party_size": 12, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": false, "collect": false,
+      "expect": { "ok": true, "required": false, "amount": 0, "rule": "none", "basis": null, "rate": null } },
+    { "name": "a waiver beats 9 Christmas dinners", "party_size": 12, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": true, "waived": true, "collect": true,
+      "expect": { "ok": true, "required": false, "amount": 0, "rule": "waived", "basis": null, "rate": null } },
+    { "name": "a party that said no to Christmas dinner owes nothing whatever the count", "party_size": 12, "christmas_diners": 9, "booking_date": "2026-12-05", "period": "christmas", "accepted": false, "waived": false, "collect": true,
+      "expect": { "ok": true, "required": false, "amount": 0, "rule": "none", "basis": null, "rate": null } }
   ]
 }

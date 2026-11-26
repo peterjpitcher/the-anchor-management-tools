@@ -17,6 +17,11 @@
  *   3. Otherwise a deposit is due from 15 guests upwards.
  * The per-person rate is £10 in every case.
  *
+ * A Christmas booking may seat more people than are having Christmas dinner (owner requirement,
+ * 26 November 2026): `christmasDiners` says how many are. The Christmas deposit is for those
+ * guests only, so 12 seats with 9 Christmas dinners owe £90; the 15-or-more rule still counts
+ * seats, and the larger of the two is owed, never both. Left out, every seat is a diner.
+ *
  * The threshold moved from 10 to 15 on 2026-08-09. A party of ten is an ordinary
  * family Sunday, not a risk worth putting a payment screen in front of. The SQL side
  * lives in `resolve_table_booking_deposit`; the two are pinned together by the parity
@@ -36,6 +41,11 @@ export type DepositOptions = {
    * `getCanonicalDeposit`, which derives this from `booking_type` for you.
    */
   isChristmas?: boolean;
+  /**
+   * Christmas bookings only: how many of the seats are having Christmas dinner
+   * (`table_bookings.christmas_diner_count`). Null or left out means every seat is.
+   */
+  christmasDiners?: number | null;
 };
 
 /**
@@ -55,6 +65,14 @@ export function requiresDeposit(partySize: number, opts: DepositOptions = {}): b
  */
 export function computeDepositAmount(partySize: number, opts: DepositOptions = {}): number {
   if (!requiresDeposit(partySize, opts)) return 0;
+  const diners = opts.isChristmas === true ? opts.christmasDiners ?? null : null;
+  if (diners !== null && Number.isFinite(diners) && diners >= 1 && diners < partySize) {
+    // As resolve_table_booking_deposit_v02: the Christmas deposit on the diners, the group rule on
+    // the seats, and the larger of the two.
+    const christmas = Math.floor(diners) * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP;
+    const group = partySize >= LARGE_GROUP_DEPOSIT_THRESHOLD ? partySize * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP : 0;
+    return Math.max(christmas, group);
+  }
   return partySize * LARGE_GROUP_DEPOSIT_PER_PERSON_GBP;
 }
 
@@ -76,6 +94,11 @@ export type BookingForDeposit = {
    * zero deposit for a Christmas party of 6 and make PayPal refuse the order.
    */
   booking_type?: string | null;
+  /**
+   * How many of the seats are having Christmas dinner. Include it wherever a deposit is read for a
+   * Christmas booking, or the fresh-compute branch below charges every seat.
+   */
+  christmas_diner_count?: number | null;
 };
 
 const PAYMENT_REQUIRED_STATES = new Set(['pending_payment']);
@@ -115,6 +138,7 @@ export function getCanonicalDeposit(
   return computeDepositAmount(partySize, {
     depositWaived: booking.deposit_waived === true,
     isChristmas: isChristmasBookingType(booking.booking_type),
+    christmasDiners: booking.christmas_diner_count ?? null,
   });
 }
 

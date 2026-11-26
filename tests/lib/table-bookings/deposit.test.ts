@@ -151,3 +151,64 @@ describe('Christmas deposits', () => {
     expect(computeDepositAmount(20, { isChristmas: true })).toBe(200);
   });
 });
+
+// Owner requirement, 26 November 2026: a Christmas booking can seat more people than are having
+// Christmas dinner. The Christmas deposit is per diner; the group rule stays on the seats.
+describe('Christmas bookings with more seats than Christmas dinners', () => {
+  it('charges 12 seats with 9 Christmas dinners GBP 90, never GBP 120', () => {
+    expect(computeDepositAmount(12, { isChristmas: true, christmasDiners: 9 })).toBe(90);
+  });
+
+  it('lets the group rule on the seats win when it asks for more', () => {
+    expect(computeDepositAmount(20, { isChristmas: true, christmasDiners: 9 })).toBe(200);
+    expect(computeDepositAmount(16, { isChristmas: true, christmasDiners: 15 })).toBe(160);
+  });
+
+  it('treats a diner count equal to the seats, or none, as every seat', () => {
+    expect(computeDepositAmount(12, { isChristmas: true, christmasDiners: 12 })).toBe(120);
+    expect(computeDepositAmount(12, { isChristmas: true, christmasDiners: null })).toBe(120);
+  });
+
+  it('ignores the diner count on a booking that is not Christmas, and honours a waiver', () => {
+    expect(computeDepositAmount(12, { christmasDiners: 9 })).toBe(0);
+    expect(computeDepositAmount(12, { isChristmas: true, christmasDiners: 9, depositWaived: true })).toBe(0);
+  });
+
+  it('works the canonical deposit out on the diners when nothing is stored', () => {
+    expect(
+      getCanonicalDeposit({
+        party_size: 12,
+        booking_type: 'christmas',
+        christmas_diner_count: 9,
+        deposit_amount: null,
+        deposit_amount_locked: null,
+        deposit_waived: false,
+        status: 'confirmed',
+        payment_status: null,
+      }),
+    ).toBe(90);
+  });
+
+  it('keeps the stored GBP 90 while the deposit is owed', () => {
+    expect(
+      getCanonicalDeposit({
+        party_size: 12,
+        booking_type: 'christmas',
+        christmas_diner_count: 9,
+        deposit_amount: 90,
+        deposit_amount_locked: null,
+        deposit_waived: false,
+        status: 'confirmed',
+        payment_status: 'pending',
+      }),
+    ).toBe(90);
+  });
+});
+
+describe('depositPerPersonForBooking on a mixed Christmas table', () => {
+  it('divides by the diners, never the seats, when no rate was recorded', async () => {
+    const { depositPerPersonForBooking } = await import('../../../src/lib/table-bookings/deposit-terms');
+    expect(depositPerPersonForBooking({ christmas_diner_count: 9 }, 90, 12)).toBe(10);
+    expect(depositPerPersonForBooking({ deposit_rate: 10, christmas_diner_count: 9 }, 90, 12)).toBe(10);
+  });
+});

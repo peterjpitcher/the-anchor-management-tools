@@ -25,6 +25,14 @@
   "auth": "other"
  },
  {
+  "path": "/api/boh/table-bookings/[id]/convert-to-christmas",
+  "module": "api/boh/table-bookings/[id]/convert-to-christmas/route",
+  "methods": [
+   "POST"
+  ],
+  "auth": "other"
+ },
+ {
   "path": "/api/boh/table-bookings/[id]/deposit",
   "module": "api/boh/table-bookings/[id]/deposit/route",
   "methods": [

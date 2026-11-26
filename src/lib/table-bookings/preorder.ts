@@ -967,6 +967,8 @@ export async function loadPreorderOrder(
     booking_period_answer: boolean | null
     booking_period_requires_preorder: boolean | null
     christmas_course_counts?: number[] | null
+    /** Christmas bookings with more seats than Christmas dinners only; null means every seat. */
+    christmas_diner_count?: number | null
   }
 
   const [covers, preorderCutoffDays, menuItems] = await Promise.all([
@@ -986,7 +988,11 @@ export async function loadPreorderOrder(
     bookingReference: booking.booking_reference,
     bookingDate: booking.booking_date,
     bookingTime: booking.booking_time,
-    partySize: booking.party_size,
+    // The guests choosing food: the Christmas diners when staff converted a booking with some seats
+    // on the normal menu (12 seats, 9 dinners), otherwise every seat. Covers, completeness and the
+    // kitchen sheet all count these, as preorder_sync_covers does.
+    partySize: booking.christmas_diner_count ?? booking.party_size,
+    tableSeats: booking.party_size,
     // Both halves matter: the period may require a pre-order, but a guest who answered "no, this is
     // not a Christmas dinner" gets the normal menu at normal terms and owes nobody a choice.
     requiresPreorder:

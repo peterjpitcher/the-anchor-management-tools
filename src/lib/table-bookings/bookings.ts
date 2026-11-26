@@ -871,6 +871,8 @@ type DepositConfirmedBooking = {
   deposit_refund_cutoff_days?: number | null
   deposit_basis?: string | null
   deposit_rate?: number | string | null
+  /** Christmas bookings with more seats than Christmas dinners only (read with `*`). */
+  christmas_diner_count?: number | null
 }
 
 /**
@@ -1145,6 +1147,7 @@ async function sendTableBookingDepositConfirmedEmailFirst(
                 : null,
             refundCutoffDays: booking.deposit_refund_cutoff_days ?? null,
             now: sentAt,
+            christmasDiners: booking.christmas_diner_count ?? null,
           }
         : null,
     })

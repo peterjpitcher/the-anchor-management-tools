@@ -711,6 +711,17 @@ describe('rebuilt texts from fixture bookings, either side of the 25 October 202
     expectCleanText(christmas.sms.body)
     expect(christmas.sms.body).toContain('A Christmas deposit of £150.00 is now required')
 
+    // Staff converted a 16-seat booking to Christmas dinner for 9 (owner requirement, 26 November
+    // 2026): the text says so, with the per-diner amount, and never that the party size changed.
+    seedScenario('party_size_deposit_request', {
+      booking: { booking_type: 'christmas', status: 'confirmed', christmas_diner_count: 9, deposit_amount: 90 },
+    })
+    const converted = ready(await rebuild())
+    expectCleanText(converted.sms.body)
+    expect(converted.sms.body).toContain('your table for 16 people is now booked for Christmas dinner, with 9 of you having it')
+    expect(converted.sms.body).toContain("There's now a Christmas deposit of £90.00 (9 x GBP 10) to pay before your visit.")
+    expect(converted.sms.body).not.toMatch(/party size has been updated|£7\.50/)
+
     seedScenario('deposit_confirmed', { booking: { is_outside_seating: true, high_chair_count: 0, christmas_course_counts: [3, 3, 1] } })
     const outside = ready(await rebuild())
     expectCleanText(outside.sms.body)

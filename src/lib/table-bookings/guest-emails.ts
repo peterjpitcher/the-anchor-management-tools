@@ -20,7 +20,11 @@ import { formatDateInLondon, formatTime12Hour, formatTimeInLondon, isValidIsoDat
 import { GUEST_EMAIL_SIGN_OFF, guestContactHtmlBlock, guestContactTextLine } from '@/lib/email/guest-footer'
 import { GUEST_CONTACT } from '@/lib/guest-contact'
 import { depositPurposeLine, depositRefundLine, depositTermsLines } from '@/lib/table-bookings/deposit-terms'
-import { CHRISTMAS_FOOD_DEADLINE_PASSED_LINE, isChristmasFoodDeadlinePassed } from '@/lib/table-bookings/christmas'
+import {
+  CHRISTMAS_FOOD_DEADLINE_PASSED_LINE,
+  christmasDinersSentence,
+  isChristmasFoodDeadlinePassed,
+} from '@/lib/table-bookings/christmas'
 
 export type TableBookingEmail = {
   subject: string
@@ -236,6 +240,8 @@ export type DepositTermsFacts = {
    * that grew to 15 or more. There is no hold to run out, so no deadline is stated.
    */
   stillBooked?: boolean | null
+  /** A Christmas table with more seats than Christmas dinners: the deposit is per dinner. */
+  perChristmasDinner?: boolean | null
 }
 
 function depositTerms(facts: DepositTermsFacts): string[] {
@@ -246,6 +252,7 @@ function depositTerms(facts: DepositTermsFacts): string[] {
     payByLabel: facts.payByIso ? formatBookingMomentForEmail(null, null, facts.payByIso) : null,
     depositRule: facts.depositRule ?? null,
     stillBooked: facts.stillBooked === true,
+    perChristmasDinner: facts.perChristmasDinner === true,
   })
 }
 
@@ -439,6 +446,8 @@ export type ChristmasDepositFacts = {
   refundCutoffDays: number | null
   /** When the email is sent. Defaults to now; a deadline at or before it has passed. */
   now?: Date | null
+  /** How many of the seats are having Christmas dinner, when fewer than all of them. */
+  christmasDiners?: number | null
 }
 
 /**
@@ -470,7 +479,12 @@ function buildChristmasDepositConfirmedEmail(
   const refund = depositRefundLine({ isChristmas: true, refundCutoffDays: input.christmas.refundCutoffDays })
   const thanks =
     `Hi ${input.firstName}, thanks for booking Christmas with us, and for your deposit. ` +
-    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.`
+    `Your table${input.party ? ` for ${input.party}` : ''}${input.moment ? ` on ${input.moment}` : ''} is confirmed.` +
+    christmasDinersSentence(Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1), input.christmas.christmasDiners)
+  const perChristmasDinner = christmasDinersSentence(
+    Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1),
+    input.christmas.christmasDiners
+  ) !== ''
 
   // The deposit can land after the food form has locked (a booking taken with the minimum notice
   // has its cutoff inside the 24 hour deposit hold). Then the food block would promise a form the
@@ -488,7 +502,7 @@ function buildChristmasDepositConfirmedEmail(
       ],
       cta: manageLink ? { label: 'Manage your booking', url: manageLink } : undefined,
       afterCta: [
-        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+        depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp, perChristmasDinner }),
         ...(refund ? [refund] : []),
       ],
       beforeContact: ['If you need to change anything, let us know.'],
@@ -517,7 +531,7 @@ function buildChristmasDepositConfirmedEmail(
         ? []
         : [`We couldn't add your food link to this email. Call us on ${GUEST_CONTACT.phoneDisplay} and we'll send it.`]),
       "We'll remind you if anyone's choices are still missing as the deadline gets close.",
-      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp }),
+      depositPurposeLine({ isChristmas: true, perPersonGbp: input.christmas.perPersonGbp, perChristmasDinner }),
       ...(refund ? [refund] : []),
     ],
     beforeContact: ['If you need to change anything, let us know.'],
@@ -618,10 +632,35 @@ export function buildTableBookingDepositRequestEmail(
       /** " (16 x GBP 10)" or "", exactly as in the text. */
       breakdownNote: string
       paymentLink: string
+      /**
+       * Set only when staff turned a confirmed booking into a Christmas booking with more seats
+       * than Christmas dinners (12 seats, 9 dinners). The seats have not changed, so the email
+       * must not say the party size was updated.
+       */
+      christmasDiners?: number | null
     }
 ): TableBookingEmail {
   const partySize = Math.max(1, Math.floor(Number(input.partySize ?? 1)) || 1)
   const seatWord = partySize === 1 ? 'person' : 'people'
+  const christmasDiners = Number(input.christmasDiners)
+
+  if (Number.isInteger(christmasDiners) && christmasDiners >= 1 && christmasDiners < partySize) {
+    const moment = formatBookingMomentForEmail(input.bookingDate, input.bookingTime, input.startDateTime)
+    return renderDepositRequestEmail({
+      ...input,
+      partySize,
+      stillBooked: true,
+      payByIso: null,
+      perChristmasDinner: true,
+      subject: 'Your Christmas dinner at The Anchor: a deposit to pay',
+      heading: 'Your Christmas deposit',
+      lead:
+        `Hi ${input.firstName}, your table for ${partySize} ${seatWord}${moment ? ` on ${moment}` : ''} ` +
+        `is now booked for Christmas dinner, with ${christmasDiners} of you having it. ` +
+        `Your table is still booked. There's now a ${input.depositKindLabel} of ${input.depositLabel}` +
+        `${input.breakdownNote} to pay.`,
+    })
+  }
 
   // A confirmed booking that grew to owe a deposit stays booked (D20, BK-044). It is never told the
   // deposit "secures" a table it already has, or that a hold is running out.

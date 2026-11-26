@@ -79,7 +79,7 @@ export async function changeChristmasPartyByRawToken(
   const { data: booking, error } = await supabase
     .from('table_bookings')
     .select(
-      'id, customer_id, booking_reference, booking_date, party_size, christmas_course_counts, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name',
+      'id, customer_id, booking_reference, booking_date, party_size, christmas_course_counts, status, payment_status, booking_type, start_datetime, deposit_amount, deposit_amount_locked, deposit_waived, booking_period_id, booking_period_name, christmas_diner_count',
     )
     .eq('id', tableBookingId)
     .maybeSingle()
@@ -88,6 +88,8 @@ export async function changeChristmasPartyByRawToken(
 
   const recorded: number[] | null = Array.isArray(booking.christmas_course_counts) ? booking.christmas_course_counts : null
   if (!recorded) return blocked('christmas_call_us', tableBookingId)
+  // More seats than Christmas dinners (staff converted it): the guest rings and a manager rebooks.
+  if (booking.christmas_diner_count != null) return blocked('christmas_call_us', tableBookingId)
 
   if (input.expectedCourses && JSON.stringify(input.expectedCourses) !== JSON.stringify(recorded)) {
     return blocked('christmas_changed', tableBookingId)
