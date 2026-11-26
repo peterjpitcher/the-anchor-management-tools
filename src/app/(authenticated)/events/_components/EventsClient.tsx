@@ -194,6 +194,9 @@ export default function EventsClient({
   // leaves them off with a warning under the calendar, never the whole calendar.
   const [repeatingNights, setRepeatingNights] = useState<EventSeriesNight[]>([])
   const [repeatingNightsError, setRepeatingNightsError] = useState<string | null>(null)
+  // Bumped by the Repeating tab after each saved change, so the calendar's nights reload without
+  // making the tab reload its own list a second time.
+  const [repeatingNightsKey, setRepeatingNightsKey] = useState(0)
   useEffect(() => {
     let cancelled = false
     const today = getTodayIsoDate()
@@ -205,7 +208,7 @@ export default function EventsClient({
     return () => {
       cancelled = true
     }
-  }, [repeatingRefreshKey])
+  }, [repeatingRefreshKey, repeatingNightsKey])
   const [isExporting, setIsExporting] = useState(false)
   const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -664,6 +667,7 @@ export default function EventsClient({
                 canManage={canManageEvents}
                 onMakeFullEvent={handleMakeFullEvent}
                 refreshKey={repeatingRefreshKey}
+                onSeriesChanged={() => setRepeatingNightsKey((key) => key + 1)}
               />
             )}
 

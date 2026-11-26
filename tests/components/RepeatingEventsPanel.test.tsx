@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import type { EventSeriesListItem } from '@/app/actions/event-series'
 
 const actions = vi.hoisted(() => ({
@@ -59,6 +59,29 @@ describe('RepeatingEventsPanel', () => {
     const running = screen.getByText('Thursday 10 December').closest('li') as HTMLElement
     fireEvent.click(within(running).getByRole('button', { name: 'Make this date a full event' }))
     expect(onMakeFullEvent).toHaveBeenCalledWith({ series: darts, date: '2026-12-10' })
+  })
+
+  it('tells the parent after a saved change, so the calendar reloads its nights', async () => {
+    const onSeriesChanged = vi.fn()
+    render(<RepeatingEventsPanel categories={[]} canManage onMakeFullEvent={vi.fn()} onSeriesChanged={onSeriesChanged} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the next 12 dates' }))
+    expect(onSeriesChanged).not.toHaveBeenCalled()
+
+    const skippedRow = screen.getByText('Thursday 24 December').closest('li') as HTMLElement
+    fireEvent.click(within(skippedRow).getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(onSeriesChanged).toHaveBeenCalledTimes(1))
+    expect(actions.listEventSeries).toHaveBeenCalledTimes(2)
+  })
+
+  it('does not tell the parent when a change is refused', async () => {
+    actions.unskipEventSeriesDate.mockResolvedValue({ error: 'Not allowed' })
+    const onSeriesChanged = vi.fn()
+    render(<RepeatingEventsPanel categories={[]} canManage onMakeFullEvent={vi.fn()} onSeriesChanged={onSeriesChanged} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the next 12 dates' }))
+    const skippedRow = screen.getByText('Thursday 24 December').closest('li') as HTMLElement
+    fireEvent.click(within(skippedRow).getByRole('button', { name: 'Undo' }))
+    await waitFor(() => expect(actions.unskipEventSeriesDate).toHaveBeenCalled())
+    expect(onSeriesChanged).not.toHaveBeenCalled()
   })
 
   it('shows no change controls without events:manage', async () => {
