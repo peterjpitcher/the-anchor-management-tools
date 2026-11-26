@@ -3691,6 +3691,133 @@
   "readOnly": false
  },
  {
+  "name": "event-series.createEventSeries",
+  "module": "event-series",
+  "export": "createEventSeries",
+  "params": [
+   {
+    "name": "input",
+    "type": "EventSeriesInput",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "EventSeriesInput": "type EventSeriesInput = z.input<typeof seriesInputSchema>",
+   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n  })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
+  },
+  "doc": "Creates a repeating event. Needs events:manage.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.endEventSeries",
+  "module": "event-series",
+  "export": "endEventSeries",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ seriesId: string; lastDate: string | null }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Ends the run after a date (it still runs on that date). A last date already past ends it now;\notherwise the calendar cron sets it to ended once the date has gone. A null date carries on\nagain (and restarts an ended run).",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.listEventSeries",
+  "module": "event-series",
+  "export": "listEventSeries",
+  "params": [],
+  "typeRefs": {},
+  "doc": "Every repeating event with its next date and the dates ahead. Needs events:view.",
+  "readOnly": true
+ },
+ {
+  "name": "event-series.markEventSeriesDateReplaced",
+  "module": "event-series",
+  "export": "markEventSeriesDateReplaced",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  seriesId: string\n  date: string\n  eventId: string\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Takes a date out of the run because it is now a full event (\"Make this date a full event\").\nTurns an existing hand skip for that date into the replacement, so the night is never shown twice.\nDeleting the event deletes this skip (ON DELETE CASCADE) and the date comes back.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.setEventSeriesPaused",
+  "module": "event-series",
+  "export": "setEventSeriesPaused",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ seriesId: string; paused: boolean }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Pauses (hides from the website and calendar) or resumes a repeating event.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.skipEventSeriesDate",
+  "module": "event-series",
+  "export": "skipEventSeriesDate",
+  "params": [
+   {
+    "name": "input",
+    "type": "z.input<typeof skipSchema>",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "skipSchema": "const skipSchema = z.object({\n  seriesId: z.string().uuid(),\n  date: isoDate,\n  reason: optionalText,\n})"
+  },
+  "doc": "Skips one date. The date must fall on the series weekday.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.unskipEventSeriesDate",
+  "module": "event-series",
+  "export": "unskipEventSeriesDate",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ seriesId: string; date: string }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Undoes a skip. A date made into a full event is restored by deleting that event instead.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series.updateEventSeries",
+  "module": "event-series",
+  "export": "updateEventSeries",
+  "params": [
+   {
+    "name": "id",
+    "type": "string",
+    "optional": false
+   },
+   {
+    "name": "input",
+    "type": "EventSeriesInput",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "EventSeriesInput": "type EventSeriesInput = z.input<typeof seriesInputSchema>",
+   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n  })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
+  },
+  "doc": "Edits a repeating event. Refuses a weekday change while dates ahead are skipped on the old day.",
+  "readOnly": false
+ },
+ {
   "name": "event-ticket-settings.saveEventTicketSettings",
   "module": "event-ticket-settings",
   "export": "saveEventTicketSettings",

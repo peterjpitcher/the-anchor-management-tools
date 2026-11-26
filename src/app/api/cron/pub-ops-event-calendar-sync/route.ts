@@ -6,6 +6,7 @@ import {
   sweepOrphanedPubOpsEventCalendarEntries,
   syncPubOpsEventCalendarByEventId,
 } from '@/lib/google-calendar-events'
+import { syncAllEventSeriesCalendarEntries } from '@/lib/google-calendar-event-series'
 import { logger } from '@/lib/logger'
 
 const DEFAULT_LIMIT = 200
@@ -120,8 +121,26 @@ export async function GET(request: NextRequest) {
           context: { context: 'pub_ops_event_calendar_backfill' },
         })
 
+    // Repeating events: one repeating entry per series. Also ends any run past its last date and
+    // picks up closures added in special hours. A failure here never fails the events sync.
+    let series: { ended: number; counts: Record<string, number> } | { error: string } | null = null
+    if (!eventId) {
+      try {
+        const seriesSync = await syncAllEventSeriesCalendarEntries()
+        const seriesCounts: Record<string, number> = {}
+        for (const r of seriesSync.results) seriesCounts[r.state] = (seriesCounts[r.state] ?? 0) + 1
+        series = { ended: seriesSync.ended, counts: seriesCounts }
+      } catch (seriesError) {
+        logger.error('Failed to sync repeating event calendar entries', {
+          error: seriesError instanceof Error ? seriesError : new Error(String(seriesError)),
+        })
+        series = { error: 'Repeating events could not be synced' }
+      }
+    }
+
     return NextResponse.json({
       success: true,
+      series,
       processed: eventIds.length,
       limit,
       includePast,

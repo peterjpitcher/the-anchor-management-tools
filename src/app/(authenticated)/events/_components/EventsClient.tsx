@@ -8,7 +8,9 @@ import { Icon } from '@/ds/icons'
 import { cn } from '@/lib/utils'
 import { EventListView } from './EventListView'
 import { EventBoardView } from './EventBoardView'
-import { EventDrawer } from './EventDrawer'
+import { EventDrawer, type EventDrawerPrefill } from './EventDrawer'
+import { RepeatingEventsPanel, type MakeFullEventRequest } from './RepeatingEventsPanel'
+import { markEventSeriesDateReplaced } from '@/app/actions/event-series'
 import { EventFilterPanel, type EventFilters } from './EventFilterPanel'
 import { VenueCalendar } from '@/components/schedule-calendar'
 import type {
@@ -32,7 +34,7 @@ import { listCalendarNotes } from '@/app/actions/calendar-notes'
 import { listParkingBookings } from '@/app/actions/parking'
 import { toast } from '@/ds'
 
-type ViewMode = 'list' | 'calendar' | 'board'
+type ViewMode = 'list' | 'calendar' | 'board' | 'repeating'
 
 /**
  * Parking statuses worth showing on a calendar: the ones that still represent a
@@ -46,6 +48,7 @@ const VIEW_OPTIONS = [
   { id: 'list', label: 'List' },
   { id: 'calendar', label: 'Calendar' },
   { id: 'board', label: 'Board' },
+  { id: 'repeating', label: 'Repeating events' },
 ]
 
 function getFilenameFromHeaders(headers: Headers): string | null {
@@ -110,6 +113,8 @@ interface EventsClientProps {
   initialCalendarNotes?: VenueCalendarNote[]
   initialCalendarParking?: VenueCalendarParking[]
   canManageCalendarNotes?: boolean
+  /** events:manage, for creating, skipping and ending repeating events. */
+  canManageEvents?: boolean
   /**
    * Surfaced rather than swallowed. Both call sites used to drop this, so a user
    * whose permission denied the note read simply saw a calendar with no notes and
@@ -143,6 +148,7 @@ export default function EventsClient({
   initialCalendarNotes,
   initialCalendarParking,
   canManageCalendarNotes,
+  canManageEvents = false,
   calendarNotesError = null,
   calendarLayers,
   initialEventsError = null,
@@ -180,6 +186,10 @@ export default function EventsClient({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeEvent, setActiveEvent] = useState<Event | null>(null)
+  // "Make this date a full event" on a repeating event: the drawer opens pre-filled, and the
+  // date leaves the repeating run once the event is saved.
+  const [seriesConversion, setSeriesConversion] = useState<{ seriesId: string; prefill: EventDrawerPrefill } | null>(null)
+  const [repeatingRefreshKey, setRepeatingRefreshKey] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
   const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -320,13 +330,46 @@ export default function EventsClient({
 
   const handleNewEvent = useCallback(() => {
     setActiveEvent(null)
+    setSeriesConversion(null)
     setDrawerOpen(true)
   }, [])
 
   const handleDrawerClose = useCallback(() => {
     setDrawerOpen(false)
     setActiveEvent(null)
+    setSeriesConversion(null)
   }, [])
+
+  const handleMakeFullEvent = useCallback(({ series, date }: MakeFullEventRequest) => {
+    setActiveEvent(null)
+    setSeriesConversion({
+      seriesId: series.id,
+      prefill: {
+        name: series.name,
+        categoryId: series.categoryId,
+        date,
+        time: series.startTime,
+        endTime: series.endTime,
+        shortDescription: series.shortDescription,
+      },
+    })
+    setDrawerOpen(true)
+  }, [])
+
+  const handleEventCreated = useCallback(
+    async (eventId: string) => {
+      if (!seriesConversion) return
+      const result = await markEventSeriesDateReplaced({
+        seriesId: seriesConversion.seriesId,
+        date: seriesConversion.prefill.date,
+        eventId,
+      })
+      if (result.error) toast.error(result.error)
+      else if (result.data?.warning) toast.warning(result.data.warning)
+      setRepeatingRefreshKey((key) => key + 1)
+    },
+    [seriesConversion]
+  )
 
   // Refresh only. The drawer closes itself, because after creating an event it
   // has to stay open long enough to upload any artwork queued beforehand.
@@ -597,6 +640,15 @@ export default function EventsClient({
               <PageLoading inline label="Loading events" />
             )}
 
+            {view === 'repeating' && (
+              <RepeatingEventsPanel
+                categories={categories}
+                canManage={canManageEvents}
+                onMakeFullEvent={handleMakeFullEvent}
+                refreshKey={repeatingRefreshKey}
+              />
+            )}
+
             {view === 'board' && !boardError && boardLoaded && (
               <EventBoardView
                 events={boardEvents}
@@ -616,6 +668,8 @@ export default function EventsClient({
         categories={categories}
         onSave={handleSave}
         seatsSold={activeEvent ? (activeEvent as Event & { booked_count?: number }).booked_count : undefined}
+        prefill={seriesConversion?.prefill ?? null}
+        onCreated={seriesConversion ? handleEventCreated : undefined}
       />
     </PageLayout>
   )
