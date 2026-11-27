@@ -116,6 +116,20 @@ describe('getVenueCalendarMonth', () => {
     expect(result.data?.events.map((e) => e.id)).toEqual(['old-held', 'future-draft'])
   })
 
+  it('leaves out past draft hires but keeps future drafts and past bookings', async () => {
+    readers.readPrivateBookingsInRange.mockResolvedValueOnce({
+      status: 'ok',
+      data: [
+        { id: 'old-enquiry', status: 'draft', event_date: '2024-02-01' },
+        { id: 'old-done', status: 'completed', event_date: '2024-02-02' },
+        { id: 'old-cancelled', status: 'cancelled', event_date: '2024-02-03' },
+        { id: 'future-enquiry', status: 'draft', event_date: '2099-01-01' },
+      ],
+    } as never)
+    const result = await getVenueCalendarMonth({ month: '2024-02' })
+    expect(result.data?.privateBookings.map((b) => b.id)).toEqual(['old-done', 'old-cancelled', 'future-enquiry'])
+  })
+
   it('leaves each layer empty, unread, for a user who may not see it', async () => {
     checkUserPermission.mockImplementation(async (module: string, action: string) => {
       if (module === 'events' && action === 'view') return true

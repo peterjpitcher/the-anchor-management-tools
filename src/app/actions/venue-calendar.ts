@@ -23,6 +23,7 @@ import {
   readStaffByDate,
   readTextMessagesByDate,
   type CalendarDataset,
+  type CalendarPrivateBooking,
 } from '@/lib/calendar/datasets'
 import type { CalendarEventRow } from '@/lib/events/calendar-events'
 import type { VenueCalendarMonthData } from '@/components/schedule-calendar/month-data'
@@ -66,6 +67,22 @@ async function readEvents(startIso: string, endIso: string): Promise<CalendarDat
   } catch (error) {
     console.error('Failed to load events for the calendar:', getErrorMessage(error))
     return { status: 'failed', data: [], message: 'Events could not be loaded.' }
+  }
+}
+
+/**
+ * A private hire still in draft when its date has gone was an enquiry that never turned into a
+ * booking. Owner decision (27 November 2026): it leaves the calendar like a past draft event;
+ * future drafts still show, because they are live enquiries.
+ */
+function withoutPastDraftHires(
+  result: CalendarDataset<CalendarPrivateBooking>,
+  todayIso: string,
+): CalendarDataset<CalendarPrivateBooking> {
+  if (result.status !== 'ok') return result
+  return {
+    ...result,
+    data: result.data.filter((row) => !(row.status === 'draft' && (row.event_date ?? '') < todayIso)),
   }
 }
 
@@ -145,7 +162,9 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
   ] = await Promise.all([
     canViewEvents ? readEvents(startIso, endIso) : Promise.resolve(denied()),
     canViewEvents ? readRepeatingNights(startIso, endIso) : Promise.resolve(denied()),
-    canViewPrivateBookings ? readPrivateBookingsInRange(supabase, startIso, endIso) : Promise.resolve(denied()),
+    canViewPrivateBookings
+      ? readPrivateBookingsInRange(supabase, startIso, endIso).then((result) => withoutPastDraftHires(result, getTodayIsoDate()))
+      : Promise.resolve(denied()),
     // The marker's subtitle is the amount, so it needs pricing access as well as view.
     canViewPrivateBookings && canViewPricing ? readBalanceDues(supabase, startIso, endIso) : Promise.resolve(denied()),
     canViewEmployees ? readBirthdays(supabase, startIso, endIso) : Promise.resolve(denied()),
