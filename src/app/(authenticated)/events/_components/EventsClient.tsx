@@ -372,6 +372,18 @@ export default function EventsClient({
         time: series.startTime,
         endTime: series.endTime,
         shortDescription: series.shortDescription,
+        brief: series.details.brief,
+        performerName: series.details.performerName,
+        performerType: series.details.performerType,
+        isFree: series.isFree,
+        price: series.details.price,
+        longDescription: series.details.longDescription,
+        highlights: series.details.highlights,
+        primaryKeywords: series.details.primaryKeywords,
+        secondaryKeywords: series.details.secondaryKeywords,
+        localSeoKeywords: series.details.localSeoKeywords,
+        imageAltText: series.details.imageAltText,
+        accessibilityNotes: series.details.accessibilityNotes,
       },
     })
     setDrawerOpen(true)

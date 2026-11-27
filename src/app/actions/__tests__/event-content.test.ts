@@ -622,3 +622,63 @@ describe('generateEventSeoContent', () => {
     }
   })
 })
+
+// A repeating event (spec section 11): weekly copy, naming the day, never one date.
+describe('generateEventSeoContent, weekly mode', () => {
+  let generateEventSeoContent: typeof import('@/app/actions/event-content').generateEventSeoContent
+
+  const WEEKLY_INPUT = { ...VALID_INPUT, date: null, weekly: { weekday: 5 }, bookingsEnabled: false }
+
+  function weeklyDraft(): Record<string, unknown> {
+    const swap = (text: string) =>
+      text
+        .replace(/on Friday 11 December 2026/g, 'every Friday')
+        .replace('Booking is through the form on this page, or by phone on 01753 682707.', 'Booking is by phone on 01753 682707.')
+        .replace('Book on this page.', 'Call 01753 682707 to book.')
+    const draft = validDraft()
+    for (const key of ['metaDescription', 'shortDescription', 'longDescription'] as const) {
+      draft[key] = swap(String(draft[key]))
+    }
+    draft.faqs = (draft.faqs as Array<{ question: string; answer: string }>).map((f) => ({ question: f.question, answer: swap(f.answer) }))
+    return draft
+  }
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    vi.resetModules()
+    global.fetch = routedFetch as unknown as typeof fetch
+    mockFactCheck.mockImplementation(async () => makeOpenAIJsonResponse({ issues: [] }))
+    ;({ generateEventSeoContent } = await import('@/app/actions/event-content'))
+  })
+
+  it('sends the schedule and the weekly rules, and returns no address, FAQs or cancellation policy', async () => {
+    mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(weeklyDraft()))
+    const result = await generateEventSeoContent(WEEKLY_INPUT)
+    expect(result.success).toBe(true)
+    const prompt = String(JSON.parse(String(mockFetch.mock.calls[0][1].body)).messages[1].content)
+    expect(prompt).toContain('"schedule": "every Friday, 7pm to 10pm"')
+    expect(prompt).toContain('a weekly night')
+    expect(prompt).not.toContain('date_long')
+    if (result.success) {
+      expect(result.data.slug).toBeNull()
+      expect(result.data.slugLocked).toBe(true)
+      expect(result.data.faqs).toEqual([])
+      expect(result.data.cancellationPolicy).toBeNull()
+      expect(result.data.metaDescription).toContain('every Friday')
+    }
+  })
+
+  it('sends a draft that names one date back for repair', async () => {
+    const dated = weeklyDraft()
+    dated.shortDescription = String(dated.shortDescription).replace('every Friday', 'on Friday 11 December')
+    mockFetch.mockResolvedValueOnce(makeOpenAIJsonResponse(dated)).mockResolvedValueOnce(makeOpenAIJsonResponse(weeklyDraft()))
+    const result = await generateEventSeoContent(WEEKLY_INPUT)
+    expect(result.success).toBe(true)
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(String(JSON.parse(String(mockFetch.mock.calls[1][1].body)).messages[1].content)).toContain('weekly_single_date')
+  })
+
+  it('refuses a weekly request that also carries a date or an event', async () => {
+    expect(await generateEventSeoContent({ ...WEEKLY_INPUT, date: '2026-12-11' })).toEqual({ success: false, error: 'A repeating event has no single date.' })
+  })
+})

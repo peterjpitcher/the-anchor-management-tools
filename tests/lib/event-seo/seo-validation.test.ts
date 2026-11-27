@@ -362,3 +362,15 @@ describe('a draft that points at a booking form the website hides', () => {
     expect(codes(check({}, { ...SLEIGH_FACTS, bookingFormOnPage: true }))).not.toContain('booking_form_absent')
   })
 })
+
+describe('weekly copy checks', () => {
+  it('finds a single date in its common forms, and leaves a weekly line alone', async () => {
+    const { singleDateMention, mentionsWeekday } = await import('@/lib/seo-validation')
+    for (const text of ['on Thursday 3 December', 'from 3rd December', 'December 3', 'on 03/12', 'this Thursday', 'next week', 'tonight']) {
+      expect(singleDateMention(text)).not.toBeNull()
+    }
+    expect(singleDateMention('Every Thursday from 7pm to 10pm, all through December. Under-18s with a parent.')).toBeNull()
+    expect(mentionsWeekday('Darts on Thursdays', 'Thursday')).toBe(true)
+    expect(mentionsWeekday('Darts every week', 'Thursday')).toBe(false)
+  })
+})

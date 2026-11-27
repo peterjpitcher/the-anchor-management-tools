@@ -36,6 +36,8 @@ import {
   buildRepairMessages,
 } from '@/lib/event-seo/prompts'
 import { getKitchenWindowForDate } from '@/services/business-hours'
+import { eventTime12h } from '@/lib/event-seo/event-dates'
+import { isoWeekdayName } from '@/lib/events/series'
 
 // ---------------------------------------------------------------------------
 // Constants & helpers
@@ -252,6 +254,12 @@ type EventSeoContentInput = {
   primaryKeywords?: string[]
   secondaryKeywords?: string[]
   localSeoKeywords?: string[]
+  /**
+   * A repeating event (spec section 11): weekly copy naming the day, never one date. No event is
+   * looked up, no address is returned, and FAQs and the cancellation policy are left out.
+   * time and endTime are its HH:MM times.
+   */
+  weekly?: { weekday: number } | null
 }
 
 type EventSeoContentResult = {
@@ -331,8 +339,22 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
   }
   const apiKey = config.apiKey
 
+  // A weekly night: the schedule replaces the date, and nothing is read from events.
+  const weekdayName = input.weekly ? isoWeekdayName(input.weekly.weekday) : null
+  if (input.weekly && !weekdayName) return { success: false, error: 'Pick the day the night runs.' }
+  if (input.weekly && (input.eventId || input.date)) {
+    return { success: false, error: 'A repeating event has no single date.' }
+  }
+  const startLabel = eventTime12h(input.time ?? null)
+  const endLabel = eventTime12h(input.endTime ?? null)
+  const schedule = weekdayName
+    ? `every ${weekdayName}${startLabel ? `, ${startLabel}${endLabel ? ` to ${endLabel}` : ''}` : ''}`
+    : null
+
   // 3. Build EventSeoFacts from form input + optional DB data
   const factsInput: BuildFactsInput = {
+    schedule,
+    weekdayName,
     name: input.name,
     date: input.date,
     time: input.time,
@@ -454,6 +476,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
   const validationFacts = {
     name: facts.name,
     date: facts.date,
+    weekdayName: facts.weekdayName,
     primaryKeywords: facts.keywords.primary,
     secondaryKeywords: facts.keywords.secondary,
     localSeoKeywords: facts.keywords.local,
@@ -468,7 +491,9 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
   const slug = slugLocked && storedSlug
     ? storedSlug
     : normalizeSlug(facts.name, facts.date, focusPhrase(facts.keywords.primary))
-  const cancellationPolicy = facts.isFree
+  const cancellationPolicy = facts.schedule
+    ? ''
+    : facts.isFree
     ? "It's a free event, so there's no cancellation policy."
     : facts.pricingLabel
       ? `Contact The Anchor on ${ANCHOR_VENUE_CONTEXT.phone} for cancellation and refund queries.`
@@ -633,7 +658,7 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
           code: 'meta_desc_length',
           severity: 'repairable',
           field: 'metaDescription',
-          message: `Meta description is ${meta.length} characters. Cut it to ${EVENT_SEO_LIMITS.metaDescriptionChars.max} or fewer, keeping the focus phrase, weekday and date, time, place and price.`,
+          message: `Meta description is ${meta.length} characters. Cut it to ${EVENT_SEO_LIMITS.metaDescriptionChars.max} or fewer, keeping the focus phrase, ${facts.schedule ? 'the day it runs' : 'weekday and date'}, time, place and price.`,
         })
       }
       return issues
@@ -662,7 +687,16 @@ export async function generateEventSeoContent(input: EventSeoContentInput): Prom
 
     // 9. NEVER fall back to an unchecked draft as success
     succeeded = true
-    return buildSuccessResult(current, slugLocked)
+    const result = buildSuccessResult(current, slugLocked)
+    // A repeating event keeps its page address; its FAQs stay in the website page and it has no
+    // cancellation policy. The FAQs were generated only so the gate could check the copy.
+    if (facts.schedule && result.success) {
+      result.data.slug = null
+      result.data.slugLocked = true
+      result.data.faqs = []
+      result.data.cancellationPolicy = null
+    }
+    return result
   } finally {
     // Observability log
     const usage = (openAiResponse as Record<string, unknown>)?.usage as Record<string, unknown> | undefined

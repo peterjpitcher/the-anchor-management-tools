@@ -61,6 +61,7 @@ export const ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   'event-payment-exceptions': () => import('@/app/actions/event-payment-exceptions'),
   'event-rebook': () => import('@/app/actions/event-rebook'),
   'event-series': () => import('@/app/actions/event-series'),
+  'event-series-images': () => import('@/app/actions/event-series-images'),
   'event-ticket-settings': () => import('@/app/actions/event-ticket-settings'),
   'eventTicketTypes': () => import('@/app/actions/eventTicketTypes'),
   'events': () => import('@/app/actions/events'),

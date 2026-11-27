@@ -73,6 +73,13 @@ export type EventSeoFacts = {
   bookingFormOnPage: boolean
   brief: string | null
   kitchenService: string | null
+  /**
+   * A repeating event's schedule ("every Thursday, 7pm to 10pm"). Set, the copy is weekly: it names
+   * the day, never a single date, and the date is not required.
+   */
+  schedule: string | null
+  /** "Thursday" for a repeating event, so the checks can look for the day. */
+  weekdayName: string | null
   isFree: boolean
   existingContent: {
     metaTitle: string | null
@@ -98,6 +105,8 @@ export type BuildFactsInput = {
   capacity?: number | null
   brief?: string | null
   kitchenService?: string | null
+  schedule?: string | null
+  weekdayName?: string | null
   performerName?: string | null
   performerType?: string | null
   price?: string | null
@@ -371,6 +380,8 @@ export function buildEventSeoFacts(
       (input.bookingsEnabled ?? db?.bookings_enabled ?? true) !== false && db?.booking_open !== false,
     brief: coalesce(input.brief, db?.brief ?? db?.description),
     kitchenService: nonEmpty(input.kitchenService),
+    schedule: nonEmpty(input.schedule),
+    weekdayName: nonEmpty(input.weekdayName),
     isFree,
     existingContent: {
       metaTitle: nonEmpty(input.existingMetaTitle) ?? null,
@@ -402,7 +413,7 @@ export function preflightCheck(facts: EventSeoFacts): PreflightResult {
   if (!nonEmpty(facts.name)) {
     hardErrors.push('Event name is required.')
   }
-  if (!nonEmpty(facts.date)) {
+  if (!nonEmpty(facts.date) && !nonEmpty(facts.schedule)) {
     hardErrors.push('Event date is required.')
   }
   if (facts.keywords.primary.length === 0) {

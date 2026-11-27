@@ -11,9 +11,11 @@ const actions = vi.hoisted(() => ({
   setEventSeriesPaused: vi.fn(),
   endEventSeries: vi.fn(),
 }))
+// The picture panel's storage client needs browser env vars; nothing here uploads.
+vi.mock('@/components/providers/SupabaseProvider', () => ({ useSupabase: () => ({ storage: { from: () => ({}) } }) }))
 vi.mock('@/app/actions/event-series', () => actions)
 
-import { RepeatingEventsPanel } from '@/app/(authenticated)/events/_components/RepeatingEventsPanel'
+import { RepeatingEventsPanel, seriesToForm, toSeriesInput } from '@/app/(authenticated)/events/_components/RepeatingEventsPanel'
 
 const occurrence = (date: string) => ({
   date, startTime: '19:00', endTime: '22:00', startsAt: `${date}T19:00:00.000Z`, endsAt: `${date}T22:00:00.000Z`,
@@ -24,6 +26,13 @@ const darts: EventSeriesListItem = {
   startTime: '19:00', endTime: '22:00', startsOn: '2026-12-03', endsOn: null,
   shortDescription: 'A friendly night of darts for women.', pagePath: '/ladies-darts-night', isFree: true,
   audienceNote: null, skipWhenClosed: true, status: 'active', googleCalendarEventId: null, createdAt: '', updatedAt: '',
+  details: {
+    brief: null, performerName: null, performerType: null, price: null, metaTitle: 'Ladies Darts Night | Thursdays',
+    metaDescription: null, longDescription: null, highlights: ['Free to play'], primaryKeywords: ['ladies darts night'],
+    secondaryKeywords: [], localSeoKeywords: [], imageAltText: null, accessibilityNotes: null, facebookEventName: null,
+    facebookEventDescription: null, gbpEventTitle: null, gbpEventDescription: null, socialCopyWhatsapp: null,
+  },
+  images: { square: null, landscape: null, social: null, story: null, printPoster: null },
   skips: [{ skipDate: '2026-12-24', reason: 'Christmas Eve', replacedByEventId: null }],
   nextOccurrence: occurrence('2026-12-03'),
   upcoming: [occurrence('2026-12-03'), occurrence('2026-12-10'), occurrence('2026-12-17')],
@@ -111,5 +120,23 @@ describe('RepeatingEventsPanel', () => {
       'Thursday 7 January',
     ])
     expect(within(preview).getByText('Thursday 24 December')).toHaveClass('line-through')
+  })
+
+  it('loads the saved details into the form and sends them back unchanged', () => {
+    const input = toSeriesInput(seriesToForm(darts))
+    expect(input.details).toMatchObject({
+      metaTitle: 'Ladies Darts Night | Thursdays', highlights: ['Free to play'], primaryKeywords: ['ladies darts night'], price: null,
+    })
+  })
+
+  it('shows the details sections and asks for a price only on a paid night', async () => {
+    render(<RepeatingEventsPanel categories={[]} canManage onMakeFullEvent={vi.fn()} />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    for (const heading of ['Details', 'SEO and content', 'Promotion copy', 'Pictures']) {
+      expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument()
+    }
+    expect(screen.queryByLabelText(/Standard ticket price/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText('Free'))
+    expect(screen.getByLabelText(/Standard ticket price/)).toBeInTheDocument()
   })
 })

@@ -73,6 +73,28 @@ describe('GET /api/event-series', () => {
     expect(JSON.stringify(darts)).not.toContain('Christmas Eve')
   })
 
+  it('sends the customer-facing details and web pictures, and keeps staff tools out', async () => {
+    state.db = createFakeSupabase({
+      event_series: [{
+        ...base, meta_title: 'Ladies Darts Night | Thursdays', long_description: 'Para.', highlights: ['Free to play'],
+        brief: 'STAFF ONLY brief', primary_keywords: ['ladies darts night'], facebook_event_name: 'FB name',
+        social_copy_whatsapp: 'WA copy', square_image_url: 'https://x/sq.jpg', landscape_image_url: 'https://x/ls.jpg',
+        social_image_url: null, story_image_url: 'https://x/story.jpg', print_poster_url: 'https://x/a4.pdf', price: null,
+      }],
+      event_series_skips: [],
+    })
+    const { body } = await call()
+    const [darts] = body.data.series
+    expect(darts).toMatchObject({
+      metaTitle: 'Ladies Darts Night | Thursdays', longDescription: 'Para.', highlights: ['Free to play'], price: null,
+      images: { square: 'https://x/sq.jpg', landscape: 'https://x/ls.jpg', social: null },
+    })
+    const text = JSON.stringify(darts)
+    for (const secret of ['STAFF ONLY brief', 'FB name', 'WA copy', 'story.jpg', 'a4.pdf', 'ladies darts night"']) {
+      expect(text).not.toContain(secret)
+    }
+  })
+
   it('leaves out paused and ended series, and an active one with no date left', async () => {
     state.db = createFakeSupabase({
       event_series: [

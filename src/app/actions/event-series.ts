@@ -42,6 +42,47 @@ const optionalText = z
   .nullish()
   .transform((value) => (value ? value : null))
 
+/** Optional text with its own cap; empty becomes null. */
+function textUpTo(max: number) {
+  return z
+    .string()
+    .trim()
+    .max(max, `Use ${max} characters or fewer`)
+    .nullish()
+    .transform((value) => (value ? value : null))
+}
+
+/** A list of short phrases; blanks dropped, each trimmed. */
+function phraseList(maxItems: number, maxChars = 120) {
+  return z
+    .array(z.string())
+    .nullish()
+    .transform((values) => (values ?? []).map((v) => v.trim()).filter(Boolean))
+    .pipe(z.array(z.string().max(maxChars, `Keep each to ${maxChars} characters`)).max(maxItems, `Use ${maxItems} or fewer`))
+}
+
+/** The descriptive fields a normal event has. Limits match the events service (src/services/events.ts). */
+const detailsSchema = z.object({
+  brief: textUpTo(5000),
+  performerName: textUpTo(255),
+  performerType: textUpTo(255),
+  price: z.number().positive('The price must be more than zero').max(10000).nullish().transform((v) => v ?? null),
+  metaTitle: textUpTo(255),
+  metaDescription: textUpTo(500),
+  longDescription: textUpTo(10000),
+  highlights: phraseList(10, 200),
+  primaryKeywords: phraseList(3),
+  secondaryKeywords: phraseList(6),
+  localSeoKeywords: phraseList(4),
+  imageAltText: textUpTo(200),
+  accessibilityNotes: textUpTo(1000),
+  facebookEventName: textUpTo(255),
+  facebookEventDescription: textUpTo(5000),
+  gbpEventTitle: textUpTo(255),
+  gbpEventDescription: textUpTo(1500),
+  socialCopyWhatsapp: textUpTo(300),
+})
+
 const seriesInputSchema = z
   .object({
     name: z.string().trim().min(1, 'Name is required').max(120),
@@ -67,13 +108,46 @@ const seriesInputSchema = z
     isFree: z.boolean(),
     audienceNote: optionalText,
     skipWhenClosed: z.boolean(),
+    /** Left out, the stored details are kept as they are (an older screen or the agent bridge). */
+    details: detailsSchema.optional(),
   })
+  .refine((v) => v.isFree || !v.details || v.details.price !== null, { message: 'Enter the ticket price, or tick Free', path: ['details', 'price'] })
   .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })
   .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })
 
 export type EventSeriesInput = z.input<typeof seriesInputSchema>
 
 function toRow(input: z.output<typeof seriesInputSchema>) {
+  return {
+    ...ruleRow(input),
+    ...(input.details ? detailsRow(input.details, input.isFree) : input.isFree ? { price: null } : {}),
+  }
+}
+
+function detailsRow(d: z.output<typeof detailsSchema>, isFree: boolean) {
+  return {
+    brief: d.brief,
+    performer_name: d.performerName,
+    performer_type: d.performerType,
+    price: isFree ? null : d.price,
+    meta_title: d.metaTitle,
+    meta_description: d.metaDescription,
+    long_description: d.longDescription,
+    highlights: d.highlights,
+    primary_keywords: d.primaryKeywords,
+    secondary_keywords: d.secondaryKeywords,
+    local_seo_keywords: d.localSeoKeywords,
+    image_alt_text: d.imageAltText,
+    accessibility_notes: d.accessibilityNotes,
+    facebook_event_name: d.facebookEventName,
+    facebook_event_description: d.facebookEventDescription,
+    gbp_event_title: d.gbpEventTitle,
+    gbp_event_description: d.gbpEventDescription,
+    social_copy_whatsapp: d.socialCopyWhatsapp,
+  }
+}
+
+function ruleRow(input: z.output<typeof seriesInputSchema>) {
   return {
     name: input.name,
     slug: input.slug,
@@ -88,6 +162,8 @@ function toRow(input: z.output<typeof seriesInputSchema>) {
     is_free: input.isFree,
     audience_note: input.audienceNote,
     skip_when_closed: input.skipWhenClosed,
+    // Image URLs are deliberately absent from every row the form writes: the image actions own them,
+    // so saving the form can never blank the artwork.
   }
 }
 
@@ -196,7 +272,7 @@ export async function createEventSeries(input: EventSeriesInput): ActionResult<{
     return { error: 'The repeating event could not be saved' }
   }
 
-  const series = mapEventSeriesRow(data as EventSeriesRow)
+  const series = mapEventSeriesRow(data as unknown as EventSeriesRow)
   await audit(actor, 'create', series.id, { new_values: toRow(parsed.data) })
   const warning = await afterSeriesChange(series.id)
   return { success: true, data: { series, warning } }

@@ -192,9 +192,9 @@ Website:
 | Place | Shows? | How |
 |---|---|---|
 | What's On, "Our nights" cards | Yes | The card for the night is built from the API (name, "Every Thursday", times, "Free", page link) instead of being typed in `app/whats-on/page.tsx`. |
-| `/ladies-darts-night` | Yes | Day, times and the "no darts night on..." line come from the API. The words of the page stay in the page. |
+| `/ladies-darts-night` | Yes | Day, times and the "no darts night on..." line come from the API. Since 27 November 2026 the search title and description, the hero and share pictures, the long description and the highlights come from the API too, each falling back to the page's own wording when empty or unreadable. The how-it-works steps and the FAQs stay in the page. |
 | Homepage "next three events" | No | That list is for dated, bookable nights. |
-| What's On "What's coming up" list | No | Same reason. |
+| What's On "What's coming up" list | Yes, the next date only | Owner decision, 27 November 2026: one entry for the next date, linking to the night's own page. No booking button, no `/events/` link and no dated Event markup. The homepage stays as it is. |
 | `/events/<slug>` pages, sitemap event entries | No | There is no per-date page. `/ladies-darts-night` is already in the sitemap. |
 | Book-a-table "upcoming events" panel | No | |
 | Event structured data | No | The site publishes no repeating-series markup for nights without their own dated records (SSOT section 10). |
@@ -208,6 +208,10 @@ other event routes.
   `shortDescription`, `pagePath`, `isFree`, `audienceNote`, `startsOn`, `endsOn`,
   `nextOccurrence`, the occurrences for the next 8 weeks, and the skipped dates in that window
   with their kind.
+- Since 27 November 2026 also: `price` (null when free), `metaTitle`, `metaDescription`,
+  `longDescription`, `highlights`, `imageAltText`, `accessibilityNotes`, `performerName`,
+  `performerType` and `images` (`square`, `landscape`, `social`). Any of them may be null or empty.
+  The brief, keywords, promotion copy, story picture and print poster are staff tools and are not sent.
 - Field names are camelCase, mapped by hand from the columns.
 - Paused and ended series are left out.
 
@@ -313,3 +317,30 @@ ticketed event in "What's coming up" and the darts page names nothing special fo
 - The SSOT changes in section 10.
 
 It sends no message to any customer and deletes nothing.
+
+## 11. Details, added 27 November 2026
+
+The owner asked for a repeating event to carry the same descriptive fields as a normal event
+("Yes to all six", 27 November 2026). Migration `20261127121431_event_series_details.sql` adds
+them to `event_series`:
+
+| Group | Fields |
+|---|---|
+| Entry | Free, or a standard ticket price (a paid night must have one) |
+| Details | Brief (staff only), host or performer name and type |
+| SEO and content | Focus, supporting and local keywords; meta title; meta description; long description; highlights; image alt text; accessibility notes |
+| Promotion copy | Facebook event name and description, Google Business Profile title and description, WhatsApp message |
+| Pictures | Square poster, landscape hero, social cover, story, A4 poster, under `event-series/<id>/` in the `event-images` bucket |
+
+Left out on purpose: bookings, booking mode, capacity, ticket limits and cut-off, guest questions,
+promotional texts, the checklist, FAQs (they stay in the website page) and the cancellation
+policy. A night that needs any of those becomes a full event for that date, and "Make this date a
+full event" now carries the brief, performer, price, long description, highlights, keywords, alt
+text and accessibility notes into the new event.
+
+Pictures save on their own when uploaded, through their own actions. The form save never writes an
+image column, so saving cannot blank the artwork. A save that sends no details at all (an older
+screen, or the agent bridge) keeps the stored details.
+
+The "Generate" SEO button for repeating events writes weekly copy ("every Thursday"), never a single
+date, never touches the slug, and leaves FAQs and the cancellation policy out.

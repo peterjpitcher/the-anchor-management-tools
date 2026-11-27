@@ -1,3 +1,20 @@
+# Repeating event details, 27 November 2026
+
+Owner approved all six on 27 November 2026 ("Yes to all six"): give a repeating event the same
+descriptive fields as a normal event (SEO and content, images, free or paid with a price, promotion
+copy, performer), not bookings or tickets; the website darts page reads them; a weekly-mode SEO
+button; the next darts date in What's On "Next up"; an additive migration and both deploys.
+
+- [ ] PR A (this branch): additive migration on event_series (prod-migrate, before merge); actions,
+      form, API payload; image uploads under event-series/<id>/ that never ride on the form save;
+      make-full-event prefill carries the new fields.
+- [ ] Seed the darts row from the live page's approved copy and artwork (reversible, via the app).
+- [ ] Website PR: darts page metadata, hero and long copy from the app with the current hand-written
+      values as fallback; What's On "Next up" gets one entry for the next date (no booking button,
+      no dated Event schema); homepage unchanged.
+- [ ] PR B: weekly mode for the SEO generator (no single date, slug never touched, no FAQs or
+      cancellation policy), with validation and health score to match.
+
 # Employee separation shift handling, 14 September 2026
 
 - [x] Add and validate the atomic employee and rota migration.

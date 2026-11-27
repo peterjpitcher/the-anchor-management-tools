@@ -94,6 +94,39 @@ cancellationPolicy: overwritten by code; return "".
 
 accessibilityNotes: overwritten by code; return "".`
 
+/**
+ * The field rules for a repeating event (a weekly night). The page stays up for as long as the night
+ * runs, so the copy names the day ("every Thursday"), never a single date, and must read true every
+ * week. Owner decision, 27 November 2026.
+ */
+export const WEEKLY_FIELD_RULES = `FIELD RULES (a weekly night: FACTS_JSON.schedule says when it runs):
+
+metaTitle: a short name for the night that names the format, ${L.metaTitleChars.max} characters or fewer ("Ladies Darts Night"). NEVER a date or a month. Do not add " | The Anchor" or name the pub; the site adds that.
+
+metaDescription: ${L.metaDescriptionChars.min} to ${L.metaDescriptionChars.max} characters, in this order: what it is (with the focus phrase), when it runs (copy the day and times from FACTS_JSON.schedule, for example "every Thursday, 7pm to 10pm"), place ("at The Anchor, Stanwell Moor"), price, then one action. No exclamation mark.
+
+shortDescription: ${L.shortDescriptionChars.min} to ${L.shortDescriptionChars.max} characters. One statement of fact that reads true any week, naming the format, the place and the day it runs ("A friendly darts night for women at The Anchor, Stanwell Moor, every Thursday from 7pm."). No "join us", no "book", no exclamation mark.
+
+longDescription: ${L.longDescriptionParagraphs.min} to ${L.longDescriptionParagraphs.max} short paragraphs separated by a blank line (\\n\\n), ${L.longDescriptionWords.min} to ${L.longDescriptionWords.max} words in total. Every sentence must read true any week.
+  Paragraph 1: the factual summary. Event name, the focus phrase word for word, the format, when it runs (copy FACTS_JSON.schedule), the place (The Anchor, ${HOME_PLACE}) and the price.
+  Paragraphs 2 and 3: what happens on the night and who it suits, in the house voice. Only what FACTS_JSON.brief says.
+  Then arrival, stated as fact: copy FACTS_JSON.booking word for word. Never mention a booking form. Do not mention food or the menu unless FACTS_JSON.brief does.
+  Last paragraph: where the pub is. Name ${HOME_PLACE} and one nearby place (${NEARBY_PLACES.join(', ')}), using the local terms from FACTS_JSON.keywords.local where true, plus parking. Mention Heathrow only if it helps.
+  NEVER give a single date anywhere ("Thursday 3 December", "3rd December", "this Thursday", "next week", "tonight"). The night repeats; name the day only.
+  No section labels, no posh words, no padding.
+
+highlights: ${L.highlightsCount.min} to ${L.highlightsCount.max} items, each ${L.highlightWords.min} to ${L.highlightWords.max} words, in sentence case (a capital first letter). Specific facts, not generic. No commas inside a highlight and no full stop at the end.
+
+slug: return "". The page already has its address.
+
+imageAltText: ${L.imageAltTextChars.min} to ${L.imageAltTextChars.max} characters describing what the poster shows for someone who cannot see it, naming the night. Do not start with "image of" or "photo of".
+
+faqs: ${L.faqCount.min} to ${L.faqCount.max} pairs, answers ${L.faqAnswerWords.min} to ${L.faqAnswerWords.max} words: one containing the focus phrase word for word, one on who can come, one on getting there. They are used only to check the copy and are not saved.
+
+cancellationPolicy: return "".
+
+accessibilityNotes: overwritten by code; return "".`
+
 export const KEYWORD_RULES = `KEYWORD RULES: an event page holds its own dated, themed search terms; the hub pages hold the general ones. Keep keywords natural, never at the cost of the voice.
 - The focus phrase is FACTS_JSON.keywords.focus. Use it word for word, as a whole phrase, in the meta description, the first paragraph and one FAQ question. Nowhere else needs it.
 - "Word for word" means the same words in the same order, not the same capitals. Capitalise it as the sentence and UK English need: "Christmas music bingo" at the start of a sentence, "Christmas" and place names always with a capital, so "a night of Christmas music bingo", never "christmas music bingo" mid-sentence.
@@ -174,6 +207,10 @@ export function buildFactsJson(facts: EventSeoFacts): string {
   const brief = facts.brief ? stripMarkdown(facts.brief) : ''
   if (brief) obj.brief = brief
   if (facts.kitchenService) obj.kitchen_service = facts.kitchenService
+  if (facts.schedule) {
+    obj.schedule = facts.schedule
+    obj.repeats = 'every week, for as long as the night runs'
+  }
   obj.is_free = facts.isFree
 
   // Keywords: focus is one phrase ("near me" taken off), supporting and local are lists.
@@ -216,7 +253,7 @@ export function buildGenerationMessages(
     '',
     OUTPUT_RUBRIC,
     '',
-    FIELD_RULES,
+    facts.schedule ? WEEKLY_FIELD_RULES : FIELD_RULES,
     '',
     KEYWORD_RULES,
     '',
@@ -297,7 +334,7 @@ export function buildRepairMessages(
     '',
     OUTPUT_RUBRIC,
     '',
-    FIELD_RULES,
+    facts.schedule ? WEEKLY_FIELD_RULES : FIELD_RULES,
     '',
     KEYWORD_RULES,
     '',
