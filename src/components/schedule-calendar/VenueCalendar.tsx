@@ -79,6 +79,8 @@ export interface VenueCalendarBalanceDue {
   event_date: string | null
   status: string | null
   total_amount: number | null
+  /** Nothing left to pay. The marker stays, marked paid, rather than vanishing. */
+  settled?: boolean
 }
 
 export interface VenueCalendarEmployeeBirthday {
@@ -175,6 +177,8 @@ export interface VenueCalendarProps {
    * calendar is a glance-at-today widget and does not want it.
    */
   showFilters?: boolean
+  /** Laid over the month while it loads or after it failed to load. */
+  overlay?: ReactNode
   className?: string
 }
 
@@ -366,7 +370,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
           <Icon name="lock" size={14} />
-          <span>Private booking balance due</span>
+          <span>{td.settled ? 'Private booking balance paid' : 'Private booking balance due'}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
         <div>{format(entry.start, 'EEE d MMM yyyy')}</div>
@@ -503,6 +507,7 @@ export function VenueCalendar({
   datasetWarnings = [],
   dailyOps,
   header,
+  overlay,
   className,
 }: VenueCalendarProps): ReactNode {
   const router = useRouter()
@@ -694,22 +699,16 @@ export function VenueCalendar({
   // not parse. Every source column is NOT NULL in production, so the old
   // version of this counter could never fire; malformed data is the real case.
   /**
-   * Entries the counts describe.
-   *
-   * Scoped to what the user is actually looking at: the anchored month in month
-   * view, the whole loaded range in list view (which has no month control). The
-   * label says which, because "Showing 130 of 130" while four things are on
-   * screen tells nobody anything.
+   * Entries the counts describe: the anchored month, in both views, since both now page by
+   * month. Intersects, not starts-in: a booking that began last month and runs into this one is
+   * on screen, so it counts.
    */
-  const countScopeLabel = view === 'month' ? format(anchor, 'MMMM yyyy') : 'the loaded range'
+  const countScopeLabel = format(anchor, 'MMMM yyyy')
   const countableEntries = useMemo(() => {
-    if (view !== 'month') return entries
     const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
     const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59, 59, 999)
-    // Intersects, not starts-in: a booking that began last month and runs into
-    // this one is on screen, so it counts.
     return entries.filter((entry) => entry.start <= monthEnd && entry.end >= monthStart)
-  }, [entries, view, anchor])
+  }, [entries, anchor])
 
   const kindCounts = useMemo(() => {
     const counts: Partial<Record<CalendarEntryKind, number>> = {}
@@ -793,6 +792,7 @@ export function VenueCalendar({
         legendKinds={legendKinds}
         dailyOps={dailyOps}
         firstDayOfWeek={1}
+        overlay={overlay}
       />
 
       {hiddenCount > 0 && (

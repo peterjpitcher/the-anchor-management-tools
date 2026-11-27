@@ -591,51 +591,6 @@
   "readOnly": false
  },
  {
-  "name": "calendar-datasets.fetchCalendarBalanceDues",
-  "module": "calendar-datasets",
-  "export": "fetchCalendarBalanceDues",
-  "params": [],
-  "typeRefs": {},
-  "doc": "",
-  "readOnly": true
- },
- {
-  "name": "calendar-datasets.fetchCalendarBirthdays",
-  "module": "calendar-datasets",
-  "export": "fetchCalendarBirthdays",
-  "params": [],
-  "typeRefs": {},
-  "doc": "",
-  "readOnly": true
- },
- {
-  "name": "calendar-datasets.fetchCalendarDailyOps",
-  "module": "calendar-datasets",
-  "export": "fetchCalendarDailyOps",
-  "params": [],
-  "typeRefs": {},
-  "doc": "Covers and who is working.\n\nThe two halves are gated independently, because they come from different\nmodules and the staff role holds no rota permission at all. A user with covers\naccess and no rota access gets covers and no names, rather than nothing.",
-  "readOnly": true
- },
- {
-  "name": "calendar-datasets.fetchCalendarMarketingSends",
-  "module": "calendar-datasets",
-  "export": "fetchCalendarMarketingSends",
-  "params": [],
-  "typeRefs": {},
-  "doc": "Marketing email sends.\n\nThe admin client is deliberate, not a shortcut: `marketing_campaigns` is\nservice-role only, so a session client reads nothing at all. The permission\ncheck above it is therefore the only gate, which is why it is the first thing\nthat happens here.",
-  "readOnly": false
- },
- {
-  "name": "calendar-datasets.fetchCalendarSpecialHours",
-  "module": "calendar-datasets",
-  "export": "fetchCalendarSpecialHours",
-  "params": [],
-  "typeRefs": {},
-  "doc": "Gated entry points for the shared calendar datasets.\n\nEach one resolves the user's capability and then calls the pure reader in\nsrc/lib/calendar/datasets.ts. The dashboard calls those readers directly,\nbecause its snapshot runs inside `unstable_cache` and cannot read cookies.\n\nA refusal returns `status: 'denied'` rather than an error, so the calendar\nquietly renders without that layer instead of breaking. A query failure\nreturns `status: 'failed'` with a message, so an outage never looks like an\nempty diary.",
-  "readOnly": true
- },
- {
   "name": "calendar-notes.canViewCalendarNotes",
   "module": "calendar-notes",
   "export": "canViewCalendarNotes",
@@ -3964,21 +3919,6 @@
   "typeRefs": {},
   "doc": "",
   "readOnly": false
- },
- {
-  "name": "events.getCalendarEvents",
-  "module": "events",
-  "export": "getCalendarEvents",
-  "params": [
-   {
-    "name": "options",
-    "type": "{\n  dateFrom?: string;\n  dateTo?: string;\n}",
-    "optional": true
-   }
-  ],
-  "typeRefs": {},
-  "doc": "The events calendar's rows for one window of dates (default: the first day of\nthe month twelve months ago to the end of the month twelve months ahead).\nRead-only. Returns only the columns the calendar renders plus `booked_count`\n(seats on active bookings, the same figure getEvents gives); no link clicks\nand no capacity snapshot. Needs events:view.",
-  "readOnly": true
  },
  {
   "name": "events.getEventBookingDoorCharge",
@@ -14396,6 +14336,21 @@
   "typeRefs": {},
   "doc": "",
   "readOnly": false
+ },
+ {
+  "name": "venue-calendar.getVenueCalendarMonth",
+  "module": "venue-calendar",
+  "export": "getVenueCalendarMonth",
+  "params": [
+   {
+    "name": "input",
+    "type": "{ month: string }",
+    "optional": false
+   }
+  ],
+  "typeRefs": {},
+  "doc": "Everything on the venue calendar for one month (the whole Monday-to-Sunday grid), whatever\nhappened to it since: completed, cancelled, expired, paid and sent items all come back, so a\npast month shows what was hosted, booked and sent. Read-only.\n\nEach layer checks its own permission and is left empty for a user who may not see it, exactly\nas the dashboard and /events did before. `month` is YYYY-MM, from 2024 to two years ahead.",
+  "readOnly": true
  },
  {
   "name": "venue-night.getDateHoursNotice",

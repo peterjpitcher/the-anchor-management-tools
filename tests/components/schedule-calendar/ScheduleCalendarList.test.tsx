@@ -1,6 +1,6 @@
 // tests/components/schedule-calendar/ScheduleCalendarList.test.tsx
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { ScheduleCalendarList } from '@/components/schedule-calendar/ScheduleCalendarList'
 import type { CalendarEntry } from '@/components/schedule-calendar/types'
 
@@ -40,6 +40,8 @@ describe('ScheduleCalendarList', () => {
     // row is marked at all, and that it is fainter than a future one.
     it('fades a past entry, and leaves a future one at full strength', () => {
         const { container } = render(<ScheduleCalendarList entries={[e({ id: 'past', start: new Date(2026, 3, 10, 19), end: new Date(2026, 3, 10, 21) })]} />)
+        // Earlier days of the current month start folded away.
+        fireEvent.click(screen.getByRole('button', { name: /Show earlier days this month/ }))
         const row = container.querySelector('[data-entry-row="past"]')
         expect(row).not.toBeNull()
         expect(row!.className).toMatch(/opacity-70/)
@@ -50,13 +52,12 @@ describe('ScheduleCalendarList', () => {
         expect(futureRow!.className).not.toMatch(/opacity-/)
     })
 
-    it('calls scrollIntoView on Today header on mount', () => {
+    it('opens on today without scrolling the page, so a calendar lower down never yanks it', () => {
         const scrollIntoView = vi.fn()
         Element.prototype.scrollIntoView = scrollIntoView
-        render(<ScheduleCalendarList entries={[e({})]} />)
-        // Component schedules the scroll via requestAnimationFrame; advance the
-        // fake timers so the callback fires before we assert.
+        render(<ScheduleCalendarList entries={[e({})]} month={new Date(2026, 3, 1)} />)
         vi.runAllTimers()
-        expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' })
+        expect(scrollIntoView).not.toHaveBeenCalled()
+        expect(screen.getByRole('heading', { name: 'Today' })).toBeInTheDocument()
     })
 })

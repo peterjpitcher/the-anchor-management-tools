@@ -33,7 +33,7 @@ export function entryTooltipText(entry: CalendarEntry): string {
             if (td.endsNextDay) lines.push('Ends next day')
             break
         case 'balance_due':
-            lines.push(`Balance due: ${td.customerName}`, when)
+            lines.push(`${td.settled ? 'Balance paid' : 'Balance due'}: ${td.customerName}`, when)
             if (td.amount !== null) {
                 lines.push(
                     new Intl.NumberFormat('en-GB', {

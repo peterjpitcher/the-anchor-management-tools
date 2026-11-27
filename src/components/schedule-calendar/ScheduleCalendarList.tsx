@@ -1,8 +1,8 @@
 'use client'
 
-import { useLayoutEffect, useMemo, useRef } from 'react'
+import { useMemo, useState } from 'react'
 import { format, isPast, isSameDay } from 'date-fns'
-import { Badge, Card, CardHeader, Empty } from '@/ds'
+import { Badge, Button, Card, CardHeader, Empty } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
 import type { ReactNode } from 'react'
@@ -17,11 +17,12 @@ export interface ScheduleCalendarListProps {
     entries: CalendarEntry[]
     onEntryClick?: (entry: CalendarEntry) => void
     /**
-     * Hide date groups before today. Used on mobile where the list is the only
-     * view. Without it, months of past entries render above Today and the
-     * page loads scrolled halfway down.
+     * The month on screen. Only its days are listed, so the list pages month by month like the
+     * grid, and on a phone (where the list is the only view) every past month is reachable.
+     * In the current month the days before today start folded away behind a button, so the
+     * list opens on today without scrolling the page.
      */
-    hidePast?: boolean
+    month?: Date
     /** Per-day covers booked + staff on rota, rendered as a small note per day. */
     dailyOps?: ScheduleDailyOps
     /**
@@ -36,51 +37,65 @@ interface DateGroup {
     entries: CalendarEntry[]
 }
 
-export function ScheduleCalendarList({ entries, onEntryClick, hidePast = false, dailyOps, renderTooltip }: ScheduleCalendarListProps) {
+export function ScheduleCalendarList({ entries, onEntryClick, month, dailyOps, renderTooltip }: ScheduleCalendarListProps) {
     const today = useMemo(() => startOfToday(), [])
     const sorted = useMemo(() => [...entries].sort(compareEntries), [entries])
-    const groups = useMemo(() => groupByDate(sorted), [sorted])
+    const groups = useMemo(() => {
+        const all = groupByDate(sorted)
+        if (!month) return all
+        // A multi-day entry makes a group for every day it covers; keep this month's days only.
+        return all.filter(
+            (g) => g.date.getFullYear() === month.getFullYear() && g.date.getMonth() === month.getMonth()
+        )
+    }, [sorted, month])
 
-    // Ensure a Today group exists even when no entries land on today, so
-    // scrollIntoView always has a target to anchor. When hidePast is set,
-    // pre-today groups are dropped first (group dates and `today` are both
-    // local-midnight Dates, so the comparison is exact).
+    const monthHoldsToday =
+        !month || (month.getFullYear() === today.getFullYear() && month.getMonth() === today.getMonth())
+    const [showEarlier, setShowEarlier] = useState(false)
+    const earlierGroups = monthHoldsToday ? groups.filter((g) => g.date.getTime() < today.getTime()) : []
+    const earlierCount = earlierGroups.reduce((sum, g) => sum + g.entries.length, 0)
+
+    // Today always has a card in its own month, so there is somewhere to say "nothing today".
     const groupsWithToday = useMemo<DateGroup[]>(() => {
-        const base = hidePast
-            ? groups.filter((g) => g.date.getTime() >= today.getTime())
-            : groups
-        if (base.some((g) => isSameDay(g.date, today))) return base
-        const next: DateGroup[] = [...base, { date: today, entries: [] }]
+        if (!monthHoldsToday || groups.some((g) => isSameDay(g.date, today))) return groups
+        const next: DateGroup[] = [...groups, { date: today, entries: [] }]
         next.sort((a, b) => a.date.getTime() - b.date.getTime())
         return next
-    }, [groups, today, hidePast])
+    }, [groups, today, monthHoldsToday])
 
-    const todayRef = useRef<HTMLDivElement | null>(null)
-    const hasAnchoredRef = useRef(false)
+    const shownGroups =
+        monthHoldsToday && !showEarlier
+            ? groupsWithToday.filter((g) => g.date.getTime() >= today.getTime())
+            : groupsWithToday
 
-    useLayoutEffect(() => {
-        // With past groups hidden, Today is already at the top, so scrolling
-        // would just yank the document down past any page header.
-        if (hidePast) return
-        if (hasAnchoredRef.current) return
-        const el = todayRef.current
-        if (!el) return
-        // rAF lets the browser paint the grouped list first so scrollIntoView
-        // lands on the final position rather than an intermediate layout.
-        const raf = requestAnimationFrame(() => {
-            el.scrollIntoView({ block: 'start', behavior: 'auto' })
-            hasAnchoredRef.current = true
-        })
-        return () => cancelAnimationFrame(raf)
-    }, [groupsWithToday.length, hidePast])
+    if (groupsWithToday.length === 0) {
+        return (
+            <div className="rounded-lg bg-surface-2 p-2">
+                <Empty size="sm" title={month ? `Nothing on the calendar in ${format(month, 'MMMM yyyy')}` : 'Nothing on the calendar'} />
+            </div>
+        )
+    }
 
     return (
         <div className="flex flex-col gap-3 rounded-lg bg-surface-2 p-2">
-            {groupsWithToday.map((group) => {
+            {monthHoldsToday && earlierGroups.length > 0 && (
+                <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    onClick={() => setShowEarlier((value) => !value)}
+                    aria-expanded={showEarlier}
+                    className="self-start"
+                >
+                    {showEarlier
+                        ? 'Hide earlier days this month'
+                        : `Show earlier days this month (${earlierCount} ${earlierCount === 1 ? 'item' : 'items'})`}
+                </Button>
+            )}
+            {shownGroups.map((group) => {
                 const isTodayGroup = isSameDay(group.date, today)
                 return (
-                    // The wrapper is the scroll anchor for Today.
-                    <div key={group.date.toISOString()} ref={isTodayGroup ? todayRef : undefined}>
+                    <div key={group.date.toISOString()}>
                     <Card className={isTodayGroup ? 'border-primary' : undefined}>
                         {/* A plain card header, not sticky. Each day is its own rounded,
                             overflow-hidden card, so a viewport-offset sticky header

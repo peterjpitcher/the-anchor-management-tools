@@ -2,7 +2,6 @@ import 'server-only'
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayName } from '@/lib/employees/display-name'
-import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead } from '@/lib/dateUtils'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { loadDayLoads } from '@/services/day-load'
 import {
@@ -16,22 +15,10 @@ import {
  * These take an explicit Supabase client, an explicit date range and an
  * already-resolved capability, and never touch cookies. That is deliberate: the
  * dashboard runs its snapshot inside `unstable_cache`, which cannot read cookies
- * in Next 15, so it cannot call a session-gated server action. The gated action
- * wrappers live in src/app/actions/calendar-datasets.ts and call into here, and
- * the dashboard calls into here directly. One implementation, two entry points,
- * so the two pages cannot drift apart again.
+ * in Next 15, so it cannot call a session-gated server action. The one gated entry
+ * point is getVenueCalendarMonth (src/app/actions/venue-calendar.ts), which both
+ * calendars load through, a month at a time, so the two pages cannot drift apart.
  */
-
-/** The window both calendars load. Notes are deliberately not date-bounded. */
-export const CALENDAR_LOOKBACK_DAYS = 90
-export const CALENDAR_HORIZON_DAYS = 180
-
-export function calendarRange(): { startIso: string; endIso: string } {
-  return {
-    startIso: getLocalIsoDateDaysAgo(CALENDAR_LOOKBACK_DAYS),
-    endIso: getLocalIsoDateDaysAhead(CALENDAR_HORIZON_DAYS),
-  }
-}
 
 /**
  * Every reader reports a state rather than a bare array.
@@ -218,14 +205,17 @@ export async function readBalanceDues(
   startIso: string,
   endIso: string,
 ): Promise<CalendarDataset<CalendarBalanceDue>> {
-  // Same view, same filters and same ordering the dashboard already uses, so the
-  // two surfaces cannot disagree about a money figure.
+  // Same view and money maths as the dashboard, so the two surfaces cannot disagree about a
+  // figure. Completed and cancelled hires are read too, and a paid balance is kept (flagged
+  // settled): the calendar is a record of what happened, and a balance marker used to vanish
+  // the moment it was paid or its hire was closed. Drafts are left out: a hire nobody has
+  // confirmed owes no balance.
   const { data, error } = await client
     .from('private_bookings_with_details')
     .select(
       'id, customer_name, customer_first_name, customer_last_name, balance_due_date, event_date, status, total_amount, calculated_total, gross_total, final_payment_date',
     )
-    .in('status', ['confirmed'])
+    .in('status', ['confirmed', 'completed', 'cancelled'])
     .not('balance_due_date', 'is', null)
     .gte('balance_due_date', startIso)
     .lte('balance_due_date', endIso)
@@ -255,7 +245,7 @@ export async function readBalanceDues(
 
   // Reuse the dashboard's existing balance maths rather than inventing new
   // accounting rules. This is money, and there is already one authority for it.
-  return ok(buildPrivateBookingBalanceDueSummaries(data ?? [], payments))
+  return ok(buildPrivateBookingBalanceDueSummaries(data ?? [], payments, { includeSettled: true }))
 }
 
 // --- Marketing email sends ------------------------------------------------
@@ -492,4 +482,191 @@ export async function readStaffByDate(
   }
 
   return ok(out)
+}
+
+// --- Month readers ---------------------------------------------------------
+//
+// The calendar loads one month at a time (src/app/actions/venue-calendar.ts), so these read a
+// bounded window with no status filter: what happened stays on the calendar whatever became of
+// it. The filter bar, not the query, decides what is hidden. Every read is paged, because
+// Supabase returns at most 1,000 rows a request and says nothing when it stops short.
+
+export interface CalendarPrivateBooking {
+  id: string
+  customer_name: string | null
+  event_date: string | null
+  start_time: string | null
+  end_time: string | null
+  end_time_next_day: boolean | null
+  guest_count: number | null
+  status: string | null
+  event_type: string | null
+}
+
+type PrivateBookingCalendarRow = {
+  id: string
+  customer_name: string | null
+  customer_first_name: string | null
+  customer_last_name: string | null
+  event_date: string | null
+  start_time: string | null
+  end_time: string | null
+  end_time_next_day: boolean | null
+  guest_count: number | null
+  status: string | null
+  event_type: string | null
+}
+
+/** Every private hire dated in the window, whatever its status. */
+export async function readPrivateBookingsInRange(
+  client: SupabaseClient,
+  startIso: string,
+  endIso: string,
+): Promise<CalendarDataset<CalendarPrivateBooking>> {
+  try {
+    const rows = await fetchAllRows<PrivateBookingCalendarRow>(
+      (from, to) =>
+        client
+          .from('private_bookings')
+          .select(
+            'id, customer_name, customer_first_name, customer_last_name, event_date, start_time, end_time, end_time_next_day, guest_count, status, event_type',
+          )
+          .gte('event_date', startIso)
+          .lte('event_date', endIso)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar private bookings' },
+    )
+    return ok(
+      rows.map((row) => ({
+        id: String(row.id),
+        customer_name:
+          row.customer_name?.trim() ||
+          [row.customer_first_name, row.customer_last_name].filter(Boolean).join(' ').trim() ||
+          null,
+        event_date: row.event_date,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        end_time_next_day: row.end_time_next_day,
+        guest_count: row.guest_count,
+        status: row.status,
+        event_type: row.event_type,
+      })),
+    )
+  } catch (error) {
+    console.error('Failed to load private bookings for the calendar:', error)
+    return failed('Private bookings could not be loaded.')
+  }
+}
+
+export interface CalendarParkingBooking {
+  id: string
+  reference: string | null
+  customer_first_name: string | null
+  customer_last_name: string | null
+  vehicle_registration: string | null
+  start_at: string | null
+  end_at: string | null
+  status: string | null
+  payment_status: string | null
+}
+
+/**
+ * Every parking booking on the car park at any point in the window, whatever its status.
+ * Overlap, not starts-in: a fortnight's stay that began last month is on this month's grid.
+ */
+export async function readParkingInRange(
+  client: SupabaseClient,
+  startInstant: string,
+  endInstant: string,
+): Promise<CalendarDataset<CalendarParkingBooking>> {
+  try {
+    const rows = await fetchAllRows<CalendarParkingBooking>(
+      (from, to) =>
+        client
+          .from('parking_bookings')
+          .select(
+            'id, reference, customer_first_name, customer_last_name, vehicle_registration, start_at, end_at, status, payment_status',
+          )
+          .lt('start_at', endInstant)
+          .gte('end_at', startInstant)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar parking bookings' },
+    )
+    return ok(rows.map((row) => ({ ...row, id: String(row.id) })))
+  } catch (error) {
+    console.error('Failed to load parking bookings for the calendar:', error)
+    return failed('Parking bookings could not be loaded.')
+  }
+}
+
+export interface CalendarNoteRow {
+  id: string
+  note_date: string
+  end_date: string
+  title: string
+  notes: string | null
+  source: string
+  start_time: string | null
+  end_time: string | null
+  color: string
+  show_to_staff: boolean
+}
+
+type RawCalendarNoteRow = {
+  id: string
+  note_date: string
+  end_date: string | null
+  title: string | null
+  notes: string | null
+  source: string | null
+  start_time: string | null
+  end_time: string | null
+  color: string | null
+  show_to_staff: boolean | null
+}
+
+/**
+ * Calendar notes that touch the window: started on or before its last day and ended on or after
+ * its first. `calendar_notes` is read with the admin client after the caller's own permission
+ * check, as listCalendarNotes does.
+ */
+export async function readCalendarNotesInRange(
+  adminClient: SupabaseClient,
+  startIso: string,
+  endIso: string,
+  defaultColour: string,
+): Promise<CalendarDataset<CalendarNoteRow>> {
+  try {
+    const rows = await fetchAllRows<RawCalendarNoteRow>(
+      (from, to) =>
+        adminClient
+          .from('calendar_notes')
+          .select('id, note_date, end_date, title, notes, source, start_time, end_time, color, show_to_staff')
+          .lte('note_date', endIso)
+          .gte('end_date', startIso)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar notes' },
+    )
+    return ok(
+      rows.map((row) => ({
+        id: String(row.id),
+        note_date: String(row.note_date),
+        end_date: typeof row.end_date === 'string' ? row.end_date : String(row.note_date),
+        title: typeof row.title === 'string' ? row.title : 'Calendar note',
+        notes: typeof row.notes === 'string' ? row.notes : null,
+        source: typeof row.source === 'string' ? row.source : 'manual',
+        start_time: typeof row.start_time === 'string' ? row.start_time : null,
+        end_time: typeof row.end_time === 'string' ? row.end_time : null,
+        color: typeof row.color === 'string' && row.color ? row.color : defaultColour,
+        // The column is NOT NULL DEFAULT true, so only an explicit false hides a note.
+        show_to_staff: row.show_to_staff !== false,
+      })),
+    )
+  } catch (error) {
+    console.error('Failed to load calendar notes for the calendar:', error)
+    return failed('Calendar notes could not be loaded.')
+  }
 }

@@ -5,6 +5,11 @@ export type DashboardPrivateBookingBalanceDueSummary = {
   event_date: string | null
   status: string | null
   total_amount: number | null
+  /**
+   * True when nothing is left to pay. Only returned when the caller asks for settled balances
+   * (the calendar, which shows history); the amount is then null rather than a misleading 0.
+   */
+  settled?: boolean
 }
 
 export type DashboardPrivateBookingBalanceDueRow = {
@@ -61,6 +66,7 @@ function getCustomerName(booking: DashboardPrivateBookingBalanceDueRow): string 
 export function buildPrivateBookingBalanceDueSummaries(
   bookings: DashboardPrivateBookingBalanceDueRow[],
   payments: DashboardPrivateBookingPaymentRow[],
+  options: { includeSettled?: boolean } = {},
 ): DashboardPrivateBookingBalanceDueSummary[] {
   const balancePaymentsByBookingId = new Map<string, number>()
 
@@ -89,7 +95,8 @@ export function buildPrivateBookingBalanceDueSummaries(
       ? Math.max(0, roundCurrency(toNumber(booking.balance_remaining)))
       : booking.final_payment_date ? 0 : Math.max(0, roundCurrency(eventTotal - balancePaid))
 
-    if (outstanding <= 0) return []
+    const settled = outstanding <= 0
+    if (settled && !options.includeSettled) return []
 
     return [{
       id: bookingId,
@@ -97,7 +104,8 @@ export function buildPrivateBookingBalanceDueSummaries(
       balance_due_date: balanceDueDate,
       event_date: toStringOrNull(booking.event_date),
       status: toStringOrNull(booking.status),
-      total_amount: outstanding,
+      total_amount: settled ? null : outstanding,
+      ...(options.includeSettled ? { settled } : {}),
     }]
   })
 }

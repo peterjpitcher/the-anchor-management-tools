@@ -12,7 +12,6 @@ export const ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   'budgets': () => import('@/app/actions/budgets'),
   'bulk-messages': () => import('@/app/actions/bulk-messages'),
   'business-hours': () => import('@/app/actions/business-hours'),
-  'calendar-datasets': () => import('@/app/actions/calendar-datasets'),
   'calendar-notes': () => import('@/app/actions/calendar-notes'),
   'cashing-up': () => import('@/app/actions/cashing-up'),
   'cashing-up-import': () => import('@/app/actions/cashing-up-import'),
@@ -146,6 +145,7 @@ export const ACTION_MODULES: Record<string, () => Promise<unknown>> = {
   'unbooked-event-replies': () => import('@/app/actions/unbooked-event-replies'),
   'vendor-contacts': () => import('@/app/actions/vendor-contacts'),
   'vendors': () => import('@/app/actions/vendors'),
+  'venue-calendar': () => import('@/app/actions/venue-calendar'),
   'venue-night': () => import('@/app/actions/venue-night'),
   'vouchers': () => import('@/app/actions/vouchers'),
 }

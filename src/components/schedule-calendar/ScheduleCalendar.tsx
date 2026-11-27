@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from 'react'
 import { addMonths, subMonths, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
-import { Button, Icon, IconButton, Segmented, SHELL_MEDIA_QUERY } from '@/ds'
+import { Button, Icon, IconButton, Segmented, Select, SHELL_MEDIA_QUERY } from '@/ds'
 import { cn } from '@/lib/utils'
 import { ScheduleCalendarMonth } from './ScheduleCalendarMonth'
 import { ScheduleCalendarList } from './ScheduleCalendarList'
@@ -30,8 +30,22 @@ export interface ScheduleCalendarProps {
     onAnchorChange?: (anchor: Date) => void
     /** Unfiltered entries, so closed days survive a filter. */
     closureEntries?: CalendarEntry[]
+    /**
+     * Laid over the month while it loads or after it failed, with the month dimmed underneath,
+     * so an unloaded month never reads as a quiet one.
+     */
+    overlay?: ReactNode
+    /** Earliest year the month picker offers. */
+    firstYear?: number
+    /** How many years past this one the month picker offers. */
+    yearsAhead?: number
     className?: string
 }
+
+const MONTH_NAMES = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December',
+]
 
 const CALENDAR_VIEW_OPTIONS: { id: ScheduleCalendarView; label: string }[] = [
     { id: 'month', label: 'Month' },
@@ -52,6 +66,9 @@ export function ScheduleCalendar({
     anchor: controlledAnchor,
     onAnchorChange,
     closureEntries,
+    overlay,
+    firstYear = 2024,
+    yearsAhead = 2,
     className,
 }: ScheduleCalendarProps) {
     const [uncontrolledAnchor, setUncontrolledAnchor] = useState<Date>(() => new Date())
@@ -67,43 +84,65 @@ export function ScheduleCalendar({
     const effectiveView: ScheduleCalendarView = isMobile ? 'list' : view
 
     function goPrev() {
-        if (effectiveView === 'month') setAnchor((d) => subMonths(d, 1))
+        setAnchor((d) => subMonths(d, 1))
     }
     function goNext() {
-        if (effectiveView === 'month') setAnchor((d) => addMonths(d, 1))
+        setAnchor((d) => addMonths(d, 1))
     }
     function goToday() {
         setAnchor(new Date())
     }
 
+    const lastYear = new Date().getFullYear() + yearsAhead
+    const yearOptions = []
+    for (let year = firstYear; year <= Math.max(lastYear, anchor.getFullYear()); year += 1) {
+        yearOptions.push({ value: String(year), label: String(year) })
+    }
+    const atFirstMonth = anchor.getFullYear() <= firstYear && anchor.getMonth() === 0
+    const atLastMonth = anchor.getFullYear() >= lastYear && anchor.getMonth() === 11
+
     return (
         <div className={cn('flex flex-col gap-3', className)}>
-            {/* Controls + switcher */}
+            {/* Month controls on every view and on phones: the past is always one tap away. */}
             <div className="flex items-center gap-2 flex-wrap">
-                {!isMobile && effectiveView !== 'list' && (
-                    <div className="flex items-center gap-1">
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            type="button"
-                            onClick={goPrev}
-                            label="Previous month"
-                            icon={<Icon name="chevronLeft" size={16} />}
+                <div className="flex items-center gap-1 flex-wrap">
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        type="button"
+                        onClick={goPrev}
+                        disabled={atFirstMonth}
+                        label="Previous month"
+                        icon={<Icon name="chevronLeft" size={16} />}
+                    />
+                    <Button size="sm" variant="ghost" type="button" onClick={goToday}>
+                        Today
+                    </Button>
+                    <IconButton
+                        size="sm"
+                        variant="ghost"
+                        type="button"
+                        onClick={goNext}
+                        disabled={atLastMonth}
+                        label="Next month"
+                        icon={<Icon name="chevronRight" size={16} />}
+                    />
+                    {/* Jump straight to any month rather than clicking back one at a time. */}
+                    <div className="ml-1 flex items-center gap-1">
+                        <Select
+                            aria-label="Month"
+                            value={String(anchor.getMonth())}
+                            onChange={(e) => setAnchor(new Date(anchor.getFullYear(), Number(e.target.value), 1))}
+                            options={MONTH_NAMES.map((name, index) => ({ value: String(index), label: name }))}
                         />
-                        <Button size="sm" variant="ghost" type="button" onClick={goToday}>
-                            Today
-                        </Button>
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            type="button"
-                            onClick={goNext}
-                            label="Next month"
-                            icon={<Icon name="chevronRight" size={16} />}
+                        <Select
+                            aria-label="Year"
+                            value={String(anchor.getFullYear())}
+                            onChange={(e) => setAnchor(new Date(Number(e.target.value), anchor.getMonth(), 1))}
+                            options={yearOptions}
                         />
-                        <span className="ml-2 text-sm font-medium">{format(anchor, 'MMMM yyyy')}</span>
                     </div>
-                )}
+                </div>
                 <div className="flex-1" />
                 {!isMobile && (
                     <Segmented
@@ -132,27 +171,34 @@ export function ScheduleCalendar({
             )}
 
             {/* View */}
-            {effectiveView === 'month' && (
-                <ScheduleCalendarMonth
-                    entries={entries}
-                    anchor={anchor}
-                    firstDayOfWeek={firstDayOfWeek}
-                    onEntryClick={onEntryClick}
-                    onEmptyDayClick={canCreateCalendarNote ? onEmptyDayClick : undefined}
-                    renderTooltip={renderTooltip}
-                    dailyOps={dailyOps}
-                    closureEntries={closureEntries}
-                />
-            )}
-            {effectiveView === 'list' && (
-                <ScheduleCalendarList
-                    entries={entries}
-                    onEntryClick={onEntryClick}
-                    hidePast={isMobile}
-                    dailyOps={dailyOps}
-                    renderTooltip={renderTooltip}
-                />
-            )}
+            <div className="relative" aria-busy={overlay ? true : undefined}>
+                <div className={cn(overlay && 'pointer-events-none opacity-40')}>
+                    {effectiveView === 'month' && (
+                        <ScheduleCalendarMonth
+                            entries={entries}
+                            anchor={anchor}
+                            firstDayOfWeek={firstDayOfWeek}
+                            onEntryClick={onEntryClick}
+                            onEmptyDayClick={canCreateCalendarNote ? onEmptyDayClick : undefined}
+                            renderTooltip={renderTooltip}
+                            dailyOps={dailyOps}
+                            closureEntries={closureEntries}
+                        />
+                    )}
+                    {effectiveView === 'list' && (
+                        <ScheduleCalendarList
+                            entries={entries}
+                            onEntryClick={onEntryClick}
+                            month={anchor}
+                            dailyOps={dailyOps}
+                            renderTooltip={renderTooltip}
+                        />
+                    )}
+                </div>
+                {overlay && (
+                    <div className="absolute inset-x-0 top-6 flex justify-center px-4">{overlay}</div>
+                )}
+            </div>
         </div>
     )
 }

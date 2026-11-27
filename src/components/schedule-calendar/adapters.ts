@@ -268,17 +268,21 @@ export interface DashboardBalanceDueInput {
     event_date: string | null
     status: string | null
     total_amount: number | null
+    /** Nothing left to pay: kept on the calendar as a record, marked paid. */
+    settled?: boolean
 }
 
 export function balanceDueToEntry(booking: DashboardBalanceDueInput): CalendarEntry {
     const start = parseLocalDate(booking.balance_due_date)
     const customerName = booking.customer_name || 'Private booking'
     const amount = booking.total_amount != null ? Number(booking.total_amount) : null
+    const settled = booking.settled === true
+    const status = statusFromString(booking.status)
 
     return {
         id: `balance:${booking.id}`,
         kind: 'balance_due',
-        title: `Balance due: ${customerName}`,
+        title: settled ? `Balance paid: ${customerName}` : `Balance due: ${customerName}`,
         start,
         end: start,
         allDay: true,
@@ -286,14 +290,16 @@ export function balanceDueToEntry(booking: DashboardBalanceDueInput): CalendarEn
         endsNextDay: false,
         color: kindColor('balance_due'),
         subtitle: amount != null && Number.isFinite(amount) ? formatCurrency(amount) : null,
-        status: statusFromString(booking.status),
-        statusLabel: statusLabel(statusFromString(booking.status)),
+        status,
+        // A cancelled hire still reads Cancelled; otherwise a settled balance reads Paid.
+        statusLabel: settled && status !== 'cancelled' ? 'Paid' : statusLabel(status),
         tooltipData: {
             kind: 'balance_due',
             customerName,
             amount: amount != null && Number.isFinite(amount) ? amount : null,
             eventDate: booking.event_date,
             status: booking.status,
+            settled,
         },
         onClickHref: `/private-bookings/${booking.id}`,
     }
@@ -467,7 +473,10 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry | 
     const customerName =
         [booking.customer_first_name, booking.customer_last_name].filter(Boolean).join(' ') || 'Parking'
     const timeRange = `${format(start, 'HH:mm')}–${format(end, 'HH:mm')}`
-    const status = statusFromString(booking.status)
+    // An expired booking was never paid for and the car never came: drawn struck through like a
+    // cancelled one (and hidden by "Hide cancelled"), but labelled for what it is.
+    const expired = booking.status === 'expired'
+    const status = expired ? 'cancelled' : statusFromString(booking.status)
     return {
         id: `park:${booking.id}`,
         kind: 'parking',
@@ -485,7 +494,7 @@ export function parkingToEntry(booking: DashboardParkingInput): CalendarEntry | 
         // through and can be hidden by the "Hide cancelled" filter, instead of
         // rendering as a live green block that no filter can touch.
         status,
-        statusLabel: statusLabel(status),
+        statusLabel: expired ? 'Expired' : statusLabel(status),
         tooltipData: {
             kind: 'parking',
             reference: booking.reference ?? null,
