@@ -92,8 +92,8 @@ describe('permissions', () => {
 describe('createEventSeries', () => {
   it('validates the form', async () => {
     seed()
-    expect((await createEventSeries({ ...input, startTime: '7pm' })).error).toBe('Use a time like 19:00')
-    expect((await createEventSeries({ ...input, pagePath: 'ladies' })).error).toBe('The page must start with "/"')
+    expect((await createEventSeries({ ...input, startTime: '7pm' })).error).toBe('Start time: use a time like 19:00')
+    expect((await createEventSeries({ ...input, pagePath: 'ladies' })).error).toBe('Website page: the page must start with "/"')
     expect((await createEventSeries({ ...input, endsOn: '2026-11-01' })).error).toBe('The last date is before the first')
   })
 
@@ -229,9 +229,30 @@ describe('details (migration 20261127121431)', () => {
     expect(db.tables.event_series[0]).toMatchObject({ is_free: true, price: null })
   })
 
+  it('names the field when a list is too long', async () => {
+    seed()
+    const supporting = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
+    expect((await updateEventSeries(SERIES, { ...input, details: { ...details, secondaryKeywords: supporting } })).error).toBe(
+      'Supporting keywords: use 6 or fewer'
+    )
+    const local = ['Stanwell Moor', 'Staines', 'Heathrow', 'Ashford', 'Stanwell']
+    expect((await updateEventSeries(SERIES, { ...input, details: { ...details, localSeoKeywords: local } })).error).toBe(
+      'Local keywords: use 4 or fewer'
+    )
+    expect((await updateEventSeries(SERIES, { ...input, details: { ...details, highlights: ['x'.repeat(201)] } })).error).toBe(
+      'Highlights: keep each to 200 characters'
+    )
+  })
+
+  it('leaves a message that already names its field as it is', async () => {
+    seed()
+    expect((await createEventSeries({ ...input, name: '' })).error).toBe('Name is required')
+    expect((await createEventSeries({ ...input, name: 'x'.repeat(121) })).error).toBe('Name: use 120 characters or fewer')
+  })
+
   it('refuses a meta description over 500 characters', async () => {
     seed()
     const result = await updateEventSeries(SERIES, { ...input, details: { ...details, metaDescription: 'x'.repeat(501) } })
-    expect(result.error).toBe('Use 500 characters or fewer')
+    expect(result.error).toBe('Meta description: use 500 characters or fewer')
   })
 })

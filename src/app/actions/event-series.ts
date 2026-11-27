@@ -117,6 +117,67 @@ const seriesInputSchema = z
 
 export type EventSeriesInput = z.input<typeof seriesInputSchema>
 
+/** Each field's name as the repeating event form shows it, so an error says which box to fix. */
+const FIELD_LABELS: Record<string, string> = {
+  name: 'Name',
+  slug: 'Slug',
+  categoryId: 'Category',
+  weekday: 'Day',
+  startTime: 'Start time',
+  endTime: 'End time',
+  startsOn: 'First date',
+  endsOn: 'Last date',
+  shortDescription: 'Short description',
+  pagePath: 'Website page',
+  audienceNote: 'Who it is for',
+  brief: 'Brief',
+  performerName: 'Host or performer',
+  performerType: 'Host or performer type',
+  price: 'Price',
+  metaTitle: 'Meta title',
+  metaDescription: 'Meta description',
+  longDescription: 'Long description',
+  highlights: 'Highlights',
+  primaryKeywords: 'Focus keywords',
+  secondaryKeywords: 'Supporting keywords',
+  localSeoKeywords: 'Local keywords',
+  imageAltText: 'Image alt text',
+  accessibilityNotes: 'Accessibility notes',
+  facebookEventName: 'Facebook event name',
+  facebookEventDescription: 'Facebook event description',
+  gbpEventTitle: 'Google Business Profile title',
+  gbpEventDescription: 'Google Business Profile description',
+  socialCopyWhatsapp: 'WhatsApp message',
+  date: 'Date',
+  reason: 'Reason',
+}
+
+/**
+ * The first problem with the form, led by the field's name ("Supporting keywords: use 6 or
+ * fewer"). A message that already names its field is left as it is.
+ */
+function describeSeriesIssue(error: z.ZodError, fallback: string): string {
+  const issue = error.issues[0]
+  if (!issue) return fallback
+  const key = [...issue.path].reverse().find((part): part is string => typeof part === 'string')
+  const label = key ? FIELD_LABELS[key] : undefined
+  if (!label) return issue.message
+
+  let message = issue.message
+  if (issue.code === 'too_big') {
+    const perItem = typeof issue.path[issue.path.length - 1] === 'number'
+    message = perItem
+      ? `Keep each to ${issue.maximum} characters`
+      : issue.type === 'string'
+        ? `Use ${issue.maximum} characters or fewer`
+        : issue.type === 'array'
+          ? `Use ${issue.maximum} or fewer`
+          : issue.message
+  }
+  if (message.toLowerCase().includes(label.toLowerCase())) return message
+  return `${label}: ${message.charAt(0).toLowerCase()}${message.slice(1)}`
+}
+
 function toRow(input: z.output<typeof seriesInputSchema>) {
   return {
     ...ruleRow(input),
@@ -258,7 +319,7 @@ export async function createEventSeries(input: EventSeriesInput): ActionResult<{
   if ('error' in actor) return { error: actor.error }
 
   const parsed = seriesInputSchema.safeParse(input)
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the form' }
+  if (!parsed.success) return { error: describeSeriesIssue(parsed.error, 'Check the form') }
 
   const db = createAdminClient()
   const { data, error } = await db
@@ -285,7 +346,7 @@ export async function updateEventSeries(id: string, input: EventSeriesInput): Ac
   if (!z.string().uuid().safeParse(id).success) return { error: 'Repeating event not found' }
 
   const parsed = seriesInputSchema.safeParse(input)
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the form' }
+  if (!parsed.success) return { error: describeSeriesIssue(parsed.error, 'Check the form') }
 
   const db = createAdminClient()
   const [existing] = await loadEventSeries(db, { id })
@@ -323,7 +384,7 @@ export async function skipEventSeriesDate(input: z.input<typeof skipSchema>): Ac
   const actor = await requirePermission('manage')
   if ('error' in actor) return { error: actor.error }
   const parsed = skipSchema.safeParse(input)
-  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Check the date' }
+  if (!parsed.success) return { error: describeSeriesIssue(parsed.error, 'Check the date') }
 
   const db = createAdminClient()
   const [series] = await loadEventSeries(db, { id: parsed.data.seriesId })
