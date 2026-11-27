@@ -79,6 +79,8 @@ export interface VenueCalendarBalanceDue {
   event_date: string | null
   status: string | null
   total_amount: number | null
+  /** Nothing left to pay. The marker stays, marked paid, rather than vanishing. */
+  settled?: boolean
 }
 
 export interface VenueCalendarEmployeeBirthday {
@@ -175,6 +177,10 @@ export interface VenueCalendarProps {
    * calendar is a glance-at-today widget and does not want it.
    */
   showFilters?: boolean
+  /** Laid over the month while it loads or after it failed to load. */
+  overlay?: ReactNode
+  /** The month to open on when the URL names none (the month the server loaded). */
+  defaultMonth?: Date | null
   className?: string
 }
 
@@ -366,7 +372,7 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
       <div className="space-y-1 text-xs">
         <div className="flex items-center gap-1.5 font-medium">
           <Icon name="lock" size={14} />
-          <span>Private booking balance due</span>
+          <span>{td.settled ? 'Private booking balance paid' : 'Private booking balance due'}</span>
         </div>
         <div className="whitespace-pre-wrap">{td.customerName}</div>
         <div>{format(entry.start, 'EEE d MMM yyyy')}</div>
@@ -503,6 +509,8 @@ export function VenueCalendar({
   datasetWarnings = [],
   dailyOps,
   header,
+  overlay,
+  defaultMonth = null,
   className,
 }: VenueCalendarProps): ReactNode {
   const router = useRouter()
@@ -515,8 +523,8 @@ export function VenueCalendar({
   // list/calendar/board `view`.
   const view = parseCalendarView(searchParams.get(CAL_VIEW_PARAM)) ?? 'month'
   const anchor = useMemo(
-    () => parseCalendarMonth(searchParams.get(CAL_MONTH_PARAM)) ?? new Date(),
-    [searchParams],
+    () => parseCalendarMonth(searchParams.get(CAL_MONTH_PARAM)) ?? defaultMonth ?? new Date(),
+    [searchParams, defaultMonth],
   )
   const filters = useMemo(
     () => parseCalendarFilters(new URLSearchParams(searchParams.toString()), EMPTY_CALENDAR_FILTERS),
@@ -527,10 +535,13 @@ export function VenueCalendar({
     (updates: Record<string, string | null>) => {
       const next = withCalendarParams(new URLSearchParams(searchParams.toString()), updates)
       const query = next.toString()
-      // replace, not push: paging months should not fill the back button.
-      router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false })
+      // replace, not push: paging months should not fill the back button. The browser's own
+      // history call (which Next keeps useSearchParams in step with) rather than router.replace:
+      // the calendar loads each month itself, so a server re-render of the whole page on every
+      // month click would only load the month a second time.
+      window.history.replaceState(null, '', query ? `${pathname}?${query}` : pathname)
     },
-    [pathname, router, searchParams],
+    [pathname, searchParams],
   )
 
   const setView = useCallback(
@@ -694,22 +705,16 @@ export function VenueCalendar({
   // not parse. Every source column is NOT NULL in production, so the old
   // version of this counter could never fire; malformed data is the real case.
   /**
-   * Entries the counts describe.
-   *
-   * Scoped to what the user is actually looking at: the anchored month in month
-   * view, the whole loaded range in list view (which has no month control). The
-   * label says which, because "Showing 130 of 130" while four things are on
-   * screen tells nobody anything.
+   * Entries the counts describe: the anchored month, in both views, since both now page by
+   * month. Intersects, not starts-in: a booking that began last month and runs into this one is
+   * on screen, so it counts.
    */
-  const countScopeLabel = view === 'month' ? format(anchor, 'MMMM yyyy') : 'the loaded range'
+  const countScopeLabel = format(anchor, 'MMMM yyyy')
   const countableEntries = useMemo(() => {
-    if (view !== 'month') return entries
     const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
     const monthEnd = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0, 23, 59, 59, 999)
-    // Intersects, not starts-in: a booking that began last month and runs into
-    // this one is on screen, so it counts.
     return entries.filter((entry) => entry.start <= monthEnd && entry.end >= monthStart)
-  }, [entries, view, anchor])
+  }, [entries, anchor])
 
   const kindCounts = useMemo(() => {
     const counts: Partial<Record<CalendarEntryKind, number>> = {}
@@ -793,6 +798,7 @@ export function VenueCalendar({
         legendKinds={legendKinds}
         dailyOps={dailyOps}
         firstDayOfWeek={1}
+        overlay={overlay}
       />
 
       {hiddenCount > 0 && (

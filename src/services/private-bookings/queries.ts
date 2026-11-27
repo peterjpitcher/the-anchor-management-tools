@@ -1,3 +1,4 @@
+import { fetchAllRows } from '@/lib/supabase/paged-read';
 import { readBookingPaymentLedger, readBookingPaymentLedgers } from '@/lib/private-bookings/payment-ledger';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -343,43 +344,53 @@ export async function fetchPrivateBookings(options: {
 }
 
 export async function fetchPrivateBookingsForCalendar(): Promise<{ data: PrivateBookingWithDetails[] }> {
-  const todayIso = toLocalIsoDate(new Date());
   const supabase = await createClient();
 
   // Reads the table, not private_bookings_with_details: the calendar needs no computed money
   // column, and the view runs several money functions per row. The view is security_invoker, so
   // RLS on private_bookings decides the rows either way.
-  const { data, error } = await supabase
-    .from('private_bookings')
-    .select(
-      `
-        id,
-        customer_name,
-        customer_first_name,
-        customer_last_name,
-        event_date,
-        start_time,
-        end_time,
-        end_time_next_day,
-        status,
-        contract_version,
-        created_at,
-        updated_at,
-        event_type,
-        guest_count,
-        internal_notes
-      `
-    )
-    .gte('event_date', todayIso)
-    .order('event_date', { ascending: true, nullsFirst: true })
-    .order('start_time', { ascending: true, nullsFirst: true });
-
-  if (error) {
+  //
+  // Every booking, past as well as future. This used to start at today, so the private-bookings
+  // calendar ("every booking, month by month") showed nothing in any past month: a hire left
+  // the calendar the day after it happened. Paged, because Supabase stops at 1,000 rows without
+  // saying so.
+  let data: PrivateBookingWithDetails[];
+  try {
+    data = await fetchAllRows<PrivateBookingWithDetails>(
+      (from, to) =>
+        supabase
+          .from('private_bookings')
+          .select(
+            `
+              id,
+              customer_name,
+              customer_first_name,
+              customer_last_name,
+              event_date,
+              start_time,
+              end_time,
+              end_time_next_day,
+              status,
+              contract_version,
+              created_at,
+              updated_at,
+              event_type,
+              guest_count,
+              internal_notes
+            `
+          )
+          .order('event_date', { ascending: true, nullsFirst: true })
+          .order('start_time', { ascending: true, nullsFirst: true })
+          .order('id', { ascending: true })
+          .range(from, to) as unknown as PromiseLike<{ data: PrivateBookingWithDetails[] | null; error: { message: string } | null }>,
+      { label: 'private bookings calendar' },
+    );
+  } catch (error) {
     logger.error('Error fetching bookings for calendar:', { error: error instanceof Error ? error : new Error(String(error)) });
-    throw new Error(error.message || 'An error occurred');
+    throw new Error(error instanceof Error ? error.message : 'An error occurred');
   }
 
-  return { data: (data || []) as PrivateBookingWithDetails[] };
+  return { data };
 }
 
 export async function getBookingById(id: string): Promise<PrivateBookingWithDetails> {

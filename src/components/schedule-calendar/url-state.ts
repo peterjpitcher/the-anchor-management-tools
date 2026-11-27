@@ -68,15 +68,14 @@ export function parseCalendarFilters(params: URLSearchParams, fallback: Calendar
     return {
         kinds,
         missing,
+        // An old link may still carry `showCancelledHire`; cancelled hire now shows anyway.
         hideCancelled: flags.includes('hideCancelled'),
-        showCancelledPrivateHire: flags.includes('showCancelledHire'),
     }
 }
 
 export function calendarFiltersToParams(filters: CalendarFilters): Record<string, string | null> {
     const flags: string[] = []
     if (filters.hideCancelled) flags.push('hideCancelled')
-    if (filters.showCancelledPrivateHire) flags.push('showCancelledHire')
 
     // null means "remove this parameter", so a cleared filter leaves a clean URL.
     return {

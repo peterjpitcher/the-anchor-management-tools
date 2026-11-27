@@ -9,15 +9,13 @@ import type { CalendarEntry, CalendarEntryKind } from './types'
 export interface CalendarFilters {
     /** Entry kinds to show. Empty means show every kind. */
     kinds: CalendarEntryKind[]
-    /** Hide anything cancelled. Off by default, since a cancelled event is still worth seeing. */
-    hideCancelled: boolean
     /**
-     * Bring cancelled private hire back into view. Off by default: a cancelled
-     * private booking is dead weight on the calendar and the owner does not want
-     * to see it. A cancelled EVENT is different, it still matters, which is what
-     * hideCancelled is for.
+     * Hide anything cancelled. Off by default: the calendar is a record of what happened, and
+     * a cancelled event, hire or parking booking is drawn struck through rather than dropped.
+     * Owner decision, 27 November 2026, replacing the earlier default that hid cancelled
+     * private hire unless a separate "Show cancelled private hire" filter was on.
      */
-    showCancelledPrivateHire: boolean
+    hideCancelled: boolean
     /**
      * Content gaps to surface, events only. Selecting more than one shows events
      * missing ANY of them, which is what "what still needs work" means in
@@ -37,20 +35,7 @@ export const CONTENT_GAP_LABELS: Record<CalendarContentGap, string> = {
 export const EMPTY_CALENDAR_FILTERS: CalendarFilters = {
     kinds: [],
     hideCancelled: false,
-    showCancelledPrivateHire: false,
     missing: [],
-}
-
-/**
- * Private hire shows up on the calendar as the booking itself plus its
- * balance-due marker. Both come from the same private booking row and carry its
- * status, so both follow the same rule when the booking is cancelled: chasing a
- * balance for a hire that is not happening is noise too.
- */
-const PRIVATE_HIRE_KINDS: readonly CalendarEntryKind[] = ['private_booking', 'balance_due']
-
-export function isCancelledPrivateHire(entry: CalendarEntry): boolean {
-    return entry.status === 'cancelled' && PRIVATE_HIRE_KINDS.includes(entry.kind)
 }
 
 /** True when the user has moved away from the defaults, so "Clear filters" has something to undo. */
@@ -58,7 +43,6 @@ export function isFilterActive(filters: CalendarFilters): boolean {
     return (
         filters.kinds.length > 0 ||
         filters.hideCancelled ||
-        filters.showCancelledPrivateHire ||
         filters.missing.length > 0
     )
 }
@@ -74,14 +58,9 @@ export function applyCalendarFilters(
     entries: CalendarEntry[],
     filters: CalendarFilters
 ): CalendarEntry[] {
-    // No early return on "no filters selected": cancelled private hire is hidden
-    // by default, so this pass always has work to do.
+    if (!isFilterActive(filters)) return entries
     return entries.filter((entry) => {
-        if (!filters.showCancelledPrivateHire && isCancelledPrivateHire(entry)) return false
-
         if (filters.kinds.length > 0 && !filters.kinds.includes(entry.kind)) return false
-        // Deliberately not exempted by showCancelledPrivateHire, so "Hide cancelled"
-        // wins: asking to hide everything cancelled beats asking to see cancelled hire.
         if (filters.hideCancelled && entry.status === 'cancelled') return false
 
         if (filters.missing.length > 0) {

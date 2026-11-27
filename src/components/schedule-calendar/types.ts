@@ -91,6 +91,8 @@ type TooltipData =
           amount: number | null
           eventDate: string | null
           status: string | null
+          /** Nothing left to pay. */
+          settled?: boolean
       }
     | {
           kind: 'birthday'

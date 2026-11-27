@@ -75,7 +75,7 @@ describe('calendar filters', () => {
     ])
   })
 
-  it('hides cancelled private hire by default, without hiding cancelled events', () => {
+  it('shows cancelled private hire and its balance marker by default (owner decision, 27 Nov 2026)', () => {
     const entries = [
       entry({ kind: 'event', id: 'dead-event', status: 'cancelled' }),
       entry({ kind: 'private_booking', id: 'live-hire' }),
@@ -85,42 +85,18 @@ describe('calendar filters', () => {
     expect(applyCalendarFilters(entries, EMPTY_CALENDAR_FILTERS).map((e) => e.id)).toEqual([
       'dead-event',
       'live-hire',
+      'dead-hire',
+      'dead-balance',
     ])
   })
 
-  it('brings cancelled private hire back when the toggle is on', () => {
+  it('hides cancelled private hire along with everything else cancelled when "Hide cancelled" is on', () => {
     const entries = [
       entry({ kind: 'private_booking', id: 'live-hire' }),
       entry({ kind: 'private_booking', id: 'dead-hire', status: 'cancelled' }),
       entry({ kind: 'balance_due', id: 'dead-balance', status: 'cancelled' }),
     ]
-    const result = applyCalendarFilters(entries, filters({ showCancelledPrivateHire: true }))
-    expect(result.map((e) => e.id)).toEqual(['live-hire', 'dead-hire', 'dead-balance'])
-    // Asking to see them is a deviation from the default, so "Clear filters" must appear.
-    expect(isFilterActive(filters({ showCancelledPrivateHire: true }))).toBe(true)
-  })
-
-  it('lets "Hide cancelled" win over "Show cancelled private hire"', () => {
-    const entries = [
-      entry({ kind: 'private_booking', id: 'live-hire' }),
-      entry({ kind: 'private_booking', id: 'dead-hire', status: 'cancelled' }),
-    ]
-    const result = applyCalendarFilters(
-      entries,
-      filters({ showCancelledPrivateHire: true, hideCancelled: true })
-    )
-    expect(result.map((e) => e.id)).toEqual(['live-hire'])
-  })
-
-  it('still hides cancelled private hire when narrowing to private hire only', () => {
-    // The kind chips must not become a back door into the cancelled hire the
-    // default is there to keep off the calendar.
-    const entries = [
-      entry({ kind: 'private_booking', id: 'live-hire' }),
-      entry({ kind: 'private_booking', id: 'dead-hire', status: 'cancelled' }),
-      entry({ kind: 'event', id: 'e1' }),
-    ]
-    const result = applyCalendarFilters(entries, filters({ kinds: ['private_booking'] }))
+    const result = applyCalendarFilters(entries, filters({ hideCancelled: true }))
     expect(result.map((e) => e.id)).toEqual(['live-hire'])
   })
 

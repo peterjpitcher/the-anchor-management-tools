@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useTransition, useEffect, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
-import { addMonthsToIsoDate, getTodayIsoDate } from '@/lib/dateUtils'
+import { getTodayIsoDate } from '@/lib/dateUtils'
 import { Alert, PageLayout, PageLoading, Segmented, Button } from '@/ds'
 import { Icon } from '@/ds/icons'
 import { cn } from '@/lib/utils'
@@ -10,39 +10,15 @@ import { EventListView } from './EventListView'
 import { EventBoardView } from './EventBoardView'
 import { EventDrawer, type EventDrawerPrefill } from './EventDrawer'
 import { RepeatingEventsPanel, type MakeFullEventRequest } from './RepeatingEventsPanel'
-import { listEventSeriesNights, markEventSeriesDateReplaced, type EventSeriesNight } from '@/app/actions/event-series'
+import { markEventSeriesDateReplaced } from '@/app/actions/event-series'
 import { EventFilterPanel, type EventFilters } from './EventFilterPanel'
-import { VenueCalendar } from '@/components/schedule-calendar'
-import type {
-  VenueCalendarEvent,
-  VenueCalendarBooking,
-  VenueCalendarNote,
-  VenueCalendarParking,
-  VenueCalendarSpecialHours,
-  VenueCalendarBalanceDue,
-  VenueCalendarEmployeeBirthday,
-  VenueCalendarMarketingSend,
-  ScheduleDailyOps,
-} from '@/components/schedule-calendar'
+import { LiveVenueCalendar, type VenueCalendarMonthData } from '@/components/schedule-calendar'
 import type { Event } from '@/types/database'
-import type { ParkingBookingStatus } from '@/types/parking'
 import type { EventCategory } from '@/types/event-categories'
-import { getEvents, getCalendarEvents, deleteEvent } from '@/app/actions/events'
-import { calendarParkingStartFrom, type CalendarEventRow } from '@/lib/events/calendar-events'
-import { fetchPrivateBookingsForCalendar } from '@/app/actions/private-bookings-dashboard'
-import { listCalendarNotes } from '@/app/actions/calendar-notes'
-import { listParkingBookings } from '@/app/actions/parking'
+import { getEvents, deleteEvent } from '@/app/actions/events'
 import { toast } from '@/ds'
 
 type ViewMode = 'list' | 'calendar' | 'board' | 'repeating'
-
-/**
- * Parking statuses worth showing on a calendar: the ones that still represent a
- * car arriving. Matches the dashboard. Without this the events calendar rendered
- * cancelled and expired bookings as live green blocks that no filter could hide,
- * because the adapter also discarded their status.
- */
-const CALENDAR_PARKING_STATUSES: ParkingBookingStatus[] = ['pending_payment', 'confirmed', 'completed']
 
 const VIEW_OPTIONS = [
   { id: 'list', label: 'List' },
@@ -57,48 +33,6 @@ function getFilenameFromHeaders(headers: Headers): string | null {
   return filenameMatch?.[1] ?? null
 }
 
-/**
- * The calendar's secondary layers. The page starts loading them on the server
- * and streams the promise here, so the calendar paints with its events first and
- * the layers, with any warnings about them, arrive when they are ready.
- */
-export interface EventsCalendarLayers {
-  specialHours: VenueCalendarSpecialHours[]
-  birthdays: VenueCalendarEmployeeBirthday[]
-  balanceDues: VenueCalendarBalanceDue[]
-  dailyOps: ScheduleDailyOps | null
-  marketingSends: VenueCalendarMarketingSend[]
-  warnings: string[]
-}
-
-const EMPTY_CALENDAR_LAYERS: EventsCalendarLayers = {
-  specialHours: [],
-  birthdays: [],
-  balanceDues: [],
-  dailyOps: null,
-  marketingSends: [],
-  warnings: [],
-}
-
-export function toCalendarEvent(e: CalendarEventRow): VenueCalendarEvent {
-  return {
-    id: e.id,
-    name: e.name,
-    date: e.date,
-    time: e.time,
-    bookedSeatsCount: e.booked_count ?? 0,
-    eventStatus: e.event_status,
-    // Content readiness, so the calendar can flag and filter what still needs
-    // artwork or copy before it can be published.
-    hasImage: Boolean(e.hero_image_url || e.poster_image_url || e.thumbnail_image_url),
-    hasBrief: Boolean(e.brief && e.brief.trim()),
-    hasDescription: Boolean(
-      (e.short_description && e.short_description.trim()) ||
-      (e.long_description && e.long_description.trim())
-    ),
-  }
-}
-
 interface EventsClientProps {
   initialEvents: Event[]
   initialPagination?: {
@@ -108,34 +42,16 @@ interface EventsClientProps {
     totalPages: number
   }
   categories: EventCategory[]
-  initialCalendarEvents?: CalendarEventRow[]
-  initialCalendarBookings?: VenueCalendarBooking[]
-  initialCalendarNotes?: VenueCalendarNote[]
-  initialCalendarParking?: VenueCalendarParking[]
+  /** The calendar month the page loaded on the server, so the calendar's first paint is not empty. */
+  initialCalendarMonth?: VenueCalendarMonthData | null
   canManageCalendarNotes?: boolean
   /** events:manage, for creating, skipping and ending repeating events. */
   canManageEvents?: boolean
   /**
-   * Surfaced rather than swallowed. Both call sites used to drop this, so a user
-   * whose permission denied the note read simply saw a calendar with no notes and
-   * no explanation, which is the same silent-empty failure as a broken query.
-   */
-  calendarNotesError?: string | null
-  /**
-   * Datasets the events calendar used to lack entirely, so it looked like a
-   * different product from the dashboard's. Each is permission-gated at source;
-   * an empty array can mean "denied" as well as "none", which is why the layers
-   * carry any failure messages separately. Streamed: the calendar renders
-   * without them until the promise settles.
-   */
-  calendarLayers?: Promise<EventsCalendarLayers>
-  /**
-   * Why the first page of the list, or the calendar's events, could not be loaded. A failed
-   * load is shown as a failure, never as an empty list or an empty calendar.
+   * Why the first page of the list could not be loaded. A failed load is shown as a failure,
+   * never as an empty list.
    */
   initialEventsError?: string | null
-  initialCalendarEventsError?: string | null
-  /** The outstanding todos panel, shown beside the events from the xl breakpoint up. */
   todosPanel?: ReactNode
 }
 
@@ -143,31 +59,19 @@ export default function EventsClient({
   initialEvents,
   initialPagination,
   categories,
-  initialCalendarEvents,
-  initialCalendarBookings,
-  initialCalendarNotes,
-  initialCalendarParking,
+  initialCalendarMonth = null,
   canManageCalendarNotes,
   canManageEvents = false,
-  calendarNotesError = null,
-  calendarLayers,
   initialEventsError = null,
-  initialCalendarEventsError = null,
   todosPanel,
 }: EventsClientProps) {
   const router = useRouter()
   const [view, setView] = useState<ViewMode>('calendar')
   const [events, setEvents] = useState<Event[]>(initialEvents)
-  const [calendarEvents, setCalendarEvents] = useState<VenueCalendarEvent[]>(
-    () => (initialCalendarEvents ?? []).map(toCalendarEvent)
-  )
-  const [calendarBookings, setCalendarBookings] = useState<VenueCalendarBooking[]>(initialCalendarBookings ?? [])
-  const [calendarNotes, setCalendarNotes] = useState<VenueCalendarNote[]>(initialCalendarNotes ?? [])
-  const [calendarParking, setCalendarParking] = useState<VenueCalendarParking[]>(initialCalendarParking ?? [])
-  const [notesError, setNotesError] = useState<string | null>(calendarNotesError)
   const [boardEvents, setBoardEvents] = useState<Event[]>([])
   const [listError, setListError] = useState<string | null>(initialEventsError)
-  const [calendarEventsError, setCalendarEventsError] = useState<string | null>(initialCalendarEventsError)
+  // Bumped after anything the calendar shows is saved here, so the month on screen reloads.
+  const [calendarRefreshKey, setCalendarRefreshKey] = useState(0)
   // The board fetches on first open, so until it has an answer it shows a loading state, not
   // five empty columns.
   const [boardLoaded, setBoardLoaded] = useState(false)
@@ -192,45 +96,9 @@ export default function EventsClient({
   const [repeatingRefreshKey, setRepeatingRefreshKey] = useState(0)
   // The repeating event whose night was clicked on the calendar: the Repeating events tab opens on it.
   const [focusSeriesId, setFocusSeriesId] = useState<string | null>(null)
-  // Nights of repeating events for the calendar view: last month to a year ahead. A failed read
-  // leaves them off with a warning under the calendar, never the whole calendar.
-  const [repeatingNights, setRepeatingNights] = useState<EventSeriesNight[]>([])
-  const [repeatingNightsError, setRepeatingNightsError] = useState<string | null>(null)
-  // Bumped by the Repeating tab after each saved change, so the calendar's nights reload without
-  // making the tab reload its own list a second time.
-  const [repeatingNightsKey, setRepeatingNightsKey] = useState(0)
-  useEffect(() => {
-    let cancelled = false
-    const today = getTodayIsoDate()
-    void listEventSeriesNights({ from: addMonthsToIsoDate(today, -1), to: addMonthsToIsoDate(today, 12) }).then((result) => {
-      if (cancelled) return
-      setRepeatingNights(result.data ?? [])
-      setRepeatingNightsError(result.error ?? null)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [repeatingRefreshKey, repeatingNightsKey])
   const [isExporting, setIsExporting] = useState(false)
   const [isBuildingQrPack, setIsBuildingQrPack] = useState(false)
   const [isPending, startTransition] = useTransition()
-  const [layers, setLayers] = useState<EventsCalendarLayers>(EMPTY_CALENDAR_LAYERS)
-
-  useEffect(() => {
-    if (!calendarLayers) return
-    let live = true
-    Promise.resolve(calendarLayers)
-      .then((loaded) => {
-        if (live) setLayers(loaded)
-      })
-      .catch(() => {
-        if (live) setLayers({ ...EMPTY_CALENDAR_LAYERS, warnings: ['Some calendar layers could not be loaded'] })
-      })
-    return () => {
-      live = false
-    }
-  }, [calendarLayers])
-
   const fetchEvents = useCallback(
     (page: number, currentFilters: EventFilters) => {
       startTransition(async () => {
@@ -257,43 +125,7 @@ export default function EventsClient({
     []
   )
 
-  const fetchCalendarData = useCallback(
-    () => {
-      startTransition(async () => {
-        const [eventsResult, bookingsResult, notesResult, parkingResult] = await Promise.all([
-          getCalendarEvents(),
-          fetchPrivateBookingsForCalendar(),
-          listCalendarNotes(),
-          listParkingBookings({
-            limit: 500,
-            statuses: CALENDAR_PARKING_STATUSES,
-            endingFrom: calendarParkingStartFrom(),
-          }),
-        ])
-        if (eventsResult.data) {
-          setCalendarEvents(eventsResult.data.map(toCalendarEvent))
-          setCalendarEventsError(null)
-        } else if (eventsResult.error) {
-          // Keep what is on screen; report that it could not be refreshed.
-          setCalendarEventsError(eventsResult.error)
-        }
-        if ('data' in bookingsResult && bookingsResult.data) {
-          setCalendarBookings(bookingsResult.data as VenueCalendarBooking[])
-        }
-        if (notesResult.data) {
-          setCalendarNotes(notesResult.data)
-          setNotesError(null)
-        } else if (notesResult.error) {
-          // Keep the rest of the calendar; report only what failed.
-          setNotesError(notesResult.error)
-        }
-        if ('data' in parkingResult && parkingResult.data) {
-          setCalendarParking(parkingResult.data as VenueCalendarParking[])
-        }
-      })
-    },
-    []
-  )
+  const refreshCalendar = useCallback(() => setCalendarRefreshKey((key) => key + 1), [])
 
   const fetchBoardEvents = useCallback(() => {
     startTransition(async () => {
@@ -312,16 +144,9 @@ export default function EventsClient({
     })
   }, [])
 
-  const [calendarInitialised, setCalendarInitialised] = useState(!!initialCalendarEvents?.length)
-
   useEffect(() => {
-    if (view === 'calendar' && !calendarInitialised) {
-      fetchCalendarData()
-      setCalendarInitialised(true)
-    } else if (view === 'board') {
-      fetchBoardEvents()
-    }
-  }, [view, calendarInitialised, fetchCalendarData, fetchBoardEvents])
+    if (view === 'board') fetchBoardEvents()
+  }, [view, fetchBoardEvents])
 
   const handleFilterChange = useCallback(
     (newFilters: EventFilters) => {
@@ -408,13 +233,13 @@ export default function EventsClient({
   // has to stay open long enough to upload any artwork queued beforehand.
   const handleSave = useCallback(() => {
     if (view === 'calendar') {
-      fetchCalendarData()
+      refreshCalendar()
     } else if (view === 'board') {
       fetchBoardEvents()
     } else {
       fetchEvents(pagination.currentPage, filters)
     }
-  }, [view, fetchCalendarData, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
+  }, [view, refreshCalendar, fetchBoardEvents, fetchEvents, pagination.currentPage, filters])
 
   const handleDeleteSelected = useCallback(() => {
     startTransition(async () => {
@@ -618,46 +443,16 @@ export default function EventsClient({
               />
             )}
 
-            {/* The events are the calendar's main content, so a failed load is a danger Alert above
-                it, as on the list and the board; the other layers' warnings stay under the grid. */}
-            {view === 'calendar' && calendarEventsError && (
-              <Alert
-                tone="danger"
-                title="Events could not be loaded"
-                actions={
-                  <Button type="button" variant="secondary" size="sm" onClick={fetchCalendarData}>
-                    Try Again
-                  </Button>
-                }
-              >
-                {calendarEventsError}
-              </Alert>
-            )}
-
             {view === 'calendar' && (
-              <VenueCalendar
-                events={calendarEvents}
-                privateBookings={calendarBookings}
-                calendarNotes={calendarNotes}
-                parkingBookings={calendarParking}
-                specialHours={layers.specialHours}
-                employeeBirthdays={layers.birthdays}
-                balanceDueDates={layers.balanceDues}
-                marketingSends={layers.marketingSends}
-                repeatingEvents={repeatingNights}
+              <LiveVenueCalendar
+                initialData={initialCalendarMonth}
+                refreshKey={calendarRefreshKey}
                 onRepeatingEventClick={(seriesId) => {
                   setFocusSeriesId(seriesId)
                   setView('repeating')
                 }}
-                dailyOps={layers.dailyOps ?? undefined}
                 canManageCalendarNotes={canManageCalendarNotes}
                 showFilters
-                onNotesChanged={fetchCalendarData}
-                datasetWarnings={[
-                  ...(notesError ? [`Calendar notes could not be loaded: ${notesError}`] : []),
-                  ...(repeatingNightsError ? [`Repeating events could not be loaded: ${repeatingNightsError}`] : []),
-                  ...layers.warnings,
-                ]}
               />
             )}
 
@@ -686,7 +481,7 @@ export default function EventsClient({
                 onMakeFullEvent={handleMakeFullEvent}
                 refreshKey={repeatingRefreshKey}
                 focusSeriesId={focusSeriesId}
-                onSeriesChanged={() => setRepeatingNightsKey((key) => key + 1)}
+                onSeriesChanged={refreshCalendar}
               />
             )}
 

@@ -149,7 +149,9 @@ describe('the private bookings list output', () => {
 })
 
 describe('the private bookings calendar', () => {
-  it('reads upcoming bookings from the table, not the money view', async () => {
+  // Past bookings stay on the calendar: a completed or cancelled hire is part of the record
+  // (owner decision, 27 November 2026).
+  it('reads past and upcoming bookings from the table, not the money view', async () => {
     state.db = createFakeSupabase({
       private_bookings: [
         { ...BOOKINGS[0], id: 'past', event_date: '2000-01-01' },
@@ -160,7 +162,7 @@ describe('the private bookings calendar', () => {
 
     const { data } = await fetchPrivateBookingsForCalendar()
 
-    expect(data.map((row) => row.id)).toEqual(['future'])
+    expect(data.map((row) => row.id).sort()).toEqual(['future', 'past'])
     expect(from.mock.calls.map(([table]) => table)).toEqual(['private_bookings'])
   })
 })

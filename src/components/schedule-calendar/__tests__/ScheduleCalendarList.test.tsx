@@ -1,8 +1,8 @@
 // src/components/schedule-calendar/__tests__/ScheduleCalendarList.test.tsx
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
-import { addDays, format, subDays } from 'date-fns'
+import { describe, it, expect } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import { addDays, addMonths, format, subDays } from 'date-fns'
 import { ScheduleCalendarList } from '../ScheduleCalendarList'
 import type { CalendarEntry } from '../types'
 
@@ -44,26 +44,6 @@ function makeEntry(overrides: Partial<CalendarEntry> = {}): CalendarEntry {
 const yesterday = atNoon(subDays(new Date(), 1))
 const tomorrow = atNoon(addDays(new Date(), 1))
 const yesterdayLabel = format(yesterday, 'EEEE d MMMM')
-const tomorrowLabel = format(tomorrow, 'EEEE d MMMM')
-
-type ScrollIntoView = typeof Element.prototype.scrollIntoView
-let scrollSpy: ReturnType<typeof vi.fn<ScrollIntoView>>
-
-beforeEach(() => {
-  // jsdom does not implement scrollIntoView
-  scrollSpy = vi.fn<ScrollIntoView>()
-  Element.prototype.scrollIntoView = scrollSpy
-  // Run the component's requestAnimationFrame callback synchronously
-  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
-    cb(0)
-    return 0
-  })
-  vi.stubGlobal('cancelAnimationFrame', () => {})
-})
-
-afterEach(() => {
-  vi.unstubAllGlobals()
-})
 
 describe('ScheduleCalendarList', () => {
   const pastAndFutureEntries = [
@@ -71,50 +51,57 @@ describe('ScheduleCalendarList', () => {
     makeEntry({ id: 'future', title: 'Future event', start: tomorrow }),
   ]
 
-  it('should render past date groups when hidePast is not set', () => {
-    render(<ScheduleCalendarList entries={pastAndFutureEntries} />)
-    expect(screen.getByText(yesterdayLabel)).toBeInTheDocument()
-    expect(screen.getByText('Past event')).toBeInTheDocument()
-    expect(screen.getByText(tomorrowLabel)).toBeInTheDocument()
-    expect(screen.getByText('Today')).toBeInTheDocument()
+  it('lists every day of a past month, with no Today card', () => {
+    const lastMonth = addMonths(new Date(), -1)
+    const day = atNoon(new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 10))
+    render(
+      <ScheduleCalendarList
+        entries={[makeEntry({ id: 'old', title: 'Old event', start: day })]}
+        month={new Date(lastMonth.getFullYear(), lastMonth.getMonth(), 1)}
+      />
+    )
+    expect(screen.getByText('Old event')).toBeInTheDocument()
+    expect(screen.queryByText('Today')).not.toBeInTheDocument()
   })
 
-  it('should hide pre-today date groups when hidePast is true', () => {
-    render(<ScheduleCalendarList entries={pastAndFutureEntries} hidePast />)
-    expect(screen.queryByText(yesterdayLabel)).not.toBeInTheDocument()
-    expect(screen.queryByText('Past event')).not.toBeInTheDocument()
-    expect(screen.getByText(tomorrowLabel)).toBeInTheDocument()
-    expect(screen.getByText('Future event')).toBeInTheDocument()
+  it('leaves out days of other months, including the spill-over of a multi-day entry', () => {
+    const thisMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    const nextMonthDay = atNoon(addMonths(thisMonth, 1))
+    render(
+      <ScheduleCalendarList
+        entries={[makeEntry({ id: 'next', title: 'Next month event', start: nextMonthDay })]}
+        month={thisMonth}
+      />
+    )
+    expect(screen.queryByText('Next month event')).not.toBeInTheDocument()
   })
 
-  it('should keep the Today group header and empty state when hidePast is true and today has no entries', () => {
-    render(<ScheduleCalendarList entries={pastAndFutureEntries} hidePast />)
+  it('opens the current month on today, with earlier days behind a button that shows them', () => {
+    const thisMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+    const entries = [makeEntry({ id: 'future', title: 'Future event', start: tomorrow })]
+    // Only add the earlier entry when yesterday is in this month (not on the 1st).
+    if (yesterday.getMonth() === thisMonth.getMonth()) {
+      entries.push(makeEntry({ id: 'past', title: 'Past event', start: yesterday }))
+    }
+    render(<ScheduleCalendarList entries={entries} month={thisMonth} />)
     expect(screen.getByText('Today')).toBeInTheDocument()
     expect(screen.getByText('No entries today')).toBeInTheDocument()
+    if (yesterday.getMonth() === thisMonth.getMonth()) {
+      expect(screen.queryByText('Past event')).not.toBeInTheDocument()
+      fireEvent.click(screen.getByRole('button', { name: /Show earlier days this month \(1 item\)/ }))
+      expect(screen.getByText(yesterdayLabel)).toBeInTheDocument()
+      expect(screen.getByText('Past event')).toBeInTheDocument()
+    }
   })
 
-  it('should keep entries dated today when hidePast is true', () => {
-    const entries = [
-      makeEntry({ id: 'past', title: 'Past event', start: yesterday }),
-      makeEntry({ id: 'today', title: 'Today event', start: atNoon(new Date()) }),
-    ]
-    render(<ScheduleCalendarList entries={entries} hidePast />)
-    expect(screen.getByText('Today event')).toBeInTheDocument()
-    expect(screen.queryByText('Past event')).not.toBeInTheDocument()
-  })
-
-  it('should scroll the Today group into view when hidePast is false', () => {
-    render(<ScheduleCalendarList entries={pastAndFutureEntries} />)
-    expect(scrollSpy).toHaveBeenCalledTimes(1)
-  })
-
-  it('should not scroll when hidePast is true', () => {
-    render(<ScheduleCalendarList entries={pastAndFutureEntries} hidePast />)
-    expect(scrollSpy).not.toHaveBeenCalled()
+  it('says so when a month has nothing on it', () => {
+    const lastYear = new Date(new Date().getFullYear() - 1, 0, 1)
+    render(<ScheduleCalendarList entries={[]} month={lastYear} />)
+    expect(screen.getByText(`Nothing on the calendar in ${format(lastYear, 'MMMM yyyy')}`)).toBeInTheDocument()
   })
 
   it('shows an icon-backed item type label as well as the colour', () => {
-    render(<ScheduleCalendarList entries={[makeEntry({ title: 'Accessible event' })]} hidePast />)
+    render(<ScheduleCalendarList entries={[makeEntry({ title: 'Accessible event' })]} />)
     expect(screen.getByText('Event')).toBeInTheDocument()
     expect(screen.getByText('Accessible event').closest('[data-entry-kind]')).toHaveAttribute('data-entry-kind', 'event')
   })
@@ -123,7 +110,6 @@ describe('ScheduleCalendarList', () => {
     render(
       <ScheduleCalendarList
         entries={[makeEntry({ title: 'Cancelled event', status: 'cancelled', statusLabel: 'Cancelled' })]}
-        hidePast
       />
     )
     const row = screen.getByText('Cancelled event').closest('[data-entry-kind]')

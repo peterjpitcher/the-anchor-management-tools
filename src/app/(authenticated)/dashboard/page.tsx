@@ -1,6 +1,9 @@
 import { formatDate, getLocalIsoDateDaysAhead, getTodayIsoDate } from '@/lib/dateUtils'
 import { refreshDashboard } from './actions'
 import UpcomingScheduleCalendar from './UpcomingScheduleCalendar'
+import { getVenueCalendarMonth } from '@/app/actions/venue-calendar'
+import { currentCalendarMonth, isCalendarMonth } from '@/lib/calendar/month-window'
+import { CAL_MONTH_PARAM } from '@/components/schedule-calendar/url-state'
 import { loadDashboardSnapshot } from './dashboard-data'
 import { checkUserPermission } from '@/app/actions/rbac'
 import { countOpenEventPaymentExceptions } from '@/app/actions/event-payment-exceptions'
@@ -52,17 +55,19 @@ function getInvoiceVendorName(vendor: unknown): string {
   return (vendor as { name?: string | null }).name ?? 'No Vendor'
 }
 
-function uniqueById<T extends { id: string }>(items: T[]): T[] {
-  const seen = new Set<string>()
-  return items.filter((item) => {
-    if (seen.has(item.id)) return false
-    seen.add(item.id)
-    return true
-  })
-}
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  // The calendar's month comes from the URL (calMonth), so a refresh or a pasted link opens the
+  // month that was on screen. Loaded here so the first paint is not empty; every other month
+  // is loaded by the calendar itself as it is paged to.
+  const params = await searchParams
+  const requestedMonth = typeof params[CAL_MONTH_PARAM] === 'string' ? params[CAL_MONTH_PARAM] : null
+  const calendarMonth = requestedMonth && isCalendarMonth(requestedMonth) ? requestedMonth : currentCalendarMonth()
 
-export default async function DashboardPage() {
-  const [snapshot, canManageEvents, canManageSettings, paidNeedsAction, unbookedReplies] = await Promise.all([
+  const [snapshot, canManageEvents, canManageSettings, paidNeedsAction, unbookedReplies, calendarMonthResult] = await Promise.all([
     loadDashboardSnapshot(),
     checkUserPermission('events', 'manage'),
     checkUserPermission('settings', 'manage'),
@@ -71,6 +76,8 @@ export default async function DashboardPage() {
     countOpenEventPaymentExceptions().catch(() => ({ count: 0, eventId: null })),
     // BK-034: event text replies nobody could book, live for the same reason.
     listUnbookedEventReplies().catch(() => ({ data: [] as UnbookedEventReply[] })),
+    // Read live, outside the cached snapshot, through the same loader /events uses.
+    getVenueCalendarMonth({ month: calendarMonth }).catch(() => ({ data: undefined })),
   ])
   // Calendar notes are written on events:manage, with settings:manage kept as a
   // fallback so nobody loses access. Gating on settings:manage alone meant only
@@ -336,39 +343,14 @@ export default async function DashboardPage() {
     { label: 'New Invoice', href: '/invoices/new', permitted: snapshot.invoices.permitted },
   ]
 
-  // --- Calendar Data ---
-  const calendarEvents = snapshot.events.permitted
-    ? [...snapshot.events.past, ...snapshot.events.today, ...snapshot.events.upcoming]
-    : []
-  const calendarPrivateBookings = snapshot.privateBookings.permitted
-    ? [...snapshot.privateBookings.past, ...snapshot.privateBookings.upcoming]
-    : []
-  const calendarBalanceDueDates = snapshot.privateBookings.permitted
-    ? snapshot.privateBookings.balanceDueDates
-    : []
-  const calendarEmployeeBirthdays = snapshot.employees.permitted
-    ? snapshot.employees.birthdays
-    : []
-  const calendarParkingBookings = snapshot.parking.permitted
-    ? uniqueById([...snapshot.parking.past, ...snapshot.parking.upcoming])
-    : []
-
   return (
     <DashboardClient
       subtitle={subtitle}
       canViewAuditLog={canManageSettings}
       calendar={
         <UpcomingScheduleCalendar
-          events={calendarEvents}
-          calendarNotes={calendarNotes}
-          privateBookings={calendarPrivateBookings}
-          balanceDueDates={calendarBalanceDueDates}
-          employeeBirthdays={calendarEmployeeBirthdays}
-          specialHours={snapshot.events.specialHours}
-          parkingBookings={calendarParkingBookings}
-          marketingSends={snapshot.marketing.calendarSends}
+          initialData={calendarMonthResult.data ?? null}
           canManageCalendarNotes={canManageCalendarNotes}
-          dailyOps={snapshot.dailyOps}
         />
       }
       revenueData={revenueData}

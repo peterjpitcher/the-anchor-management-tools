@@ -11,12 +11,7 @@ import { getLocalIsoDateDaysAgo, getLocalIsoDateDaysAhead, getTodayIsoDate } fro
 import { displayName } from '@/lib/employees/display-name'
 import { DEFAULT_CALENDAR_NOTE_COLOUR } from '@/lib/rota/shift-template-colours'
 import type { ScheduleDailyOps } from '@/components/schedule-calendar'
-import {
-  readBirthdays,
-  readMarketingSends,
-  readSpecialHours,
-  type CalendarMarketingSend,
-} from '@/lib/calendar/datasets'
+import { readSpecialHours } from '@/lib/calendar/datasets'
 import { startOfWeek, subWeeks, format, addDays, differenceInCalendarDays } from 'date-fns'
 import {
   buildPrivateBookingBalanceDueSummaries,
@@ -72,7 +67,6 @@ type EventsSnapshot = {
   permitted: boolean
   today: EventSummary[]
   upcoming: EventSummary[]
-  past: EventSummary[]
   calendarNotes: CalendarNoteSummary[]
   specialHours: SpecialHoursSummary[]
   totalUpcoming: number
@@ -114,7 +108,6 @@ type PrivateBookingSummary = {
 type PrivateBookingsSnapshot = {
   permitted: boolean
   upcoming: PrivateBookingSummary[]
-  past: PrivateBookingSummary[]
   balanceDueDates: PrivateBookingBalanceDueSummary[]
   totalUpcoming: number
   /**
@@ -140,7 +133,6 @@ type DashboardParkingBookingSummary = {
 type ParkingSnapshot = {
   permitted: boolean
   upcoming: DashboardParkingBookingSummary[]
-  past: DashboardParkingBookingSummary[]
   totalUpcoming: number
   arrivalsToday: number
   pendingPayments: number
@@ -175,16 +167,7 @@ type InvoicesSnapshot = {
 type EmployeesSnapshot = {
   permitted: boolean
   activeCount: number
-  birthdays: EmployeeBirthdaySummary[]
   error?: string
-}
-
-type EmployeeBirthdaySummary = {
-  employee_id: string
-  employee_name: string
-  occurrence_date: string
-  turning_age: number | null
-  job_title: string | null
 }
 
 type ReceiptsSnapshot = {
@@ -276,13 +259,6 @@ type RotaTodaySnapshot = {
   error?: string
 }
 
-type MarketingSnapshot = {
-  permitted: boolean
-  /** Campaign sends for the calendar. Empty when not permitted. */
-  calendarSends: CalendarMarketingSend[]
-  error?: string
-}
-
 type ProfileSnapshot = {
   permitted: boolean
   email: string | null
@@ -309,7 +285,6 @@ export type DashboardSnapshot = {
   tableBookings: TableBookingsSnapshot
   systemHealth: SystemHealthSnapshot
   rotaToday: RotaTodaySnapshot
-  marketing: MarketingSnapshot
   /** Per-day covers booked + staff on rota, for the schedule operational notes */
   dailyOps: ScheduleDailyOps
 }
@@ -347,48 +322,6 @@ function hasModuleAccess(permissions: Map<string, Set<string>>, module: string) 
   }
 
   return false
-}
-
-function toLocalIsoDate(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-}
-
-function getBirthdayOccurrencesInRange(input: {
-  employee_id: string
-  first_name: string | null
-  last_name: string | null
-  preferred_name: string | null
-  job_title: string | null
-  date_of_birth: string | null
-}, startIso: string, endIso: string): EmployeeBirthdaySummary[] {
-  if (!input.date_of_birth) return []
-
-  const dob = new Date(`${input.date_of_birth}T12:00:00`)
-  if (Number.isNaN(dob.getTime())) return []
-
-  const start = new Date(`${startIso}T12:00:00`)
-  const end = new Date(`${endIso}T12:00:00`)
-  const name = displayName(input, 'Employee')
-  const out: EmployeeBirthdaySummary[] = []
-
-  for (let year = start.getFullYear(); year <= end.getFullYear(); year += 1) {
-    let occurrence = new Date(year, dob.getMonth(), dob.getDate(), 12, 0, 0, 0)
-    if (occurrence.getMonth() !== dob.getMonth()) {
-      occurrence = new Date(year, 1, 28, 12, 0, 0, 0)
-    }
-    const iso = toLocalIsoDate(occurrence)
-    if (iso < startIso || iso > endIso) continue
-
-    out.push({
-      employee_id: input.employee_id,
-      employee_name: name,
-      occurrence_date: iso,
-      turning_age: year - dob.getFullYear(),
-      job_title: input.job_title,
-    })
-  }
-
-  return out
 }
 
 async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnapshot> {
@@ -437,7 +370,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       permitted: hasModuleAccess(permissionsMap, 'events'),
       today: [],
       upcoming: [],
-      past: [],
       calendarNotes: [],
       specialHours: [],
       totalUpcoming: 0,
@@ -464,7 +396,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const privateBookings: PrivateBookingsSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'private_bookings'),
       upcoming: [],
-      past: [],
       balanceDueDates: [],
       totalUpcoming: 0,
     }
@@ -472,7 +403,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const parking: ParkingSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'parking'),
       upcoming: [],
-      past: [],
       totalUpcoming: 0,
       arrivalsToday: 0,
       pendingPayments: 0,
@@ -491,7 +421,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const employees: EmployeesSnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'employees'),
       activeCount: 0,
-      birthdays: [],
     }
 
     const receipts: ReceiptsSnapshot = {
@@ -562,11 +491,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
     const rotaToday: RotaTodaySnapshot = {
       permitted: hasModuleAccess(permissionsMap, 'rota'),
       staffOnRota: [],
-    }
-
-    const marketing: MarketingSnapshot = {
-      permitted: hasModuleAccess(permissionsMap, 'marketing'),
-      calendarSends: [],
     }
 
     // Per-day covers + staff for the schedule operational notes. Populated in
@@ -670,65 +594,35 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       events.permitted ? (async () => {
         try {
-          const [upcomingResult, pastResult] = await Promise.all([
-            supabase
-              .from('events')
-              .select(
-                `
-                  id,
-                  name,
-                  date,
-                  time,
-                  capacity,
-                  price,
-                  event_status,
-                  brief,
-                  short_description,
-                  long_description,
-                  hero_image_url,
-                  poster_image_url,
-                  thumbnail_image_url
-                `,
-                { count: 'exact' }
-              )
-              .gte('date', todayIso)
-              .order('date', { ascending: true })
-              .order('time', { ascending: true })
-              .range(0, 199),
-            supabase
-              .from('events')
-              .select(
-                `
-                  id,
-                  name,
-                  date,
-                  time,
-                  capacity,
-                  price,
-                  event_status,
-                  brief,
-                  short_description,
-                  long_description,
-                  hero_image_url,
-                  poster_image_url,
-                  thumbnail_image_url
-                `
-              )
-              .gte('date', eventsLookbackIso)
-              .lt('date', todayIso)
-              .order('date', { ascending: false })
-              .order('time', { ascending: false })
-              .range(0, 199),
-          ])
+          const upcomingResult = await supabase
+            .from('events')
+            .select(
+              `
+                id,
+                name,
+                date,
+                time,
+                capacity,
+                price,
+                event_status,
+                brief,
+                short_description,
+                long_description,
+                hero_image_url,
+                poster_image_url,
+                thumbnail_image_url
+              `,
+              { count: 'exact' }
+            )
+            .gte('date', todayIso)
+            .order('date', { ascending: true })
+            .order('time', { ascending: true })
+            .range(0, 199)
 
           if (upcomingResult.error) throw upcomingResult.error
-          if (pastResult.error) throw pastResult.error
 
-          // One grouped bookings query keyed on the union of upcoming + past
-          // event IDs. Includes the full "held seat" lifecycle so past events
-          // still show the correct count after the review cron transitions
-          // bookings from `confirmed` to `visited_waiting_for_review`, then
-          // `review_clicked` or `completed`.
+          // One grouped bookings query keyed on the upcoming event IDs, counting
+          // the full "held seat" lifecycle (confirmed through completed).
           // Statuses that occupy a seat. Kept in step with
           // BOOKED_BOOKING_STATUSES in src/lib/events/stats.ts, which is what
           // /events counts with; the two surfaces must not disagree about the
@@ -742,7 +636,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           ]
           const summaryEventIds = [
             ...(upcomingResult.data ?? []).map((event) => event.id as string),
-            ...(pastResult.data ?? []).map((event) => event.id as string),
           ]
 
           const bookedSeatsByEvent = new Map<string, number>()
@@ -813,11 +706,9 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           }
 
           const upcoming = (upcomingResult.data ?? []).map(toSummary)
-          const pastDescending = (pastResult.data ?? []).map(toSummary)
 
           events.today = upcoming.filter((event) => event.date === todayIso)
           events.upcoming = upcoming.filter((event) => event.date !== todayIso)
-          events.past = [...pastDescending].reverse()
           events.totalUpcoming = typeof upcomingResult.count === 'number' ? upcomingResult.count : events.upcoming.length
           events.nextUpcoming = events.upcoming[0]
         } catch (error) {
@@ -865,24 +756,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           events.specialHours = specialHoursResult.data
         } catch (error) {
           console.error('Failed to load dashboard calendar notes or special hours:', error)
-        }
-      })() : Promise.resolve(),
-
-      // Marketing sends for the calendar. Same shared reader as /events, and the
-      // same admin client it requires: marketing_campaigns is service-role only,
-      // so the `marketing` module check above is the gate.
-      marketing.permitted ? (async () => {
-        try {
-          const sendsResult = await readMarketingSends(
-            supabase,
-            eventsLookbackIso,
-            calendarNotesHorizonIso,
-          )
-          if (sendsResult.status === 'failed') throw new Error(sendsResult.message)
-          marketing.calendarSends = sendsResult.data
-        } catch (error) {
-          console.error('Failed to load dashboard marketing sends:', error)
-          marketing.error = 'Failed to load marketing sends'
         }
       })() : Promise.resolve(),
 
@@ -960,8 +833,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       privateBookings.permitted ? (async () => {
         try {
-          const past90Iso = getLocalIsoDateDaysAgo(90)
-
           const toPbSummary = (booking: {
             id: string
             customer_name?: string | null
@@ -1003,20 +874,11 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
                   : null,
           })
 
-          // Upcoming, recent past, and balance-due markers run in parallel.
-          const [upcomingPb, pastPb, balanceDueResult] = await Promise.all([
+          // Upcoming and balance-due markers run in parallel.
+          const [upcomingPb, balanceDueResult] = await Promise.all([
             PrivateBookingService.getBookings({
               fromDate: todayIso,
               limit: 200,
-              useAdmin: true,
-            }),
-            PrivateBookingService.getBookings({
-              fromDate: past90Iso,
-              toDate: todayIso,
-              // Service orders ASC then applies limit at the DB layer, so a 50
-              // cap would return the EARLIEST 50 of the 90-day window. We want
-              // the most recent 50, so pull a larger window and slice below.
-              limit: 500,
               useAdmin: true,
             }),
             supabase
@@ -1058,15 +920,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
           privateBookings.upcoming = filtered.map(toPbSummary)
           privateBookings.totalUpcoming = privateBookings.upcoming.length
 
-          // Past: `toDate: todayIso` is inclusive so drop any rows dated today
-          // (those belong to upcoming). Rows arrive ascending from the service
-          // (order by event_date ASC); cap at 50 and keep chronological
-          // ascending to mirror events.past.
-          const pastRows = (pastPb.data ?? []).filter((booking) => {
-            const eventDate = (booking.event_date as string) ?? null
-            return eventDate != null && eventDate < todayIso
-          })
-          privateBookings.past = pastRows.slice(-50).map(toPbSummary)
           // Balance markers show the AMOUNT as their subtitle, so they need
           // pricing access, not just private-bookings access. The staff role
           // holds view without view_pricing, and used to see private-hire totals
@@ -1082,9 +935,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       parking.permitted ? (async () => {
         try {
-          const nowIso = new Date().toISOString()
-          const past90Iso = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString()
-
           const toParkingSummary = (booking: {
             id: string
             reference: string | null
@@ -1107,56 +957,31 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
             payment_status: (booking.payment_status as string) ?? null,
           })
 
-          const [upcomingRes, pastRes] = await Promise.all([
-            supabase
-              .from('parking_bookings')
-              .select(
-                `
-                  id,
-                  reference,
-                  customer_first_name,
-                  customer_last_name,
-                  vehicle_registration,
-                  start_at,
-                  end_at,
-                  status,
-                  payment_status
-                `,
-                { count: 'exact' }
-              )
-              .gte('end_at', todayIso)
-              .lte('start_at', calendarNotesHorizonIso)
-              .in('status', ['pending_payment', 'confirmed'])
-              .order('start_at', { ascending: true })
-              .range(0, 199),
-            supabase
-              .from('parking_bookings')
-              .select(
-                `
-                  id,
-                  reference,
-                  customer_first_name,
-                  customer_last_name,
-                  vehicle_registration,
-                  start_at,
-                  end_at,
-                  status,
-                  payment_status
-                `
-              )
-              .lt('end_at', nowIso)
-              .gte('start_at', past90Iso)
-              .order('end_at', { ascending: false })
-              .range(0, 49),
-          ])
+          const upcomingRes = await supabase
+            .from('parking_bookings')
+            .select(
+              `
+                id,
+                reference,
+                customer_first_name,
+                customer_last_name,
+                vehicle_registration,
+                start_at,
+                end_at,
+                status,
+                payment_status
+              `,
+              { count: 'exact' }
+            )
+            .gte('end_at', todayIso)
+            .lte('start_at', calendarNotesHorizonIso)
+            .in('status', ['pending_payment', 'confirmed'])
+            .order('start_at', { ascending: true })
+            .range(0, 199)
 
           if (upcomingRes.error) throw upcomingRes.error
-          if (pastRes.error) throw pastRes.error
 
           parking.upcoming = (upcomingRes.data ?? []).map(toParkingSummary)
-
-          const pastDescending = (pastRes.data ?? []).map(toParkingSummary)
-          parking.past = [...pastDescending].reverse()
 
           parking.totalUpcoming =
             typeof upcomingRes.count === 'number' ? upcomingRes.count : parking.upcoming.length
@@ -1297,19 +1122,14 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
 
       employees.permitted ? (async () => {
         try {
-          const [activeCountResult, birthdaysResult] = await Promise.all([
-            supabase
-              .from('employees')
-              .select('employee_id', { count: 'exact', head: true })
-              .in('status', ['Active', 'Started Separation']),
-            readBirthdays(supabase, eventsLookbackIso, calendarNotesHorizonIso),
-          ])
+          const activeCountResult = await supabase
+            .from('employees')
+            .select('employee_id', { count: 'exact', head: true })
+            .in('status', ['Active', 'Started Separation'])
 
           if (activeCountResult.error) throw activeCountResult.error
-          if (birthdaysResult.status === 'failed') throw new Error(birthdaysResult.message)
 
           employees.activeCount = activeCountResult.count ?? 0
-          employees.birthdays = birthdaysResult.data
         } catch (error) {
           console.error('Failed to load dashboard employee metrics:', error)
           employees.error = 'Failed to load employee metrics'
@@ -1575,7 +1395,6 @@ async function fetchDashboardSnapshotImpl(userId: string): Promise<DashboardSnap
       tableBookings,
       systemHealth,
       rotaToday,
-      marketing,
       dailyOps,
     }
 }

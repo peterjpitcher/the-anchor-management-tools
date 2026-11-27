@@ -43,7 +43,14 @@ describe('calendar URL state', () => {
         expect(filters.kinds).toEqual(['event', 'parking'])
         expect(filters.missing).toEqual(['brief'])
         expect(filters.hideCancelled).toBe(true)
-        expect(filters.showCancelledPrivateHire).toBe(false)
+    })
+
+    it('ignores the retired showCancelledHire flag from an old link', () => {
+        const filters = parseCalendarFilters(
+            new URLSearchParams('calFlags=showCancelledHire'),
+            EMPTY_CALENDAR_FILTERS,
+        )
+        expect(filters).toEqual(EMPTY_CALENDAR_FILTERS)
     })
 
     it('drops unknown values instead of failing the whole parse', () => {
