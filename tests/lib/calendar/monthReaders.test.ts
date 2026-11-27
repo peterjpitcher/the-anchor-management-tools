@@ -9,6 +9,7 @@ import {
   readCalendarNotesInRange,
   readParkingInRange,
   readPrivateBookingsInRange,
+  readTextMessagesByDate,
 } from '@/lib/calendar/datasets'
 
 /**
@@ -132,5 +133,42 @@ describe('readBalanceDues', () => {
     expect([...byId.keys()].sort()).toEqual(['called-off', 'owing', 'paid'])
     expect(byId.get('paid')?.settled).toBe(true)
     expect(byId.get('owing')?.settled).toBeFalsy()
+  })
+})
+
+describe('readTextMessagesByDate', () => {
+  it('counts outbound texts per London day, split promotional and service, with failures', async () => {
+    const msg = (id: string, created_at: string, template_key: string | null, status = 'delivered', direction = 'outbound') => ({
+      id, created_at, template_key, status, direction, body: 'never read', to_number: '+447700900000',
+    })
+    const db = createFakeSupabase({
+      messages: [
+        msg('a', '2026-06-10T09:00:00.000Z', 'event_general_promo_7d'),
+        msg('b', '2026-06-10T10:00:00.000Z', 'bulk_sms_campaign'),
+        msg('c', '2026-06-10T11:00:00.000Z', 'table_booking_confirmation', 'failed'),
+        // 23:30 UTC on 10 June is 00:30 on 11 June in London.
+        msg('d', '2026-06-10T23:30:00.000Z', null, 'undelivered'),
+        msg('in', '2026-06-10T12:00:00.000Z', null, 'received', 'inbound'),
+        msg('before', '2026-05-31T22:59:00.000Z', null),
+        msg('after', END_INSTANT, null),
+        // Not sent: still scheduled, or cancelled before it went.
+        msg('pending', '2026-06-12T10:00:00.000Z', null, 'scheduled'),
+        msg('called-off', '2026-06-12T11:00:00.000Z', null, 'cancelled'),
+        // Held through quiet hours: recorded at 22:30 on 14 June, sent 09:00 London on 15 June.
+        { ...msg('deferred', '2026-06-14T21:30:00.000Z', null), scheduled_for: '2026-06-15T08:00:00.000Z' },
+        // Recorded the evening before the grid, sent on its first morning: counted.
+        { ...msg('deferred-in', '2026-05-31T21:30:00.000Z', null), scheduled_for: '2026-06-01T08:00:00.000Z' },
+      ],
+    })
+
+    const result = await readTextMessagesByDate(asClient(db), START_INSTANT, END_INSTANT)
+
+    expect(result.status).toBe('ok')
+    expect(result.data).toEqual([
+      { date: '2026-06-01', total: 1, promotional: 0, service: 1, failed: 0 },
+      { date: '2026-06-10', total: 3, promotional: 2, service: 1, failed: 1 },
+      { date: '2026-06-11', total: 1, promotional: 0, service: 1, failed: 1 },
+      { date: '2026-06-15', total: 1, promotional: 0, service: 1, failed: 0 },
+    ])
   })
 })

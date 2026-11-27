@@ -39,6 +39,7 @@ type PageResult = { data: ShiftRow[] | null; error: { message: string } | null }
 type ShiftQuery = {
   select: (columns: string) => ShiftQuery
   gte: (column: string, value: string) => ShiftQuery
+  neq: (column: string, value: string) => ShiftQuery
   lte: (column: string, value: string) => ShiftQuery
   order: (column: string) => ShiftQuery
   range: (from: number, to: number) => Promise<PageResult>
@@ -73,10 +74,15 @@ function createCalendarClient(options: {
   rangeCalls: RangeCall[]
   orderCalls: string[]
   filterCalls: FilterCall[]
+  neqCalls: FilterCall[]
   pageError?: { message: string }
 }): SupabaseClient {
   const shiftQuery: ShiftQuery = {
     select: () => shiftQuery,
+    neq: (column, value) => {
+      options.neqCalls.push([column, value])
+      return shiftQuery
+    },
     gte: (column, value) => {
       options.filterCalls.push([column, value])
       return shiftQuery
@@ -128,6 +134,7 @@ describe('readStaffByDate paging', () => {
       rangeCalls: [],
       orderCalls: [],
       filterCalls: [],
+      neqCalls: [],
     })
 
     const result = await readStaffByDate(client, START_ISO, END_ISO)
@@ -147,12 +154,14 @@ describe('readStaffByDate paging', () => {
     const rangeCalls: RangeCall[] = []
     const orderCalls: string[] = []
     const filterCalls: FilterCall[] = []
+    const neqCalls: FilterCall[] = []
     const client = createCalendarClient({
       shifts: buildShifts(),
       employees: buildEmployees(),
       rangeCalls,
       orderCalls,
       filterCalls,
+      neqCalls,
     })
 
     await readStaffByDate(client, START_ISO, END_ISO)
@@ -170,6 +179,11 @@ describe('readStaffByDate paging', () => {
       ['shift_date', START_ISO],
       ['shift_date', END_ISO],
     ])
+    // A sick shift is someone who did not work: left off every page.
+    expect(neqCalls).toEqual([
+      ['status', 'sick'],
+      ['status', 'sick'],
+    ])
   })
 
   it('returns the existing failure value rather than throwing when a page fails', async () => {
@@ -181,6 +195,7 @@ describe('readStaffByDate paging', () => {
       rangeCalls,
       orderCalls: [],
       filterCalls: [],
+      neqCalls: [],
       pageError: { message: 'statement timeout' },
     })
 

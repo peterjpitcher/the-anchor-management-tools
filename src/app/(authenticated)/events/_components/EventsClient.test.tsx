@@ -62,6 +62,7 @@ function monthData(month: string): VenueCalendarMonthData {
     calendarNotes: [],
     parkingBookings: [],
     marketingSends: [],
+    textMessages: [],
     dailyOps: { coversByDate: {}, staffByDate: {}, hireGuestsByDate: {} },
     warnings: [],
   }

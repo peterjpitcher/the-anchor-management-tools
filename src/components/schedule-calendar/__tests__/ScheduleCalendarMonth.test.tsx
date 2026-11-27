@@ -60,3 +60,37 @@ describe('ScheduleCalendarMonth add-note affordance', () => {
     expect(screen.queryByLabelText(/Add note for/)).toBeNull()
   })
 })
+
+describe('ScheduleCalendarMonth past entries', () => {
+  const entry = (id: string, title: string, start: Date, end: Date, allDay: boolean) => ({
+    id, kind: 'special_hours' as const, title, start, end, allDay,
+    spansMultipleDays: false, endsNextDay: false, color: '#111827', subtitle: null,
+    status: null, statusLabel: null, onClickHref: null,
+    tooltipData: { kind: 'special_hours' as const, title, note: null, date: '2026-07-15', timeRange: null, isClosed: false, isKitchenClosed: false },
+  })
+
+  it("fades what has finished, but keeps today's all-day entries at full strength", () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date(2026, 6, 15, 14, 0))
+    try {
+      render(
+        <ScheduleCalendarMonth
+          entries={[
+            // All-day entries end at midnight at the start of their day.
+            entry('today', 'Today hours', new Date(2026, 6, 15), new Date(2026, 6, 15), true),
+            entry('yesterday', 'Yesterday hours', new Date(2026, 6, 14), new Date(2026, 6, 14), true),
+            entry('done', 'Morning slot', new Date(2026, 6, 15, 9), new Date(2026, 6, 15, 11), false),
+          ]}
+          anchor={ANCHOR}
+          firstDayOfWeek={1}
+        />
+      )
+      const block = (title: string) => screen.getByText(title).closest('a, button, div[class*="rounded-sm"]') as HTMLElement
+      expect(block('Today hours').className).not.toMatch(/opacity-70/)
+      expect(block('Yesterday hours').className).toMatch(/opacity-70/)
+      expect(block('Morning slot').className).toMatch(/opacity-70/)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})

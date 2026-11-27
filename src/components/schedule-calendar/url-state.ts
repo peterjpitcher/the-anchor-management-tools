@@ -26,6 +26,7 @@ const KINDS: CalendarEntryKind[] = [
     'calendar_note',
     'parking',
     'marketing_email',
+    'text_messages',
 ]
 
 const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/

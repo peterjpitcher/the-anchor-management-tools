@@ -17,6 +17,7 @@ const { checkUserPermission, canViewCalendarNotes, getCalendarEvents, readers, g
       readMarketingSends: vi.fn(async () => ok([])),
       readCoversByDate: vi.fn(async () => ok([{ date: '2026-03-07', covers: 40, hireGuests: 25 }])),
       readStaffByDate: vi.fn(async () => ok([{ date: '2026-03-07', staff: ['Sam'] }])),
+      readTextMessagesByDate: vi.fn(async () => ok([{ date: '2026-03-07', total: 3, promotional: 2, service: 1, failed: 0 }])),
     },
   }
 })
@@ -96,6 +97,12 @@ describe('getVenueCalendarMonth', () => {
       hireGuestsByDate: { '2026-03-07': 25 },
       staffByDate: { '2026-03-07': ['Sam'] },
     })
+    expect(result.data?.textMessages).toEqual([{ date: '2026-03-07', total: 3, promotional: 2, service: 1, failed: 0 }])
+    expect(readers.readTextMessagesByDate).toHaveBeenCalledWith(
+      expect.anything(),
+      '2026-02-23T00:00:00.000Z',
+      '2026-04-05T23:00:00.000Z',
+    )
     expect(result.data?.warnings).toEqual([])
   })
 
@@ -127,6 +134,9 @@ describe('getVenueCalendarMonth', () => {
     expect(readers.readCalendarNotesInRange).not.toHaveBeenCalled()
     expect(readers.readCoversByDate).not.toHaveBeenCalled()
     expect(readers.readStaffByDate).not.toHaveBeenCalled()
+    // Texts need messages:view.
+    expect(readers.readTextMessagesByDate).not.toHaveBeenCalled()
+    expect(result.data?.textMessages).toEqual([])
     expect(result.data?.balanceDueDates).toEqual([])
     expect(result.data?.warnings).toEqual([])
   })

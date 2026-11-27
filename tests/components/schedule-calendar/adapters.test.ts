@@ -5,6 +5,7 @@ import {
     privateBookingToEntry,
     calendarNoteToEntry,
     parkingToEntry,
+    textMessageDayToEntry,
 } from '@/components/schedule-calendar/adapters'
 
 describe('eventToEntry', () => {
@@ -39,6 +40,15 @@ describe('eventToEntry', () => {
         expect(entry.onClickHref).toBe('/events/e1')
         expect(entry.status).toBe('scheduled')
         expect(entry.tooltipData.kind).toBe('event')
+    })
+
+    it('labels a past scheduled event Held, and leaves a future or cancelled one alone', () => {
+        const now = new Date('2026-11-27T12:00:00.000Z')
+        const base = { id: 'e', name: 'n', time: '19:00', bookedSeatsCount: 30 }
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'scheduled' } as any, now).statusLabel).toBe('Held')
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'cancelled' } as any, now).statusLabel).toBe('Cancelled')
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'sold_out' } as any, now).statusLabel).toBe('Sold out')
+        expect(eventToEntry({ ...base, date: '2026-12-04', eventStatus: 'scheduled' } as any, now).statusLabel).toBeNull()
     })
 
     it('subtitle handles 0 / 1 seats', () => {
@@ -150,5 +160,27 @@ describe('parkingToEntry', () => {
         expect(entry?.id).toBe('park:p1')
         expect(entry?.onClickHref).toBe('/parking')
         expect(entry?.kind).toBe('parking')
+    })
+})
+
+describe('textMessageDayToEntry', () => {
+    it('is one all-day entry for the day, linking to Messages, with failures as its status', () => {
+        const entry = textMessageDayToEntry({ date: '2026-06-10', total: 12, promotional: 9, service: 3, failed: 2 })
+        expect(entry.kind).toBe('text_messages')
+        expect(entry.allDay).toBe(true)
+        expect(entry.title).toBe('12 texts sent')
+        expect(entry.subtitle).toBe('9 promotional, 3 service')
+        expect(entry.statusLabel).toBe('2 failed')
+        expect(entry.onClickHref).toBe('/messages')
+        expect(entry.start.getFullYear()).toBe(2026)
+        expect(entry.start.getMonth()).toBe(5)
+        expect(entry.start.getDate()).toBe(10)
+    })
+
+    it('reads naturally for a single service text', () => {
+        const entry = textMessageDayToEntry({ date: '2026-06-10', total: 1, promotional: 0, service: 1, failed: 0 })
+        expect(entry.title).toBe('1 text sent')
+        expect(entry.subtitle).toBeNull()
+        expect(entry.statusLabel).toBeNull()
     })
 })

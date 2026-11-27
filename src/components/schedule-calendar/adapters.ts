@@ -130,11 +130,15 @@ function resolveEventContent(event: EventOverview): CalendarEntryContent | undef
 
 // --- Event ---
 
-export function eventToEntry(event: EventOverview): CalendarEntry {
+export function eventToEntry(event: EventOverview, now: Date = new Date()): CalendarEntry {
     const start = parseLocalDate(event.date, event.time || '00:00')
     const end = addHours(start, 2) // D9 — fixed 2h
     const status = statusFromString(event.eventStatus ?? 'scheduled')
-    const content = resolveEventContent(event)
+    // A scheduled event whose time has gone was held. Its artwork and copy no longer matter, so
+    // a past event raises no content gaps (owner approval, 27 November 2026).
+    const isPast = end.getTime() < now.getTime()
+    const held = isPast && status === 'scheduled'
+    const content = isPast ? undefined : resolveEventContent(event)
     return {
         id: `evt:${event.id}`,
         kind: 'event',
@@ -147,7 +151,7 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
         color: kindColor('event'),
         subtitle: `${event.bookedSeatsCount ?? 0} booked`,
         status,
-        statusLabel: statusLabel(status),
+        statusLabel: held ? 'Held' : statusLabel(status),
         // Content readiness is OPTIONAL on purpose. A caller that does not load
         // the readiness columns must not have its events reported as missing
         // everything: `entryGaps` returns [] when `content` is absent, but would
@@ -603,5 +607,51 @@ export function marketingSendToEntry(send: MarketingSendInput): CalendarEntry | 
             statusLabel: marketingStatusLabel(send.status),
         },
         onClickHref: `/marketing/campaigns/${send.id}`,
+    }
+}
+
+// --- Texts sent (one entry per day) ---
+
+/** Outbound texts on one London day, counted server-side. Bodies and numbers never leave it. */
+export interface TextMessageDay {
+    /** YYYY-MM-DD, London. */
+    date: string
+    total: number
+    /** Counted against a guest's two promotional texts a month (PROMOTIONAL_SMS_TEMPLATE_KEYS). */
+    promotional: number
+    /** Everything else: booking confirmations, reminders, replies and the like. */
+    service: number
+    /** Of the total, those the carrier refused or could not deliver. */
+    failed: number
+}
+
+/**
+ * The texts sent on a day, as one all-day entry. One per day rather than one per message: a busy
+ * promotion day sends a hundred, and the calendar answers "what did we send", not "to whom".
+ */
+export function textMessageDayToEntry(day: TextMessageDay): CalendarEntry {
+    const start = parseLocalDate(day.date)
+    const plural = day.total === 1 ? 'text' : 'texts'
+    return {
+        id: `sms:${day.date}`,
+        kind: 'text_messages',
+        title: `${day.total} ${plural} sent`,
+        start,
+        end: start,
+        allDay: true,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: kindColor('text_messages'),
+        subtitle: day.promotional > 0 ? `${day.promotional} promotional, ${day.service} service` : null,
+        status: null,
+        statusLabel: day.failed > 0 ? `${day.failed} failed` : null,
+        tooltipData: {
+            kind: 'text_messages',
+            total: day.total,
+            promotional: day.promotional,
+            service: day.service,
+            failed: day.failed,
+        },
+        onClickHref: '/messages',
     }
 }

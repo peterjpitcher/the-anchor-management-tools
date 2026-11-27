@@ -5,7 +5,8 @@ import { entryGaps } from '@/components/schedule-calendar/filters'
 const baseEvent = {
     id: 'e1',
     name: 'Quiz Night',
-    date: '2026-09-10',
+    // Future on purpose: a past event raises no content gaps.
+    date: '2099-09-10',
     time: '19:00',
     daysUntil: 3,
     bookedSeatsCount: 4,
@@ -51,6 +52,14 @@ describe('event content readiness', () => {
         // A partial record must not invent gaps for the fields it never saw.
         const entry = eventToEntry({ ...baseEvent, hasBrief: false })
         expect(entryGaps(entry)).toEqual(['brief'])
+    })
+
+    it('raises no gaps for an event that has already happened', () => {
+        const entry = eventToEntry(
+            { ...baseEvent, date: '2026-09-10', hasImage: false, hasBrief: false, hasDescription: false },
+            new Date('2026-11-27T12:00:00.000Z'),
+        )
+        expect(entryGaps(entry)).toEqual([])
     })
 
     it('ignores image URLs, because a caller that never loaded them passes null', () => {

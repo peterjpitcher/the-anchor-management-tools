@@ -174,7 +174,8 @@ export function buildDayLoads(input: {
   }
   for (const hire of input.hires) {
     const load = loads.get(hire.event_date)
-    if (!load || hire.date_tbd || (hire.status !== 'draft' && hire.status !== 'confirmed')) continue
+    // Completed hires arrive only when the caller asked for them (includeCompletedHires).
+    if (!load || hire.date_tbd || (hire.status !== 'draft' && hire.status !== 'confirmed' && hire.status !== 'completed')) continue
     const items = itemsByHire.get(hire.id) ?? []
     const roomNames = Array.from(new Set(items
       .filter((item) => item.item_type === 'space')
@@ -187,7 +188,9 @@ export function buildDayLoads(input: {
         const name = item.description?.trim() || 'Catering'
         return quantity > 1 ? `${name} x ${quantity}` : name
       })
-    const holdsRoom = privateBookingOccupiesSpace(hire, now)
+    // A completed hire happened: it held its room. Only the calendar asks for completed hires
+    // (includeCompletedHires), so for every other caller this is unchanged.
+    const holdsRoom = hire.status === 'completed' || privateBookingOccupiesSpace(hire, now)
     const fullName = [hire.customer_first_name, hire.customer_last_name]
       .filter((part): part is string => typeof part === 'string' && part.trim() !== '')
       .join(' ')
@@ -218,7 +221,16 @@ export function buildDayLoads(input: {
 export async function loadDayLoads(
   startIso: string,
   endIso: string,
-  options: { db?: DbClient; now?: Date; withHours?: boolean } = {},
+  options: {
+    db?: DbClient
+    now?: Date
+    withHours?: boolean
+    /**
+     * Count completed hires too. The venue calendar shows past days, where a hire that went ahead
+     * is `completed`; the FOH, BOH and rota screens look ahead and leave this off.
+     */
+    includeCompletedHires?: boolean
+  } = {},
 ): Promise<Map<string, DayLoad>> {
   const db = options.db ?? createAdminClient()
 
@@ -251,7 +263,7 @@ export async function loadDayLoads(
         .select('id, event_date, status, customer_name, customer_first_name, customer_last_name, start_time, end_time, guest_count, date_tbd, deposit_paid_date, hold_expiry')
         .gte('event_date', startIso)
         .lte('event_date', endIso)
-        .in('status', ['draft', 'confirmed'])
+        .in('status', options.includeCompletedHires ? ['draft', 'confirmed', 'completed'] : ['draft', 'confirmed'])
         .order('id')
         .range(from, to),
       { label: 'day load private hires' },

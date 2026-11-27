@@ -168,6 +168,7 @@ export function LiveVenueCalendar({
       calendarNotes={onScreen?.calendarNotes ?? []}
       parkingBookings={onScreen?.parkingBookings ?? []}
       marketingSends={onScreen?.marketingSends ?? []}
+      textMessages={onScreen?.textMessages ?? []}
       dailyOps={onScreen?.dailyOps}
       canManageCalendarNotes={canManageCalendarNotes}
       showFilters={showFilters}

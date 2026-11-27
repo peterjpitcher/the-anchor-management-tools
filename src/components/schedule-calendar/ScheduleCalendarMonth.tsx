@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, format } from 'date-fns'
+import { startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, isSameMonth, isSameDay, isToday, format, startOfDay } from 'date-fns'
 import { Badge } from '@/ds'
 import { cn } from '@/lib/utils'
 import type { CalendarEntry, ScheduleDailyOps } from './types'
@@ -320,6 +320,12 @@ interface EntryBlockProps {
 
 function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const isCancelled = entry.status === 'cancelled'
+    // Faded once it has finished, as the list view does, so a past day reads as done at a glance.
+    // An all-day entry (opening hours, a birthday, an untimed note) ends at midnight at the start
+    // of its day, so it is judged by date: today's still applies all day.
+    const isPastEntry = entry.allDay
+        ? entry.end.getTime() < startOfDay(new Date()).getTime()
+        : entry.end.getTime() < Date.now()
     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
     // Secondary text on the entry's own colour: the light or dark text colour, softened.
     const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'opacity-70'
@@ -377,6 +383,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const sharedClass = cn(
         'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-hidden focus-visible:shadow-ring',
         isCancelled && 'line-through',
+        isPastEntry && !entry.muted && 'opacity-70',
         entry.muted && 'opacity-60'
     )
     const sharedStyle = {

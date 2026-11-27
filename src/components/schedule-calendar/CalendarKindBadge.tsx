@@ -12,6 +12,7 @@ const KIND_ICONS: Record<CalendarEntryKind, IconName> = {
     calendar_note: 'edit',
     parking: 'mapPin',
     marketing_email: 'mail',
+    text_messages: 'message',
 }
 
 interface CalendarKindBadgeProps {

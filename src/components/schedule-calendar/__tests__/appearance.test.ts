@@ -19,6 +19,8 @@ describe('calendar appearance', () => {
       calendar_note: { color: '#7DD3FC', label: 'Calendar notes', shortLabel: 'Note' },
       parking: { color: '#16A34A', label: 'Parking', shortLabel: 'Parking' },
       marketing_email: { color: '#BE185D', label: 'Marketing emails', shortLabel: 'Email' },
+      // Neutral slate: clear of the parking green and the note blue for colour-blind readers.
+      text_messages: { color: '#475569', label: 'Texts sent', shortLabel: 'Texts' },
     })
   })
 

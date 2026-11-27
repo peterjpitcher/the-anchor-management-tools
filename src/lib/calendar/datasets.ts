@@ -4,6 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayName } from '@/lib/employees/display-name'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { loadDayLoads } from '@/services/day-load'
+import { toLocalIsoDate as toLondonIsoDate } from '@/lib/dateUtils'
+import { PROMOTIONAL_SMS_TEMPLATE_KEYS } from '@/lib/sms/promo-template-keys'
+import type { TextMessageDay } from '@/components/schedule-calendar/adapters'
 import {
   buildPrivateBookingBalanceDueSummaries,
   type DashboardPrivateBookingBalanceDueSummary,
@@ -367,7 +370,7 @@ export async function readCoversByDate(
   endIso: string,
 ): Promise<CalendarDataset<{ date: string; covers: number; hireGuests: number }>> {
   try {
-    const loads = await loadDayLoads(startIso, endIso, { db: client, withHours: false })
+    const loads = await loadDayLoads(startIso, endIso, { db: client, withHours: false, includeCompletedHires: true })
     return ok(
       [...loads.values()]
         .filter((load) => load.covers > 0 || load.privateHireGuests > 0)
@@ -403,6 +406,8 @@ export async function readStaffByDate(
         client
           .from('rota_shifts')
           .select('employee_id, shift_date, start_time')
+          // A sick shift is someone who did not work, so they are not on the day's list.
+          .neq('status', 'sick')
           .gte('shift_date', startIso)
           .lte('shift_date', endIso)
           .order('id')
@@ -669,4 +674,74 @@ export async function readCalendarNotesInRange(
     console.error('Failed to load calendar notes for the calendar:', error)
     return failed('Calendar notes could not be loaded.')
   }
+}
+
+// --- Texts sent ------------------------------------------------------------
+
+type OutboundMessageRow = {
+  created_at: string | null
+  template_key: string | null
+  status: string | null
+  /** Set when a text was held through quiet hours and handed to Twilio to send the next morning. */
+  scheduled_for: string | null
+}
+
+const PROMOTIONAL_KEYS = new Set<string>(PROMOTIONAL_SMS_TEMPLATE_KEYS)
+const FAILED_MESSAGE_STATUSES = new Set(['failed', 'undelivered'])
+/** Rows for texts that have not gone (yet, or ever): not "sent". */
+const UNSENT_MESSAGE_STATUSES = new Set(['scheduled', 'queued', 'accepted', 'cancelled', 'canceled'])
+/** Quiet hours hold a text overnight at most, so a day's lead covers one recorded the evening before. */
+const DEFERRAL_LEAD_MS = 24 * 60 * 60 * 1000
+
+/**
+ * Outbound texts in the window, counted per London day: how many, how many promotional (the keys
+ * that count towards a guest's monthly limit), and how many failed. Only counts leave the server;
+ * no message body, number or name is read. `messages` is read with the admin client after the
+ * caller's messages:view check, as the Messages page does.
+ */
+export async function readTextMessagesByDate(
+  adminClient: SupabaseClient,
+  startInstant: string,
+  endInstant: string,
+): Promise<CalendarDataset<TextMessageDay>> {
+  let rows: OutboundMessageRow[]
+  try {
+    rows = await fetchAllRows<OutboundMessageRow>(
+      (from, to) =>
+        adminClient
+          .from('messages')
+          .select('created_at, template_key, status, scheduled_for:metadata->>scheduled_for')
+          .eq('direction', 'outbound')
+          .gte('created_at', new Date(new Date(startInstant).getTime() - DEFERRAL_LEAD_MS).toISOString())
+          .lt('created_at', endInstant)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar texts sent' },
+    )
+  } catch (error) {
+    console.error('Failed to load texts for the calendar:', error)
+    return failed('Texts sent could not be loaded.')
+  }
+
+  const windowStart = new Date(startInstant).getTime()
+  const windowEnd = new Date(endInstant).getTime()
+  const byDate = new Map<string, TextMessageDay>()
+  for (const row of rows) {
+    // A text still scheduled, queued or cancelled has not been sent.
+    if (row.status && UNSENT_MESSAGE_STATUSES.has(row.status)) continue
+    // A text held through quiet hours went out when it was scheduled for, not when it was recorded.
+    const sentAt = row.scheduled_for || row.created_at
+    if (!sentAt) continue
+    const instant = new Date(sentAt)
+    if (Number.isNaN(instant.getTime())) continue
+    if (instant.getTime() < windowStart || instant.getTime() >= windowEnd) continue
+    const date = toLondonIsoDate(instant)
+    const day = byDate.get(date) ?? { date, total: 0, promotional: 0, service: 0, failed: 0 }
+    day.total += 1
+    if (row.template_key && PROMOTIONAL_KEYS.has(row.template_key)) day.promotional += 1
+    else day.service += 1
+    if (row.status && FAILED_MESSAGE_STATUSES.has(row.status)) day.failed += 1
+    byDate.set(date, day)
+  }
+  return ok([...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)))
 }
