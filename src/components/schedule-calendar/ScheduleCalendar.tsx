@@ -1,5 +1,6 @@
 'use client'
 
+import { CALENDAR_FIRST_YEAR, CALENDAR_YEARS_AHEAD } from '@/lib/calendar/month-window'
 import { useState, type ReactNode } from 'react'
 import { addMonths, subMonths, format } from 'date-fns'
 import { useMediaQuery } from '@/hooks/use-media-query'
@@ -67,8 +68,8 @@ export function ScheduleCalendar({
     onAnchorChange,
     closureEntries,
     overlay,
-    firstYear = 2024,
-    yearsAhead = 2,
+    firstYear = CALENDAR_FIRST_YEAR,
+    yearsAhead = CALENDAR_YEARS_AHEAD,
     className,
 }: ScheduleCalendarProps) {
     const [uncontrolledAnchor, setUncontrolledAnchor] = useState<Date>(() => new Date())

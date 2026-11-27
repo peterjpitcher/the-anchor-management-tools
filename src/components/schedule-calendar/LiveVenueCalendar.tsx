@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Alert, Button, Spinner } from '@/ds'
 import { getVenueCalendarMonth } from '@/app/actions/venue-calendar'
@@ -50,7 +50,13 @@ export function LiveVenueCalendar({
 }: LiveVenueCalendarProps): ReactNode {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const month = formatCalendarMonth(parseCalendarMonth(searchParams.get(CAL_MONTH_PARAM)) ?? new Date())
+  // Without a month in the URL, open on the month the server loaded: the server (UTC) and the
+  // browser (London) can disagree about which month it is around midnight on the 1st.
+  const defaultMonth = useMemo(
+    () => (initialData ? parseCalendarMonth(initialData.month) : null) ?? new Date(),
+    [initialData],
+  )
+  const month = formatCalendarMonth(parseCalendarMonth(searchParams.get(CAL_MONTH_PARAM)) ?? defaultMonth)
 
   const [cache, setCache] = useState<Record<string, VenueCalendarMonthData>>(() =>
     initialData ? { [initialData.month]: initialData } : {},
@@ -160,6 +166,7 @@ export function LiveVenueCalendar({
       onRepeatingEventClick={onRepeatingEventClick ?? (() => router.push('/events'))}
       datasetWarnings={[...(onScreen?.warnings ?? []), ...extraWarnings]}
       overlay={overlay}
+      defaultMonth={defaultMonth}
       header={header}
       className={className}
     />
