@@ -44,6 +44,12 @@ describe('RepeatingEventsPanel', () => {
     expect(screen.getByText(/Next: Thursday 3 December/)).toBeInTheDocument()
   })
 
+  it('opens on the repeating event whose night was clicked on the calendar, with its dates showing', async () => {
+    render(<RepeatingEventsPanel categories={[]} canManage onMakeFullEvent={vi.fn()} focusSeriesId="series-1" />)
+    expect(await screen.findByText('Thursday 10 December')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Hide dates' })).toBeInTheDocument()
+  })
+
   it('strikes through a skipped date, offers undo, and hands a running date to "make a full event"', async () => {
     const onMakeFullEvent = vi.fn()
     render(<RepeatingEventsPanel categories={[]} canManage onMakeFullEvent={onMakeFullEvent} />)
