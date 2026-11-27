@@ -367,7 +367,7 @@ export async function readCoversByDate(
   endIso: string,
 ): Promise<CalendarDataset<{ date: string; covers: number; hireGuests: number }>> {
   try {
-    const loads = await loadDayLoads(startIso, endIso, { db: client, withHours: false })
+    const loads = await loadDayLoads(startIso, endIso, { db: client, withHours: false, includeCompletedHires: true })
     return ok(
       [...loads.values()]
         .filter((load) => load.covers > 0 || load.privateHireGuests > 0)
@@ -403,6 +403,8 @@ export async function readStaffByDate(
         client
           .from('rota_shifts')
           .select('employee_id, shift_date, start_time')
+          // A sick shift is someone who did not work, so they are not on the day's list.
+          .neq('status', 'sick')
           .gte('shift_date', startIso)
           .lte('shift_date', endIso)
           .order('id')

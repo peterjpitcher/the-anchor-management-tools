@@ -23,7 +23,7 @@ describe('calendar covers', () => {
 
     const result = await readCoversByDate(client, '2026-11-20', '2026-11-22')
 
-    expect(loadDayLoads).toHaveBeenCalledWith('2026-11-20', '2026-11-22', { db: client, withHours: false })
+    expect(loadDayLoads).toHaveBeenCalledWith('2026-11-20', '2026-11-22', { db: client, withHours: false, includeCompletedHires: true })
     expect(result).toEqual({
       status: 'ok',
       data: [

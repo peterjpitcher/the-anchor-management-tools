@@ -41,6 +41,15 @@ describe('eventToEntry', () => {
         expect(entry.tooltipData.kind).toBe('event')
     })
 
+    it('labels a past scheduled event Held, and leaves a future or cancelled one alone', () => {
+        const now = new Date('2026-11-27T12:00:00.000Z')
+        const base = { id: 'e', name: 'n', time: '19:00', bookedSeatsCount: 30 }
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'scheduled' } as any, now).statusLabel).toBe('Held')
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'cancelled' } as any, now).statusLabel).toBe('Cancelled')
+        expect(eventToEntry({ ...base, date: '2026-11-20', eventStatus: 'sold_out' } as any, now).statusLabel).toBe('Sold out')
+        expect(eventToEntry({ ...base, date: '2026-12-04', eventStatus: 'scheduled' } as any, now).statusLabel).toBeNull()
+    })
+
     it('subtitle handles 0 / 1 seats', () => {
         const zero = eventToEntry({
             id: 'e',

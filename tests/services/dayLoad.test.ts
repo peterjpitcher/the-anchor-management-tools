@@ -78,6 +78,28 @@ describe('the day load (one count for every screen)', () => {
     expect(describeCovers(day)).toBe('30 covers (6 diners, 24 event tickets)')
   })
 
+  it('counts a completed hire as having held its room, for the calendar past days', () => {
+    const loads = buildDayLoads({
+      startIso: '2026-11-21', endIso: '2026-11-21', tableBookings: [], events: [], tickets: [], hireItems: [], kitchen: [],
+      hires: [hire({ id: 'done', status: 'completed', guest_count: 60 })],
+      now: NOW,
+    })
+    expect(loads.get('2026-11-21')!.privateHireGuests).toBe(60)
+  })
+
+  it('reads completed hires only when the caller asks for them', async () => {
+    const db = createFakeSupabase({
+      table_bookings: [], events: [], bookings: [], private_booking_items: [], kitchen_loads: [],
+      private_bookings: [hire({ id: 'done', status: 'completed', guest_count: 60 })],
+    })
+    const without = await loadDayLoads('2026-11-21', '2026-11-21', { db: db as never, withHours: false, now: NOW })
+    const withCompleted = await loadDayLoads('2026-11-21', '2026-11-21', {
+      db: db as never, withHours: false, now: NOW, includeCompletedHires: true,
+    })
+    expect(without.get('2026-11-21')!.privateHireGuests).toBe(0)
+    expect(withCompleted.get('2026-11-21')!.privateHireGuests).toBe(60)
+  })
+
   it("keeps an event table's high chairs and outside seats, which its tickets do not carry", () => {
     // The rota grid read both figures from this count; dropping event tables lost them (PR 261 review).
     const loads = buildDayLoads({

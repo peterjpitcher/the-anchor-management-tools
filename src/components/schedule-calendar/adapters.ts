@@ -130,11 +130,15 @@ function resolveEventContent(event: EventOverview): CalendarEntryContent | undef
 
 // --- Event ---
 
-export function eventToEntry(event: EventOverview): CalendarEntry {
+export function eventToEntry(event: EventOverview, now: Date = new Date()): CalendarEntry {
     const start = parseLocalDate(event.date, event.time || '00:00')
     const end = addHours(start, 2) // D9 — fixed 2h
     const status = statusFromString(event.eventStatus ?? 'scheduled')
-    const content = resolveEventContent(event)
+    // A scheduled event whose time has gone was held. Its artwork and copy no longer matter, so
+    // a past event raises no content gaps (owner approval, 27 November 2026).
+    const isPast = end.getTime() < now.getTime()
+    const held = isPast && status === 'scheduled'
+    const content = isPast ? undefined : resolveEventContent(event)
     return {
         id: `evt:${event.id}`,
         kind: 'event',
@@ -147,7 +151,7 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
         color: kindColor('event'),
         subtitle: `${event.bookedSeatsCount ?? 0} booked`,
         status,
-        statusLabel: statusLabel(status),
+        statusLabel: held ? 'Held' : statusLabel(status),
         // Content readiness is OPTIONAL on purpose. A caller that does not load
         // the readiness columns must not have its events reported as missing
         // everything: `entryGaps` returns [] when `content` is absent, but would

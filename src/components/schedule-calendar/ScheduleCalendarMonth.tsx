@@ -320,6 +320,8 @@ interface EntryBlockProps {
 
 function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const isCancelled = entry.status === 'cancelled'
+    // Faded once it has finished, as the list view does, so a past day reads as done at a glance.
+    const isPastEntry = entry.end.getTime() < Date.now()
     const lightText = !isCancelled && calendarColourNeedsLightText(entry.color)
     // Secondary text on the entry's own colour: the light or dark text colour, softened.
     const secondaryTextClass = lightText ? 'text-on-dark-muted' : 'opacity-70'
@@ -377,6 +379,7 @@ function EntryBlock({ entry, onClick, renderTooltip }: EntryBlockProps) {
     const sharedClass = cn(
         'block w-full rounded-sm border px-2 py-1 text-left text-xs transition-[filter,box-shadow] hover:brightness-95 focus-visible:outline-hidden focus-visible:shadow-ring',
         isCancelled && 'line-through',
+        isPastEntry && !entry.muted && 'opacity-70',
         entry.muted && 'opacity-60'
     )
     const sharedStyle = {
