@@ -9,7 +9,8 @@ import { formatPhoneForStorage } from '@/lib/utils';
 import { recordAnalyticsEvent } from '@/lib/analytics/events';
 import { getErrorMessage } from '@/lib/errors';
 import { handleReplyToBook } from '@/lib/sms/reply-to-book';
-import { detectOptOut } from '@/lib/sms/opt-out-keywords';
+import { buildInboundOptOutUpdate, detectOptOut } from '@/lib/sms/opt-out-keywords';
+import { alertManagerToWrittenOptOut } from '@/lib/sms/opt-out-alert';
 import { sendSMS } from '@/lib/twilio';
 import { getTwilioWebhookValidationUrl } from '@/lib/twilio-webhook';
 import {
@@ -724,30 +725,8 @@ async function handleInboundSMS(
     // Branch on optOut rather than isOptOut so it narrows to non-null below.
     if (optOut) {
       const optedOutAt = new Date().toISOString();
-      const optOutPayload = isWhatsApp
-        ? (isMarketingOnlyOptOut
-            ? {
-                marketing_whatsapp_opt_in: false,
-                marketing_whatsapp_opted_out_at: optedOutAt,
-              }
-            : {
-                whatsapp_opt_in: false,
-                marketing_whatsapp_opt_in: false,
-                whatsapp_status: 'opted_out',
-                whatsapp_opted_out_at: optedOutAt,
-                marketing_whatsapp_opted_out_at: optedOutAt,
-              })
-        : (isMarketingOnlyOptOut
-            ? {
-                marketing_sms_opt_in: false,
-                marketing_sms_opted_out_at: optedOutAt,
-              }
-            : {
-                sms_opt_in: false,
-                sms_status: 'opted_out',
-                marketing_sms_opt_in: false,
-                marketing_sms_opted_out_at: optedOutAt,
-              })
+      // Also switches off marketing email: a NOEVENTS reply used to leave event emails running.
+      const optOutPayload = buildInboundOptOutUpdate(isWhatsApp ? 'whatsapp' : 'sms', optOut.scope, optedOutAt)
 
       const { data: optedOutCustomer, error: optOutError } = await adminClient
         .from('customers')
@@ -778,12 +757,32 @@ async function handleInboundSMS(
             relatedEntityType: 'message',
             metadata: {
               keyword: optOut.keyword,
+              phrase: optOut.phrase ?? null,
               twilio_message_sid: messageSid,
               channel,
               scope: isMarketingOnlyOptOut ? 'marketing_only' : 'all',
             },
           },
           isMarketingOnlyOptOut ? ['marketing'] : ['service', 'marketing']
+        )
+        // The audit row for the marketing email switch-off written above.
+        await ConsentService.recordOptOut(
+          customer.id,
+          'email',
+          isWhatsApp ? 'twilio_inbound_whatsapp' : 'twilio_inbound_sms',
+          {
+            captureMethod: 'inbound_keyword',
+            relatedEntityType: 'message',
+            metadata: {
+              keyword: optOut.keyword,
+              phrase: optOut.phrase ?? null,
+              twilio_message_sid: messageSid,
+              channel,
+              scope: 'marketing_only',
+              reason: 'text_opt_out_covers_marketing_email',
+            },
+          },
+          ['marketing']
         )
       } catch (consentError) {
         logger.error('Failed to write inbound opt-out consent audit row', {
@@ -852,6 +851,17 @@ async function handleInboundSMS(
         }
       }
       throw new Error(`Failed to save message: ${messageError.message}`);
+    }
+
+    // A request in the guest's own words is honoured above as a marketing opt-out. A manager
+    // reads it, because "please stop messaging me" may mean every text, not just promotions.
+    if (optOut?.phrase) {
+      await alertManagerToWrittenOptOut({
+        customerId: customer.id,
+        fromNumber: normalizedFromNumber,
+        body: messageBody,
+        channel,
+      })
     }
 
     // Never treat an opt-out as a seat reply. "STOP 2" or "CANCEL my 4" would otherwise

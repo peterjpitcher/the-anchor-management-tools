@@ -387,7 +387,9 @@ export async function ensureCustomerForPhone(
       whatsapp_opt_in: true,
       whatsapp_status: 'active',
       marketing_whatsapp_opt_in: false,
-      marketing_email_opt_in: false
+      marketing_email_opt_in: false,
+      // A held STOP or NOEVENTS covers marketing email too (owner decision, 27 November 2026).
+      marketing_email_opted_out_at: heldOptOut ? optedOutAt : null
     }
 
     const insertCustomer = (payload: typeof insertPayload) =>
@@ -463,6 +465,20 @@ export async function ensureCustomerForPhone(
             metadata: { unmatched_communication_id: heldOptOut.unmatchedId, keyword: heldOptOut.keyword },
           },
           heldOptOut.scope === 'all' ? ['service', 'marketing'] : ['marketing']
+        )
+        await ConsentService.recordOptOut(
+          inserted.id,
+          'email',
+          'twilio_inbound_sms',
+          {
+            captureMethod: 'inbound_keyword',
+            metadata: {
+              unmatched_communication_id: heldOptOut.unmatchedId,
+              keyword: heldOptOut.keyword,
+              reason: 'text_opt_out_covers_marketing_email',
+            },
+          },
+          ['marketing']
         )
       } catch (error) {
         console.error('Customer created opted out, but the opt-out history was not written', JSON.stringify({

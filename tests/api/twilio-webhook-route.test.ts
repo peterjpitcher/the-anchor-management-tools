@@ -62,6 +62,14 @@ vi.mock('@/lib/twilio', () => ({
   sendSMS: vi.fn().mockResolvedValue({ success: true }),
 }))
 
+vi.mock('@/services/consent', () => ({
+  ConsentService: { recordOptOut: vi.fn().mockResolvedValue(undefined) },
+}))
+
+vi.mock('@/lib/sms/opt-out-alert', () => ({
+  alertManagerToWrittenOptOut: vi.fn().mockResolvedValue(true),
+}))
+
 // ---------------------------------------------------------------------------
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
@@ -73,6 +81,8 @@ import { POST } from '@/app/api/webhooks/twilio/route'
 import { getTwilioWebhookValidationUrl } from '@/lib/twilio-webhook'
 import { skipTwilioSignatureValidation } from '@/lib/env'
 import { isStatusUpgrade } from '@/lib/sms-status'
+import { ConsentService } from '@/services/consent'
+import { alertManagerToWrittenOptOut } from '@/lib/sms/opt-out-alert'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -312,6 +322,7 @@ describe('Twilio webhook route', () => {
         data: { id: 'msg-inbound-1' },
         error: null,
       })
+      const customersUpdate = vi.fn()
 
       ;(createAdminClient as unknown as Mock).mockReturnValue({
         from: vi.fn((table: string) => {
@@ -334,7 +345,7 @@ describe('Twilio webhook route', () => {
               select: vi.fn().mockReturnValue({
                 or: vi.fn().mockReturnValue({ limit: customerLookup }),
               }),
-              update: vi.fn().mockReturnValue({
+              update: customersUpdate.mockReturnValue({
                 eq: vi.fn().mockReturnValue({
                   select: vi.fn().mockReturnValue({
                     maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'cust-1' }, error: null }),
@@ -347,7 +358,7 @@ describe('Twilio webhook route', () => {
         }),
       })
 
-      return { webhookLogInsert, messageSave, customerLookup }
+      return { webhookLogInsert, messageSave, customerLookup, customersUpdate }
     }
 
     it('should save inbound SMS and return messageId', async () => {
@@ -383,6 +394,104 @@ describe('Twilio webhook route', () => {
       expect(res.status).toBe(200)
       const json = await res.json()
       expect(json.success).toBe(true)
+    })
+  })
+
+  // NOEVENTS used to stop event texts only, so a guest who replied NOEVENTS on 25 November 2026
+  // was sent an event email the same day. Every text opt-out now covers marketing email too.
+  describe('text opt-outs also stop marketing email', () => {
+    function setup() {
+      ;(twilio.validateRequest as unknown as Mock).mockReturnValue(true)
+      const { client: publicClient } = stubPublicClient()
+      ;(createClient as unknown as Mock).mockReturnValue(publicClient)
+      const customersUpdate = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            maybeSingle: vi.fn().mockResolvedValue({ data: { id: 'cust-1' }, error: null }),
+          }),
+        }),
+      })
+      ;(createAdminClient as unknown as Mock).mockReturnValue({
+        from: vi.fn((table: string) => {
+          if (table === 'messages') {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockReturnValue({
+                  order: vi.fn().mockReturnValue({
+                    limit: vi.fn().mockReturnValue({ maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }) }),
+                  }),
+                }),
+              }),
+              insert: vi.fn().mockReturnValue({
+                select: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: { id: 'msg-in' }, error: null }) }),
+              }),
+            }
+          }
+          if (table === 'customers') {
+            return {
+              select: vi.fn().mockReturnValue({
+                or: vi.fn().mockReturnValue({
+                  limit: vi.fn().mockResolvedValue({ data: [{ id: 'cust-1', mobile_e164: '+447700900123' }], error: null }),
+                }),
+              }),
+              update: customersUpdate,
+            }
+          }
+          return { insert: vi.fn().mockResolvedValue({ error: null }) }
+        }),
+      })
+      return { customersUpdate }
+    }
+
+    async function send(text: string) {
+      const body = makeFormBody({ Body: text, From: '+447700900123', To: '+441234567891', MessageSid: `SM-${text.length}` })
+      return POST(makeRequest(body, { 'x-twilio-signature': 'valid' }) as any)
+    }
+
+    it('NOEVENTS switches off marketing texts and marketing email, and records both', async () => {
+      const { customersUpdate } = setup()
+      const res = await send('NOEVENTS')
+      expect(res.status).toBe(200)
+
+      expect(customersUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        marketing_sms_opt_in: false,
+        marketing_email_opt_in: false,
+        marketing_email_opted_out_at: expect.any(String),
+      }))
+      expect(customersUpdate.mock.calls[0][0]).not.toHaveProperty('sms_status')
+      expect(ConsentService.recordOptOut).toHaveBeenCalledWith('cust-1', 'sms', 'twilio_inbound_sms', expect.anything(), ['marketing'])
+      expect(ConsentService.recordOptOut).toHaveBeenCalledWith('cust-1', 'email', 'twilio_inbound_sms', expect.anything(), ['marketing'])
+      expect(alertManagerToWrittenOptOut).not.toHaveBeenCalled()
+    })
+
+    it('STOP switches off every text and marketing email', async () => {
+      const { customersUpdate } = setup()
+      await send('STOP')
+      expect(customersUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        sms_status: 'opted_out',
+        marketing_email_opted_out_at: expect.any(String),
+      }))
+      expect(ConsentService.recordOptOut).toHaveBeenCalledWith('cust-1', 'email', 'twilio_inbound_sms', expect.anything(), ['marketing'])
+    })
+
+    it('a request in their own words is honoured as a marketing opt-out and a manager is told', async () => {
+      const { customersUpdate } = setup()
+      await send('Please take me off your list, thanks')
+      expect(customersUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        marketing_sms_opt_in: false,
+        marketing_email_opted_out_at: expect.any(String),
+      }))
+      expect(alertManagerToWrittenOptOut).toHaveBeenCalledWith(expect.objectContaining({
+        customerId: 'cust-1',
+        body: 'Please take me off your list, thanks',
+      }))
+    })
+
+    it('an ordinary reply changes nothing', async () => {
+      const { customersUpdate } = setup()
+      await send('Table for 4 please')
+      expect(customersUpdate).not.toHaveBeenCalled()
+      expect(alertManagerToWrittenOptOut).not.toHaveBeenCalled()
     })
   })
 

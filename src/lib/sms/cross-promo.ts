@@ -937,6 +937,32 @@ export async function sendCrossPromoForEvent(
   return stats
 }
 
+/**
+ * Removes recipients whose record holds a marketing SMS refusal. Returns null when the check
+ * could not be read, so the caller sends nothing rather than guessing.
+ */
+export async function dropMarketingSmsRefusals(
+  db: ReturnType<typeof createAdminClient>,
+  recipients: FollowUpRecipient[]
+): Promise<FollowUpRecipient[] | null> {
+  const ids = recipients.map((r) => r.customer_id)
+  const { data, error } = await db
+    .from('customers')
+    .select('id')
+    .in('id', ids)
+    .not('marketing_sms_opted_out_at', 'is', null)
+
+  if (error) {
+    logger.error('Follow-up: could not check marketing refusals; sending nothing', {
+      metadata: { code: error.code ?? null, message: error.message ?? null },
+    })
+    return null
+  }
+
+  const refused = new Set((data ?? []).map((row: { id: string }) => row.id))
+  return recipients.filter((r) => !refused.has(r.customer_id))
+}
+
 export async function sendFollowUpForEvent(
   event: {
     id: string
@@ -954,6 +980,17 @@ export async function sendFollowUpForEvent(
   const db = createAdminClient()
   const stats: SendCrossPromoResult = { sent: 0, skipped: 0, errors: 0 }
 
+  if (recipients.length === 0) return stats
+
+  // get_follow_up_recipients checks marketing_sms_opt_in but not the refusal timestamp. Check
+  // both, so a recorded NOEVENTS always wins. If the check cannot run, send nothing.
+  const allowed = await dropMarketingSmsRefusals(db, recipients)
+  if (allowed === null) {
+    stats.skipped += recipients.length
+    return stats
+  }
+  stats.skipped += recipients.length - allowed.length
+  recipients = allowed
   if (recipients.length === 0) return stats
 
   const isPaid = isPaidEvent(event.payment_mode)

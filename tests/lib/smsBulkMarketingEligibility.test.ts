@@ -59,6 +59,18 @@ describe('bulk SMS marketing eligibility', () => {
           marketing_sms_opt_in: true,
           sms_status: 'opted_out',
         },
+        {
+          // Replied NOEVENTS, but the opt-in flag was switched back on: the refusal wins.
+          id: 'customer-4',
+          first_name: 'Drew',
+          last_name: null,
+          mobile_e164: '+447700900444',
+          mobile_number: '+447700900444',
+          sms_opt_in: true,
+          marketing_sms_opt_in: true,
+          marketing_sms_opted_out_at: '2026-11-25T10:00:00Z',
+          sms_status: 'active',
+        },
       ],
       error: null,
     })
@@ -82,7 +94,7 @@ describe('bulk SMS marketing eligibility', () => {
     })
 
     const result = await sendBulkSms({
-      customerIds: ['customer-1', 'customer-2', 'customer-3'],
+      customerIds: ['customer-1', 'customer-2', 'customer-3', 'customer-4'],
       message: 'Hello!',
       bulkJobId: 'bulk-job-1',
     })

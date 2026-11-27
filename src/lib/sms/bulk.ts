@@ -177,7 +177,7 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
     // Load customers
     const { data: customers, error: customerError } = await supabase
       .from('customers')
-      .select('id, first_name, last_name, mobile_number, mobile_e164, sms_opt_in, sms_status, marketing_sms_opt_in')
+      .select('id, first_name, last_name, mobile_number, mobile_e164, sms_opt_in, sms_status, marketing_sms_opt_in, marketing_sms_opted_out_at')
       .in('id', normalizedCustomerIds)
 
     if (customerError) {
@@ -265,6 +265,12 @@ export async function sendBulkSms(request: BulkSmsRequest): Promise<BulkSmsResul
       }
       if (customer.marketing_sms_opt_in !== true) {
         logger.debug('Skipping customer without marketing SMS opt-in', { metadata: { customerId: customer.id } })
+        return false
+      }
+      // A recorded refusal (NOEVENTS, NOPROMO, a written request) wins even if the opt-in flag
+      // was switched back on by mistake.
+      if (customer.marketing_sms_opted_out_at) {
+        logger.debug('Skipping customer who refused marketing SMS', { metadata: { customerId: customer.id } })
         return false
       }
 

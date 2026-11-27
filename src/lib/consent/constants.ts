@@ -106,6 +106,11 @@ export type ConsentNotice = {
 const COMPACT_BOOKING_NOTICE_V6 =
   'We will use your phone and email to manage this booking, and to send you the latest from The Anchor: what is on, new menus, offers, and any changes. Reply NOEVENTS to stop texts, or use the unsubscribe link in any email. Booking confirmations and reminders carry on either way.'
 
+// v7 (27 November 2026): NOEVENTS now stops marketing email as well as event texts, so the
+// notice says so. v6 stays, because consents already stored point at the words those guests read.
+const COMPACT_BOOKING_NOTICE_V7 =
+  'We will use your phone and email to manage this booking, and to send you the latest from The Anchor: what is on, new menus, offers, and any changes. Reply NOEVENTS to stop event texts and emails, or use the unsubscribe link in any email. Booking confirmations and reminders carry on either way.'
+
 /**
  * What staff read to a guest they are booking in person before ticking "They said yes" (owner
  * decision D32). Only a recorded yes puts a staff-booked guest on the marketing texts.
@@ -118,6 +123,8 @@ export const STAFF_MARKETING_READ_OUT_KEY = 'staff_read_out_v1'
 export const GUEST_CONSENT_NOTICES: Readonly<Record<string, ConsentNotice>> = {
   table_compact_v6: { text: COMPACT_BOOKING_NOTICE_V6, softOptIn: ['sms', 'email'] },
   event_compact_v6: { text: COMPACT_BOOKING_NOTICE_V6, softOptIn: ['sms', 'email'] },
+  table_compact_v7: { text: COMPACT_BOOKING_NOTICE_V7, softOptIn: ['sms', 'email'] },
+  event_compact_v7: { text: COMPACT_BOOKING_NOTICE_V7, softOptIn: ['sms', 'email'] },
   // The quick-book sheet takes no email, so its notice speaks of texts only.
   table_quick_book_v1: {
     text: 'We will use your phone to manage this booking, and to text you the latest from The Anchor: what is on, new menus, offers, and any changes. Reply NOEVENTS to stop those texts. Booking confirmations and reminders carry on either way.',
