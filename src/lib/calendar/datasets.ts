@@ -678,10 +678,20 @@ export async function readCalendarNotesInRange(
 
 // --- Texts sent ------------------------------------------------------------
 
-type OutboundMessageRow = { created_at: string | null; template_key: string | null; status: string | null }
+type OutboundMessageRow = {
+  created_at: string | null
+  template_key: string | null
+  status: string | null
+  /** Set when a text was held through quiet hours and handed to Twilio to send the next morning. */
+  scheduled_for: string | null
+}
 
 const PROMOTIONAL_KEYS = new Set<string>(PROMOTIONAL_SMS_TEMPLATE_KEYS)
 const FAILED_MESSAGE_STATUSES = new Set(['failed', 'undelivered'])
+/** Rows for texts that have not gone (yet, or ever): not "sent". */
+const UNSENT_MESSAGE_STATUSES = new Set(['scheduled', 'queued', 'accepted', 'cancelled', 'canceled'])
+/** Quiet hours hold a text overnight at most, so a day's lead covers one recorded the evening before. */
+const DEFERRAL_LEAD_MS = 24 * 60 * 60 * 1000
 
 /**
  * Outbound texts in the window, counted per London day: how many, how many promotional (the keys
@@ -700,9 +710,9 @@ export async function readTextMessagesByDate(
       (from, to) =>
         adminClient
           .from('messages')
-          .select('created_at, template_key, status')
+          .select('created_at, template_key, status, scheduled_for:metadata->>scheduled_for')
           .eq('direction', 'outbound')
-          .gte('created_at', startInstant)
+          .gte('created_at', new Date(new Date(startInstant).getTime() - DEFERRAL_LEAD_MS).toISOString())
           .lt('created_at', endInstant)
           .order('id')
           .range(from, to),
@@ -713,11 +723,18 @@ export async function readTextMessagesByDate(
     return failed('Texts sent could not be loaded.')
   }
 
+  const windowStart = new Date(startInstant).getTime()
+  const windowEnd = new Date(endInstant).getTime()
   const byDate = new Map<string, TextMessageDay>()
   for (const row of rows) {
-    if (!row.created_at) continue
-    const instant = new Date(row.created_at)
+    // A text still scheduled, queued or cancelled has not been sent.
+    if (row.status && UNSENT_MESSAGE_STATUSES.has(row.status)) continue
+    // A text held through quiet hours went out when it was scheduled for, not when it was recorded.
+    const sentAt = row.scheduled_for || row.created_at
+    if (!sentAt) continue
+    const instant = new Date(sentAt)
     if (Number.isNaN(instant.getTime())) continue
+    if (instant.getTime() < windowStart || instant.getTime() >= windowEnd) continue
     const date = toLondonIsoDate(instant)
     const day = byDate.get(date) ?? { date, total: 0, promotional: 0, service: 0, failed: 0 }
     day.total += 1

@@ -151,6 +151,13 @@ describe('readTextMessagesByDate', () => {
         msg('in', '2026-06-10T12:00:00.000Z', null, 'received', 'inbound'),
         msg('before', '2026-05-31T22:59:00.000Z', null),
         msg('after', END_INSTANT, null),
+        // Not sent: still scheduled, or cancelled before it went.
+        msg('pending', '2026-06-12T10:00:00.000Z', null, 'scheduled'),
+        msg('called-off', '2026-06-12T11:00:00.000Z', null, 'cancelled'),
+        // Held through quiet hours: recorded at 22:30 on 14 June, sent 09:00 London on 15 June.
+        { ...msg('deferred', '2026-06-14T21:30:00.000Z', null), scheduled_for: '2026-06-15T08:00:00.000Z' },
+        // Recorded the evening before the grid, sent on its first morning: counted.
+        { ...msg('deferred-in', '2026-05-31T21:30:00.000Z', null), scheduled_for: '2026-06-01T08:00:00.000Z' },
       ],
     })
 
@@ -158,8 +165,10 @@ describe('readTextMessagesByDate', () => {
 
     expect(result.status).toBe('ok')
     expect(result.data).toEqual([
+      { date: '2026-06-01', total: 1, promotional: 0, service: 1, failed: 0 },
       { date: '2026-06-10', total: 3, promotional: 2, service: 1, failed: 1 },
       { date: '2026-06-11', total: 1, promotional: 0, service: 1, failed: 1 },
+      { date: '2026-06-15', total: 1, promotional: 0, service: 1, failed: 0 },
     ])
   })
 })
