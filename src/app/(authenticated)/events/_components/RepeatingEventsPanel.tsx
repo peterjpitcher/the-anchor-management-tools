@@ -53,6 +53,8 @@ interface RepeatingEventsPanelProps {
   onMakeFullEvent: (request: MakeFullEventRequest) => void
   /** Bumped by the parent after a full event is made, so the list reloads. */
   refreshKey?: number
+  /** The repeating event to open on: its dates start expanded. Set when its night is clicked on the calendar. */
+  focusSeriesId?: string | null
   /** Called after every saved change (create, edit, skip, undo, pause, end), so the calendar reloads its nights. */
   onSeriesChanged?: () => void
 }
@@ -67,7 +69,7 @@ function showResult(result: { error?: string; data?: { warning?: string } }, suc
   return true
 }
 
-export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, refreshKey = 0, onSeriesChanged }: RepeatingEventsPanelProps) {
+export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, refreshKey = 0, focusSeriesId = null, onSeriesChanged }: RepeatingEventsPanelProps) {
   const [series, setSeries] = useState<EventSeriesListItem[] | null>(null)
   const [closedDays, setClosedDays] = useState<SeriesSpecialHoursDay[]>([])
   const [today, setToday] = useState('')
@@ -76,7 +78,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
   const [skipping, setSkipping] = useState<EventSeriesListItem | null>(null)
   const [ending, setEnding] = useState<EventSeriesListItem | null>(null)
   const [pausing, setPausing] = useState<EventSeriesListItem | null>(null)
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<string | null>(focusSeriesId)
 
   const load = useCallback(async () => {
     const result = await listEventSeries()

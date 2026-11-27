@@ -190,6 +190,8 @@ export default function EventsClient({
   // date leaves the repeating run once the event is saved.
   const [seriesConversion, setSeriesConversion] = useState<{ seriesId: string; prefill: EventDrawerPrefill } | null>(null)
   const [repeatingRefreshKey, setRepeatingRefreshKey] = useState(0)
+  // The repeating event whose night was clicked on the calendar: the Repeating events tab opens on it.
+  const [focusSeriesId, setFocusSeriesId] = useState<string | null>(null)
   // Nights of repeating events for the calendar view: last month to a year ahead. A failed read
   // leaves them off with a warning under the calendar, never the whole calendar.
   const [repeatingNights, setRepeatingNights] = useState<EventSeriesNight[]>([])
@@ -631,6 +633,10 @@ export default function EventsClient({
                 balanceDueDates={layers.balanceDues}
                 marketingSends={layers.marketingSends}
                 repeatingEvents={repeatingNights}
+                onRepeatingEventClick={(seriesId) => {
+                  setFocusSeriesId(seriesId)
+                  setView('repeating')
+                }}
                 dailyOps={layers.dailyOps ?? undefined}
                 canManageCalendarNotes={canManageCalendarNotes}
                 showFilters
@@ -667,6 +673,7 @@ export default function EventsClient({
                 canManage={canManageEvents}
                 onMakeFullEvent={handleMakeFullEvent}
                 refreshKey={repeatingRefreshKey}
+                focusSeriesId={focusSeriesId}
                 onSeriesChanged={() => setRepeatingNightsKey((key) => key + 1)}
               />
             )}

@@ -151,8 +151,10 @@ export interface VenueCalendarProps {
   parkingBookings: VenueCalendarParking[]
   /** Marketing email sends. Permission-gated at source, so an empty array is normal. */
   marketingSends?: VenueCalendarMarketingSend[]
-  /** Nights of repeating events: drawn lighter and not clickable (they have no page or bookings). */
+  /** Nights of repeating events: drawn lighter (they have no page or bookings). */
   repeatingEvents?: RepeatingEventNight[]
+  /** Called with the repeating event's id when one of its nights is clicked. Without it the night opens nothing. */
+  onRepeatingEventClick?: (seriesId: string) => void
   /** Create, edit and delete calendar notes from the calendar itself. */
   canManageCalendarNotes?: boolean
   onEmptyDayClick?: (date: Date) => void
@@ -493,6 +495,7 @@ export function VenueCalendar({
   parkingBookings,
   marketingSends = [],
   repeatingEvents = NO_REPEATING_EVENTS,
+  onRepeatingEventClick,
   canManageCalendarNotes,
   showFilters = false,
   onEmptyDayClick,
@@ -769,6 +772,12 @@ export function VenueCalendar({
         canCreateCalendarNote={canManageCalendarNotes}
         onEmptyDayClick={handleEmptyDayClick}
         onEntryClick={(entry) => {
+          // A repeating event's night has no page of its own. It used to do nothing when
+          // clicked, which read as broken; it opens the repeating event it belongs to.
+          if (entry.seriesId) {
+            onRepeatingEventClick?.(entry.seriesId)
+            return
+          }
           if (entry.onClickHref) {
             router.push(entry.onClickHref)
             return

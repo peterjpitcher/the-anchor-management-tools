@@ -176,7 +176,7 @@ Management app:
 
 | Place | Shows? | How |
 |---|---|---|
-| Events list, Board and Calendar views | Calendar view only | Drawn as a lighter, non-clickable-for-booking entry on each occurrence. Not in the list or Board, which are for dated events. |
+| Events list, Board and Calendar views | Calendar view only | Drawn as a lighter entry on each occurrence. Clicking it opens the Repeating events tab with that event's dates showing (it has no page or bookings of its own). Not in the list or Board, which are for dated events. |
 | Events to-do panel, sidebar count, daily checklist email | No | No checklist exists for it. |
 | Dashboard "upcoming events" | No | |
 | FOH events for a date, rota week strip | Yes | A line reading "Ladies Darts Night, 7pm to 10pm" so staff know the room is in use. Read through the resolver. |

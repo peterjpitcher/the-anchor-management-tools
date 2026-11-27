@@ -60,8 +60,10 @@ export interface CalendarEntry {
     content?: CalendarEntryContent
     tooltipData: TooltipData
     onClickHref: string | null
-    /** Drawn lighter: a repeating event's night, which holds no bookings and opens nothing. */
+    /** Drawn lighter: a repeating event's night, which holds no bookings. */
     muted?: boolean
+    /** Set on a repeating event's night: clicking it opens that repeating event, not a dated event. */
+    seriesId?: string
 }
 
 type TooltipData =

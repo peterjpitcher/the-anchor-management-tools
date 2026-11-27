@@ -169,7 +169,10 @@ export function eventToEntry(event: EventOverview): CalendarEntry {
 
 // --- Repeating event night ---
 
-/** One night of a repeating event, as the Events calendar draws it: lighter, and not clickable. */
+/**
+ * One night of a repeating event, as the Events calendar draws it: lighter, with no page of its
+ * own. Clicking it opens the repeating event it belongs to (VenueCalendar's onRepeatingEventClick).
+ */
 export interface RepeatingEventNight {
     seriesId: string
     name: string
@@ -209,6 +212,7 @@ export function repeatingEventToEntry(night: RepeatingEventNight): CalendarEntry
         },
         onClickHref: null,
         muted: true,
+        seriesId: night.seriesId,
     }
 }
 
