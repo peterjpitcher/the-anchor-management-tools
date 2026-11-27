@@ -66,6 +66,16 @@ export function LiveVenueCalendar({
   // The most recent month asked for: a slow reply for a month already paged past is dropped.
   const latestRequest = useRef<string | null>(null)
   const lastRefreshKey = useRef(refreshKey)
+  const lastInitialData = useRef(initialData)
+
+  // A server refresh (the dashboard's Refresh, or router.refresh after a save) hands over a fresh
+  // month. Everything cached before it may be stale too, so start again from the new data.
+  useEffect(() => {
+    if (lastInitialData.current === initialData) return
+    lastInitialData.current = initialData
+    setCache(initialData ? { [initialData.month]: initialData } : {})
+    setErrors({})
+  }, [initialData])
 
   const load = useCallback(async (target: string) => {
     latestRequest.current = target
@@ -113,12 +123,11 @@ export function LiveVenueCalendar({
   // grid while it loads; the grid is dimmed under a message instead.
   const onScreen = cache[month] ?? null
 
+  // Reload the month on screen. Used by Try Again (one failed month) and after a note is saved,
+  // moved or deleted: a note can span or move into other months already visited, so the whole
+  // cache is dropped and those months load afresh when shown again.
   const reloadMonth = useCallback(() => {
-    setCache((existing) => {
-      const next = { ...existing }
-      delete next[month]
-      return next
-    })
+    setCache({})
     void load(month)
   }, [load, month])
 

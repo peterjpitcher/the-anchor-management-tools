@@ -139,6 +139,43 @@ describe('LiveVenueCalendar', () => {
     expect(getVenueCalendarMonth).toHaveBeenCalledWith({ month: '2026-03' })
   })
 
+  it('shows fresh server data after a page refresh instead of the cached month', () => {
+    nav.params = new URLSearchParams('calMonth=2026-03')
+    const { rerender } = render(<LiveVenueCalendar initialData={monthData('2026-03', 'march-quiz')} />)
+    expect(screen.getByTestId('events')).toHaveTextContent('march-quiz')
+
+    rerender(<LiveVenueCalendar initialData={monthData('2026-03', 'march-quiz-after-refresh')} />)
+
+    expect(screen.getByTestId('events')).toHaveTextContent('march-quiz-after-refresh')
+    expect(getVenueCalendarMonth).not.toHaveBeenCalled()
+  })
+
+  it('drops other visited months after a note changes, so a note spanning them is not stale', async () => {
+    getVenueCalendarMonth
+      .mockResolvedValueOnce({ data: monthData('2026-04', 'april-old-note') })
+      .mockResolvedValueOnce({ data: monthData('2026-03', 'march-new-note') })
+      .mockResolvedValueOnce({ data: monthData('2026-04', 'april-new-note') })
+
+    // One object throughout, as a page passes it: a new object would mean a server refresh.
+    const initial = monthData('2026-03', 'march-quiz')
+    nav.params = new URLSearchParams('calMonth=2026-03')
+    const { rerender } = render(<LiveVenueCalendar initialData={initial} />)
+    nav.params = new URLSearchParams('calMonth=2026-04')
+    rerender(<LiveVenueCalendar initialData={initial} />)
+    expect(await screen.findByText('april-old-note')).toBeInTheDocument()
+
+    nav.params = new URLSearchParams('calMonth=2026-03')
+    rerender(<LiveVenueCalendar initialData={initial} />)
+    // March was cached from the server: no fetch until the note changes.
+    expect(getVenueCalendarMonth).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Notes changed' }))
+    expect(await screen.findByText('march-new-note')).toBeInTheDocument()
+
+    nav.params = new URLSearchParams('calMonth=2026-04')
+    rerender(<LiveVenueCalendar initialData={initial} />)
+    expect(await screen.findByText('april-new-note')).toBeInTheDocument()
+  })
+
   it('reloads the month after a note is saved', async () => {
     nav.params = new URLSearchParams('calMonth=2026-03')
     getVenueCalendarMonth.mockResolvedValueOnce({ data: monthData('2026-03', 'with-new-note') })
