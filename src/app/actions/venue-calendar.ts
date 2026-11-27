@@ -21,6 +21,7 @@ import {
   readPrivateBookingsInRange,
   readSpecialHours,
   readStaffByDate,
+  readTextMessagesByDate,
   type CalendarDataset,
 } from '@/lib/calendar/datasets'
 import type { CalendarEventRow } from '@/lib/events/calendar-events'
@@ -108,6 +109,7 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
     canViewMarketing,
     canViewCovers,
     canViewRota,
+    canViewMessages,
   ] = await Promise.all([
     checkUserPermission('events', 'view', user.id),
     checkUserPermission('settings', 'manage', user.id),
@@ -119,11 +121,12 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
     checkUserPermission('marketing', 'view', user.id),
     checkUserPermission('table_bookings', 'view', user.id),
     checkUserPermission('rota', 'view', user.id),
+    checkUserPermission('messages', 'view', user.id),
   ])
 
   const { startIso, endIso, startInstant, endInstant } = window
   // The admin client only ever runs after the matching permission check above: notes, marketing
-  // campaigns and the day load are service-role reads, as they were on both pages before.
+  // campaigns, texts and the day load are service-role reads, as they were on both pages before.
   const admin = createAdminClient()
 
   const [
@@ -138,6 +141,7 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
     marketing,
     covers,
     staff,
+    texts,
   ] = await Promise.all([
     canViewEvents ? readEvents(startIso, endIso) : Promise.resolve(denied()),
     canViewEvents ? readRepeatingNights(startIso, endIso) : Promise.resolve(denied()),
@@ -152,6 +156,7 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
     canViewMarketing ? readMarketingSends(admin, startIso, endIso) : Promise.resolve(denied()),
     canViewCovers ? readCoversByDate(admin, startIso, endIso) : Promise.resolve(denied()),
     canViewRota ? readStaffByDate(supabase, startIso, endIso) : Promise.resolve(denied()),
+    canViewMessages ? readTextMessagesByDate(admin, startInstant, endInstant) : Promise.resolve(denied()),
   ])
 
   const warnings: string[] = []
@@ -179,6 +184,7 @@ export async function getVenueCalendarMonth(input: { month: string }): Promise<{
       calendarNotes: settle(notes, warnings),
       parkingBookings: settle(parking, warnings),
       marketingSends: settle(marketing, warnings),
+      textMessages: settle(texts, warnings),
       dailyOps: { coversByDate, staffByDate, hireGuestsByDate },
       warnings,
     },

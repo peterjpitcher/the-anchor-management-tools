@@ -4,6 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { displayName } from '@/lib/employees/display-name'
 import { fetchAllRows } from '@/lib/supabase/paged-read'
 import { loadDayLoads } from '@/services/day-load'
+import { toLocalIsoDate as toLondonIsoDate } from '@/lib/dateUtils'
+import { PROMOTIONAL_SMS_TEMPLATE_KEYS } from '@/lib/sms/promo-template-keys'
+import type { TextMessageDay } from '@/components/schedule-calendar/adapters'
 import {
   buildPrivateBookingBalanceDueSummaries,
   type DashboardPrivateBookingBalanceDueSummary,
@@ -671,4 +674,57 @@ export async function readCalendarNotesInRange(
     console.error('Failed to load calendar notes for the calendar:', error)
     return failed('Calendar notes could not be loaded.')
   }
+}
+
+// --- Texts sent ------------------------------------------------------------
+
+type OutboundMessageRow = { created_at: string | null; template_key: string | null; status: string | null }
+
+const PROMOTIONAL_KEYS = new Set<string>(PROMOTIONAL_SMS_TEMPLATE_KEYS)
+const FAILED_MESSAGE_STATUSES = new Set(['failed', 'undelivered'])
+
+/**
+ * Outbound texts in the window, counted per London day: how many, how many promotional (the keys
+ * that count towards a guest's monthly limit), and how many failed. Only counts leave the server;
+ * no message body, number or name is read. `messages` is read with the admin client after the
+ * caller's messages:view check, as the Messages page does.
+ */
+export async function readTextMessagesByDate(
+  adminClient: SupabaseClient,
+  startInstant: string,
+  endInstant: string,
+): Promise<CalendarDataset<TextMessageDay>> {
+  let rows: OutboundMessageRow[]
+  try {
+    rows = await fetchAllRows<OutboundMessageRow>(
+      (from, to) =>
+        adminClient
+          .from('messages')
+          .select('created_at, template_key, status')
+          .eq('direction', 'outbound')
+          .gte('created_at', startInstant)
+          .lt('created_at', endInstant)
+          .order('id')
+          .range(from, to),
+      { label: 'calendar texts sent' },
+    )
+  } catch (error) {
+    console.error('Failed to load texts for the calendar:', error)
+    return failed('Texts sent could not be loaded.')
+  }
+
+  const byDate = new Map<string, TextMessageDay>()
+  for (const row of rows) {
+    if (!row.created_at) continue
+    const instant = new Date(row.created_at)
+    if (Number.isNaN(instant.getTime())) continue
+    const date = toLondonIsoDate(instant)
+    const day = byDate.get(date) ?? { date, total: 0, promotional: 0, service: 0, failed: 0 }
+    day.total += 1
+    if (row.template_key && PROMOTIONAL_KEYS.has(row.template_key)) day.promotional += 1
+    else day.service += 1
+    if (row.status && FAILED_MESSAGE_STATUSES.has(row.status)) day.failed += 1
+    byDate.set(date, day)
+  }
+  return ok([...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)))
 }

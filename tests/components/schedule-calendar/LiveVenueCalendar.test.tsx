@@ -40,6 +40,7 @@ function monthData(month: string, eventId: string): VenueCalendarMonthData {
     calendarNotes: [],
     parkingBookings: [],
     marketingSends: [],
+    textMessages: [],
     dailyOps: { coversByDate: {}, staffByDate: {}, hireGuestsByDate: {} },
     warnings: [],
   }

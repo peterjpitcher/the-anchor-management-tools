@@ -19,6 +19,8 @@ import {
   calendarNoteToEntry,
   parkingToEntry,
   marketingSendToEntry,
+  textMessageDayToEntry,
+  type TextMessageDay,
   repeatingEventToEntry,
   type RepeatingEventNight,
 } from './adapters'
@@ -143,6 +145,8 @@ export interface VenueCalendarMarketingSend {
   recipient_count: number | null
 }
 
+const NO_TEXT_DAYS: TextMessageDay[] = []
+
 export interface VenueCalendarProps {
   events: VenueCalendarEvent[]
   privateBookings: VenueCalendarBooking[]
@@ -153,6 +157,8 @@ export interface VenueCalendarProps {
   parkingBookings: VenueCalendarParking[]
   /** Marketing email sends. Permission-gated at source, so an empty array is normal. */
   marketingSends?: VenueCalendarMarketingSend[]
+  /** Texts sent, one row per day. Permission-gated at source (messages:view). */
+  textMessages?: TextMessageDay[]
   /** Nights of repeating events: drawn lighter (they have no page or bookings). */
   repeatingEvents?: RepeatingEventNight[]
   /** Called with the repeating event's id when one of its nights is clicked. Without it the night opens nothing. */
@@ -214,6 +220,7 @@ function buildEntries(
   parkingBookings: VenueCalendarParking[],
   marketingSends: VenueCalendarMarketingSend[],
   repeatingEvents: RepeatingEventNight[] = [],
+  textMessages: TextMessageDay[] = [],
 ): { entries: CalendarEntry[]; skipped: number } {
   const out: CalendarEntry[] = []
 
@@ -293,6 +300,10 @@ function buildEntries(
     if (!send.send_at) continue
     const entry = marketingSendToEntry(send)
     if (entry) out.push(entry)
+  }
+
+  for (const day of textMessages) {
+    if (day.total > 0) out.push(textMessageDayToEntry(day))
   }
 
   // Containment: a single unparseable row must not take the calendar down.
@@ -488,6 +499,33 @@ function renderTooltip(entry: CalendarEntry): ReactNode {
     )
   }
 
+  if (entry.tooltipData.kind === 'text_messages') {
+    const td = entry.tooltipData
+    return (
+      <div className="space-y-1 text-xs">
+        <div className="flex items-center gap-1.5 font-medium">
+          <Icon name="message" size={14} />
+          <span>Texts sent</span>
+        </div>
+        <div>{format(entry.start, 'EEE d MMM yyyy')}</div>
+        <div>
+          <span className="font-medium">Total:</span> {td.total}
+        </div>
+        <div>
+          <span className="font-medium">Promotional:</span> {td.promotional}
+        </div>
+        <div>
+          <span className="font-medium">Service:</span> {td.service}
+        </div>
+        {td.failed > 0 && (
+          <div>
+            <span className="font-medium">Failed:</span> {td.failed}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return null
 }
 
@@ -500,6 +538,7 @@ export function VenueCalendar({
   calendarNotes,
   parkingBookings,
   marketingSends = [],
+  textMessages = NO_TEXT_DAYS,
   repeatingEvents = NO_REPEATING_EVENTS,
   onRepeatingEventClick,
   canManageCalendarNotes,
@@ -675,8 +714,8 @@ export function VenueCalendar({
   }, [calendarNotes])
 
   const built = useMemo(
-    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents),
-    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents],
+    () => buildEntries(events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents, textMessages),
+    [events, privateBookings, balanceDueDates, employeeBirthdays, specialHours, calendarNotes, parkingBookings, marketingSends, repeatingEvents, textMessages],
   )
   const entries = built.entries
   const skippedCount = built.skipped
@@ -694,12 +733,13 @@ export function VenueCalendar({
     if (privateBookings.length > 0) kinds.push('private_booking')
     if (parkingBookings.length > 0) kinds.push('parking')
     if (marketingSends.length > 0) kinds.push('marketing_email')
+    if (textMessages.length > 0) kinds.push('text_messages')
     // Only offer Events when there are some. This used to be pushed
     // unconditionally, so a user with no events permission still saw an Events
     // swatch and an Events filter chip that could never match anything.
     if (events.length > 0) kinds.push('event')
     return kinds
-  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length, marketingSends.length, events.length])
+  }, [calendarNotes.length, specialHours.length, employeeBirthdays.length, balanceDueDates.length, privateBookings.length, parkingBookings.length, marketingSends.length, textMessages.length, events.length])
 
   // Rows we could not place on a day: either no date at all, or a date we could
   // not parse. Every source column is NOT NULL in production, so the old

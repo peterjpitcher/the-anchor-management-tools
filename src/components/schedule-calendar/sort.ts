@@ -10,6 +10,7 @@ const kindPriority: Record<CalendarEntryKind, number> = {
     event: 5,
     parking: 6,
     marketing_email: 7,
+    text_messages: 8,
 }
 
 const statusPriority: Record<string, number> = {

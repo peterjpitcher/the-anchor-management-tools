@@ -609,3 +609,49 @@ export function marketingSendToEntry(send: MarketingSendInput): CalendarEntry | 
         onClickHref: `/marketing/campaigns/${send.id}`,
     }
 }
+
+// --- Texts sent (one entry per day) ---
+
+/** Outbound texts on one London day, counted server-side. Bodies and numbers never leave it. */
+export interface TextMessageDay {
+    /** YYYY-MM-DD, London. */
+    date: string
+    total: number
+    /** Counted against a guest's two promotional texts a month (PROMOTIONAL_SMS_TEMPLATE_KEYS). */
+    promotional: number
+    /** Everything else: booking confirmations, reminders, replies and the like. */
+    service: number
+    /** Of the total, those the carrier refused or could not deliver. */
+    failed: number
+}
+
+/**
+ * The texts sent on a day, as one all-day entry. One per day rather than one per message: a busy
+ * promotion day sends a hundred, and the calendar answers "what did we send", not "to whom".
+ */
+export function textMessageDayToEntry(day: TextMessageDay): CalendarEntry {
+    const start = parseLocalDate(day.date)
+    const plural = day.total === 1 ? 'text' : 'texts'
+    return {
+        id: `sms:${day.date}`,
+        kind: 'text_messages',
+        title: `${day.total} ${plural} sent`,
+        start,
+        end: start,
+        allDay: true,
+        spansMultipleDays: false,
+        endsNextDay: false,
+        color: kindColor('text_messages'),
+        subtitle: day.promotional > 0 ? `${day.promotional} promotional, ${day.service} service` : null,
+        status: null,
+        statusLabel: day.failed > 0 ? `${day.failed} failed` : null,
+        tooltipData: {
+            kind: 'text_messages',
+            total: day.total,
+            promotional: day.promotional,
+            service: day.service,
+            failed: day.failed,
+        },
+        onClickHref: '/messages',
+    }
+}

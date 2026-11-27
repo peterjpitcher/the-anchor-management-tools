@@ -66,6 +66,11 @@ export function entryTooltipText(entry: CalendarEntry): string {
             if (td.vehicleReg) lines.push(td.vehicleReg)
             lines.push(`${format(entry.start, 'EEE d MMM yyyy')}, ${td.timeRange}`)
             break
+        case 'text_messages':
+            lines.push(`Texts sent: ${td.total}`, format(entry.start, 'EEE d MMM yyyy'))
+            lines.push(`${td.promotional} promotional, ${td.service} service`)
+            if (td.failed > 0) lines.push(`${td.failed} failed`)
+            break
         case 'marketing_email':
             lines.push(`Marketing email: ${td.name}`)
             lines.push(`${format(entry.start, 'EEE d MMM yyyy')}, ${td.time}`)

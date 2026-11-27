@@ -10,6 +10,7 @@ export type CalendarEntryKind =
     | 'calendar_note'
     | 'parking'
     | 'marketing_email'
+    | 'text_messages'
 
 export type CalendarEntryStatus =
     | 'scheduled'
@@ -133,6 +134,13 @@ type TooltipData =
           /** Approved audience size at schedule time, not a delivered count. */
           recipientCount: number | null
           statusLabel: string
+      }
+    | {
+          kind: 'text_messages'
+          total: number
+          promotional: number
+          service: number
+          failed: number
       }
 
 /** Week was retired: it was not used, and it is the one view a status or content badge does not fit in. */

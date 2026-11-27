@@ -1,4 +1,4 @@
-import type { RepeatingEventNight } from './adapters'
+import type { RepeatingEventNight, TextMessageDay } from './adapters'
 import type { ScheduleDailyOps } from './types'
 import type {
   VenueCalendarBalanceDue,
@@ -35,6 +35,8 @@ export interface VenueCalendarMonthData {
   calendarNotes: VenueCalendarNote[]
   parkingBookings: VenueCalendarParking[]
   marketingSends: VenueCalendarMarketingSend[]
+  /** Texts sent, one row per London day. */
+  textMessages: TextMessageDay[]
   dailyOps: ScheduleDailyOps
   warnings: string[]
 }
