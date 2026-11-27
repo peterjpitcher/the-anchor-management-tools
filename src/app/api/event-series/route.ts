@@ -51,7 +51,25 @@ export async function GET(request: NextRequest) {
           shortDescription: s.shortDescription,
           pagePath: s.pagePath,
           isFree: s.isFree,
+          // Null when free. Pounds, as a number.
+          price: s.isFree ? null : s.details.price,
           audienceNote: s.audienceNote,
+          // Customer-facing copy and pictures. The brief, keywords and promotion copy are staff
+          // tools and stay in the app. Every field may be null or empty: the website keeps its
+          // own wording for anything not filled in.
+          metaTitle: s.details.metaTitle,
+          metaDescription: s.details.metaDescription,
+          longDescription: s.details.longDescription,
+          highlights: s.details.highlights,
+          imageAltText: s.details.imageAltText,
+          accessibilityNotes: s.details.accessibilityNotes,
+          performerName: s.details.performerName,
+          performerType: s.details.performerType,
+          images: {
+            square: s.images.square,
+            landscape: s.images.landscape,
+            social: s.images.social,
+          },
           startsOn: s.startsOn,
           endsOn: s.endsOn,
           nextOccurrence: next,

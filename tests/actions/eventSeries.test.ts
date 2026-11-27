@@ -185,3 +185,53 @@ describe('markEventSeriesDateReplaced', () => {
     expect(db.tables.event_series_skips).toHaveLength(0)
   })
 })
+
+describe('details (migration 20261127121431)', () => {
+  const details = {
+    price: null, brief: 'Social darts, no tournament.', performerName: null, performerType: null,
+    metaTitle: 'Ladies Darts Night | Thursdays, Stanwell Moor', metaDescription: null,
+    longDescription: 'Para one.\n\nPara two.', highlights: ['Free to play', '', ' Beginners welcome '],
+    primaryKeywords: ['ladies darts night'], secondaryKeywords: [], localSeoKeywords: ['stanwell moor'],
+    imageAltText: null, accessibilityNotes: null, facebookEventName: null, facebookEventDescription: null,
+    gbpEventTitle: null, gbpEventDescription: null, socialCopyWhatsapp: 'See you Thursday',
+  }
+
+  it('saves the details, trimming blank highlights, and never writes a picture column', async () => {
+    const db = seed()
+    db.tables.event_series[0].square_image_url = 'https://x/storage/v1/object/public/event-images/event-series/a/square/1_p.jpg'
+    const result = await updateEventSeries(SERIES, { ...input, details })
+    expect(result.success).toBe(true)
+    const row = db.tables.event_series[0]
+    expect(row).toMatchObject({
+      brief: 'Social darts, no tournament.',
+      meta_title: 'Ladies Darts Night | Thursdays, Stanwell Moor',
+      highlights: ['Free to play', 'Beginners welcome'],
+      primary_keywords: ['ladies darts night'],
+      social_copy_whatsapp: 'See you Thursday',
+      price: null,
+    })
+    expect(row.square_image_url).toBe('https://x/storage/v1/object/public/event-images/event-series/a/square/1_p.jpg')
+  })
+
+  it('keeps the stored details when a save sends none', async () => {
+    const db = seed()
+    db.tables.event_series[0].long_description = 'Kept'
+    expect((await updateEventSeries(SERIES, input)).success).toBe(true)
+    expect(db.tables.event_series[0].long_description).toBe('Kept')
+  })
+
+  it('needs a price for a paid night, and stores none for a free one', async () => {
+    const db = seed()
+    expect((await updateEventSeries(SERIES, { ...input, isFree: false, details })).error).toBe('Enter the ticket price, or tick Free')
+    expect((await updateEventSeries(SERIES, { ...input, isFree: false, details: { ...details, price: 5 } })).success).toBe(true)
+    expect(db.tables.event_series[0]).toMatchObject({ is_free: false, price: 5 })
+    expect((await updateEventSeries(SERIES, { ...input, isFree: true, details: { ...details, price: 5 } })).success).toBe(true)
+    expect(db.tables.event_series[0]).toMatchObject({ is_free: true, price: null })
+  })
+
+  it('refuses a meta description over 500 characters', async () => {
+    seed()
+    const result = await updateEventSeries(SERIES, { ...input, details: { ...details, metaDescription: 'x'.repeat(501) } })
+    expect(result.error).toBe('Use 500 characters or fewer')
+  })
+})

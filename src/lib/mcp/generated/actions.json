@@ -3223,7 +3223,7 @@
    }
   ],
   "typeRefs": {
-   "EventSeoContentInput": "type EventSeoContentInput = {\n  eventId?: string | null\n  name: string\n  date?: string | null\n  time?: string | null\n  endTime?: string | null\n  categoryName?: string | null\n  capacity?: number | null\n  brief?: string | null\n  performerName?: string | null\n  performerType?: string | null\n  price?: number | null\n  isFree?: boolean\n  bookingUrl?: string | null\n  /** The drawer's Accept bookings switch. Off means the website hides its booking form. */\n  bookingsEnabled?: boolean | null\n  existingShortDescription?: string | null\n  existingLongDescription?: string | null\n  existingMetaTitle?: string | null\n  existingMetaDescription?: string | null\n  existingHighlights?: string[]\n  primaryKeywords?: string[]\n  secondaryKeywords?: string[]\n  localSeoKeywords?: string[]\n}"
+   "EventSeoContentInput": "type EventSeoContentInput = {\n  eventId?: string | null\n  name: string\n  date?: string | null\n  time?: string | null\n  endTime?: string | null\n  categoryName?: string | null\n  capacity?: number | null\n  brief?: string | null\n  performerName?: string | null\n  performerType?: string | null\n  price?: number | null\n  isFree?: boolean\n  bookingUrl?: string | null\n  /** The drawer's Accept bookings switch. Off means the website hides its booking form. */\n  bookingsEnabled?: boolean | null\n  existingShortDescription?: string | null\n  existingLongDescription?: string | null\n  existingMetaTitle?: string | null\n  existingMetaDescription?: string | null\n  existingHighlights?: string[]\n  primaryKeywords?: string[]\n  secondaryKeywords?: string[]\n  localSeoKeywords?: string[]\n  /**\n   * A repeating event (spec section 11): weekly copy naming the day, never one date. No event is\n   * looked up, no address is returned, and FAQs and the cancellation policy are left out.\n   * time and endTime are its HH:MM times.\n   */\n  weekly?: { weekday: number } | null\n}"
   },
   "doc": "---------------------------------------------------------------------------\ngenerateEventSeoContent\n---------------------------------------------------------------------------",
   "readOnly": false
@@ -3691,6 +3691,57 @@
   "readOnly": false
  },
  {
+  "name": "event-series-images.confirmEventSeriesImageUpload",
+  "module": "event-series-images",
+  "export": "confirmEventSeriesImageUpload",
+  "params": [
+   {
+    "name": "input",
+    "type": "z.input<typeof confirmSchema>",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "confirmSchema": "const confirmSchema = z.object({\n  seriesId: z.string().uuid(),\n  variant: variantSchema,\n  storagePath: z.string().min(1),\n})"
+  },
+  "doc": "Records an uploaded file on the repeating event and removes the file it replaced.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series-images.deleteEventSeriesImage",
+  "module": "event-series-images",
+  "export": "deleteEventSeriesImage",
+  "params": [
+   {
+    "name": "input",
+    "type": "{\n  seriesId: string\n  variant: EventSeriesImageVariant\n}",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "EventSeriesImageVariant": "type EventSeriesImageVariant = 'square' | 'landscape' | 'social' | 'story' | 'print_poster'"
+  },
+  "doc": "Takes a picture off the repeating event and deletes its file.",
+  "readOnly": false
+ },
+ {
+  "name": "event-series-images.requestEventSeriesImageUpload",
+  "module": "event-series-images",
+  "export": "requestEventSeriesImageUpload",
+  "params": [
+   {
+    "name": "input",
+    "type": "z.input<typeof requestSchema>",
+    "optional": false
+   }
+  ],
+  "typeRefs": {
+   "requestSchema": "const requestSchema = z.object({\n  seriesId: z.string().uuid(),\n  variant: variantSchema,\n  fileName: z.string().min(1).max(255),\n  mimeType: z.string().min(1).max(255),\n  sizeBytes: z.number().int().positive(),\n  // Zero means \"could not be read\" (a PDF), which is not grounds for refusal.\n  width: z.number().int().min(0).default(0),\n  height: z.number().int().min(0).default(0),\n})"
+  },
+  "doc": "",
+  "readOnly": false
+ },
+ {
   "name": "event-series.createEventSeries",
   "module": "event-series",
   "export": "createEventSeries",
@@ -3703,7 +3754,7 @@
   ],
   "typeRefs": {
    "EventSeriesInput": "type EventSeriesInput = z.input<typeof seriesInputSchema>",
-   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n  })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
+   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n    /** Left out, the stored details are kept as they are (an older screen or the agent bridge). */\n    details: detailsSchema.optional(),\n  })\n  .refine((v) => v.isFree || !v.details || v.details.price !== null, { message: 'Enter the ticket price, or tick Free', path: ['details', 'price'] })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
   },
   "doc": "Creates a repeating event. Needs events:manage.",
   "readOnly": false
@@ -3827,7 +3878,7 @@
   ],
   "typeRefs": {
    "EventSeriesInput": "type EventSeriesInput = z.input<typeof seriesInputSchema>",
-   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n  })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
+   "seriesInputSchema": "const seriesInputSchema = z\n  .object({\n    name: z.string().trim().min(1, 'Name is required').max(120),\n    slug: z\n      .string()\n      .trim()\n      .toLowerCase()\n      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lower case letters, numbers and hyphens'),\n    categoryId: z.string().uuid().nullish().transform((value) => value ?? null),\n    weekday: z.number().int().min(1).max(7),\n    startTime: z.string().regex(timePattern, 'Use a time like 19:00'),\n    endTime: z.string().regex(timePattern, 'Use a time like 22:00'),\n    startsOn: isoDate,\n    endsOn: isoDate.nullish().transform((value) => value ?? null),\n    shortDescription: z.string().trim().min(1, 'A short description is required').max(500),\n    pagePath: z\n      .string()\n      .trim()\n      .regex(/^\\/[A-Za-z0-9/_-]*$/, 'The page must start with \"/\"')\n      .nullish()\n      .or(z.literal(''))\n      .transform((value) => (value ? value : null)),\n    isFree: z.boolean(),\n    audienceNote: optionalText,\n    skipWhenClosed: z.boolean(),\n    /** Left out, the stored details are kept as they are (an older screen or the agent bridge). */\n    details: detailsSchema.optional(),\n  })\n  .refine((v) => v.isFree || !v.details || v.details.price !== null, { message: 'Enter the ticket price, or tick Free', path: ['details', 'price'] })\n  .refine((v) => v.startTime !== v.endTime, { message: 'The start and end times are the same', path: ['endTime'] })\n  .refine((v) => !v.endsOn || v.endsOn >= v.startsOn, { message: 'The last date is before the first', path: ['endsOn'] })"
   },
   "doc": "Edits a repeating event. Refuses a weekday change while dates ahead are skipped on the old day.",
   "readOnly": false

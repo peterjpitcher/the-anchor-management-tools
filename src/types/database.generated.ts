@@ -5704,65 +5704,134 @@ export type Database = {
       }
       event_series: {
         Row: {
+          accessibility_notes: string | null
           audience_note: string | null
+          brief: string | null
           category_id: string | null
           created_at: string
           created_by: string | null
           end_time: string
           ends_on: string | null
+          facebook_event_description: string | null
+          facebook_event_name: string | null
+          gbp_event_description: string | null
+          gbp_event_title: string | null
           google_calendar_event_id: string | null
+          highlights: string[]
           id: string
+          image_alt_text: string | null
           is_free: boolean
+          landscape_image_url: string | null
+          local_seo_keywords: string[]
+          long_description: string | null
+          meta_description: string | null
+          meta_title: string | null
           name: string
           page_path: string | null
+          performer_name: string | null
+          performer_type: string | null
+          price: number | null
+          primary_keywords: string[]
+          print_poster_url: string | null
+          secondary_keywords: string[]
           short_description: string
           skip_when_closed: boolean
           slug: string
+          social_copy_whatsapp: string | null
+          social_image_url: string | null
+          square_image_url: string | null
           start_time: string
           starts_on: string
           status: string
+          story_image_url: string | null
           updated_at: string
           weekday: number
         }
         Insert: {
+          accessibility_notes?: string | null
           audience_note?: string | null
+          brief?: string | null
           category_id?: string | null
           created_at?: string
           created_by?: string | null
           end_time: string
           ends_on?: string | null
+          facebook_event_description?: string | null
+          facebook_event_name?: string | null
+          gbp_event_description?: string | null
+          gbp_event_title?: string | null
           google_calendar_event_id?: string | null
+          highlights?: string[]
           id?: string
+          image_alt_text?: string | null
           is_free?: boolean
+          landscape_image_url?: string | null
+          local_seo_keywords?: string[]
+          long_description?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
           name: string
           page_path?: string | null
+          performer_name?: string | null
+          performer_type?: string | null
+          price?: number | null
+          primary_keywords?: string[]
+          print_poster_url?: string | null
+          secondary_keywords?: string[]
           short_description: string
           skip_when_closed?: boolean
           slug: string
+          social_copy_whatsapp?: string | null
+          social_image_url?: string | null
+          square_image_url?: string | null
           start_time: string
           starts_on: string
           status?: string
+          story_image_url?: string | null
           updated_at?: string
           weekday: number
         }
         Update: {
+          accessibility_notes?: string | null
           audience_note?: string | null
+          brief?: string | null
           category_id?: string | null
           created_at?: string
           created_by?: string | null
           end_time?: string
           ends_on?: string | null
+          facebook_event_description?: string | null
+          facebook_event_name?: string | null
+          gbp_event_description?: string | null
+          gbp_event_title?: string | null
           google_calendar_event_id?: string | null
+          highlights?: string[]
           id?: string
+          image_alt_text?: string | null
           is_free?: boolean
+          landscape_image_url?: string | null
+          local_seo_keywords?: string[]
+          long_description?: string | null
+          meta_description?: string | null
+          meta_title?: string | null
           name?: string
           page_path?: string | null
+          performer_name?: string | null
+          performer_type?: string | null
+          price?: number | null
+          primary_keywords?: string[]
+          print_poster_url?: string | null
+          secondary_keywords?: string[]
           short_description?: string
           skip_when_closed?: boolean
           slug?: string
+          social_copy_whatsapp?: string | null
+          social_image_url?: string | null
+          square_image_url?: string | null
           start_time?: string
           starts_on?: string
           status?: string
+          story_image_url?: string | null
           updated_at?: string
           weekday?: number
         }

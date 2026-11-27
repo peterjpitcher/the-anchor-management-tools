@@ -39,6 +39,13 @@ const darts: EventSeriesWithSkips = {
   shortDescription: 'A friendly night of darts for women.', pagePath: '/ladies-darts-night', isFree: true,
   audienceNote: 'Women only.', skipWhenClosed: true, status: 'active', googleCalendarEventId: null,
   createdAt: '', updatedAt: '',
+  details: {
+    brief: null, performerName: null, performerType: null, price: null, metaTitle: null, metaDescription: null,
+    longDescription: null, highlights: [], primaryKeywords: [], secondaryKeywords: [], localSeoKeywords: [],
+    imageAltText: null, accessibilityNotes: null, facebookEventName: null, facebookEventDescription: null,
+    gbpEventTitle: null, gbpEventDescription: null, socialCopyWhatsapp: null,
+  },
+  images: { square: null, landscape: null, social: null, story: null, printPoster: null },
   skips: [
     { skipDate: '2026-12-24', reason: 'Christmas Eve', replacedByEventId: null },
     { skipDate: '2026-12-31', reason: "New Year's Eve", replacedByEventId: null },

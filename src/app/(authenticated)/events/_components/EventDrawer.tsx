@@ -71,6 +71,19 @@ export interface EventDrawerPrefill {
   /** HH:MM, London. */
   endTime: string
   shortDescription?: string | null
+  /** From a repeating event: what describes the night carries over; dated SEO copy does not. */
+  brief?: string | null
+  performerName?: string | null
+  performerType?: string | null
+  isFree?: boolean
+  price?: number | null
+  longDescription?: string | null
+  highlights?: string[]
+  primaryKeywords?: string[]
+  secondaryKeywords?: string[]
+  localSeoKeywords?: string[]
+  imageAltText?: string | null
+  accessibilityNotes?: string | null
 }
 
 const STATUS_OPTIONS = [
@@ -307,6 +320,21 @@ export function EventDrawer({ open, onClose, event, categories, onSave, seatsSol
         setEndTime(prefill.endTime)
         setCategoryId(prefill.categoryId ?? '')
         setShortDescription(prefill.shortDescription ?? '')
+        if (prefill.brief) setBrief(prefill.brief)
+        if (prefill.performerName) setPerformerName(prefill.performerName)
+        if (prefill.performerType) setPerformerType(prefill.performerType)
+        if (prefill.isFree === false && prefill.price) {
+          setPaymentMode('cash_only')
+          setIsFree(false)
+          setPrice(prefill.price.toFixed(2))
+        }
+        if (prefill.longDescription) setLongDescription(prefill.longDescription)
+        if (prefill.highlights?.length) setHighlights(prefill.highlights.join('\n'))
+        if (prefill.primaryKeywords?.length) setPrimaryKeywords(keywordsToDisplay(prefill.primaryKeywords))
+        if (prefill.secondaryKeywords?.length) setSecondaryKeywords(keywordsToDisplay(prefill.secondaryKeywords))
+        if (prefill.localSeoKeywords?.length) setLocalSeoKeywords(keywordsToDisplay(prefill.localSeoKeywords))
+        if (prefill.imageAltText) setImageAltText(prefill.imageAltText)
+        if (prefill.accessibilityNotes) setAccessibilityNotes(prefill.accessibilityNotes)
       }
     }
   }, [event, prefill])

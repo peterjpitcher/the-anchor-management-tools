@@ -5582,7 +5582,15 @@
   "kind": "table",
   "columns": [
    {
+    "name": "accessibility_notes",
+    "type": "string | null"
+   },
+   {
     "name": "audience_note",
+    "type": "string | null"
+   },
+   {
+    "name": "brief",
     "type": "string | null"
    },
    {
@@ -5606,16 +5614,60 @@
     "type": "string | null"
    },
    {
+    "name": "facebook_event_description",
+    "type": "string | null"
+   },
+   {
+    "name": "facebook_event_name",
+    "type": "string | null"
+   },
+   {
+    "name": "gbp_event_description",
+    "type": "string | null"
+   },
+   {
+    "name": "gbp_event_title",
+    "type": "string | null"
+   },
+   {
     "name": "google_calendar_event_id",
     "type": "string | null"
+   },
+   {
+    "name": "highlights",
+    "type": "string[]"
    },
    {
     "name": "id",
     "type": "string"
    },
    {
+    "name": "image_alt_text",
+    "type": "string | null"
+   },
+   {
     "name": "is_free",
     "type": "boolean"
+   },
+   {
+    "name": "landscape_image_url",
+    "type": "string | null"
+   },
+   {
+    "name": "local_seo_keywords",
+    "type": "string[]"
+   },
+   {
+    "name": "long_description",
+    "type": "string | null"
+   },
+   {
+    "name": "meta_description",
+    "type": "string | null"
+   },
+   {
+    "name": "meta_title",
+    "type": "string | null"
    },
    {
     "name": "name",
@@ -5624,6 +5676,30 @@
    {
     "name": "page_path",
     "type": "string | null"
+   },
+   {
+    "name": "performer_name",
+    "type": "string | null"
+   },
+   {
+    "name": "performer_type",
+    "type": "string | null"
+   },
+   {
+    "name": "price",
+    "type": "number | null"
+   },
+   {
+    "name": "primary_keywords",
+    "type": "string[]"
+   },
+   {
+    "name": "print_poster_url",
+    "type": "string | null"
+   },
+   {
+    "name": "secondary_keywords",
+    "type": "string[]"
    },
    {
     "name": "short_description",
@@ -5638,6 +5714,18 @@
     "type": "string"
    },
    {
+    "name": "social_copy_whatsapp",
+    "type": "string | null"
+   },
+   {
+    "name": "social_image_url",
+    "type": "string | null"
+   },
+   {
+    "name": "square_image_url",
+    "type": "string | null"
+   },
+   {
     "name": "start_time",
     "type": "string"
    },
@@ -5648,6 +5736,10 @@
    {
     "name": "status",
     "type": "string"
+   },
+   {
+    "name": "story_image_url",
+    "type": "string | null"
    },
    {
     "name": "updated_at",

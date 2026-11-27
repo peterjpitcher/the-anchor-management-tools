@@ -42,6 +42,8 @@ export type SeoValidationOptions = {
   facts?: {
     name: string
     date: string | null
+    /** Set for a repeating event ("Thursday"): the copy must name the day and never a single date. */
+    weekdayName?: string | null
     /** The Focus tier: the first entry is the focus phrase, the rest are variants. */
     primaryKeywords: string[]
     /** The Supporting tier. */
@@ -261,6 +263,28 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
   const faqs = arrFaq(parsed.faqs)
 
   const focus = facts ? focusPhrase(facts.primaryKeywords) : null
+
+  // --- A weekly night names its day, never one date ---
+  if (facts?.weekdayName) {
+    const fields: Array<[string, string]> = [
+      ['metaDescription', metaDescription],
+      ['shortDescription', shortDescription],
+      ['longDescription', longDescription],
+      ['highlights', highlights.join('\n')],
+    ]
+    for (const [field, text] of fields) {
+      const found = singleDateMention(text)
+      if (found) {
+        issues.push({
+          code: 'weekly_single_date',
+          severity: 'repairable',
+          field,
+          message: `${field} names one date ("${found}"). The night repeats every week, so name the day only`,
+        })
+      }
+    }
+  }
+
   const push = (issue: SeoValidationIssue | null) => {
     if (issue) issues.push(issue)
   }
@@ -317,6 +341,14 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
         severity: 'repairable',
         field: 'metaDescription',
         message: `Meta description does not contain the focus phrase "${focus}" exactly`,
+      })
+    }
+    if (facts?.weekdayName && !mentionsWeekday(metaDescription, facts.weekdayName)) {
+      issues.push({
+        code: 'meta_desc_schedule',
+        severity: 'repairable',
+        field: 'metaDescription',
+        message: `Meta description does not say it runs every ${facts.weekdayName}`,
       })
     }
     if (facts?.date && !mentionsWeekdayAndDate(metaDescription, facts.date)) {
@@ -410,6 +442,14 @@ function runFullValidation(parsed: Record<string, unknown>, options: SeoValidati
           severity: 'repairable',
           field: 'longDescription',
           message: `First paragraph does not contain the focus phrase "${focus}" exactly`,
+        })
+      }
+      if (facts?.weekdayName && !mentionsWeekday(firstPara, facts.weekdayName)) {
+        issues.push({
+          code: 'first_para_schedule',
+          severity: 'repairable',
+          field: 'longDescription',
+          message: `First paragraph does not say it runs every ${facts.weekdayName}`,
         })
       }
       if (facts?.date && !mentionsDayMonth(firstPara, facts.date)) {
@@ -855,4 +895,20 @@ export function applyDeterministicRepair(
   }
 
   return patched
+}
+
+const MONTHS = 'January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec'
+const SINGLE_DATE = new RegExp(
+  `\\b\\d{1,2}(?:st|nd|rd|th)?\\s+(?:of\\s+)?(?:${MONTHS})\\b|\\b(?:${MONTHS})\\s+\\d{1,2}(?:st|nd|rd|th)?\\b|\\b\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\b|\\b(?:this|next|last)\\s+(?:week|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\\b|\\btonight\\b`,
+  'i',
+)
+
+/** The first single date in the text ("3 December", "this Thursday", "tonight"), or null. */
+export function singleDateMention(text: string): string | null {
+  return text.match(SINGLE_DATE)?.[0] ?? null
+}
+
+/** True when the text names the weekday, singular or plural ("Thursday", "Thursdays"). */
+export function mentionsWeekday(text: string, weekdayName: string): boolean {
+  return new RegExp(`\\b${weekdayName}s?\\b`, 'i').test(text)
 }

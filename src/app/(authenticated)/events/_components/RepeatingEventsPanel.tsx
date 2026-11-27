@@ -28,6 +28,11 @@ import {
   type EventSeriesListItem,
 } from '@/app/actions/event-series'
 import type { EventCategory } from '@/types/event-categories'
+import { parseKeywords, keywordsToDisplay } from '@/lib/keywords'
+import { KeywordStrategyCard } from '@/components/features/events/KeywordStrategyCard'
+import { suggestFocusPhrase } from '@/lib/event-seo/keyword-match'
+import { SeriesImagePanel } from './SeriesImagePanel'
+import { generateEventSeoContent } from '@/app/actions/event-content'
 
 /** "Thursday 24 December". The day name is derived from the date, never typed. */
 export function formatSeriesDate(isoDate: string): string {
@@ -241,6 +246,7 @@ export function RepeatingEventsPanel({ categories, canManage, onMakeFullEvent, r
           setEditing(null)
           await reloadAfterChange()
         }}
+        onImagesChanged={load}
       />
 
       <SkipDateModal
@@ -298,12 +304,38 @@ interface SeriesFormState {
   isFree: boolean
   audienceNote: string
   skipWhenClosed: boolean
+  price: string
+  brief: string
+  performerName: string
+  performerType: string
+  metaTitle: string
+  metaDescription: string
+  longDescription: string
+  /** One per line. */
+  highlights: string
+  primaryKeywords: string
+  secondaryKeywords: string
+  localSeoKeywords: string
+  imageAltText: string
+  accessibilityNotes: string
+  facebookEventName: string
+  facebookEventDescription: string
+  gbpEventTitle: string
+  gbpEventDescription: string
+  socialCopyWhatsapp: string
 }
+
+const EMPTY_DETAILS = {
+  price: '', brief: '', performerName: '', performerType: '', metaTitle: '', metaDescription: '', longDescription: '',
+  highlights: '', primaryKeywords: '', secondaryKeywords: '', localSeoKeywords: '', imageAltText: '', accessibilityNotes: '',
+  facebookEventName: '', facebookEventDescription: '', gbpEventTitle: '', gbpEventDescription: '', socialCopyWhatsapp: '',
+} satisfies Partial<SeriesFormState>
 
 function emptyForm(today: string): SeriesFormState {
   return {
     name: '', slug: '', categoryId: '', weekday: '4', startTime: '19:00', endTime: '22:00',
     startsOn: today, endsOn: '', shortDescription: '', pagePath: '', isFree: true, audienceNote: '', skipWhenClosed: true,
+    ...EMPTY_DETAILS,
   }
 }
 
@@ -326,11 +358,53 @@ export function toSeriesInput(form: SeriesFormState): EventSeriesInput {
     isFree: form.isFree,
     audienceNote: form.audienceNote || null,
     skipWhenClosed: form.skipWhenClosed,
+    details: {
+      price: form.isFree || !form.price.trim() ? null : Number(form.price),
+      brief: form.brief || null,
+      performerName: form.performerName || null,
+      performerType: form.performerType || null,
+      metaTitle: form.metaTitle || null,
+      metaDescription: form.metaDescription || null,
+      longDescription: form.longDescription || null,
+      highlights: form.highlights.split('\n').map((h) => h.trim()).filter(Boolean),
+      primaryKeywords: parseKeywords(form.primaryKeywords),
+      secondaryKeywords: parseKeywords(form.secondaryKeywords),
+      localSeoKeywords: parseKeywords(form.localSeoKeywords),
+      imageAltText: form.imageAltText || null,
+      accessibilityNotes: form.accessibilityNotes || null,
+      facebookEventName: form.facebookEventName || null,
+      facebookEventDescription: form.facebookEventDescription || null,
+      gbpEventTitle: form.gbpEventTitle || null,
+      gbpEventDescription: form.gbpEventDescription || null,
+      socialCopyWhatsapp: form.socialCopyWhatsapp || null,
+    },
+  }
+}
+
+/** The form's values for a saved repeating event. */
+export function seriesToForm(series: EventSeriesListItem): SeriesFormState {
+  const d = series.details
+  return {
+    name: series.name, slug: series.slug, categoryId: series.categoryId ?? '', weekday: String(series.weekday),
+    startTime: series.startTime, endTime: series.endTime, startsOn: series.startsOn, endsOn: series.endsOn ?? '',
+    shortDescription: series.shortDescription, pagePath: series.pagePath ?? '', isFree: series.isFree,
+    audienceNote: series.audienceNote ?? '', skipWhenClosed: series.skipWhenClosed,
+    price: d.price === null ? '' : d.price.toFixed(2),
+    brief: d.brief ?? '', performerName: d.performerName ?? '', performerType: d.performerType ?? '',
+    metaTitle: d.metaTitle ?? '', metaDescription: d.metaDescription ?? '', longDescription: d.longDescription ?? '',
+    highlights: d.highlights.join('\n'),
+    primaryKeywords: keywordsToDisplay(d.primaryKeywords),
+    secondaryKeywords: keywordsToDisplay(d.secondaryKeywords),
+    localSeoKeywords: keywordsToDisplay(d.localSeoKeywords),
+    imageAltText: d.imageAltText ?? '', accessibilityNotes: d.accessibilityNotes ?? '',
+    facebookEventName: d.facebookEventName ?? '', facebookEventDescription: d.facebookEventDescription ?? '',
+    gbpEventTitle: d.gbpEventTitle ?? '', gbpEventDescription: d.gbpEventDescription ?? '',
+    socialCopyWhatsapp: d.socialCopyWhatsapp ?? '',
   }
 }
 
 function SeriesDrawer({
-  open, series, categories, closedDays, today, onClose, onSaved,
+  open, series, categories, closedDays, today, onClose, onSaved, onImagesChanged,
 }: {
   open: boolean
   series: EventSeriesListItem | null
@@ -339,24 +413,18 @@ function SeriesDrawer({
   today: string
   onClose: () => void
   onSaved: () => Promise<void>
+  /** Pictures save on their own; this reloads the list without closing the drawer. */
+  onImagesChanged: () => Promise<void>
 }) {
   const [form, setForm] = useState<SeriesFormState>(() => emptyForm(today))
   const [slugTouched, setSlugTouched] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [generating, setGenerating] = useState(false)
 
   useEffect(() => {
     if (!open) return
     setSlugTouched(Boolean(series))
-    setForm(
-      series
-        ? {
-            name: series.name, slug: series.slug, categoryId: series.categoryId ?? '', weekday: String(series.weekday),
-            startTime: series.startTime, endTime: series.endTime, startsOn: series.startsOn, endsOn: series.endsOn ?? '',
-            shortDescription: series.shortDescription, pagePath: series.pagePath ?? '', isFree: series.isFree,
-            audienceNote: series.audienceNote ?? '', skipWhenClosed: series.skipWhenClosed,
-          }
-        : emptyForm(today)
-    )
+    setForm(series ? seriesToForm(series) : emptyForm(today))
   }, [open, series, today])
 
   function set<K extends keyof SeriesFormState>(key: K, value: SeriesFormState[K]) {
@@ -387,6 +455,68 @@ function SeriesDrawer({
       .sort((a, b) => a.date.localeCompare(b.date))
       .slice(0, 6)
   }, [form, closedDays, today, series])
+
+  /** The same generator and checks as a normal event, in weekly mode: it names the day, never a date. */
+  async function generateSeo() {
+    if (!form.name.trim()) {
+      toast.error('Add a name first')
+      return
+    }
+    if (parseKeywords(form.primaryKeywords).length === 0) {
+      toast.error('Add a focus phrase: the one search this page should be found for')
+      return
+    }
+    setGenerating(true)
+    try {
+      const category = categories.find((c) => c.id === form.categoryId)
+      const result = await generateEventSeoContent({
+        eventId: null,
+        name: form.name.trim(),
+        date: null,
+        time: form.startTime.slice(0, 5),
+        endTime: form.endTime.slice(0, 5),
+        weekly: { weekday: Number(form.weekday) },
+        categoryName: category?.name ?? null,
+        capacity: null,
+        brief: [form.brief, form.audienceNote ? `Who it is for: ${form.audienceNote}` : ''].filter(Boolean).join('\n\n') || null,
+        performerName: form.performerName || null,
+        performerType: form.performerType || null,
+        price: form.isFree || !form.price ? null : Number(form.price),
+        isFree: form.isFree,
+        bookingUrl: null,
+        // A repeating event takes no bookings, so the copy never mentions a booking form.
+        bookingsEnabled: false,
+        existingShortDescription: form.shortDescription || null,
+        existingLongDescription: form.longDescription || null,
+        existingMetaTitle: form.metaTitle || null,
+        existingMetaDescription: form.metaDescription || null,
+        existingHighlights: form.highlights.split('\n').map((h) => h.trim()).filter(Boolean),
+        primaryKeywords: parseKeywords(form.primaryKeywords),
+        secondaryKeywords: parseKeywords(form.secondaryKeywords),
+        localSeoKeywords: parseKeywords(form.localSeoKeywords),
+      })
+      if (!result.success) {
+        toast.error(result.error ?? 'The copy could not be written')
+        return
+      }
+      const d = result.data
+      setForm((prev) => ({
+        ...prev,
+        metaTitle: d.metaTitle ?? prev.metaTitle,
+        metaDescription: d.metaDescription ?? prev.metaDescription,
+        shortDescription: d.shortDescription ?? prev.shortDescription,
+        longDescription: d.longDescription ?? prev.longDescription,
+        highlights: d.highlights?.length ? d.highlights.join('\n') : prev.highlights,
+        imageAltText: d.imageAltText ?? prev.imageAltText,
+        accessibilityNotes: d.accessibilityNotes ?? prev.accessibilityNotes,
+      }))
+      toast.success('SEO copy drafted. Read it through, then save.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'The copy could not be written')
+    } finally {
+      setGenerating(false)
+    }
+  }
 
   async function save() {
     setSaving(true)
@@ -441,13 +571,101 @@ function SeriesDrawer({
         <Field label="Website page" hint='Starts with "/", for example /ladies-darts-night.'>
           <Input value={form.pagePath} onChange={(e) => set('pagePath', e.target.value)} />
         </Field>
-        <Checkbox label="Free" checked={form.isFree} onChange={(v) => set('isFree', v)} />
+        <Checkbox label="Free" description="Untick for a paid night, and give the ticket price." checked={form.isFree} onChange={(v) => set('isFree', v)} />
+        {!form.isFree && (
+          <Input
+            label="Standard ticket price (£)"
+            type="number"
+            min="0.01"
+            step="0.01"
+            required
+            value={form.price}
+            onChange={(e) => set('price', e.target.value)}
+          />
+        )}
         <Checkbox
           label="Skip any date the pub is closed"
           description="Reads special hours. A kitchen-only closure does not skip it."
           checked={form.skipWhenClosed}
           onChange={(v) => set('skipWhenClosed', v)}
         />
+
+        <DrawerSection title="Details">
+          <Field label="Brief" hint="Staff notes on what happens on the night. Feeds the SEO copy; not shown to customers.">
+            <Textarea rows={4} value={form.brief} onChange={(e) => set('brief', e.target.value)} />
+          </Field>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Input label="Host or performer" value={form.performerName} onChange={(e) => set('performerName', e.target.value)} />
+            <Input label="Host or performer type" placeholder="Host, band, DJ" value={form.performerType} onChange={(e) => set('performerType', e.target.value)} />
+          </div>
+        </DrawerSection>
+
+        <KeywordStrategyCard
+          primaryKeywords={form.primaryKeywords}
+          secondaryKeywords={form.secondaryKeywords}
+          localSeoKeywords={form.localSeoKeywords}
+          focusSuggestion={suggestFocusPhrase(form.name)}
+          onPrimaryChange={(v) => set('primaryKeywords', v)}
+          onSecondaryChange={(v) => set('secondaryKeywords', v)}
+          onLocalChange={(v) => set('localSeoKeywords', v)}
+        />
+
+        <DrawerSection title="SEO and content">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-text-muted">
+              Writes the search title and description, short and long descriptions, highlights and alt text from the brief and keywords. Weekly copy: it names the day, never a date.
+            </p>
+            <Button type="button" variant="secondary" size="sm" loading={generating} onClick={() => void generateSeo()} icon={<Icon name="edit" size={14} />}>
+              Generate
+            </Button>
+          </div>
+          <Input
+            label={`Meta title (${form.metaTitle.length}/47)`}
+            hint='The search title, before " | The Anchor". Say it runs weekly, and never give a date.'
+            warning={form.metaTitle.length > 47 ? 'Keep it to 47 characters so search shows it whole.' : undefined}
+            value={form.metaTitle}
+            onChange={(e) => set('metaTitle', e.target.value)}
+          />
+          <Textarea
+            label={`Meta description (${form.metaDescription.length}/155)`}
+            hint="What it is, the day and time, where, the price."
+            rows={2}
+            value={form.metaDescription}
+            onChange={(e) => set('metaDescription', e.target.value)}
+          />
+          <Textarea
+            label="Long description"
+            hint="The main copy on the website page. Paragraphs separated by a blank line."
+            rows={6}
+            value={form.longDescription}
+            onChange={(e) => set('longDescription', e.target.value)}
+          />
+          <Textarea label="Highlights" hint="One per line, three to five." rows={4} value={form.highlights} onChange={(e) => set('highlights', e.target.value)} />
+          <Input label="Image alt text" hint="What the poster shows, for someone who cannot see it." value={form.imageAltText} onChange={(e) => set('imageAltText', e.target.value)} />
+          <Textarea label="Accessibility notes" rows={3} value={form.accessibilityNotes} onChange={(e) => set('accessibilityNotes', e.target.value)} />
+        </DrawerSection>
+
+        <DrawerSection title="Promotion copy">
+          <Input label="Facebook event name" value={form.facebookEventName} onChange={(e) => set('facebookEventName', e.target.value)} />
+          <Textarea label="Facebook event description" rows={4} value={form.facebookEventDescription} onChange={(e) => set('facebookEventDescription', e.target.value)} />
+          <Input label="Google Business Profile title" value={form.gbpEventTitle} onChange={(e) => set('gbpEventTitle', e.target.value)} />
+          <Textarea label="Google Business Profile description" rows={3} value={form.gbpEventDescription} onChange={(e) => set('gbpEventDescription', e.target.value)} />
+          <Textarea
+            label={`WhatsApp message (${form.socialCopyWhatsapp.length}/300)`}
+            rows={3}
+            value={form.socialCopyWhatsapp}
+            onChange={(e) => set('socialCopyWhatsapp', e.target.value)}
+          />
+        </DrawerSection>
+
+        <DrawerSection title="Pictures">
+          <SeriesImagePanel
+            key={series?.id ?? 'new'}
+            seriesId={series?.id ?? null}
+            images={series?.images ?? { square: null, landscape: null, social: null, story: null, printPoster: null }}
+            onChanged={onImagesChanged}
+          />
+        </DrawerSection>
 
         <div className="rounded-default border border-border p-3">
           <p className="text-sm font-medium text-text-strong">
@@ -593,5 +811,15 @@ function EndRunModal({
         <DateTimePicker type="date" value={lastDate} onChange={(v: string) => setLastDate(v)} />
       </Field>
     </Modal>
+  )
+}
+
+/** A titled part of the drawer's form, as in the event drawer. */
+function DrawerSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="min-w-0 space-y-3 border-t border-border pt-4">
+      <SubHeading as="h3">{title}</SubHeading>
+      {children}
+    </section>
   )
 }

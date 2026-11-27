@@ -5,6 +5,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 // Alert above the calendar with a way to try again, as the list and the board do, rather than
 // an empty grid with an amber note underneath.
 
+// The picture panel's storage client needs browser env vars; nothing here uploads.
+vi.mock('@/components/providers/SupabaseProvider', () => ({ useSupabase: () => ({ storage: { from: () => ({}) } }) }))
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }))
