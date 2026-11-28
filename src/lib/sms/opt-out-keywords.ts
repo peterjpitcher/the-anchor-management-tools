@@ -15,6 +15,11 @@
  * because that is what the sender means and what carriers enforce anyway. A
  * marketing keyword stops event promotion only, so someone tired of event
  * invites still gets the confirmation for a table they book next week.
+ *
+ * Both tiers also stop marketing email (owner decision, 27 November 2026). A
+ * guest who replied NOEVENTS on 25 November was sent an event email the same
+ * day, because the opt-out only touched texts. Someone who asks us to stop
+ * promoting events means every channel, not the one they happened to reply on.
  */
 
 /**
@@ -48,6 +53,97 @@ export type OptOutDetection = {
    * are already stored on the message row.
    */
   keyword: string
+  /**
+   * Set when the request was written in the guest's own words rather than as a
+   * keyword ("Please take me off your list"). It is honoured as a marketing
+   * opt-out, and a manager is told so they can read it and decide whether the
+   * guest wants every text stopped.
+   */
+  phrase?: string
+}
+
+/**
+ * Requests to stop written in the guest's own words. These are real replies we
+ * stored and never acted on: "Please take me off your list, thanks", "Can you
+ * stop the spam", "Please remove me from this mailing list", "Wrong number".
+ *
+ * Only phrases that mean nothing else in a reply to a pub are listed. "Not
+ * interested" is deliberately left out, because it is usually a no to one
+ * invite rather than to all of them. Each match is treated as marketing-only and
+ * flagged to a manager, so a wrong guess costs one promotion, never a booking
+ * confirmation.
+ */
+const OPT_OUT_PHRASES: ReadonlyArray<{ phrase: string; pattern: RegExp }> = [
+  // Only a list, a database or our messages: "take me off the waiting list" and
+  // "remove me from the booking for Friday" are service requests, not refusals.
+  {
+    phrase: 'remove me',
+    pattern:
+      /\b(remove|take|delete) me (off|from) (?:(?:your|the|this|that|ur|all|these|any|our)\s+)?(?:(?:mailing|contact|marketing|text|sms|email|messaging|distribution|subscriber)\s+)?(lists?|database|system|contacts|texts|messages|emails|marketing|newsletters?)\b/,
+  },
+  { phrase: 'remove me', pattern: /^(please )?(remove|delete) me( please| thanks| thank you)?$/ },
+  { phrase: 'unsubscribe', pattern: /\bunsubscribe\b/ },
+  { phrase: 'stop messaging', pattern: /\bstop (messaging|texting|sending|contacting|spamming|the spam|the texts|the messages)\b/ },
+  { phrase: 'do not contact', pattern: /\b(dont|do not) (text|message|contact|email) (me|us)\b/ },
+  { phrase: 'no more messages', pattern: /\bno more (texts|messages|emails)\b/ },
+  { phrase: 'opt out', pattern: /\bopt (me )?out\b/ },
+  { phrase: 'wrong number', pattern: /\bwrong (number|person)\b/ },
+]
+
+/** Lower-case, straighten apostrophes, drop them, and collapse spacing. */
+function normaliseForPhrases(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019']/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+}
+
+/**
+ * The customer columns an inbound opt-out writes, for both the webhook and the
+ * holding-queue linker. Every opt-out, keyword or phrase, also switches off
+ * marketing email; service email (booking confirmations) is untouched.
+ */
+export function buildInboundOptOutUpdate(
+  channel: 'sms' | 'whatsapp',
+  scope: OptOutScope,
+  optedOutAt: string
+): Record<string, string | boolean> {
+  const marketingEmail = {
+    marketing_email_opt_in: false,
+    marketing_email_opted_out_at: optedOutAt,
+  }
+
+  if (channel === 'whatsapp') {
+    return scope === 'marketing_only'
+      ? {
+          marketing_whatsapp_opt_in: false,
+          marketing_whatsapp_opted_out_at: optedOutAt,
+          ...marketingEmail,
+        }
+      : {
+          whatsapp_opt_in: false,
+          marketing_whatsapp_opt_in: false,
+          whatsapp_status: 'opted_out',
+          whatsapp_opted_out_at: optedOutAt,
+          marketing_whatsapp_opted_out_at: optedOutAt,
+          ...marketingEmail,
+        }
+  }
+
+  return scope === 'marketing_only'
+    ? {
+        marketing_sms_opt_in: false,
+        marketing_sms_opted_out_at: optedOutAt,
+        ...marketingEmail,
+      }
+    : {
+        sms_opt_in: false,
+        sms_status: 'opted_out',
+        marketing_sms_opt_in: false,
+        marketing_sms_opted_out_at: optedOutAt,
+        ...marketingEmail,
+      }
 }
 
 /** Strip everything that is not a letter or digit, and upper-case the rest. */
@@ -97,6 +193,10 @@ export function detectOptOut(bodyText: string | null | undefined): OptOutDetecti
 
   const exactStop = STOP_KEYWORDS_EXACT_ONLY.find((k) => messageMeansKeyword(words, k, false))
   if (exactStop) return { scope: 'all', keyword: exactStop }
+
+  const normalised = normaliseForPhrases(words.join(' '))
+  const phrase = OPT_OUT_PHRASES.find((p) => p.pattern.test(normalised))
+  if (phrase) return { scope: 'marketing_only', keyword: 'PHRASE', phrase: phrase.phrase }
 
   return null
 }

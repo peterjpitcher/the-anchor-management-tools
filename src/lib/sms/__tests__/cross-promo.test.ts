@@ -122,6 +122,8 @@ function buildDbMock(overrides: {
   audienceRows?: unknown
   audienceError?: unknown
   insertError?: unknown
+  refusedIds?: string[]
+  refusalError?: unknown
 } = {}) {
   const {
     capacityRows = [{ ...makeCapacityRow(20), event_id: FREE_EVENT.id }],
@@ -129,6 +131,8 @@ function buildDbMock(overrides: {
     audienceRows = [AUDIENCE_ROW],
     audienceError = null,
     insertError = null,
+    refusedIds = [],
+    refusalError = null,
   } = overrides
 
   const db: Record<string, Mock> = {
@@ -148,6 +152,11 @@ function buildDbMock(overrides: {
     select: vi.fn().mockImplementation(() => db),
     eq: vi.fn().mockImplementation(() => db),
     is: vi.fn().mockImplementation(() => db),
+    in: vi.fn().mockImplementation(() => db),
+    // dropMarketingSmsRefusals: the customers holding a marketing SMS refusal.
+    not: vi.fn().mockImplementation(() =>
+      Promise.resolve({ data: refusalError ? null : refusedIds.map((id) => ({ id })), error: refusalError })
+    ),
     gt: vi.fn().mockReturnValue(Promise.resolve({ error: null })),
     gte: vi.fn().mockReturnValue(Promise.resolve({ count: 0, error: null })),
     // Used by loadEventStart() to read the event's timing columns
@@ -594,6 +603,40 @@ describe('sendFollowUpForEvent', () => {
       // confirmations, so promos point at NOEVENTS instead.
       expect(body).toContain('Reply NOEVENTS to stop event texts')
       expect(options?.metadata?.template_key).toBe('event_reminder_promo_24h')
+    })
+  })
+
+  describe('recorded refusals', () => {
+    it('skips a recipient whose record holds a marketing SMS refusal', async () => {
+      const db = buildDbMock({ refusedIds: ['cust-uuid-010'] })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+      mockSendSMS.mockResolvedValue(makeSmsSuccess() as Awaited<ReturnType<typeof sendSMS>>)
+
+      const result = await sendFollowUpForEvent(
+        { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+        '24h',
+        [FOLLOW_UP_RECIPIENT, { customer_id: 'cust-uuid-011', first_name: 'Ann', phone_number: '+447700900011' }]
+      )
+
+      expect(mockSendSMS).toHaveBeenCalledTimes(1)
+      expect(mockSendSMS.mock.calls[0][1]).toContain('Ann')
+      expect(result.sent).toBe(1)
+      expect(result.skipped).toBe(1)
+    })
+
+    it('sends nothing when the refusal check cannot be read', async () => {
+      const db = buildDbMock({ refusalError: { code: '500', message: 'down' } })
+      mockCreateAdminClient.mockReturnValue(db as unknown as ReturnType<typeof createAdminClient>)
+
+      const result = await sendFollowUpForEvent(
+        { id: FREE_EVENT.id, name: FREE_EVENT.name, date: FREE_EVENT.date, payment_mode: FREE_EVENT.payment_mode },
+        '24h',
+        [FOLLOW_UP_RECIPIENT]
+      )
+
+      expect(mockSendSMS).not.toHaveBeenCalled()
+      expect(result.sent).toBe(0)
+      expect(result.skipped).toBe(1)
     })
   })
 

@@ -3,7 +3,8 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { logger } from '@/lib/logger'
 import { attachSentBy } from '@/lib/messages/sent-by'
 import { ConsentService } from '@/services/consent'
-import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
+import { buildInboundOptOutUpdate, detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
+import { alertManagerToWrittenOptOut } from '@/lib/sms/opt-out-alert'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 type CustomerSummary = {
@@ -232,12 +233,12 @@ async function honourOptOutFromHoldingQueue(
 
   // A full STOP outranks a marketing-only keyword, so take the widest scope
   // present rather than whichever message happens to be linked.
-  let strongest: { scope: OptOutScope; keyword: string; sid: string | null } | null = null
+  let strongest: { scope: OptOutScope; keyword: string; phrase?: string; sid: string | null; body: string | null } | null = null
   for (const candidate of bodies) {
     const detected = detectOptOut(candidate.body)
     if (!detected) continue
     if (!strongest || (strongest.scope === 'marketing_only' && detected.scope === 'all')) {
-      strongest = { ...detected, sid: candidate.sid }
+      strongest = { ...detected, sid: candidate.sid, body: candidate.body }
     }
   }
 
@@ -247,30 +248,8 @@ async function honourOptOutFromHoldingQueue(
   const marketingOnly = strongest.scope === 'marketing_only'
   const optedOutAt = new Date().toISOString()
 
-  const optOutPayload = isWhatsApp
-    ? (marketingOnly
-        ? {
-            marketing_whatsapp_opt_in: false,
-            marketing_whatsapp_opted_out_at: optedOutAt,
-          }
-        : {
-            whatsapp_opt_in: false,
-            marketing_whatsapp_opt_in: false,
-            whatsapp_status: 'opted_out',
-            whatsapp_opted_out_at: optedOutAt,
-            marketing_whatsapp_opted_out_at: optedOutAt,
-          })
-    : (marketingOnly
-        ? {
-            marketing_sms_opt_in: false,
-            marketing_sms_opted_out_at: optedOutAt,
-          }
-        : {
-            sms_opt_in: false,
-            sms_status: 'opted_out',
-            marketing_sms_opt_in: false,
-            marketing_sms_opted_out_at: optedOutAt,
-          })
+  // Also switches off marketing email: a NOEVENTS reply used to leave event emails running.
+  const optOutPayload = buildInboundOptOutUpdate(isWhatsApp ? 'whatsapp' : 'sms', strongest.scope, optedOutAt)
 
   const { data: optedOutCustomer, error: optOutError } = await adminClient
     .from('customers')
@@ -304,6 +283,25 @@ async function honourOptOutFromHoldingQueue(
       },
       marketingOnly ? ['marketing'] : ['service', 'marketing']
     )
+    // The audit row for the marketing email switch-off written above.
+    await ConsentService.recordOptOut(
+      input.customerId,
+      'email',
+      isWhatsApp ? 'twilio_inbound_whatsapp' : 'twilio_inbound_sms',
+      {
+        captureMethod: 'inbound_keyword',
+        relatedEntityType: 'message',
+        metadata: {
+          keyword: strongest.keyword,
+          twilio_message_sid: strongest.sid,
+          channel: input.channel,
+          scope: 'marketing_only',
+          reason: 'text_opt_out_covers_marketing_email',
+          linked_from_unmatched_id: input.unmatchedId,
+        },
+      },
+      ['marketing']
+    )
   } catch (consentError) {
     // The preference itself is already saved, which is what stops the messages.
     // A missing audit row must not roll that back.
@@ -314,6 +312,17 @@ async function honourOptOutFromHoldingQueue(
         channel: input.channel,
         unmatchedId: input.unmatchedId,
       },
+    })
+  }
+
+  // A request in the guest's own words is a judgement call: tell a manager, as the
+  // webhook does when it can match the number straight away. Never throws.
+  if (strongest.phrase) {
+    await alertManagerToWrittenOptOut({
+      customerId: input.customerId,
+      fromNumber: input.fromAddress ?? '',
+      body: strongest.body ?? '',
+      channel: input.channel,
     })
   }
 }
