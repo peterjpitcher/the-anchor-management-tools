@@ -118,6 +118,8 @@ describe('detectOptOut', () => {
       ["Don\u2019t text me again", 'do not contact'],
       ['No more messages please', 'no more messages'],
       ['Please opt me out', 'opt out'],
+      ['Remove me please', 'remove me'],
+      ['Take me off your mailing list', 'remove me'],
     ])('reads %j as a marketing-only opt-out for a manager to review', (body, phrase) => {
       expect(detectOptOut(body)).toEqual({ scope: 'marketing_only', keyword: 'PHRASE', phrase })
     })
@@ -136,6 +138,10 @@ describe('detectOptOut', () => {
       ['Hi I need to cancel my table for Friday night please x'],
       ['Not sure if I am available this week for it to be honest mate, sorry!'],
       ['Can we remove one person from our booking?'],
+      // Service requests about a booking or a queue, not refusals (PR 423 review).
+      ['Please remove me from the booking for Friday'],
+      ['Please take me off the waiting list'],
+      ['Can you take me off the guest list for Saturday'],
     ])('does not treat %j as an opt-out', (body) => {
       expect(detectOptOut(body)).toBeNull()
     })

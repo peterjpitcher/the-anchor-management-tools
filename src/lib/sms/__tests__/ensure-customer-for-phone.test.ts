@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest'
 
 const recordOptOut = vi.hoisted(() => vi.fn())
 vi.mock('@/services/consent', () => ({ ConsentService: { recordOptOut } }))
+const alertManagerToWrittenOptOut = vi.hoisted(() => vi.fn().mockResolvedValue(true))
+vi.mock('@/lib/sms/opt-out-alert', () => ({ alertManagerToWrittenOptOut }))
 
 import { ensureCustomerForPhone } from '../customers'
 
@@ -286,6 +288,31 @@ describe('ensureCustomerForPhone – a STOP waiting in the holding queue (BK-080
     expect(db.__rows[0].marketing_email_opted_out_at).toEqual(expect.any(String))
     expect(recordOptOut).toHaveBeenCalledWith(expect.any(String), 'sms', 'twilio_inbound_sms', expect.anything(), ['marketing'])
     expect(recordOptOut).toHaveBeenCalledWith(expect.any(String), 'email', 'twilio_inbound_sms', expect.anything(), ['marketing'])
+  })
+
+  it('tells a manager when a held request in the guest\'s own words is applied', async () => {
+    recordOptOut.mockClear()
+    alertManagerToWrittenOptOut.mockClear()
+    const db = makeDb([], [held('Wrong number')])
+
+    const result = await ensureCustomerForPhone(db as never, '+447700900555', { firstName: 'Sam' })
+
+    expect(db.__rows[0].marketing_sms_opted_out_at).toEqual(expect.any(String))
+    expect(alertManagerToWrittenOptOut).toHaveBeenCalledWith({
+      customerId: result.customerId,
+      fromNumber: '+447700900555',
+      body: 'Wrong number',
+      channel: 'sms',
+    })
+  })
+
+  it('does not alert a manager for a held keyword', async () => {
+    alertManagerToWrittenOptOut.mockClear()
+    const db = makeDb([], [held('NOEVENTS')])
+
+    await ensureCustomerForPhone(db as never, '+447700900555', { firstName: 'Sam' })
+
+    expect(alertManagerToWrittenOptOut).not.toHaveBeenCalled()
   })
 
   it('creates an ordinary SMS-active customer when nothing is held for the number', async () => {

@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger'
 import { attachSentBy } from '@/lib/messages/sent-by'
 import { ConsentService } from '@/services/consent'
 import { buildInboundOptOutUpdate, detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
+import { alertManagerToWrittenOptOut } from '@/lib/sms/opt-out-alert'
 import type { CommunicationChannel, CustomerCommunication } from '@/types/communications'
 
 type CustomerSummary = {
@@ -232,12 +233,12 @@ async function honourOptOutFromHoldingQueue(
 
   // A full STOP outranks a marketing-only keyword, so take the widest scope
   // present rather than whichever message happens to be linked.
-  let strongest: { scope: OptOutScope; keyword: string; sid: string | null } | null = null
+  let strongest: { scope: OptOutScope; keyword: string; phrase?: string; sid: string | null; body: string | null } | null = null
   for (const candidate of bodies) {
     const detected = detectOptOut(candidate.body)
     if (!detected) continue
     if (!strongest || (strongest.scope === 'marketing_only' && detected.scope === 'all')) {
-      strongest = { ...detected, sid: candidate.sid }
+      strongest = { ...detected, sid: candidate.sid, body: candidate.body }
     }
   }
 
@@ -311,6 +312,17 @@ async function honourOptOutFromHoldingQueue(
         channel: input.channel,
         unmatchedId: input.unmatchedId,
       },
+    })
+  }
+
+  // A request in the guest's own words is a judgement call: tell a manager, as the
+  // webhook does when it can match the number straight away. Never throws.
+  if (strongest.phrase) {
+    await alertManagerToWrittenOptOut({
+      customerId: input.customerId,
+      fromNumber: input.fromAddress ?? '',
+      body: strongest.body ?? '',
+      channel: input.channel,
     })
   }
 }

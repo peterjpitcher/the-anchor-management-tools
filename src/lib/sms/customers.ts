@@ -2,6 +2,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { formatPhoneForStorage, generatePhoneVariants } from '@/lib/utils'
 import { isPlaceholderName } from '@/lib/sms/name-utils'
 import { detectOptOut, type OptOutScope } from '@/lib/sms/opt-out-keywords'
+import { alertManagerToWrittenOptOut } from '@/lib/sms/opt-out-alert'
 import { ConsentService } from '@/services/consent'
 import { logger } from '@/lib/logger'
 import { maskPhone, maskPhones } from '@/lib/phone/mask'
@@ -239,7 +240,7 @@ async function findCustomerByPhone(
   }
 }
 
-type HeldSmsOptOut = { scope: OptOutScope; keyword: string; unmatchedId: string }
+type HeldSmsOptOut = { scope: OptOutScope; keyword: string; phrase?: string; unmatchedId: string; body: string | null }
 
 /**
  * A STOP or NOEVENTS this number sent before we had a customer for it (BK-080).
@@ -280,8 +281,8 @@ async function findHeldSmsOptOut(
     for (const row of (data ?? []) as Array<{ id: string; body_text: string | null }>) {
       const detection = detectOptOut(row.body_text)
       if (!detection) continue
-      if (detection.scope === 'all') return { ...detection, unmatchedId: row.id }
-      held = held ?? { ...detection, unmatchedId: row.id }
+      if (detection.scope === 'all') return { ...detection, unmatchedId: row.id, body: row.body_text }
+      held = held ?? { ...detection, unmatchedId: row.id, body: row.body_text }
     }
     return held
   } catch (error) {
@@ -485,6 +486,17 @@ export async function ensureCustomerForPhone(
           customerId: inserted.id,
           message: error instanceof Error ? error.message : String(error),
         }))
+      }
+
+      // A request in the guest's own words is a judgement call: tell a manager, as the
+      // webhook does when it can match the number straight away. Never throws.
+      if (heldOptOut.phrase) {
+        await alertManagerToWrittenOptOut({
+          customerId: inserted.id,
+          fromNumber: standardizedPhone,
+          body: heldOptOut.body ?? '',
+          channel: 'sms',
+        })
       }
     }
 

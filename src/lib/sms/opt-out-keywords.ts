@@ -74,7 +74,14 @@ export type OptOutDetection = {
  * confirmation.
  */
 const OPT_OUT_PHRASES: ReadonlyArray<{ phrase: string; pattern: RegExp }> = [
-  { phrase: 'remove me', pattern: /\b(remove|take) me (off|from)\b/ },
+  // Only a list, a database or our messages: "take me off the waiting list" and
+  // "remove me from the booking for Friday" are service requests, not refusals.
+  {
+    phrase: 'remove me',
+    pattern:
+      /\b(remove|take|delete) me (off|from) (?:(?:your|the|this|that|ur|all|these|any|our)\s+)?(?:(?:mailing|contact|marketing|text|sms|email|messaging|distribution|subscriber)\s+)?(lists?|database|system|contacts|texts|messages|emails|marketing|newsletters?)\b/,
+  },
+  { phrase: 'remove me', pattern: /^(please )?(remove|delete) me( please| thanks| thank you)?$/ },
   { phrase: 'unsubscribe', pattern: /\bunsubscribe\b/ },
   { phrase: 'stop messaging', pattern: /\bstop (messaging|texting|sending|contacting|spamming|the spam|the texts|the messages)\b/ },
   { phrase: 'do not contact', pattern: /\b(dont|do not) (text|message|contact|email) (me|us)\b/ },
