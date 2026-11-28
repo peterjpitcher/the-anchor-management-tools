@@ -49,7 +49,7 @@ export async function GET(request: Request) {
 
   const { data: vendors, error: vendorsError } = await supabase
     .from('invoice_vendors')
-    .select('id, name')
+    .select('id, name, is_active')
     .in('id', vendorIds)
     .limit(10000)
 
@@ -59,8 +59,15 @@ export async function GET(request: Request) {
   }
 
   const vendorNameById = new Map<string, string>()
+  // A client we no longer work with keeps its billing settings (and often its
+  // retainer hours), so the settings row alone must not keep creating a new
+  // retainer project every month. Only an explicit false skips: a vendor row
+  // we could not read is still handled as before.
+  const inactiveVendorIds = new Set<string>()
   for (const v of vendors || []) {
-    if (v?.id) vendorNameById.set(String(v.id), String(v.name || ''))
+    if (!v?.id) continue
+    vendorNameById.set(String(v.id), String(v.name || ''))
+    if (v.is_active === false) inactiveVendorIds.add(String(v.id))
   }
 
   let createdCount = 0
@@ -70,6 +77,7 @@ export async function GET(request: Request) {
     vendor_id: string
     vendor_name: string
     status: 'created' | 'skipped' | 'failed'
+    reason?: 'inactive_client'
     project_id?: string
     project_code?: string
     error?: string
@@ -81,6 +89,12 @@ export async function GET(request: Request) {
 
     const vendorName = vendorNameById.get(vendorId) || ''
     const hours = Number(row?.retainer_included_hours_per_month || 0)
+
+    if (inactiveVendorIds.has(vendorId)) {
+      skippedCount++
+      results.push({ vendor_id: vendorId, vendor_name: vendorName, status: 'skipped', reason: 'inactive_client' })
+      continue
+    }
 
     try {
       // Shared with the entries action, so a bucket created on demand when
